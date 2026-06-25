@@ -150,10 +150,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('bumps the daemon API version for direct playbook boundary removal', () => {
-    expect(client.DAEMON_API_VERSION).toBe(76);
-    expect(browser.DAEMON_API_VERSION).toBe(76);
+  it('feature-gates the daemon API version for extension agent task activity logs', () => {
+    expect(client.DAEMON_API_VERSION).toBe(77);
+    expect(browser.DAEMON_API_VERSION).toBe(77);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('removes direct daemon APIs for playbooks and related session-plan derivation');
+    expect(source).toContain('case 2 bump: first-party clients gate on extension agent task metadata activityLog entries');
   });
 });

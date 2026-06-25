@@ -973,6 +973,31 @@
                       }
                     }
                   }
+                },
+                "activityLog": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "timestamp",
+                      "message"
+                    ],
+                    "properties": {
+                      "timestamp": {
+                        "minLength": 1,
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": "\\S",
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1163,6 +1188,31 @@
                             "type": "string"
                           }
                         }
+                      }
+                    }
+                  }
+                },
+                "activityLog": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "timestamp",
+                      "message"
+                    ],
+                    "properties": {
+                      "timestamp": {
+                        "minLength": 1,
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": "\\S",
+                        "type": "string"
                       }
                     }
                   }
@@ -1357,6 +1407,31 @@
                             "type": "string"
                           }
                         }
+                      }
+                    }
+                  }
+                },
+                "activityLog": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "timestamp",
+                      "message"
+                    ],
+                    "properties": {
+                      "timestamp": {
+                        "minLength": 1,
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": "\\S",
+                        "type": "string"
                       }
                     }
                   }
@@ -1561,6 +1636,31 @@
                       }
                     }
                   }
+                },
+                "activityLog": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "timestamp",
+                      "message"
+                    ],
+                    "properties": {
+                      "timestamp": {
+                        "minLength": 1,
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": "\\S",
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1750,6 +1850,31 @@
                             "type": "string"
                           }
                         }
+                      }
+                    }
+                  }
+                },
+                "activityLog": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "timestamp",
+                      "message"
+                    ],
+                    "properties": {
+                      "timestamp": {
+                        "minLength": 1,
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "pattern": "\\S",
+                        "type": "string"
                       }
                     }
                   }
@@ -15148,6 +15273,31 @@
                                     }
                                   }
                                 }
+                              },
+                              "activityLog": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "timestamp",
+                                    "message"
+                                  ],
+                                  "properties": {
+                                    "timestamp": {
+                                      "minLength": 1,
+                                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "minLength": 1,
+                                      "maxLength": 500,
+                                      "pattern": "\\S",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -15338,6 +15488,31 @@
                                           "type": "string"
                                         }
                                       }
+                                    }
+                                  }
+                                }
+                              },
+                              "activityLog": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "timestamp",
+                                    "message"
+                                  ],
+                                  "properties": {
+                                    "timestamp": {
+                                      "minLength": 1,
+                                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "minLength": 1,
+                                      "maxLength": 500,
+                                      "pattern": "\\S",
+                                      "type": "string"
                                     }
                                   }
                                 }
@@ -15532,6 +15707,31 @@
                                           "type": "string"
                                         }
                                       }
+                                    }
+                                  }
+                                }
+                              },
+                              "activityLog": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "timestamp",
+                                    "message"
+                                  ],
+                                  "properties": {
+                                    "timestamp": {
+                                      "minLength": 1,
+                                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "minLength": 1,
+                                      "maxLength": 500,
+                                      "pattern": "\\S",
+                                      "type": "string"
                                     }
                                   }
                                 }
@@ -15736,6 +15936,31 @@
                                     }
                                   }
                                 }
+                              },
+                              "activityLog": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "timestamp",
+                                    "message"
+                                  ],
+                                  "properties": {
+                                    "timestamp": {
+                                      "minLength": 1,
+                                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "minLength": 1,
+                                      "maxLength": 500,
+                                      "pattern": "\\S",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -15925,6 +16150,31 @@
                                           "type": "string"
                                         }
                                       }
+                                    }
+                                  }
+                                }
+                              },
+                              "activityLog": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "timestamp",
+                                    "message"
+                                  ],
+                                  "properties": {
+                                    "timestamp": {
+                                      "minLength": 1,
+                                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "minLength": 1,
+                                      "maxLength": 500,
+                                      "pattern": "\\S",
+                                      "type": "string"
                                     }
                                   }
                                 }

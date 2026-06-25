@@ -1,6 +1,14 @@
-import type { ExtensionAgentTaskKind, ExtensionAgentTaskSanitizedMetadata, ExtensionAgentTaskStatus } from '@eforge-build/client';
+import {
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
+  type ExtensionAgentTaskKind,
+  type ExtensionAgentTaskSanitizedMetadata,
+  type ExtensionAgentTaskStatus,
+} from '@eforge-build/client';
 import type { MonitorContext } from '../../context.js';
 import { writeDaemonEvent } from '../../daemon-events.js';
+
+const ACTIVITY_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export interface AgentTaskEventBase {
   taskId: string;
@@ -52,6 +60,10 @@ export function sanitizeMetadata(metadata: ExtensionAgentTaskSanitizedMetadata |
   if (sectionProgress !== undefined) result.sectionProgress = sectionProgress;
   const backlogCurationProgress = sanitizeBacklogCurationProgress(metadata.backlogCurationProgress);
   if (backlogCurationProgress !== undefined) result.backlogCurationProgress = backlogCurationProgress;
+  // --- eforge:region plan-01-activity-contract-daemon-core ---
+  const activityLog = sanitizeActivityLog(metadata.activityLog);
+  if (activityLog !== undefined) result.activityLog = activityLog;
+  // --- eforge:endregion plan-01-activity-contract-daemon-core ---
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -101,6 +113,30 @@ function sanitizeBacklogCurationProgress(progress: ExtensionAgentTaskSanitizedMe
   };
 }
 
+// --- eforge:region plan-01-activity-contract-daemon-core ---
+function sanitizeActivityLog(activityLog: ExtensionAgentTaskSanitizedMetadata['activityLog']): ExtensionAgentTaskSanitizedMetadata['activityLog'] {
+  if (!Array.isArray(activityLog)) return undefined;
+  const entries = activityLog
+    .slice(-EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES)
+    .map((entry) => {
+      const message = sanitizeBoundedEventMessage(entry.message, EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH);
+      const timestamp = normalizeActivityTimestamp(entry.timestamp);
+      if (message.length === 0 || timestamp === undefined) return undefined;
+      return { timestamp, message };
+    })
+    .filter((entry): entry is NonNullable<ExtensionAgentTaskSanitizedMetadata['activityLog']>[number] => entry !== undefined);
+  return entries.length > 0 ? entries : undefined;
+}
+
+function normalizeActivityTimestamp(timestamp: string): string | undefined {
+  if (typeof timestamp !== 'string' || !ACTIVITY_TIMESTAMP_PATTERN.test(timestamp)) return undefined;
+  const time = Date.parse(timestamp);
+  if (!Number.isFinite(time)) return undefined;
+  const normalized = new Date(time).toISOString();
+  return normalized === timestamp ? normalized : undefined;
+}
+// --- eforge:endregion plan-01-activity-contract-daemon-core ---
+
 function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
   const metadata = sanitizeMetadata(base.metadata);
   const eventBase = { taskId: base.taskId, taskKind: base.taskKind, extensionName: base.extensionName, status: base.status };
@@ -108,7 +144,7 @@ function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
 }
 
 function sanitizeEventMessage(message: string): string {
-  return sanitizeBoundedEventMessage(message, 500);
+  return sanitizeBoundedEventMessage(message, EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH);
 }
 
 function sanitizeBoundedEventMessage(message: string, maxLength: number): string {

@@ -3,7 +3,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { API_ROUTES, buildPath, EforgePlanPlanningDraftInputSchema, EforgePlanPlanningDraftResultSchema, type EforgeEvent } from '@eforge-build/client';
+import {
+  API_ROUTES,
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  buildPath,
+  EforgePlanPlanningDraftInputSchema,
+  EforgePlanPlanningDraftResultSchema,
+  type EforgeEvent,
+} from '@eforge-build/client';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole } from '@eforge-build/engine/events';
 import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
@@ -60,6 +67,7 @@ describe('extension agent task routes and service', () => {
 
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
       expect(completed.result).toEqual(submittedResult);
+      expect(completed.metadata.activityLog.map((entry: { message: string }) => entry.message)).toContain('Planner task completed');
       expect(harness.calls[0]?.tools).toBe('read-only');
       const events = taskEvents(db, startBody.task.taskId);
       expect(events.map((event) => event.type)).toEqual([
@@ -69,6 +77,7 @@ describe('extension agent task routes and service', () => {
       ]);
       expect(events.map((event) => event.extensionName)).toEqual(['eforge-plan', 'eforge-plan', 'eforge-plan']);
       expect(events.map((event) => event.status)).toEqual(['running', 'running', 'completed']);
+      expect(events.at(-1)?.metadata?.activityLog?.at(-1)?.message).toBe('Planner task completed');
     } finally {
       await server.stop();
       db.close();
@@ -86,12 +95,67 @@ describe('extension agent task routes and service', () => {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
       expect(completed.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'] });
+      expect(completed.metadata.activityLog.map((entry: { message: string }) => entry.message)).toContain('Drafting scope');
       const events = taskEvents(db, startBody.task.taskId);
       const progressEvents = events.filter((event) => event.type === 'extension:agent-task:progress');
       const sectionEvent = progressEvents.find((event) => event.metadata?.sectionProgress?.currentSection === 'scope');
       expect(sectionEvent).toBeDefined();
       expect(sectionEvent?.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'] });
+      expect(sectionEvent?.metadata.activityLog.at(-1).message).toBe('Drafting scope');
       expect(sectionEvent?.status).toBe('running');
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves section fields across partial progress updates', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-progress-preserve-'));
+    const progressUpdates = [
+      { currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks'], message: 'Drafting scope' },
+      { message: 'Generic milestone' },
+      { remainingSections: ['verification'], message: 'Refining remaining sections' },
+    ];
+    const harness = new ProgressSubmitHarness(submittedResult, progressUpdates);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      expect(completed.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['verification'] });
+      expect(completed.metadata.activityLog.map((entry: { message: string }) => entry.message)).toEqual(expect.arrayContaining(['Drafting scope', 'Generic milestone', 'Refining remaining sections']));
+      const events = taskEvents(db, startBody.task.taskId);
+      const genericEvent = events.find((event) => event.type === 'extension:agent-task:progress' && event.message === 'Generic milestone');
+      expect(genericEvent?.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks'] });
+      const partialEvent = events.find((event) => event.type === 'extension:agent-task:progress' && event.message === 'Refining remaining sections');
+      expect(partialEvent?.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['verification'] });
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('coalesces consecutive duplicate activity messages', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-duplicate-activity-'));
+    const progressUpdates = [
+      { message: 'Repeated milestone' },
+      { message: 'Repeated milestone' },
+      { message: 'Repeated milestone' },
+    ];
+    const harness = new ProgressSubmitHarness(submittedResult, progressUpdates);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      const messages = completed.metadata.activityLog.map((entry: { message: string }) => entry.message);
+      expect(messages.filter((message: string) => message === 'Repeated milestone')).toHaveLength(1);
+      expect(messages.at(-1)).toBe('Planner task completed');
+      const repeatedEvents = taskEvents(db, startBody.task.taskId).filter((event) => event.type === 'extension:agent-task:progress' && event.message === 'Repeated milestone');
+      expect(repeatedEvents).toHaveLength(3);
+      expect(repeatedEvents.at(-1)?.metadata.activityLog.filter((entry: { message: string }) => entry.message === 'Repeated milestone')).toHaveLength(1);
     } finally {
       await server.stop();
       db.close();
@@ -254,6 +318,36 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('persists deferred source provider progress callbacks as bounded activity', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-source-provider-progress-'));
+    const extensionRoot = join(cwd, '.eforge', 'extensions', 'source-owner');
+    await mkdir(join(extensionRoot, 'prompts'), { recursive: true });
+    await writeFile(join(extensionRoot, 'prompts', 'planning.md'), 'Source: {{sourceText}}\n', 'utf-8');
+    await writeFile(join(extensionRoot, 'source-provider.mjs'), `export async function buildSource({ progress }) { for (let i = 0; i < 55; i += 1) await progress?.('Provider milestone ' + i); return { sourceText: 'provider-progress-source' }; }\n`);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const harness = new SubmitHarness(submittedResult);
+    const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const service = new ExtensionAgentTaskService(context);
+      const started = await service.start(
+        { task: { id: 'planning-draft' }, input: { topic: 'Build with deferred source progress', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource' } } },
+        { owner: { extensionName: 'source-owner', extensionPath: extensionRoot }, registry: planningRegistryForOwner('source-owner', extensionRoot) },
+      );
+      await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
+      const completed = JSON.parse(await readFile(resolveAgentTaskRecordPath(cwd, started.task.taskId), 'utf-8')) as { metadata: { activityLog: Array<{ message: string }>; progressMessage: string } };
+      expect(completed.metadata.activityLog).toHaveLength(EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES);
+      expect(completed.metadata.activityLog.some((entry) => entry.message === 'Provider milestone 0')).toBe(false);
+      expect(completed.metadata.activityLog.map((entry) => entry.message)).toContain('Provider milestone 54');
+      expect(completed.metadata.activityLog.at(-1)?.message).toBe('Planner task completed');
+      expect(completed.metadata.progressMessage).toBe('Planner task completed');
+      const progressEvent = taskEvents(db, started.task.taskId).find((event) => event.type === 'extension:agent-task:progress' && event.message === 'Provider milestone 54');
+      expect(progressEvent?.metadata?.activityLog?.at(-1)?.message).toBe('Provider milestone 54');
+    } finally {
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('resolves deferred source providers relative to file-layout extension directories', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-file-source-provider-'));
     const extensionDir = join(cwd, '.eforge', 'extensions');
@@ -310,13 +404,21 @@ describe('extension agent task routes and service', () => {
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Cancel me' } })).json() as { task: { taskId: string } };
       await harness.started;
-      const cancel = await postJson(server.url, buildPath(API_ROUTES.extensionAgentTaskCancel, { taskId: startBody.task.taskId }), { reason: 'operator' });
+      const [cancel, secondCancel] = await Promise.all([
+        postJson(server.url, buildPath(API_ROUTES.extensionAgentTaskCancel, { taskId: startBody.task.taskId }), { reason: 'operator' }),
+        postJson(server.url, buildPath(API_ROUTES.extensionAgentTaskCancel, { taskId: startBody.task.taskId }), { reason: 'operator again' }),
+      ]);
       expect(cancel.status).toBe(200);
-      expect((await cancel.json()).task.status).toBe('cancelled');
+      expect(secondCancel.status).toBe(200);
+      const cancelledBodies = [await cancel.json(), await secondCancel.json()];
+      expect(cancelledBodies.every((body) => body.task.status === 'cancelled')).toBe(true);
+      expect(cancelledBodies.flatMap((body) => body.task.metadata.activityLog).filter((entry: { message: string }) => entry.message === 'Planner task cancelled')).toHaveLength(2);
       expect(harness.aborted).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
       const events = taskEvents(db, startBody.task.taskId);
       expect(events.map((event) => event.type)).toContain('extension:agent-task:cancelled');
       expect(events.find((event) => event.type === 'extension:agent-task:cancelled')).toMatchObject({ extensionName: 'eforge-plan', status: 'cancelled' });
+      expect(events.filter((event) => event.type === 'extension:agent-task:cancelled')).toHaveLength(1);
     } finally {
       await server.stop();
       db.close();
@@ -333,6 +435,7 @@ describe('extension agent task routes and service', () => {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Fail' } })).json() as { task: { taskId: string } };
       const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
       expect(failed.errorMessage).toContain('secret failure details');
+      expect(failed.metadata.activityLog.at(-1).message).toBe('Planner task failed');
       expect(await fetch(`${server.url}${API_ROUTES.health}`)).toBeDefined();
       const events = taskEvents(db, startBody.task.taskId);
       expect(events.map((event) => event.type)).toContain('extension:agent-task:failed');
@@ -510,9 +613,12 @@ class ProgressSubmitHarness implements AgentHarness {
     yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
     const progressTool = options.customTools?.find((candidate) => candidate.name === 'report_eforge_plan_planning_progress');
     if (progressTool) {
-      yield { type: 'agent:tool_use', agent, planId, agentId, tool: progressTool.name, toolUseId: 'tool-progress', input: this.progress, timestamp: new Date().toISOString() };
-      const output = await progressTool.handler(this.progress);
-      yield { type: 'agent:tool_result', agent, planId, agentId, tool: progressTool.name, toolUseId: 'tool-progress', output, timestamp: new Date().toISOString() };
+      const updates = Array.isArray(this.progress) ? this.progress : [this.progress];
+      for (const [index, update] of updates.entries()) {
+        yield { type: 'agent:tool_use', agent, planId, agentId, tool: progressTool.name, toolUseId: `tool-progress-${index}`, input: update, timestamp: new Date().toISOString() };
+        const output = await progressTool.handler(update);
+        yield { type: 'agent:tool_result', agent, planId, agentId, tool: progressTool.name, toolUseId: `tool-progress-${index}`, output, timestamp: new Date().toISOString() };
+      }
     }
     const submitTool = options.customTools?.find((candidate) => candidate.name === 'submit_eforge_plan_planning_result');
     if (submitTool) {

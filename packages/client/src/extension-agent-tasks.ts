@@ -16,6 +16,10 @@ export const ExtensionAgentTaskKindSchema = Type.Literal(EXTENSION_AGENT_TASK_KI
 
 export const ExtensionAgentTaskStatusSchema = Type.Union([Type.Literal('queued'), Type.Literal('running'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]);
 
+export const EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES = 50 as const; export const EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH = 500 as const;
+const EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$' as const;
+const EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_RE = new RegExp(EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN);
+
 export const ExtensionAgentTaskRequestedBySchema = Type.Object({
   host: Type.Union([Type.Literal('console'), Type.Literal('pi'), Type.Literal('claude'), Type.Literal('mcp'), Type.Literal('cli')]),
   surface: Type.Optional(Type.String()),
@@ -388,6 +392,8 @@ export const ExtensionAgentTaskBacklogCurationProgressSchema = Type.Object({
   items: Type.Array(ExtensionAgentTaskBacklogCurationItemProgressSchema, { maxItems: 1_000 }),
 }, { additionalProperties: false });
 
+export const ExtensionAgentTaskActivityEntrySchema = Type.Object({ timestamp: Type.String({ minLength: 1, pattern: EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN }), message: Type.String({ minLength: 1, maxLength: EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
+
 export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   label: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
@@ -398,6 +404,7 @@ export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   sectionProgress: Type.Optional(EforgePlanPlanningSectionProgressSchema),
   // --- eforge:endregion session-plan-creation-draft ---
   backlogCurationProgress: Type.Optional(ExtensionAgentTaskBacklogCurationProgressSchema),
+  activityLog: Type.Optional(Type.Array(ExtensionAgentTaskActivityEntrySchema, { maxItems: EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES })),
 }, { additionalProperties: false });
 
 const extensionAgentTaskRecordBaseFields = {
@@ -481,6 +488,7 @@ export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRe
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;
 export type ExtensionAgentTaskBacklogCurationItemProgress = Static<typeof ExtensionAgentTaskBacklogCurationItemProgressSchema>;
 export type ExtensionAgentTaskBacklogCurationProgress = Static<typeof ExtensionAgentTaskBacklogCurationProgressSchema>;
+export type ExtensionAgentTaskActivityEntry = Static<typeof ExtensionAgentTaskActivityEntrySchema>;
 export type ExtensionAgentTaskSanitizedMetadata = Static<typeof ExtensionAgentTaskSanitizedMetadataSchema>;
 export type ExtensionAgentTaskRecord = Static<typeof ExtensionAgentTaskRecordSchema>;
 export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskStartResponseSchema>;
@@ -529,7 +537,10 @@ export function assertExtensionAgentTaskId(taskId: string): void {
 }
 
 export function safeParseExtensionAgentTaskRecord(value: unknown): SafeParseResult<ExtensionAgentTaskRecord> {
-  return safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data);
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskRecord(value: unknown): ExtensionAgentTaskRecord {
@@ -563,27 +574,57 @@ export function parseExtensionAgentTaskCancelRequest(value: unknown): ExtensionA
 }
 
 export function safeParseExtensionAgentTaskGetResponse(value: unknown): SafeParseResult<ExtensionAgentTaskGetResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskGetResponse(value: unknown): ExtensionAgentTaskGetResponse {
-  return parseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  const result = safeParseExtensionAgentTaskGetResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskStartResponse(value: unknown): SafeParseResult<ExtensionAgentTaskStartResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskStartResponse(value: unknown): ExtensionAgentTaskStartResponse {
-  return parseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  const result = safeParseExtensionAgentTaskStartResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskCancelResponse(value: unknown): SafeParseResult<ExtensionAgentTaskCancelResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskCancelResponse(value: unknown): ExtensionAgentTaskCancelResponse {
-  return parseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  const result = safeParseExtensionAgentTaskCancelResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
+}
+
+function extensionAgentTaskActivityTimestampError(record: ExtensionAgentTaskRecord, pathPrefix = '') {
+  const entries = record.metadata?.activityLog;
+  const invalidIndex = entries?.findIndex((entry) => !isCanonicalExtensionAgentTaskActivityTimestamp(entry.timestamp)) ?? -1;
+  if (invalidIndex < 0) return undefined;
+  const path = `${pathPrefix}/metadata/activityLog/${invalidIndex}/timestamp`;
+  const message = 'Expected canonical ISO timestamp with millisecond precision';
+  return { message: `${path}: ${message}`, errors: [{ path, message }] };
+}
+
+function isCanonicalExtensionAgentTaskActivityTimestamp(timestamp: string): boolean {
+  if (!EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_RE.test(timestamp)) return false;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === timestamp;
 }
 
 export function formatExtensionAgentTaskSchemaError(result: SafeParseResult<unknown>): string | undefined {

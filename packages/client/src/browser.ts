@@ -12,7 +12,12 @@
  * session-stream.ts is only exercised on the Node path.
  */
 
-export { API_ROUTES, buildPath } from './routes.js';
+export {
+  API_ROUTES,
+  buildPath,
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
+} from './routes.js';
 export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,
@@ -113,6 +118,7 @@ export type {
   StackSyncProviderCommandWire,
   StackSyncStatusWire,
   StackSyncStatusResponse,
+  ExtensionAgentTaskActivityEntry,
   ExtensionAgentTaskCancelRequest,
   ExtensionAgentTaskCancelResponse,
   ExtensionAgentTaskGetRequest,
