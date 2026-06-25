@@ -10,11 +10,17 @@ import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogIte
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
 import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import { getSessionPlan, openEforgePlanStore } from '../sqlite/index.js';
 import type { PlanningTaskWorkflowSelection } from '../planning-agent-task-schemas.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-planner-'));
   try { return await fn(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
+}
+
+function storedReadiness(cwd: string, session: string): unknown {
+  const store = openEforgePlanStore(cwd);
+  try { return getSessionPlan(store, session)?.readinessSummary; } finally { store.close(); }
 }
 
 async function seed(cwd: string) {
@@ -207,6 +213,7 @@ describe('planner orchestration', () => {
       const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'task-session.md'), 'utf-8');
       expect(markdown).toContain('Generated scope.');
       expect(markdown).not.toContain('Generated risks.');
+      expect(storedReadiness(cwd, 'task-session')).toEqual(expect.objectContaining({ missingDimensions: expect.any(Array) }));
       expect(await readRecommendations(cwd)).toMatchObject({ recommendedNextSequence: [{ itemId: 'item-one' }] });
       expect(existsSync(join(cwd, '.eforge', 'session-plans', 'unselected-handoff.md'))).toBe(false);
     });
@@ -284,6 +291,7 @@ describe('planner orchestration', () => {
       const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'new-session.md'), 'utf-8');
       expect(loaded.plan.sections.get('executive summary')).toBe('Drafted a plan.');
       expect(result.sessionPlanCreationDraft?.readiness.coveredDimensions).not.toContain('executive-summary');
+      expect(storedReadiness(cwd, 'new-session')).toEqual(JSON.parse(JSON.stringify(result.sessionPlanCreationDraft?.readiness)));
       expect(markdown).toContain('## Executive Summary\n\nDrafted a plan.');
       expect(markdown.indexOf('## Executive Summary')).toBeLessThan(markdown.indexOf('## Problem Statement'));
       expect(markdown).toContain('Generated scope content.');
@@ -654,6 +662,7 @@ describe('planner orchestration', () => {
       });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'abandoned-session.md'), 'utf-8');
       const loaded = await planning.flat.load({ cwd, session: 'abandoned-session' });
+      const markdownReadiness = await planning.flat.readiness({ cwd, session: 'abandoned-session' });
 
       expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'abandoned-session', relativePath: '.eforge/session-plans/abandoned-session.md' });
       expect(loaded.plan.status).toBe('planning');
@@ -662,6 +671,8 @@ describe('planner orchestration', () => {
       expect(raw.indexOf('## Executive Summary')).toBeLessThan(raw.indexOf('## Problem Statement'));
       expect(raw).toContain('Generated scope content.');
       expect(raw).not.toContain('Old abandoned content.');
+      expect(storedReadiness(cwd, 'abandoned-session')).toEqual(JSON.parse(JSON.stringify(result.sessionPlanCreationDraft?.readiness)));
+      expect(storedReadiness(cwd, 'abandoned-session')).toEqual(JSON.parse(JSON.stringify(markdownReadiness)));
     });
   });
 });

@@ -46,6 +46,9 @@
     ],
     "overrides": {
       "postcss": ">=8.5.15"
+    },
+    "patchedDependencies": {
+      "vitest@4.1.7": "patches/vitest@4.1.7.patch"
     }
   },
   "devDependencies": {

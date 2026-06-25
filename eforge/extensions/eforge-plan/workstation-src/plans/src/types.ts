@@ -137,6 +137,10 @@ export interface BoardItem {
   effectiveLifecycle?: string;
   reasonCodes?: string[];
   associatedLinks?: LifecycleLinkRow[];
+  planEligible?: boolean;
+  planEligibilityReasonCode?: string;
+  planEligibilityReasonMessage?: string;
+  planEligibilityLinks?: LifecycleLinkRow[];
   snippets?: string[];
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
@@ -145,6 +149,7 @@ export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[];
 
 export interface CompactBoardItem { id: string; title: string; status: string; priority: string; tags: string[]; lane: string; reasons: string[]; dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons?: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean; epic?: string; lifecycleState?: string;
   userStatus?: string; effectiveLifecycle?: string; reasonCodes?: string[]; associatedLinks?: LifecycleLinkRow[]; linkRows?: LifecycleLinkRow[];
+  planEligible?: boolean; planEligibilityReasonCode?: string; planEligibilityReasonMessage?: string; planEligibilityLinks?: LifecycleLinkRow[];
   rank?: number; snippet?: SearchSnippet; matchedFields?: string[];
 }
 export interface CompactItemDetail extends CompactBoardItem {
@@ -180,7 +185,7 @@ export interface RecommendationModel {
 }
 export type RecommendationActionabilityState = 'actionable' | 'non-actionable';
 export type RecommendationGroupActionabilityState = 'actionable' | 'partially-actionable' | 'non-actionable';
-export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace' | 'queued-build' | 'running-build' | 'open-pr' | 'merged-result' | 'shipped-result' | 'failed-result' | 'partial-plan';
+export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace' | 'queued-build' | 'running-build' | 'active-build-session' | 'open-pr' | 'merged-result' | 'shipped-result' | 'failed-result' | 'partial-plan' | 'unresolved-dependency' | 'explicit-active-status' | 'explicit-planned-status' | 'explicit-shipped-status' | 'explicit-archive-status' | 'candidate-no-evidence';
 export type RecommendationActionabilityLifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
 export interface RecommendationActionabilityLink { kind: string; label: string; itemIds: string[]; status?: string; session?: string; taskId?: string; prdId?: string; runId?: string; sessionId?: string; featureBranch?: string; commitSha?: string; prUrl?: string; path?: string; timestamp?: string; }
 export interface RecommendationItemActionability { itemId: string; state: RecommendationActionabilityState; lifecycleState: RecommendationActionabilityLifecycleState; reasonCode?: RecommendationActionabilityReasonCode; reasonMessage?: string; associatedLinks: RecommendationActionabilityLink[]; disposition?: import('./workstation-view-model-types').RecommendationDisposition; }

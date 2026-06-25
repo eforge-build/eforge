@@ -23,8 +23,8 @@ describe('SQLite board projections', () => {
       expect(cards.get('pr-open')).toMatchObject({ lane: 'in-progress', lifecycleState: 'pr-open', reasonCodes: ['open-pr'] });
       expect(cards.get('failed')).toMatchObject({ lane: 'blocked', lifecycleState: 'failed', reasonCodes: ['failed-result'] });
       expect(cards.get('blocked')).toMatchObject({ lane: 'blocked', reasonCodes: ['unresolved-dependency'], unresolvedDependsOn: ['missing-dep'] });
-      expect(cards.get('shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', reasonCodes: ['shipped-result'] });
-      expect(cards.get('archived')).toMatchObject({ lane: 'archive', reasonCodes: ['explicit-archive-status'] });
+      expect(cards.get('shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', reasonCodes: ['shipped-result'], planEligible: false });
+      expect(cards.get('archived')).toMatchObject({ lane: 'archive', reasonCodes: ['explicit-archive-status'], planEligible: false, planEligibilityReasonCode: 'explicit-archive-status' });
     });
   });
 
@@ -37,7 +37,7 @@ describe('SQLite board projections', () => {
       const output = await listBoardCompactProjection(cwd, { includeClosed: true, includeArchive: true, limit: 100 });
       const cards = byId(output.items);
 
-      expect(cards.get('curated-shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', closed: true, reasonCodes: ['explicit-shipped-status'] });
+      expect(cards.get('curated-shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', closed: true, reasonCodes: ['explicit-shipped-status'], planEligible: false });
     });
   });
 

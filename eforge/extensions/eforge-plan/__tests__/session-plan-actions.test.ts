@@ -7,6 +7,7 @@ import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorde
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { getSessionPlan, openEforgePlanStore } from '../sqlite/index.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -33,6 +34,15 @@ async function dispatch(cwd: string, actionId: string, input: Record<string, unk
   expect(result).toMatchObject({ kind: 'success' });
   if (result.kind !== 'success') throw new Error(result.message);
   return result.output as Record<string, unknown>;
+}
+
+function storedReadiness(cwd: string, session: string): unknown {
+  const store = openEforgePlanStore(cwd);
+  try { return getSessionPlan(store, session)?.readinessSummary; } finally { store.close(); }
+}
+
+function expectStoredReadiness(cwd: string, session: string, readiness: unknown): void {
+  expect(storedReadiness(cwd, session)).toEqual(JSON.parse(JSON.stringify(readiness)));
 }
 
 function collectUndefinedPaths(value: unknown, path = '$'): string[] {
@@ -193,6 +203,7 @@ describe('eforge-plan session-plan extension actions', () => {
       expect(raw).toContain('session: new-plan');
       expect(raw).toContain('agent_profile: builder');
       expect(raw).toContain('# New Plan');
+      expectStoredReadiness(cwd, 'new-plan', output.readiness);
     });
   });
 
@@ -203,9 +214,42 @@ describe('eforge-plan session-plan extension actions', () => {
       await dispatch(cwd, 'set-session-plan-section', { session: 'dupe-plan', dimension: 'scope', content: 'Only this scope remains.' });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'dupe-plan.md'), 'utf-8');
 
+      const output = await dispatch(cwd, 'show-session-plan', { session: 'dupe-plan' });
+
       expect(raw.match(/^## Scope$/gm)).toHaveLength(1);
       expect(raw).toContain('Only this scope remains.');
       expect(raw).not.toContain('Duplicate scope.');
+      expectStoredReadiness(cwd, 'dupe-plan', output.readiness);
+    });
+  });
+
+  it('persists readiness after dimension selection and metadata updates', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'metadata-plan', readyBody());
+
+      const selected = await dispatch(cwd, 'select-session-plan-dimensions', { session: 'metadata-plan', planningType: 'feature', planningDepth: 'focused', overwrite: true });
+      expectStoredReadiness(cwd, 'metadata-plan', selected.readiness);
+
+      const updated = await dispatch(cwd, 'update-session-plan-metadata', { session: 'metadata-plan', agentProfile: 'planner', openQuestions: ['Confirm rollout.'] });
+      expect(updated.plan).toMatchObject({ agent_profile: 'planner', open_questions: ['Confirm rollout.'] });
+      expectStoredReadiness(cwd, 'metadata-plan', updated.readiness);
+    });
+  });
+
+  it('persists skipped dimension readiness through SQL-backed plan projections', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'skip-plan', readyBody().replace('## Assumptions And Validation\n\nValidation uses the existing TypeScript type-check command.\n', ''));
+
+      const skipped = await dispatch(cwd, 'skip-dimension', { session: 'skip-plan', dimension: 'assumptions-and-validation', reason: 'No external assumptions need validation.' });
+      const show = await dispatch(cwd, 'show-session-plan', { session: 'skip-plan' });
+      const listed = await dispatch(cwd, 'list-planning-artifacts', { includeSubmitted: true });
+      const listedPlan = (listed.plans as Array<{ session: string; readiness: unknown }>).find((plan) => plan.session === 'skip-plan');
+
+      expect(skipped.readiness).toMatchObject({ ready: true, skippedDimensions: ['assumptions-and-validation'] });
+      expectStoredReadiness(cwd, 'skip-plan', skipped.readiness);
+      expect(show.readiness).toEqual(skipped.readiness);
+      expect(listedPlan).toMatchObject({ readiness: skipped.readiness });
+      expect(collectUndefinedPaths(skipped)).toEqual([]);
     });
   });
 
@@ -225,11 +269,13 @@ describe('eforge-plan session-plan extension actions', () => {
       await writeSessionPlanRaw(cwd, 'delete-me', readyBody());
 
       const deleted = await dispatch(cwd, 'delete-session-plan', { session: 'delete-me' });
+      const deletedReadiness = await dispatch(cwd, 'check-session-plan-readiness', { session: 'delete-me' });
       const listed = await dispatch(cwd, 'list-planning-artifacts', {});
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'delete-me.md'), 'utf-8');
 
       expect(deleted).toMatchObject({ kind: 'deleted', session: 'delete-me', status: 'abandoned', plan: { status: 'abandoned' } });
       expect(raw).toContain('status: abandoned');
+      expectStoredReadiness(cwd, 'delete-me', deletedReadiness.readiness);
       expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).not.toContain('plan:delete-me');
       expect(collectUndefinedPaths(deleted)).toEqual([]);
     });
@@ -269,6 +315,7 @@ describe('eforge-plan session-plan extension actions', () => {
       expect(collectUndefinedPaths(handoff)).toEqual([]);
       expect(raw).toContain('status: ready');
       expect(raw).not.toContain('status: submitted');
+      expectStoredReadiness(cwd, 'ready-plan', ready.readiness);
     });
   });
 

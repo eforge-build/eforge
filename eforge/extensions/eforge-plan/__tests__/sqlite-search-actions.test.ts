@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import eforgePlanExtension from '../index.js';
-import { dirtyItemAfterRebuild, invokeSearchAction, seedAndRebuildSearchCorpus, withTempSearchProject } from './sqlite-search-fixtures.js';
+import { captureCanonicalBacklogItem } from '../canonical/backlog-records.js';
+import { rebuildSearchIndex } from '../search/index.js';
+import { dirtyItemAfterRebuild, invokeSearchAction, seedSearchCorpus, seedAndRebuildSearchCorpus, withSearchStore, withTempSearchProject } from './sqlite-search-fixtures.js';
 
 function registeredActions() {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
@@ -42,6 +44,29 @@ describe('FTS-backed search extension actions', () => {
       expect(serialized).not.toContain('The rare acceptance token zetaonly is indexed only with body search.');
       expect(serialized).not.toContain('rawModel');
       expect(serialized).not.toContain('import diagnostics');
+    });
+  });
+
+  it('returns compact item plan eligibility fields from search-items', async () => {
+    await withTempSearchProject(async (cwd) => {
+      seedSearchCorpus(cwd);
+      captureCanonicalBacklogItem(cwd, { id: 'eligible-search-item', title: 'Eligibilitymarker eligible candidate', status: 'candidate', body: 'Search eligibility projection fixture.' });
+      captureCanonicalBacklogItem(cwd, { id: 'blocked-search-item', title: 'Eligibilitymarker blocked candidate', status: 'candidate', dependsOn: ['missing-search-dependency'], body: 'Search eligibility projection fixture.' });
+      withSearchStore(cwd, (store) => rebuildSearchIndex(store));
+
+      const output = await invokeSearchAction(cwd, 'search-items', { query: 'eligibilitymarker', limit: 10 });
+      const items = output.items as Array<Record<string, unknown>>;
+
+      expect(items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'eligible-search-item', planEligible: true }),
+        expect.objectContaining({
+          id: 'blocked-search-item',
+          planEligible: false,
+          planEligibilityReasonCode: 'unresolved-dependency',
+          planEligibilityReasonMessage: expect.stringContaining('unresolved dependencies'),
+          planEligibilityLinks: [],
+        }),
+      ]));
     });
   });
 

@@ -23,6 +23,7 @@ import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-a
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
+import { syncSessionPlanSourceMetadataProject } from './session-plan-metadata.js';
 import { assertNoCanonicalNonterminalCoverage } from './canonical/coverage.js';
 import { resolvePromotionSelection } from './promotion-selection.js';
 import { normalizePlanningAgentTaskListProjection, projectMissingPlanningAgentTaskListItem, projectPlanningAgentTaskListItem } from './planning-agent-task-projection.js';
@@ -73,6 +74,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
     });
     throwIfAborted(ctx.signal);
     const selectedItemIds = hasBacklogSelection(selection) ? context.items.map((item) => item.id) : [];
+    await syncSessionPlanSourceMetadataProject(ctx.cwd);
     assertNoCanonicalNonterminalCoverage(ctx.cwd, selectedItemIds);
     await assertRecommendationSelectionActionable(ctx.cwd, selectedItemIds, ctx.agentTasks, selectionValidationPath(selection));
     const derivedGoal = deriveUserGoal(input.userGoal, selection, context);

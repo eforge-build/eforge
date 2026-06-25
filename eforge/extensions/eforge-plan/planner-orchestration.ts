@@ -273,6 +273,8 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
     syncSessionPlanArtifact(cwd, { session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-creation-draft' });
   }
   const readiness = await planning.flat.readiness({ cwd, session });
+  const loaded = await planning.flat.load({ cwd, session });
+  syncSessionPlanArtifact(cwd, { session, path, status: loaded.plan.status ?? 'planning', ...(linkage !== undefined ? { sourceItemIds: linkage.sourceItemIds, sourceEpicIds: linkage.sourceEpicIds, ...(linkage.sourceRecommendationRef !== undefined && { sourceRecommendationRef: linkage.sourceRecommendationRef }) } : {}), provenance: 'planning-task-creation-draft', readinessSummary: readiness as never });
   const relativePath = relative(cwd, path).replace(/\\/g, '/');
   return {
     session,
@@ -527,7 +529,7 @@ async function applySelectedSessionPlanSections(
     }
     const path = planning.flat.resolvePath({ cwd, session: selection.session });
     const loaded = await planning.flat.load({ cwd, session: selection.session });
-    syncSessionPlanArtifact(cwd, { session: selection.session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-section-patch' });
+    syncSessionPlanArtifact(cwd, { session: selection.session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-section-patch', readinessSummary: loaded.readiness as never });
     applied.push({ session: selection.session, sections: selection.sections.map((section) => section.dimension) });
   }
   return applied;

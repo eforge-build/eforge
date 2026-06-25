@@ -2,9 +2,19 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
+import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
+import { syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
 import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from '../projections/index.js';
 import { openEforgePlanStore } from '../sqlite/index.js';
 import { seedProjectionBacklog, withTempProjectionProject, writeSessionPlan } from './sqlite-projection-fixtures.js';
+
+function readinessPlanContent(session: string, body: string, status = 'planning'): string {
+  return `---\nsession: ${session}\ntopic: ${session}\nstatus: ${status}\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\n---\n${body}`;
+}
+
+function readyBody(title = 'Ready Plan'): string {
+  return [`# ${title}`, '', '## Problem Statement', '', 'The specific user-visible failure is documented with source evidence.', '', '## Scope', '', 'Update eforge/extensions/eforge-plan/projections/session-plans.ts only.', '', '## Acceptance Criteria', '', '- `pnpm type-check` exits 0.', '- eforge/extensions/eforge-plan/projections/session-plans.ts exposes readiness metadata.', '', '## Assumptions And Validation', '', 'Validation uses the existing TypeScript type-check command.', ''].join('\n');
+}
 
 describe('SQLite session-plan projections', () => {
   it('lists flat session-plan lifecycle rows from SQLite with bounded pagination', async () => {
@@ -40,6 +50,66 @@ describe('SQLite session-plan projections', () => {
       ]));
       expect(output.lifecycle).toMatchObject({ session: 'plan-body', itemIds: ['candidate', 'running'], state: 'partial' });
       expect(output.lifecycle.associatedLinks).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'build-run', runId: 'run-1' })]));
+    });
+  });
+
+  it('projects cached, missing, and stale readiness freshness for show and list artifacts', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const dir = join(cwd, '.eforge/session-plans');
+      mkdirSync(dir, { recursive: true });
+      const freshPath = join(dir, 'fresh-ready.md');
+      const missingPath = join(dir, 'missing-ready.md');
+      const stalePath = join(dir, 'stale-ready.md');
+      const fresh = readinessPlanContent('fresh-ready', readyBody('Fresh Ready'));
+      const missing = readinessPlanContent('missing-ready', readyBody('Missing Ready'));
+      const staleOriginal = readinessPlanContent('stale-ready', readyBody('Stale Ready'));
+      const staleCurrent = readinessPlanContent('stale-ready', '# Stale Ready\n\n## Scope\n\nOnly one section.\n');
+      writeFileSync(freshPath, fresh);
+      writeFileSync(missingPath, missing);
+      writeFileSync(stalePath, staleOriginal);
+      syncSessionPlanArtifact(cwd, { session: 'fresh-ready', path: freshPath, content: fresh, readinessSummary: { ready: true, missingDimensions: [], coveredDimensions: ['problem-statement'], skippedDimensions: [] } });
+      syncSessionPlanArtifact(cwd, { session: 'missing-ready', path: missingPath, content: missing });
+      syncSessionPlanArtifact(cwd, { session: 'stale-ready', path: stalePath, content: staleOriginal, readinessSummary: { ready: true, missingDimensions: [], coveredDimensions: ['problem-statement'], skippedDimensions: [] } });
+      writeFileSync(stalePath, staleCurrent);
+
+      const expectedMissingReadiness = await createSessionPlanningWorkflowAdapter().flat.readiness({ cwd, session: 'missing-ready' });
+      const expectedStaleReadiness = await createSessionPlanningWorkflowAdapter().flat.readiness({ cwd, session: 'stale-ready' });
+      const freshOutput = await showSessionPlanProjection(cwd, 'fresh-ready');
+      const missingOutput = await showSessionPlanProjection(cwd, 'missing-ready');
+      const staleOutput = await showSessionPlanProjection(cwd, 'stale-ready');
+      const listed = await listPlanningArtifactsProjection(cwd, { limit: 100, includeSubmitted: true });
+      const listedFresh = (listed.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'fresh-ready');
+      const listedMissing = (listed.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'missing-ready');
+      const listedStale = (listed.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'stale-ready');
+
+      expect(freshOutput).toMatchObject({ readiness: expect.objectContaining({ ready: true }), readinessSource: 'cache', readinessFreshness: expect.objectContaining({ state: 'fresh' }) });
+      expect(missingOutput).toMatchObject({ readinessSource: 'markdown', readinessFreshness: expect.objectContaining({ state: 'missing' }) });
+      expect(missingOutput.readiness).toEqual(expectedMissingReadiness);
+      expect(staleOutput).toMatchObject({ readinessSource: 'markdown', readinessFreshness: expect.objectContaining({ state: 'stale' }) });
+      expect(staleOutput.readiness).toEqual(expectedStaleReadiness);
+      expect(listedFresh).toMatchObject({ readinessSource: 'cache', readinessFreshness: expect.objectContaining({ state: 'fresh' }) });
+      expect(listedMissing).toMatchObject({ readinessSource: 'markdown', readinessFreshness: expect.objectContaining({ state: 'missing' }) });
+      expect((listedMissing as any).readiness).toEqual(expectedMissingReadiness);
+      expect(listedStale).toMatchObject({ readinessSource: 'markdown', readinessFreshness: expect.objectContaining({ state: 'stale' }) });
+      expect((listedStale as any).readiness).toEqual(expectedStaleReadiness);
+    });
+  });
+
+  it('does not preserve a fresh readiness cache when content changes without recomputed readiness', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const dir = join(cwd, '.eforge/session-plans');
+      mkdirSync(dir, { recursive: true });
+      const path = join(dir, 'changed-no-readiness.md');
+      const original = readinessPlanContent('changed-no-readiness', readyBody('Changed Ready'));
+      const changed = readinessPlanContent('changed-no-readiness', '# Changed Ready\n\n## Scope\n\nOnly one section.\n');
+      writeFileSync(path, original);
+      syncSessionPlanArtifact(cwd, { session: 'changed-no-readiness', path, content: original, readinessSummary: { ready: true, missingDimensions: [], coveredDimensions: ['problem-statement'], skippedDimensions: [] } });
+      writeFileSync(path, changed);
+      syncSessionPlanArtifact(cwd, { session: 'changed-no-readiness', path, content: changed });
+
+      const output = await showSessionPlanProjection(cwd, 'changed-no-readiness');
+
+      expect(output).toMatchObject({ readiness: expect.objectContaining({ ready: false }), readinessSource: 'markdown', readinessFreshness: expect.objectContaining({ state: 'missing' }) });
     });
   });
 

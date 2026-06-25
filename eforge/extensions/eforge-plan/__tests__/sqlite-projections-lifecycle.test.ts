@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { captureCanonicalBacklogItem } from '../canonical/backlog-records.js';
 import { recordCanonicalLifecycleEvent } from '../canonical/lifecycle-records.js';
+import { syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
+import { withCanonicalTransaction } from '../canonical/store.js';
+import { recordLifecycleEvidence } from '../sqlite/index.js';
 import { getAssociatedPlanBuildLinksForItems, getItemDetailProjection, findNonterminalCoverage } from '../projections/index.js';
 import { seedProjectionBacklog, withTempProjectionProject, writeSessionPlan } from './sqlite-projection-fixtures.js';
 
@@ -15,6 +19,36 @@ describe('SQLite lifecycle projections', () => {
       expect(output.item.associatedLinks).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'build-run', runId: 'run-1', buildSessionId: 'build-session-1' })]));
       expect(output.item).not.toHaveProperty('body');
       expect(output.item).not.toHaveProperty('sections');
+    });
+  });
+
+  it('keeps explicit planned and active user statuses plan-eligible without backend blockers', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      captureCanonicalBacklogItem(cwd, { id: 'user-planned', title: 'User Planned', status: 'planned' });
+      captureCanonicalBacklogItem(cwd, { id: 'user-active', title: 'User Active', status: 'active' });
+
+      const planned = await getItemDetailProjection(cwd, { id: 'user-planned' });
+      const active = await getItemDetailProjection(cwd, { id: 'user-active' });
+
+      expect(planned.item).toMatchObject({ lifecycleState: 'planned', planEligible: true });
+      expect(active.item).toMatchObject({ lifecycleState: 'planned', planEligible: true });
+      expect(planned.item).not.toHaveProperty('planEligibilityReasonCode');
+      expect(active.item).not.toHaveProperty('planEligibilityReasonCode');
+    });
+  });
+
+  it('ignores stale current planned-session-plan evidence once the tied session plan is terminal', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      captureCanonicalBacklogItem(cwd, { id: 'terminal-item', title: 'Terminal Item', status: 'candidate' });
+      const content = `---\nsession: terminal-plan\ntopic: Terminal plan\nstatus: deleted\neforge_plan:\n  source_item_ids: [terminal-item]\n---\n# Terminal plan\n`;
+      syncSessionPlanArtifact(cwd, { session: 'terminal-plan', path: `${cwd}/.eforge/session-plans/terminal-plan.md`, content, status: 'deleted', sourceItemIds: ['terminal-item'] });
+      withCanonicalTransaction(cwd, (store) => recordLifecycleEvidence(store, { evidenceKey: 'stale-planned-terminal-plan', itemRef: 'terminal-item', itemId: 'terminal-item', session: 'terminal-plan', lifecycleState: 'planned', reasonCode: 'planned-session-plan', evidenceKind: 'session-plan', status: 'ready', isCurrent: true, isTerminal: false, occurredAt: '2026-01-01T00:00:00.000Z', links: { session: 'terminal-plan' } }));
+
+      const output = await getItemDetailProjection(cwd, { id: 'terminal-item', includeLifecycleRows: true });
+      const coverage = await findNonterminalCoverage(cwd, { itemIds: ['terminal-item'] });
+
+      expect(output.item).toMatchObject({ planEligible: true, lifecycleState: 'none', reasonCodes: ['candidate-no-evidence'] });
+      expect(coverage).toMatchObject({ ok: true, entries: [] });
     });
   });
 
@@ -50,17 +84,32 @@ describe('SQLite lifecycle projections', () => {
     });
   });
 
+  it.each([
+    ['merged', 'merged-result'],
+    ['partial', 'partial-plan'],
+  ])('treats current %s result evidence as an eligibility blocker', async (state, reasonCode) => {
+    await withTempProjectionProject(async (cwd) => {
+      captureCanonicalBacklogItem(cwd, { id: `result-${state}`, title: `Result ${state}`, status: 'candidate' });
+      withCanonicalTransaction(cwd, (store) => recordLifecycleEvidence(store, { evidenceKey: `result-${state}`, itemRef: `result-${state}`, itemId: `result-${state}`, lifecycleState: state as never, reasonCode, evidenceKind: 'event', status: state, isCurrent: true, isTerminal: true, occurredAt: '2026-01-01T00:00:00.000Z', links: { url: `https://example.test/${state}` } }));
+
+      const output = await getItemDetailProjection(cwd, { id: `result-${state}`, includeLifecycleRows: true });
+
+      expect(output.item).toMatchObject({ planEligible: false, planEligibilityReasonCode: reasonCode, planEligibilityReasonMessage: expect.stringContaining(reasonCode), planEligibilityLinks: expect.arrayContaining([expect.objectContaining({ itemIds: [`result-${state}`] })]) });
+    });
+  });
+
   it('distinguishes nonterminal duplicate coverage from terminal-only evidence', async () => {
     await withTempProjectionProject(async (cwd) => {
       seedProjectionBacklog(cwd);
 
       const runningCoverage = await findNonterminalCoverage(cwd, { itemIds: ['running'] });
-      const shippedHidden = await findNonterminalCoverage(cwd, { itemIds: ['shipped'] });
+      const shippedCoverage = await findNonterminalCoverage(cwd, { itemIds: ['shipped'] });
       const shippedIncluded = await findNonterminalCoverage(cwd, { itemIds: ['shipped'], includeTerminalReasons: true });
 
       expect(runningCoverage.ok).toBe(false);
       expect(runningCoverage.entries).toEqual(expect.arrayContaining([expect.objectContaining({ itemId: 'running', reasonCode: 'running-build', terminal: false })]));
-      expect(shippedHidden.entries).toEqual([]);
+      expect(shippedCoverage.ok).toBe(false);
+      expect(shippedCoverage.entries).toEqual(expect.arrayContaining([expect.objectContaining({ itemId: 'shipped', reasonCode: 'shipped-result', terminal: true })]));
       expect(shippedIncluded.entries).toEqual(expect.arrayContaining([expect.objectContaining({ itemId: 'shipped', reasonCode: 'shipped-result', terminal: true })]));
     });
   });
