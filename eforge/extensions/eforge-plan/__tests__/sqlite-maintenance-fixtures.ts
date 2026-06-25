@@ -82,13 +82,6 @@ export function seedRetentionMaintenanceStore(cwd: string): void {
     db.prepare("INSERT INTO recommendation_lanes (lane_id,run_id,lane_kind,lane_ref,title,sequence,rationale) VALUES (?,?,?,?,?,?,?)").run('lane-old', 'rec-old', 'recommendedNextSequence', 'next:item-keep', 'Historical lane', 0, 'historical rationale');
     db.prepare("INSERT INTO recommendation_lane_items (lane_id,item_ref,item_id,role,sequence,rationale) VALUES (?,?,?,?,?,?)").run('lane-old', 'item-keep', 'item-keep', 'member', 0, 'old item rationale');
 
-    db.prepare("INSERT INTO import_runs (run_id,dry_run,applied,started_at,finished_at,counts_json,summary_json,verbose_report_json,verbose_report_prunable) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run('import-old', 0, 1, OLD, OLD, JSON.stringify({ items: 1 }), JSON.stringify({ summary: 'import summary' }), JSON.stringify({ secret: 'VERBOSE_IMPORT_REPORT' }), 1);
-    db.prepare("INSERT INTO import_diagnostics (diagnostic_id,run_id,severity,code,message,ref,path,details_json) VALUES (?,?,?,?,?,?,?,?)")
-      .run('diag-old', 'import-old', 'warning', 'old-code', 'Old diagnostic', 'item-keep', 'backlog/items/item-keep.md', JSON.stringify({ secret: 'DIAGNOSTIC_DETAILS' }));
-    db.prepare("INSERT INTO import_runs (run_id,dry_run,applied,started_at,finished_at,counts_json,summary_json,verbose_report_json,verbose_report_prunable) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run('import-new', 0, 1, NEW, NEW, JSON.stringify({ items: 1 }), JSON.stringify({ summary: 'new import' }), JSON.stringify({ secret: 'NEW_VERBOSE_IMPORT_REPORT' }), 1);
-
     db.prepare("INSERT OR REPLACE INTO search_documents (document_type,document_id,title,summary_text,body_text,updated_at) VALUES (?,?,?,?,?,?)").run('recommendation', 'lane-old', 'Historical lane', 'old rec', 'historical search text', OLD);
     db.prepare("INSERT OR REPLACE INTO search_documents (document_type,document_id,title,summary_text,body_text,updated_at) VALUES (?,?,?,?,?,?)").run('backlog_item', 'item-keep', 'Item Keep', 'summary', 'item body searchable', NEW);
   } finally { db.close(); }

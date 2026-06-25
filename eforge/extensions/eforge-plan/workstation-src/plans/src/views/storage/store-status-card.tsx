@@ -52,7 +52,7 @@ function MissingStore({ status }: { status: PlanningStoreStatus }) {
   return (
     <div className="grid gap-1 text-2xs text-muted-foreground">
       <p>Store not initialized at <code>{status.storePath}</code>.</p>
-      <p>Use <code>import-planning-store</code> through extension contribution invocation. Dry-run is the default; apply with <code>{'{ "dryRun": false }'}</code> or replace with <code>{'{ "dryRun": false, "replaceExisting": true }'}</code>.</p>
+      <p>The store is initialized automatically when eforge-plan writes canonical planning data. Use the backlog, recommendation, and planning actions to create records.</p>
     </div>
   );
 }

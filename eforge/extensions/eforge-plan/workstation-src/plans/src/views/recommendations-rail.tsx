@@ -116,7 +116,7 @@ export function RecommendationsRail({ recommendations, actionability, status, fr
               {groups.map((group) => {
                 const title = group.title ?? group.ref;
                 const groupActionability = actionabilityIndex?.groupsByRef.get(group.ref);
-                const actionableIds = groupActionability ? groupActionability.actionableItemIds : actionabilityIndex ? [] : group.itemIds.filter((id) => selection.readyIds.has(id));
+                const actionableIds = groupActionability ? groupActionability.actionableItemIds : actionabilityIndex ? [] : group.itemIds.filter((id) => selection.planEligibleIds.has(id));
                 const fullySuppressed = actionabilityIndex !== null && (groupActionability === undefined || groupActionability.state === 'non-actionable' || actionableIds.length === 0);
                 const partiallySuppressed = groupActionability?.state === 'partially-actionable';
                 return (
@@ -132,7 +132,7 @@ export function RecommendationsRail({ recommendations, actionability, status, fr
                         <Button
                           size="xs"
                           disabled={busy || actionableIds.length === 0}
-                          title={actionableIds.length === 0 ? 'No items in this lane are ready to plan.' : 'Start an AI planning task for this lane’s actionable items.'}
+                          title={actionableIds.length === 0 ? 'No items in this lane are eligible for a new plan.' : 'Start an AI planning task for this lane’s actionable items.'}
                           onClick={() => void selection.planLane(actionableIds, group.ref)}
                         >
                           Plan{actionableIds.length < group.itemIds.length ? ` (${actionableIds.length})` : ''}

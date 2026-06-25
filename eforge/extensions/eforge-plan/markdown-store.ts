@@ -103,17 +103,6 @@ export interface BacklogEpicWrite {
   [key: string]: unknown;
 }
 
-export interface BacklogImportResult {
-  schemaVersion: 1;
-  items: BacklogImportKindResult;
-  epics: BacklogImportKindResult;
-}
-
-export interface BacklogImportKindResult {
-  copied: Array<{ id: string; path: string }>;
-  skipped: Array<{ id: string; reason: 'private-exists' }>;
-}
-
 // --- eforge:region backlog-storage-paths ---
 
 export { assertSafeBacklogId } from './markdown-store-support.js';
@@ -286,31 +275,6 @@ export async function replaceBacklogEpicRecord(cwd: string, id: string, frontmat
   return parseEpic(await readFile(filePath, 'utf-8'));
 }
 
-export async function importLegacyBacklogItems(cwd: string, ids?: string[]): Promise<BacklogImportKindResult> {
-  return importLegacyKind(cwd, 'item', parseItem, ids);
-}
-
-export async function importLegacyBacklogEpics(cwd: string, ids?: string[]): Promise<BacklogImportKindResult> {
-  return importLegacyKind(cwd, 'epic', parseEpic, ids);
-}
-
-export async function importLegacyBacklog(
-  cwd: string,
-  input: { kind?: 'items' | 'epics' | 'all'; ids?: string[] },
-): Promise<BacklogImportResult> {
-  const kind = input.kind ?? 'all';
-  if (kind === 'all' && input.ids !== undefined) {
-    throw new Error('Legacy backlog import ids may only be used with kind "items" or "epics".');
-  }
-  const itemsPlan = kind === 'epics' ? emptyImportKindPlan() : await planLegacyKindImport(cwd, 'item', parseItem, input.ids);
-  const epicsPlan = kind === 'items' ? emptyImportKindPlan() : await planLegacyKindImport(cwd, 'epic', parseEpic, input.ids);
-  return {
-    schemaVersion: 1,
-    items: await copyLegacyImportPlan(cwd, itemsPlan),
-    epics: await copyLegacyImportPlan(cwd, epicsPlan),
-  };
-}
-
 // --- eforge:endregion backlog-storage-write-import ---
 
 function parseItem(raw: string): BacklogItem {
@@ -435,75 +399,6 @@ async function readRequiredVisibleParsed<T extends BacklogItem | BacklogEpic>(
     throw new Error(`Backlog record not found: ${recordPath(cwd, kind, 'private', id)}`);
   }
   return { frontmatter: snapshot.frontmatter, body: snapshot.body };
-}
-
-interface BacklogImportKindPlan {
-  copy: Array<{ id: string; privatePath: string; rawContent: Buffer }>;
-  skipped: BacklogImportKindResult['skipped'];
-}
-
-async function importLegacyKind<T extends BacklogItem | BacklogEpic>(
-  cwd: string,
-  kind: BacklogRecordKind,
-  parser: (raw: string) => T,
-  ids?: string[],
-): Promise<BacklogImportKindResult> {
-  return copyLegacyImportPlan(cwd, await planLegacyKindImport(cwd, kind, parser, ids));
-}
-
-async function planLegacyKindImport<T extends BacklogItem | BacklogEpic>(
-  cwd: string,
-  kind: BacklogRecordKind,
-  parser: (raw: string) => T,
-  ids?: string[],
-): Promise<BacklogImportKindPlan> {
-  const privateSnapshots = await listOriginSnapshots(cwd, kind, 'private', parser);
-  const privateIds = new Set(privateSnapshots.map((snapshot) => snapshot.id));
-  const legacyIds = ids === undefined ? await listOriginRecordIds(cwd, kind, 'legacy') : [...new Set(ids)].sort();
-  const skipped = legacyIds.filter((id) => {
-    assertSafeBacklogId(id);
-    return privateIds.has(id);
-  }).map((id) => ({ id, reason: 'private-exists' as const }));
-  const candidateIds = legacyIds.filter((id) => !privateIds.has(id));
-  const candidates = await Promise.all(candidateIds.map(async (id) => {
-    assertSafeBacklogId(id);
-    const sourcePath = recordPath(cwd, kind, 'legacy', id);
-    const rawContent = await readFile(sourcePath);
-    const snapshot = createSnapshotFromRawContent(cwd, kind, 'legacy', id, sourcePath, parser, rawContent);
-    return { snapshot, rawContent };
-  }));
-  const copy: BacklogImportKindPlan['copy'] = [];
-  for (const candidate of candidates.sort((left, right) => left.snapshot.id.localeCompare(right.snapshot.id))) {
-    copy.push({ id: candidate.snapshot.id, privatePath: recordPath(cwd, kind, 'private', candidate.snapshot.id), rawContent: candidate.rawContent });
-  }
-  return { copy, skipped };
-}
-
-async function copyLegacyImportPlan(cwd: string, plan: BacklogImportKindPlan): Promise<BacklogImportKindResult> {
-  const copied: BacklogImportKindResult['copied'] = [];
-  const skipped = [...plan.skipped];
-  for (const candidate of plan.copy) {
-    await mkdir(dirname(candidate.privatePath), { recursive: true });
-    try {
-      await writeFile(candidate.privatePath, candidate.rawContent, { flag: 'wx' });
-      copied.push({ id: candidate.id, path: toProjectRelativePath(cwd, candidate.privatePath) });
-    } catch (error) {
-      if (isFileExistsError(error)) {
-        skipped.push({ id: candidate.id, reason: 'private-exists' });
-        continue;
-      }
-      throw error;
-    }
-  }
-  return { copied, skipped };
-}
-
-function isFileExistsError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST';
-}
-
-function emptyImportKindPlan(): BacklogImportKindPlan {
-  return { copy: [], skipped: [] };
 }
 
 function recordRoot(cwd: string, kind: BacklogRecordKind, origin: BacklogStorageOrigin): string {

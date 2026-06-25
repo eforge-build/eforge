@@ -70,10 +70,10 @@ export function formatCount(value: number | undefined, singular: string, plural 
 
 export function storeStatusSummary(status: PlanningStoreStatus | null | undefined, error?: string | null): { label: string; tone: Tone } {
   if (error) return { label: 'status unavailable', tone: 'danger' };
-  if (!status) return { label: 'SQLite store', tone: 'neutral' };
+  if (!status) return { label: 'loading', tone: 'neutral' };
   if (!status.initialized) return { label: 'not initialized', tone: 'warn' };
   if (status.searchIndexStatus?.dirty) return { label: 'dirty index', tone: 'warn' };
-  return { label: 'SQLite store', tone: 'done' };
+  return { label: 'ready', tone: 'done' };
 }
 
 function titleize(value: string): string {

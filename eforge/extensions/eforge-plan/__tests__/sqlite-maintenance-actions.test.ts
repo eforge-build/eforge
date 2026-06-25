@@ -19,25 +19,23 @@ describe('SQLite maintenance extension actions', () => {
     await withTempMaintenanceProject(async (cwd) => {
       seedRetentionMaintenanceStore(cwd);
 
-      const output = await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', rowLimit: 50000, sampleLimit: 500, keepLatestRecommendationRuns: 0, keepLatestImportRuns: 0 });
+      const output = await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', rowLimit: 50000, sampleLimit: 500, keepLatestRecommendationRuns: 0 });
 
       expect(output).toMatchObject({ schemaVersion: 1, status: 'applied', dryRun: false, rowLimit: 10000, sampleLimit: 100 });
       expect(output.prunedCounts).toMatchObject({
         'lifecycle-event-payloads': 1,
         'planning-task-payloads': 1,
         'superseded-recommendation-runs': 1,
-        'import-report-payloads': 1,
-        'import-diagnostic-details': 1,
       });
       expect(JSON.stringify(output)).not.toMatch(/payload_json|raw_request_json|raw_result_json|raw_model_json|verbose_report_json|details_json/);
-      expect(JSON.stringify(output)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|RAW_TASK_RESULT|HISTORICAL_RAW_MODEL|VERBOSE_IMPORT_REPORT|DIAGNOSTIC_DETAILS/);
+      expect(JSON.stringify(output)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|RAW_TASK_RESULT|HISTORICAL_RAW_MODEL/);
     });
   });
 
   it('reports populated store status with sizes, table counts, eligibility counts, search state, and recent runs', async () => {
     await withTempMaintenanceProject(async (cwd) => {
       seedRetentionMaintenanceStore(cwd);
-      await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', keepLatestRecommendationRuns: 0, keepLatestImportRuns: 0 });
+      await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', keepLatestRecommendationRuns: 0 });
 
       const status = await invokeMaintenanceAction(cwd, 'get-store-status', { recentRunLimit: 5 });
 
@@ -52,11 +50,9 @@ describe('SQLite maintenance extension actions', () => {
         'lifecycle-event-payloads': expect.any(Number),
         'planning-task-payloads': expect.any(Number),
         'superseded-recommendation-runs': expect.any(Number),
-        'import-report-payloads': expect.any(Number),
-        'import-diagnostic-details': expect.any(Number),
       });
       expect(status.recentMaintenanceRuns).toEqual([expect.objectContaining({ status: 'applied' })]);
-      expect(JSON.stringify(status)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|HISTORICAL_RAW_MODEL|VERBOSE_IMPORT_REPORT|DIAGNOSTIC_DETAILS/);
+      expect(JSON.stringify(status)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|HISTORICAL_RAW_MODEL/);
     });
   });
 });

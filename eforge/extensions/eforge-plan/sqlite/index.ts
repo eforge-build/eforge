@@ -9,7 +9,6 @@ export { rowToPlanningTask, listPlanningTasks, upsertPlanningTask, replacePlanni
 export { rowToSessionPlan, upsertSessionPlan, getSessionPlan, listSessionPlans, linkSessionPlanItems, linkSessionPlanEpics, replaceAllSessionPlanItems, replaceAllSessionPlanEpics } from './repositories/session-plans.js';
 export { rowToLifecycleEvent, rowToLifecycleEvidence, recordLifecycleEvent, recordLifecycleEvidence } from './repositories/lifecycle.js';
 export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upsertQueuePrd, upsertBuildRun, upsertBuildSession, upsertLandingLink, recordQueueBuildCorrelation } from './repositories/queue-build.js';
-export { rowToImportRun, rowToImportDiagnostic, recordImportRun, recordImportDiagnostic } from './repositories/import-runs.js';
 export { rowToMaintenanceRun, recordMaintenanceRun, listRecentMaintenanceRuns, recordFailedMaintenanceRun } from './repositories/maintenance.js';
 export * from './repositories/maintenance-pruning.js';
 export { rowToSearchDocument, replaceSearchDocument, replaceSearchDocuments, deleteSearchDocument, deleteSearchDocumentsByType, deleteStaleSearchDocumentsByType, listSearchIndexDirtyRecords, clearSearchIndexDirtyRecords, rebuildSearchDocumentsFts, optimizeSearchDocumentsFts, markSearchIndexDirty, markSearchIndexDirtyBatch, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';

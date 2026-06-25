@@ -7,12 +7,10 @@ import { StoreStatusBadge, StoreStatusCard } from './store-status-card';
 function setBridge(bridge: EforgeBridge) { (window as Window & { eforge?: EforgeBridge }).eforge = bridge; }
 
 describe('StoreStatusCard', () => {
-  it('renders missing-store import guidance', () => {
+  it('renders missing-store initialization guidance', () => {
     render(<StoreStatusCard status={mockMissingStoreStatus} error={null} onRefresh={async () => {}} />);
     expect(screen.getByText(/not initialized/)).toBeTruthy();
-    expect(screen.getByText(/import-planning-store/)).toBeTruthy();
-    expect(screen.getByText(/\{ "dryRun": false \}/)).toBeTruthy();
-    expect(screen.getByText(/\{ "dryRun": false, "replaceExisting": true \}/)).toBeTruthy();
+    expect(screen.getByText(/initialized automatically/)).toBeTruthy();
   });
 
   it('renders initialized-store schema, file, search, retention, and maintenance summaries', () => {
@@ -25,7 +23,7 @@ describe('StoreStatusCard', () => {
     expect(text).toContain('SHM 32 KB');
     expect(text).toContain('index dirty (3 docs)');
     expect(text).toContain('5 eligible records');
-    expect(text).toContain('import-report-payloads: 2');
+    expect(text).toContain('planning-task-payloads: 2');
     expect(text).toContain('5 records eligible for compaction');
   });
 

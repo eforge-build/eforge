@@ -59,7 +59,7 @@ export function useWorkstationData(): WorkstationDataState {
     // Each source is loaded independently: a failure in one (e.g. optional
     // recommendations) must not blank the board or the artifact list.
     const [boardResult, artifactsResult, recommendationsResult, roadmapResult, draftUnitsResult, storeStatusResult] = await Promise.allSettled([
-      bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true }),
+      bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true, includeEpics: true }),
       bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', { includeBoard: false }),
       bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
       bridge.invokeAction<RoadmapStateResponse>('get-roadmap-state', { includeLocalFocusContent: true }),
@@ -103,6 +103,7 @@ export function useWorkstationData(): WorkstationDataState {
       const response = await bridge.invokeAction<CompactBoardResponse>('list-board-compact', {
         limit: INITIAL_BOARD_LIMIT,
         includeArchive: true,
+        includeEpics: true,
         offset: pagination.nextOffset,
       });
       setBoard((current) => mergeCompactLanePage(current, response, recommendations, { scope: 'board' }));
@@ -120,6 +121,7 @@ export function useWorkstationData(): WorkstationDataState {
         lane,
         includeClosed: true,
         includeArchive: true,
+        includeEpics: true,
         limit: CLOSED_LANE_LIMIT,
         offset: pagination?.nextOffset ?? 0,
       });

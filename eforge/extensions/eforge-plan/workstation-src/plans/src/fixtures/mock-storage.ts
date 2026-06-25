@@ -9,7 +9,7 @@ export const mockStoreStatus: PlanningStoreStatus = {
   sqliteSchemaVersion: 1,
   tableCounts: [],
   searchIndexStatus: { dirty: true, dirtyCount: 3, dirtyTypes: ['backlog_item', 'session_plan'], dirtySince: '2026-06-07T00:00:00.000Z', lastRebuiltAt: '2026-06-06T00:00:00.000Z' },
-  retentionEligibilityCounts: { 'lifecycle-event-payloads': 3, 'import-report-payloads': 2 },
+  retentionEligibilityCounts: { 'lifecycle-event-payloads': 3, 'planning-task-payloads': 2 },
   recentMaintenanceRuns: [{ actionId: 'compact-planning-store', status: 'dry-run', completedAt: '2026-06-07T00:10:00.000Z', summary: '5 records eligible for compaction.' }],
 };
 

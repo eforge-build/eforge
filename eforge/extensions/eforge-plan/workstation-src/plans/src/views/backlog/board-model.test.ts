@@ -36,6 +36,11 @@ describe('matchesFilter', () => {
     // Closed items keep their blocked flag, but the filter means actionable blocked work.
     expect(matchesFilter(item({ blocked: true, closed: true }), 'blocked')).toBe(false);
   });
+
+  it('treats open unblocked inbox candidates as plan eligible but excludes session-covered work', () => {
+    expect(matchesFilter(item({ lane: 'inbox', reasonCodes: ['candidate-no-evidence'] }), 'ready')).toBe(true);
+    expect(matchesFilter(item({ lane: 'ready', ready: true, reasonCodes: ['planned-session-plan'] }), 'ready')).toBe(false);
+  });
 });
 
 describe('standaloneEpics', () => {

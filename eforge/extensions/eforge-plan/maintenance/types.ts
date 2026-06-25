@@ -5,8 +5,6 @@ export const MAINTENANCE_CATEGORIES = [
   'lifecycle-event-payloads',
   'planning-task-payloads',
   'superseded-recommendation-runs',
-  'import-report-payloads',
-  'import-diagnostic-details',
 ] as const;
 export type MaintenanceCategory = typeof MAINTENANCE_CATEGORIES[number];
 
@@ -19,7 +17,6 @@ export interface CompactPlanningStoreInput {
   rowLimit?: number;
   sampleLimit?: number;
   keepLatestRecommendationRuns?: number;
-  keepLatestImportRuns?: number;
   rebuildSearchAfter?: boolean;
 }
 
@@ -34,7 +31,6 @@ export interface MaintenanceCandidateSample {
   purpose?: string;
   status?: string;
   runId?: string;
-  diagnosticId?: string;
   isCurrent?: boolean;
   occurredAt?: string;
   updatedAt?: string;

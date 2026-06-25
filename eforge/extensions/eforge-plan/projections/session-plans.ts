@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { buildBoardDebugProjection } from './board.js';
 import { buildBoard, projectBoardOutput } from '../board-actions.js';
@@ -23,6 +23,7 @@ function readinessFromSummary(value: unknown) {
 function arrayValue(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function cleanObject<T extends Record<string, unknown>>(value: T): T { return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T; }
 function plainSections(sections: Map<string, string> | Record<string, string> | undefined): Record<string, string> { return sections instanceof Map ? Object.fromEntries(sections) : sections ?? {}; }
+function resolveArtifactPath(cwd: string, path: string): string { return isAbsolute(path) ? path : join(cwd, path); }
 
 function sourceRefsFromRows(items: ReturnType<typeof listProjectionSessionPlanItems>, epics: ReturnType<typeof listProjectionSessionPlanEpics>) {
   return {
@@ -108,9 +109,10 @@ export async function showSessionPlanProjection(cwd: string, session: string): P
     if (!plan) return undefined;
     const lifecycle = sessionLifecycleFromStore(store, session);
     const path = plan.path ?? join('.eforge', 'session-plans', `${session}.md`);
+    const absolutePath = resolveArtifactPath(cwd, path);
     let body = '';
-    try { body = await readFile(join(cwd, path), 'utf8'); } catch { body = ''; }
-    return { session, path, relativePath: relative(cwd, join(cwd, path)).replace(/\\/g, '/'), body, plan: projectPlan(plan, body), lifecycle, sourceRefs: lifecycle.sourceRefRows, readiness: readinessFromSummary(plan.readinessSummary) };
+    try { body = await readFile(absolutePath, 'utf8'); } catch { body = ''; }
+    return { session, path: absolutePath, relativePath: relative(cwd, absolutePath).replace(/\\/g, '/'), body, plan: projectPlan(plan, body), lifecycle, sourceRefs: lifecycle.sourceRefs, sourceRefRows: lifecycle.sourceRefRows, readiness: readinessFromSummary(plan.readinessSummary) };
   }, () => undefined);
   if (sql) return sql;
   const planning = createSessionPlanningWorkflowAdapter();

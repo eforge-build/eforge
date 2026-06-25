@@ -1,14 +1,15 @@
 import * as React from 'react';
 import { focusBoardItem } from '@/lib/focus-board-item';
 import type { Board, BoardItem } from '@/types';
+import { isPlanEligible } from '@/views/backlog/board-model';
 import type { PlanningTaskWorkflowsApi } from '@/views/backlog/use-planning-task-workflows';
 
 export interface BacklogSelection {
   selected: Set<string>;
   selectedIds: string[];
-  selectedReadyIds: string[];
+  selectedPlanEligibleIds: string[];
   titles: Map<string, string>;
-  readyIds: Set<string>;
+  planEligibleIds: Set<string>;
   toggle: (id: string) => void;
   toggleItem: (item: BoardItem) => void;
   clear: () => void;
@@ -16,24 +17,24 @@ export interface BacklogSelection {
   pickItem: (id: string) => void;
   /** Toggle a whole recommendation group into the selection. */
   pickItems: (ids: string[]) => void;
-  /** One-click plan a lane from its ready items, carrying the recommendation ref. */
+  /** One-click plan a lane from its eligible items, carrying the recommendation ref. */
   planLane: (itemIds: string[], recommendationRef?: string) => Promise<void>;
-  /** Promote the ready subset of the current selection into a planning task. */
+  /** Promote the eligible subset of the current selection into a planning task. */
   promote: () => Promise<void>;
 }
 
 /**
  * Backlog selection state, lifted out of the board so the board (work pane) and
  * the recommendations digest (context rail) can share one selection even though
- * they no longer render together. AI promotion always works on the ready subset;
- * blocked/closed items are excluded.
+ * they no longer render together. AI promotion works on open, unblocked work not
+ * already covered by a plan/task/build/PR; blocked/closed/covered items are excluded.
  */
 export function useBacklogSelection(board: Board, workflows: PlanningTaskWorkflowsApi): BacklogSelection {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const items = board.items ?? [];
   const titles = React.useMemo(() => new Map(items.map((item) => [item.id, item.title])), [items]);
-  const readyById = React.useMemo(() => new Map(items.map((item) => [item.id, item.ready])), [items]);
-  const readyIds = React.useMemo(() => new Set(items.filter((item) => item.ready).map((item) => item.id)), [items]);
+  const planEligibleById = React.useMemo(() => new Map(items.map((item) => [item.id, isPlanEligible(item)])), [items]);
+  const planEligibleIds = React.useMemo(() => new Set(items.filter(isPlanEligible).map((item) => item.id)), [items]);
 
   const toggle = React.useCallback((id: string) => {
     setSelected((prev) => {
@@ -67,19 +68,19 @@ export function useBacklogSelection(board: Board, workflows: PlanningTaskWorkflo
   }, []);
 
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
-  const selectedReadyIds = React.useMemo(() => Array.from(selected).filter((id) => readyById.get(id) === true), [selected, readyById]);
+  const selectedPlanEligibleIds = React.useMemo(() => Array.from(selected).filter((id) => planEligibleById.get(id) === true), [selected, planEligibleById]);
 
   const planLane = React.useCallback(async (itemIds: string[], recommendationRef?: string) => {
-    const readyItemIds = itemIds.filter((id) => readyById.get(id) === true);
-    if (readyItemIds.length === 0) return;
-    await workflows.start({ itemIds: readyItemIds, ...(recommendationRef ? { sourceRecommendationRef: recommendationRef } : {}) });
-  }, [readyById, workflows]);
+    const eligibleItemIds = itemIds.filter((id) => planEligibleById.get(id) === true);
+    if (eligibleItemIds.length === 0) return;
+    await workflows.start({ itemIds: eligibleItemIds, ...(recommendationRef ? { sourceRecommendationRef: recommendationRef } : {}) });
+  }, [planEligibleById, workflows]);
 
   const promote = React.useCallback(async () => {
-    if (selectedReadyIds.length === 0) return;
-    const task = await workflows.start({ itemIds: selectedReadyIds });
+    if (selectedPlanEligibleIds.length === 0) return;
+    const task = await workflows.start({ itemIds: selectedPlanEligibleIds });
     if (task) clear();
-  }, [selectedReadyIds, workflows, clear]);
+  }, [selectedPlanEligibleIds, workflows, clear]);
 
-  return { selected, selectedIds, selectedReadyIds, titles, readyIds, toggle, toggleItem, clear, pickItem, pickItems, planLane, promote };
+  return { selected, selectedIds, selectedPlanEligibleIds, titles, planEligibleIds, toggle, toggleItem, clear, pickItem, pickItems, planLane, promote };
 }

@@ -4,11 +4,12 @@ import type { Board, BoardItem } from '@/types';
 import type { PlanningTaskWorkflowsApi } from '@/views/backlog/use-planning-task-workflows';
 import { useBacklogSelection } from './use-backlog-selection';
 
-function item(id: string, ready: boolean): BoardItem {
+function item(id: string, planEligible: boolean): BoardItem {
   return {
-    id, title: `Title ${id}`, status: 'planned', priority: 'medium', tags: [], lane: 'ready',
-    reasons: [], unresolvedDependsOn: [], activeTraceReasons: [], blocked: false,
-    ready, reviewDue: false, closed: false, dependencies: [], dependents: [],
+    id, title: `Title ${id}`, status: planEligible ? 'candidate' : 'planned', priority: 'medium', tags: [], lane: planEligible ? 'inbox' : 'ready',
+    reasons: [planEligible ? 'candidate-no-evidence' : 'planned-session-plan'], reasonCodes: [planEligible ? 'candidate-no-evidence' : 'planned-session-plan'],
+    unresolvedDependsOn: [], activeTraceReasons: [], blocked: false,
+    ready: !planEligible, reviewDue: false, closed: false, dependencies: [], dependents: [],
     notes: { claim: '', evidence: '', recheck: '', promotionPaths: '' }, recLanes: [],
   };
 }
@@ -56,14 +57,14 @@ describe('useBacklogSelection', () => {
     expect(result.current.selectedIds).toEqual([]);
   });
 
-  it('exposes only the ready subset of the selection', () => {
+  it('exposes only the plan-eligible subset of the selection', () => {
     const { api } = stubWorkflows();
     const { result } = renderHook(() => useBacklogSelection(board([item('a', true), item('b', false)]), api));
     act(() => { result.current.toggle('a'); result.current.toggle('b'); });
-    expect([...result.current.selectedReadyIds].sort()).toEqual(['a']);
+    expect([...result.current.selectedPlanEligibleIds].sort()).toEqual(['a']);
   });
 
-  it('promote starts a task on the ready subset and clears the selection on success', async () => {
+  it('promote starts a task on the plan-eligible subset and clears the selection on success', async () => {
     const { api, start } = stubWorkflows({ id: 'task-1' });
     const { result } = renderHook(() => useBacklogSelection(board([item('a', true), item('b', false)]), api));
     act(() => { result.current.toggle('a'); result.current.toggle('b'); });
@@ -72,7 +73,7 @@ describe('useBacklogSelection', () => {
     expect(result.current.selected.size).toBe(0);
   });
 
-  it('promote keeps the selection when no ready items are selected', async () => {
+  it('promote keeps the selection when no eligible items are selected', async () => {
     const { api, start } = stubWorkflows();
     const { result } = renderHook(() => useBacklogSelection(board([item('b', false)]), api));
     act(() => result.current.toggle('b'));
@@ -81,7 +82,7 @@ describe('useBacklogSelection', () => {
     expect(result.current.selectedIds).toEqual(['b']);
   });
 
-  it('planLane carries the recommendation ref and only the ready items', async () => {
+  it('planLane carries the recommendation ref and only the eligible items', async () => {
     const { api, start } = stubWorkflows();
     const { result } = renderHook(() => useBacklogSelection(board([item('a', true), item('b', false)]), api));
     await act(async () => { await result.current.planLane(['a', 'b'], 'rec-1'); });

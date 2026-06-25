@@ -12,7 +12,7 @@ describe('SQLite maintenance projection preservation', () => {
       const recommendationsBefore = await invokeMaintenanceAction(cwd, 'get-recommendations');
       const searchBefore = await invokeMaintenanceAction(cwd, 'search-planning-records', { query: 'Current lane', types: ['recommendation'], limit: 10 });
 
-      await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', keepLatestRecommendationRuns: 0, keepLatestImportRuns: 0 });
+      await invokeMaintenanceAction(cwd, 'compact-planning-store', { dryRun: false, olderThan: '2026-01-01T00:00:00.000Z', keepLatestRecommendationRuns: 0 });
 
       const boardAfter = await invokeMaintenanceAction(cwd, 'list-board-compact', { limit: 50, includeArchive: true });
       const itemAfter = await invokeMaintenanceAction(cwd, 'get-item', { id: 'item-current', includeLifecycleRows: true, includeDependencies: true });

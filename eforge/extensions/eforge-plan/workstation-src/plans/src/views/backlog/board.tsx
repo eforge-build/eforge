@@ -146,7 +146,7 @@ export function Board({ board, itemPlanIndex, onOpenPlan, query, onQuery, filter
   const filterPills: { id: StatusFilter; label: string; count: number }[] = [
     { id: 'all', label: 'All', count: board.counts?.total ?? allItems.length },
     { id: 'open', label: 'Open', count: counts.open },
-    { id: 'ready', label: 'Ready', count: counts.ready },
+    { id: 'ready', label: 'Plan eligible', count: counts.ready },
     { id: 'blocked', label: 'Blocked', count: counts.blocked },
     { id: 'review', label: 'Review due', count: counts.review },
     { id: 'closed', label: 'Closed', count: counts.closed },

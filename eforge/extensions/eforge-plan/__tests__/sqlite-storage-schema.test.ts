@@ -128,8 +128,6 @@ describe('eforge-plan SQLite storage schema', () => {
       'landing_links',
       'lifecycle_events',
       'lifecycle_evidence',
-      'import_runs',
-      'import_diagnostics',
       'store_maintenance_runs',
       'search_documents',
       'search_documents_fts',

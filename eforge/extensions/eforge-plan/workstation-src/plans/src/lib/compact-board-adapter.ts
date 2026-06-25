@@ -42,7 +42,9 @@ export function mergeCompactLanePage(board: Board, response: CompactBoardRespons
   const selectedLane = mergeScope?.scope === 'lane' ? mergeScope.lane : undefined;
   const lanePage = selectedLane !== undefined || (mergeScope === undefined && page.lanes.some((lane) => lane.pagination !== undefined));
   const incomingIds = new Set(page.items.map((item) => item.id));
-  const mergedItems = [...(board.items ?? []).filter((item) => !incomingIds.has(item.id)), ...page.items];
+  const mergedEpics = mergeEpics(board.epics ?? [], page.epics ?? []);
+  const epicRefs = new Map(mergedEpics.map((epic) => [epic.id, epic]));
+  const mergedItems = hydrateEpicRefs([...(board.items ?? []).filter((item) => !incomingIds.has(item.id)), ...page.items], epicRefs);
   const pageLanesById = new Map(page.lanes.map((lane) => [lane.lane, lane]));
   const lanesById = new Map((board.lanes ?? []).map((lane) => [lane.lane, { ...lane, items: mergedItems.filter((item) => item.lane === lane.lane) }]));
   for (const lane of page.lanes) {
@@ -55,7 +57,7 @@ export function mergeCompactLanePage(board: Board, response: CompactBoardRespons
     const freshPagination = fresh?.pagination ?? (selectedLane === lane.lane ? response.pagination : undefined) ?? lane.pagination;
     return fresh ? { ...lane, count: fresh.count, openCount: fresh.openCount, closedCount: fresh.closedCount, pagination: freshPagination } : lane;
   });
-  return { ...board, items: mergedItems, lanes, counts: response.counts ?? board.counts, pagination: lanePage ? board.pagination : response.pagination ?? board.pagination };
+  return { ...board, items: mergedItems, lanes, epics: mergedEpics, counts: response.counts ?? board.counts, pagination: lanePage ? board.pagination : response.pagination ?? board.pagination };
 }
 
 export function mergeCompactItemDetail(summary: BoardItem, response: CompactBoardDetailResponse): BoardItem {
@@ -166,6 +168,16 @@ function groupItemsByLane(items: BoardItem[]): Map<string, BoardItem[]> {
   const grouped = new Map<string, BoardItem[]>();
   for (const item of items) grouped.set(item.lane, [...(grouped.get(item.lane) ?? []), item]);
   return grouped;
+}
+
+function mergeEpics(existing: Epic[], incoming: Epic[]): Epic[] {
+  const byId = new Map(existing.map((epic) => [epic.id, epic]));
+  for (const epic of incoming) byId.set(epic.id, epic);
+  return [...byId.values()];
+}
+
+function hydrateEpicRefs(items: BoardItem[], epics: Map<string, Epic>): BoardItem[] {
+  return items.map((item) => item.epic ? { ...item, epicRef: epicRef(item.epic, epics) } : item);
 }
 
 function epicRef(id: string, epics: Map<string, Epic>) {

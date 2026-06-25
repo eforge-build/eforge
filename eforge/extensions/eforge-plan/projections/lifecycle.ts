@@ -38,6 +38,8 @@ export function computeEffectiveLifecycle(input: { userStatus: UserStatus; evide
   const evidence = failedIsCurrent ? failed : [...actionableEvidence].filter((e) => e.lifecycleState !== 'failed').sort((a, b) => (PRIORITY[b.lifecycleState] ?? 0) - (PRIORITY[a.lifecycleState] ?? 0) || (b.occurredAt ?? '').localeCompare(a.occurredAt ?? ''))[0];
   let lifecycleState: LifecycleState | undefined = evidence?.lifecycleState;
   let reasonCode: LifecycleReasonCode | undefined = evidence ? reasonForEvidence(evidence) : undefined;
+  if (input.userStatus === 'shipped' && lifecycleState !== 'shipped') { lifecycleState = 'shipped'; reasonCode = 'explicit-shipped-status'; }
+  if (input.userStatus === 'stale' || input.userStatus === 'superseded') { lifecycleState = 'none'; reasonCode = 'explicit-archive-status'; }
   if (!lifecycleState) {
     const activeTask = input.taskItems.find((t) => ACTIVE_TASK.has(t.status ?? ''));
     if (activeTask) { lifecycleState = 'active'; reasonCode = 'active-planning-task'; }
@@ -50,10 +52,9 @@ export function computeEffectiveLifecycle(input: { userStatus: UserStatus; evide
     else if (planned) { lifecycleState = 'planned'; reasonCode = 'planned-session-plan'; }
   }
   if (!lifecycleState) {
+    // 'shipped'/'stale'/'superseded' are already resolved unconditionally above, so they can't reach this fallback.
     if (input.userStatus === 'active') { lifecycleState = 'active'; reasonCode = 'explicit-active-status'; }
     else if (input.userStatus === 'planned') { lifecycleState = 'planned'; reasonCode = 'explicit-planned-status'; }
-    else if (input.userStatus === 'shipped') { lifecycleState = 'shipped'; reasonCode = 'explicit-shipped-status'; }
-    else if (input.userStatus === 'stale' || input.userStatus === 'superseded') { lifecycleState = 'none'; reasonCode = 'explicit-archive-status'; }
     else { lifecycleState = 'none'; reasonCode = input.hasUnresolvedDependency ? 'unresolved-dependency' : 'candidate-no-evidence'; }
   }
   if (input.hasUnresolvedDependency && reasonCode === 'candidate-no-evidence') reasonCode = 'unresolved-dependency';
