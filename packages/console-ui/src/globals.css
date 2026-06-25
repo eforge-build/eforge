@@ -109,6 +109,83 @@
   50% { opacity: 0.4; }
 }
 
+/* --- eforge:region ignite-logo --- */
+/* The mark is a little forge. The ring is the hearth, the crossbar is the
+   workpiece being forged, and the ring's interior is the glowing cavity:
+   - idle (daemon stopped): cold, unlit green
+   - igniting (`eforge ignite` / daemon start): the forge ring heats up
+   - lit (running): the ring glows warm, the workpiece pulses white-hot, and the
+     cavity throbs amber — the system reads as hot and active. */
+
+/* Forge ring lights like heated steel, settling to a warm hot-forge glow. */
+@keyframes eforge-ring-ignite {
+  0%   { color: #2a5f24; filter: drop-shadow(0 0 0 transparent); }
+  30%  { color: #67f553; filter: drop-shadow(0 0 3px rgba(103, 245, 83, 0.7)); }
+  55%  {
+    color: #ffd9a0;
+    filter: drop-shadow(0 0 4px #ffe9c2) drop-shadow(0 0 10px #ff7a2d)
+      drop-shadow(0 0 18px rgba(255, 90, 30, 0.65));
+  }
+  100% { color: #ef8a33; filter: drop-shadow(0 0 4px rgba(255, 140, 50, 0.6)); }
+}
+/* Lit forge ring: a slow warm breath. */
+@keyframes eforge-ring-breath {
+  0%, 100% { color: #cf6a2a; filter: drop-shadow(0 0 3px rgba(255, 120, 40, 0.5)); }
+  50% {
+    color: #ef8a33;
+    filter: drop-shadow(0 0 5px rgba(255, 140, 50, 0.7)) drop-shadow(0 0 10px rgba(255, 90, 30, 0.4));
+  }
+}
+/* Workpiece: a white-hot heartbeat. */
+@keyframes eforge-bar-pulse {
+  0%, 100% { color: #ffe9c2; filter: drop-shadow(0 0 2px #ffe9c2) drop-shadow(0 0 4px #ff7a2d); }
+  50% {
+    color: #ffffff;
+    filter: drop-shadow(0 0 5px #fff) drop-shadow(0 0 10px #ff7a2d)
+      drop-shadow(0 0 15px rgba(255, 90, 30, 0.65));
+  }
+}
+/* Cavity glow throbs with the workpiece. */
+@keyframes eforge-cavity-pulse {
+  0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.9); }
+  50%      { opacity: 0.6; transform: translate(-50%, -50%) scale(1.06); }
+}
+
+.eforge-ring { color: #67f553; } /* idle: the familiar green mark */
+.eforge-ring[data-state='igniting'] { animation: eforge-ring-ignite 1.4s ease-out forwards; }
+.eforge-ring[data-state='lit'] { animation: eforge-ring-breath 3.8s ease-in-out infinite; }
+
+.eforge-bar { color: #67f553; } /* idle/igniting: green workpiece */
+/* --eforge-pulse quickens with concurrent builds (set on the wrapper). */
+.eforge-bar[data-state='lit'] {
+  animation: eforge-bar-pulse var(--eforge-pulse, 1.6s) ease-in-out infinite;
+}
+
+.eforge-cavity {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ff7a2d 0%, rgba(255, 90, 30, 0.65) 35%, transparent 70%);
+  opacity: 0; /* idle/igniting: dark cavity */
+  pointer-events: none;
+}
+.eforge-cavity[data-state='lit'] {
+  animation: eforge-cavity-pulse var(--eforge-pulse, 1.6s) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eforge-ring,
+  .eforge-bar,
+  .eforge-cavity { animation: none !important; }
+  .eforge-ring[data-state='igniting'],
+  .eforge-ring[data-state='lit'] { color: #ef8a33; }
+  .eforge-bar[data-state='lit'] { color: #ffe9c2; }
+  .eforge-cavity[data-state='lit'] { opacity: 0.45; }
+}
+/* --- eforge:endregion ignite-logo --- */
+
 @layer components {
   .plan-prose {
     color: var(--color-foreground);

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { EFORGE_LOGO_URL, EFORGE_LOGO_ALT } from '@/lib/brand';
+import { EforgeLogo } from './eforge-logo';
 import { selectNowStatusSummary, selectNowQueueSummary } from '@/lib/selectors/now';
 import { countActiveIntakeRuns, countActiveBuildRuns } from '@/lib/selectors/enqueue-cards';
 import { formatRelativeTime, formatAbsoluteTimestamp } from '@/lib/format';
@@ -70,13 +70,7 @@ export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled,
     <header className="flex items-center h-12 px-3 gap-3 border-b border-border flex-shrink-0 bg-background">
       {/* Logo + project name */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <img
-          src={EFORGE_LOGO_URL}
-          alt={EFORGE_LOGO_ALT}
-          className="w-6 h-6 rounded"
-          width={24}
-          height={24}
-        />
+        <EforgeLogo size={24} activeBuilds={activeBuildCount} />
         <ProjectNameChip basename={basename} />
       </div>
 
