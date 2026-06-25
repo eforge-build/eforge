@@ -89,8 +89,6 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/private records (take precedence over|override) same-ID legacy records/);
     expect(readme).toMatch(/Runtime writes.*canonical SQLite|through canonical SQLite writes/);
     expect(readme).toMatch(/legacy item and epic files are not deleted or rewritten by default/);
-    expect(readme).toContain('import-legacy-backlog');
-    expect(readme).toMatch(/import-legacy-backlog[\s\S]*skipping IDs that already exist privately/);
     expect(readme).toMatch(/safe-id and path-containment checks apply/i);
     expect(readme).toContain('legacy `.backlog/recommendations.json` import/export');
   });
@@ -227,8 +225,6 @@ describe('eforge-plan README planner contract', () => {
       'raw lifecycle event payloads',
       'terminal planning-task raw request/result payloads',
       'superseded recommendation runs',
-      'verbose import run reports',
-      'import diagnostic detail snapshots',
       'FTS',
       'VACUUM',
     ]) {
@@ -245,7 +241,6 @@ describe('eforge-plan README planner contract', () => {
     const readme = await readFile(README, 'utf-8');
     const rows = actionTableRows(readme);
 
-    expect(rows.some((row) => row.startsWith('| `import-legacy-backlog` |'))).toBe(true);
     expect(rows.some((row) => row.startsWith('| `analyze-all-backlog` |'))).toBe(true);
     expect(rows.filter((row) => row.includes('build-queue'))).toEqual([
       expect.stringMatching(/^\| `handoff-session-plan` \|/),

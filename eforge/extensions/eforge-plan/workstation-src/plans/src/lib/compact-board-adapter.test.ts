@@ -77,4 +77,16 @@ describe('compact board adapter', () => {
     expect(merged.lanes.find((lane) => lane.lane === 'done')?.pagination?.nextOffset).toBe(1);
     expect(merged.items.filter((item) => item.id === 'legacy-cleanup')).toHaveLength(1);
   });
+
+  it('merges later epic metadata and rehydrates existing item refs', () => {
+    const firstResponse = { ...getMockCompactBoard({ limit: 2 }), epics: [] };
+    const initial = boardFromCompact(firstResponse, mockRecommendations);
+
+    expect(initial.items[0]?.epicRef?.missing).toBe(true);
+
+    const merged = mergeCompactLanePage(initial, getMockCompactBoard({ limit: 2, offset: 2 }), mockRecommendations, { scope: 'board' });
+
+    expect(merged.epics?.some((epic) => epic.id === 'planning')).toBe(true);
+    expect(merged.items.find((item) => item.id === 'add-import-preview')?.epicRef).toMatchObject({ title: 'Planning workstation', missing: false });
+  });
 });

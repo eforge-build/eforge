@@ -14,8 +14,6 @@ import {
   listItemDependencies,
   markSearchIndexDirty,
   openEforgePlanStore,
-  recordImportDiagnostic,
-  recordImportRun,
   recordLifecycleEvent,
   recordLifecycleEvidence,
   recordMaintenanceRun,
@@ -29,7 +27,6 @@ import {
   replaceRecommendationLaneItems,
   replaceSearchDocument,
   rowToBacklogItem,
-  rowToImportRun,
   rowToLifecycleEvent,
   rowToPlanningTask,
   upsertBacklogItem,
@@ -197,7 +194,7 @@ describe('eforge-plan SQLite repositories', () => {
     store.close();
   });
 
-  it('preserves queue/build/session/landing correlations and lifecycle/import/maintenance evidence payloads', () => {
+  it('preserves queue/build/session/landing correlations and lifecycle/maintenance evidence payloads', () => {
     const store = openEforgePlanStore(tempProject());
 
     upsertBacklogItem(store, { id: 'item-1', title: 'Item', userStatus: 'candidate' });
@@ -240,15 +237,6 @@ describe('eforge-plan SQLite repositories', () => {
       }),
     ).toMatchObject({ evidenceKey: 'evidence-1', lifecycleState: 'pr-open', links: { pr: 'https://example/pr/1' } });
 
-    expect(recordImportRun(store, { runId: 'import-1', dryRun: true, counts: { items: 1 }, verboseReport: { diagnostics: 1 } })).toMatchObject({
-      runId: 'import-1',
-      dryRun: true,
-      counts: { items: 1 },
-    });
-    expect(recordImportDiagnostic(store, { diagnosticId: 'diag-1', runId: 'import-1', severity: 'warning', code: 'unresolved-ref', message: 'Missing ref', details: { ref: 'legacy' } })).toMatchObject({
-      diagnosticId: 'diag-1',
-      details: { ref: 'legacy' },
-    });
     expect(recordMaintenanceRun(store, { runId: 'maint-1', categories: ['search'], prunedCounts: { payloads: 0 }, status: 'ok' })).toMatchObject({
       runId: 'maint-1',
       categories: ['search'],
@@ -260,7 +248,6 @@ describe('eforge-plan SQLite repositories', () => {
     expect(raw.prepare("SELECT session FROM build_sessions WHERE build_session_id = 'bs-1'").get()).toMatchObject({ session: 's1' });
     expect(raw.prepare("SELECT queue_prd_id FROM landing_links WHERE landing_id = 'land-1'").get()).toMatchObject({ queue_prd_id: 'prd-1' });
     expect(count(raw, "SELECT count(*) AS count FROM lifecycle_evidence WHERE item_id = 'item-1' AND is_current = 1")).toBe(1);
-    expect(count(raw, "SELECT count(*) AS count FROM import_diagnostics WHERE run_id = 'import-1'")).toBe(1);
     raw.close();
     store.close();
   });
@@ -325,13 +312,6 @@ describe('eforge-plan SQLite repositories', () => {
       affectedItemRefs: ['item-1'],
       payloadPrunable: false,
     });
-    expect(rowToImportRun({ run_id: 'import-1', dry_run: 1, applied: 0, replaced_existing: 1, verbose_report_prunable: 0 })).toMatchObject({
-      dryRun: true,
-      applied: false,
-      replacedExisting: true,
-      verboseReportPrunable: false,
-    });
-
     expect(() =>
       rowToBacklogItem({
         id: 'bad-json',

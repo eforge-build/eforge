@@ -35,9 +35,21 @@ const REC_COLUMNS: { id: RecColumn; title: string; tone: string }[] = [
   { id: 'closed', title: 'Closed', tone: 'var(--lane-done)' },
 ];
 
+const NON_PLAN_ELIGIBLE_REASONS = new Set([
+  'planned-session-plan', 'submitted-session-plan', 'active-planning-task',
+  'queued-build', 'running-build', 'active-build-session', 'open-pr',
+  'shipped-result', 'merged-result', 'failed-result', 'partial-plan',
+]);
+
+export function isPlanEligible(item: BoardItem): boolean {
+  if (item.closed || item.blocked) return false;
+  if (item.lane === 'in-progress' || item.lane === 'done' || item.lane === 'archive' || item.lane === 'blocked') return false;
+  return !(item.reasonCodes ?? []).some((reason) => NON_PLAN_ELIGIBLE_REASONS.has(reason));
+}
+
 export function matchesFilter(item: BoardItem, filter: StatusFilter): boolean {
   if (filter === 'open') return !item.closed;
-  if (filter === 'ready') return item.ready;
+  if (filter === 'ready') return isPlanEligible(item);
   // Closed items keep their blocked flag, but the filter (and its count pill,
   // which tallies open items only) means actionable blocked work.
   if (filter === 'blocked') return item.blocked && !item.closed;
@@ -191,7 +203,7 @@ export function stats(items: BoardItem[], board?: Board): { open: number; ready:
   const open = items.filter((item) => !item.closed);
   return {
     open: board?.counts?.open ?? open.length,
-    ready: open.filter((item) => item.ready).length,
+    ready: open.filter(isPlanEligible).length,
     blocked: open.filter((item) => item.blocked).length,
     review: items.filter((item) => item.reviewDue).length,
     closed: board?.counts?.closed ?? items.filter((item) => item.closed).length,

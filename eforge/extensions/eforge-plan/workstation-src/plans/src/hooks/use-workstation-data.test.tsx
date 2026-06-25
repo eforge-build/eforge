@@ -40,7 +40,7 @@ describe('useWorkstationData recommendations mapping', () => {
     const compactBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board-compact');
     const artifactsCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-planning-artifacts');
     const fullBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board');
-    expect(compactBoardCalls).toEqual([['list-board-compact', { limit: 50, includeArchive: true }]]);
+    expect(compactBoardCalls).toEqual([['list-board-compact', { limit: 50, includeArchive: true, includeEpics: true }]]);
     expect(artifactsCalls).toEqual([['list-planning-artifacts', { includeBoard: false }]]);
     expect(fullBoardCalls).toEqual([]);
 
@@ -126,8 +126,8 @@ describe('useWorkstationData recommendations mapping', () => {
     await act(async () => { await result.current.loadMoreBoard(); });
 
     expect(calls).not.toContainEqual({ actionId: 'list-board', input: expect.anything() });
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true } });
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, offset: 1 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, includeEpics: true } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, includeEpics: true, offset: 1 } });
   });
 
   it('loads closed lanes through explicit compact lane pages and merges them once', async () => {
@@ -156,8 +156,8 @@ describe('useWorkstationData recommendations mapping', () => {
     await act(async () => { await result.current.loadClosedLane('done'); });
     await act(async () => { await result.current.loadClosedLane('done'); });
 
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, limit: 50, offset: 0 } });
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, limit: 50, offset: 1 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, includeEpics: true, limit: 50, offset: 0 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, includeEpics: true, limit: 50, offset: 1 } });
     expect(result.current.board.items.filter((item) => item.id === 'legacy-cleanup')).toHaveLength(1);
     expect(result.current.board.items.filter((item) => item.id === 'legacy-cleanup-two')).toHaveLength(1);
   });
@@ -190,8 +190,8 @@ describe('useWorkstationData recommendations mapping', () => {
     await act(async () => { await result.current.loadMoreBoard(); });
 
     expect(calls.filter((call) => call.actionId === 'list-board')).toEqual([]);
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, limit: 50, offset: 0 } });
-    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, offset: 37 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, includeEpics: true, limit: 50, offset: 0 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, includeEpics: true, offset: 37 } });
     expect(calls).not.toContainEqual({ actionId: 'list-board-compact', input: expect.objectContaining({ lane: 'done', offset: 37 }) });
   });
 

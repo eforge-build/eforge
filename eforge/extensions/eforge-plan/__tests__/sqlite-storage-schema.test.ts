@@ -36,7 +36,7 @@ describe('eforge-plan SQLite storage schema', () => {
 
     expect(existsSync(dbPath)).toBe(true);
     expect(store.path).toBe(dbPath);
-    expect(getEforgePlanSchemaVersion(store)).toBe(1);
+    expect(getEforgePlanSchemaVersion(store)).toBe(2);
     store.close();
   });
 
@@ -51,11 +51,16 @@ describe('eforge-plan SQLite storage schema', () => {
     }
 
     const raw = openRaw(dbPath);
-    expect(scalar<number>(raw, 'PRAGMA user_version', 'user_version')).toBe(1);
-    expect(raw.prepare('SELECT id, checksum, description FROM schema_migrations').all()).toEqual([
+    expect(scalar<number>(raw, 'PRAGMA user_version', 'user_version')).toBe(2);
+    expect(raw.prepare('SELECT id, checksum, description FROM schema_migrations ORDER BY id').all()).toEqual([
       expect.objectContaining({
         id: '1',
         description: 'initial eforge-plan SQLite schema',
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+      expect.objectContaining({
+        id: '2',
+        description: 'drop one-time legacy importer SQLite tables',
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     ]);
@@ -128,8 +133,6 @@ describe('eforge-plan SQLite storage schema', () => {
       'landing_links',
       'lifecycle_events',
       'lifecycle_evidence',
-      'import_runs',
-      'import_diagnostics',
       'store_maintenance_runs',
       'search_documents',
       'search_documents_fts',

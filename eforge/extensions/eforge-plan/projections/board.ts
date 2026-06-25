@@ -5,7 +5,7 @@ import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 import { pageMetadata, paginateProjection } from './pagination.js';
 import type { BoardActionInput, ListBoardCompactProjectionInput } from './types.js';
 
-const LANE_TITLES: Record<KanbanLane, string> = { inbox: 'Inbox', ready: 'Ready', blocked: 'Blocked', 'in-progress': 'In Progress', done: 'Done', archive: 'Archive' };
+const LANE_TITLES: Record<KanbanLane, string> = { inbox: 'Inbox', ready: 'Planned', blocked: 'Blocked', 'in-progress': 'In Progress', done: 'Done', archive: 'Archive' };
 const LANES: KanbanLane[] = ['inbox', 'ready', 'blocked', 'in-progress', 'done', 'archive'];
 const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, medium: 2, low: 3 };
 function boardOrder(a: ReturnType<typeof listAllCompactItemsFromStore>[number], b: ReturnType<typeof listAllCompactItemsFromStore>[number]) { return LANES.indexOf(a.lane) - LANES.indexOf(b.lane) || Number(a.closed) - Number(b.closed) || (PRIORITY[a.priority] ?? 2) - (PRIORITY[b.priority] ?? 2) || (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id); }

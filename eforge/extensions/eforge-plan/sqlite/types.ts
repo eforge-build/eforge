@@ -62,14 +62,10 @@ export interface LandingLinkUpsert { landingId: string; session?: string; itemId
 export interface LandingLinkRow extends LandingLinkUpsert {}
 export interface QueueBuildCorrelationInput { queuePrdId: string; runId?: string; buildSessionId?: string; landingId?: string }
 
-export interface ImportRunInput { runId: string; dryRun?: boolean; applied?: boolean; replacedExisting?: boolean; startedAt?: string; finishedAt?: string; counts?: JsonValue; summary?: JsonValue; verboseReport?: JsonValue; verboseReportPrunable?: boolean }
-export interface ImportRunRow extends ImportRunInput { dryRun: boolean; applied: boolean; replacedExisting: boolean; verboseReportPrunable: boolean }
-export interface ImportDiagnosticInput { diagnosticId: string; runId: string; severity: string; code: string; message: string; ref?: string; path?: string; details?: JsonValue }
-export interface ImportDiagnosticRow extends ImportDiagnosticInput {}
 export interface MaintenanceRunInput { runId: string; categories?: JsonValue; startedAt?: string; finishedAt?: string; prunedCounts?: JsonValue; archivedCounts?: JsonValue; preservedEvidenceCounts?: JsonValue; status?: string; errorSummary?: string }
 export interface MaintenanceRunRow extends MaintenanceRunInput {}
-export type MaintenanceCategory = 'lifecycle-event-payloads' | 'planning-task-payloads' | 'superseded-recommendation-runs' | 'import-report-payloads' | 'import-diagnostic-details';
-export interface MaintenanceCandidateSample { eventKey?: string; eventType?: string; taskId?: string; purpose?: string; status?: string; runId?: string; diagnosticId?: string; isCurrent?: boolean; occurredAt?: string; updatedAt?: string; createdAt?: string; summary?: string; laneCount?: number; laneItemCount?: number; hasRawRequest?: boolean; hasRawResult?: boolean }
+export type MaintenanceCategory = 'lifecycle-event-payloads' | 'planning-task-payloads' | 'superseded-recommendation-runs';
+export interface MaintenanceCandidateSample { eventKey?: string; eventType?: string; taskId?: string; purpose?: string; status?: string; runId?: string; isCurrent?: boolean; occurredAt?: string; updatedAt?: string; createdAt?: string; summary?: string; laneCount?: number; laneItemCount?: number; hasRawRequest?: boolean; hasRawResult?: boolean }
 export interface ProtectedCount { name: string; count: number }
 export interface TableCountRow { table: string; count: number }
 export interface RecentMaintenanceRunRow extends MaintenanceRunRow {}

@@ -215,7 +215,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).not.toContain('curationScanModeLabel');
   });
 
-  it('promotes selected ready backlog items through a single AI planning task', async () => {
+  it('promotes selected plan-eligible backlog items through a single AI planning task', async () => {
     const [rail, hook] = await Promise.all([
       readFile(SELECTION_RAIL, 'utf-8'),
       readFile(BACKLOG_SELECTION_HOOK, 'utf-8'),
@@ -225,7 +225,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(rail).toContain('Promote to a build plan');
     expect(source).not.toContain('Promote as one plan');
     expect(source).not.toContain("'promote-selection'");
-    expect(source).toContain('selectedReadyIds');
+    expect(source).toContain('selectedPlanEligibleIds');
     expect(hook).toContain('workflows.start');
   });
 

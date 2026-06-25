@@ -15,7 +15,7 @@ const MAX_CHIPS = 8;
 export function SelectionRail({ selection, busy }: { selection: BacklogSelection; busy: boolean }) {
   const ids = selection.selectedIds;
   if (ids.length === 0) return null;
-  const readyCount = selection.selectedReadyIds.length;
+  const eligibleCount = selection.selectedPlanEligibleIds.length;
   const shown = ids.slice(0, MAX_CHIPS);
   const hidden = ids.length - shown.length;
 
@@ -27,7 +27,7 @@ export function SelectionRail({ selection, busy }: { selection: BacklogSelection
       title="Build plan"
       action={
         <span className="ml-auto text-2xs font-normal text-muted-foreground">
-          {ids.length} selected{readyCount !== ids.length ? ` · ${readyCount} ready` : ''}
+          {ids.length} selected{eligibleCount !== ids.length ? ` · ${eligibleCount} eligible` : ''}
         </span>
       }
       contentClassName="grid gap-2"
@@ -48,12 +48,12 @@ export function SelectionRail({ selection, busy }: { selection: BacklogSelection
           {hidden > 0 && <span className="px-1 text-2xs text-muted-foreground">+{hidden} more</span>}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" className="flex-1" disabled={busy || readyCount === 0} onClick={() => void selection.promote()}>
+          <Button size="sm" className="flex-1" disabled={busy || eligibleCount === 0} onClick={() => void selection.promote()}>
             Promote to a build plan
           </Button>
           <Button size="sm" variant="ghost" onClick={selection.clear}>Clear</Button>
         </div>
-        {readyCount === 0 && <p className="text-2xs text-muted-foreground">None of the selected items are ready to plan yet.</p>}
+        {eligibleCount === 0 && <p className="text-2xs text-muted-foreground">None of the selected items are eligible for a new plan.</p>}
     </RailCard>
   );
 }

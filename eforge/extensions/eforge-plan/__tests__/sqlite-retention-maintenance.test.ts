@@ -13,8 +13,6 @@ describe('SQLite retention maintenance compaction', () => {
       'lifecycle-event-payloads',
       'planning-task-payloads',
       'superseded-recommendation-runs',
-      'import-report-payloads',
-      'import-diagnostic-details',
     ]);
     expect(() => normalizeMaintenancePolicy({ olderThan: 'not-an-iso-date' })).toThrow(/olderThan/i);
   });
@@ -26,18 +24,16 @@ describe('SQLite retention maintenance compaction', () => {
       const beforePayloads = count(before, 'SELECT count(*) AS count FROM lifecycle_events WHERE payload_json IS NOT NULL');
       before.close();
 
-      const report = await compactPlanningStore(cwd, { olderThan: CUTOFF, sampleLimit: 1, keepLatestRecommendationRuns: 0, keepLatestImportRuns: 0 });
+      const report = await compactPlanningStore(cwd, { olderThan: CUTOFF, sampleLimit: 1, keepLatestRecommendationRuns: 0 });
 
       expect(report).toMatchObject({ schemaVersion: 1, status: 'dry-run', dryRun: true, archive: false, sampleLimit: 1 });
       expect(report.prunedCounts).toMatchObject({
         'lifecycle-event-payloads': 1,
         'planning-task-payloads': 1,
         'superseded-recommendation-runs': 1,
-        'import-report-payloads': 1,
-        'import-diagnostic-details': 1,
       });
       expect(report.samples['lifecycle-event-payloads']).toHaveLength(1);
-      expect(JSON.stringify(report)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|HISTORICAL_RAW_MODEL|VERBOSE_IMPORT_REPORT|DIAGNOSTIC_DETAILS/);
+      expect(JSON.stringify(report)).not.toMatch(/RAW_LIFECYCLE_PAYLOAD|RAW_TASK_REQUEST|HISTORICAL_RAW_MODEL/);
       expect(existsSync(join(cwd, '.eforge/storage/extensions/eforge-plan/archives'))).toBe(false);
 
       const after = rawDb(cwd);
@@ -66,12 +62,10 @@ describe('SQLite retention maintenance compaction', () => {
       };
       before.close();
 
-      const report = await compactPlanningStore(cwd, { dryRun: false, olderThan: CUTOFF, archive: true, keepLatestRecommendationRuns: 0, keepLatestImportRuns: 0 });
+      const report = await compactPlanningStore(cwd, { dryRun: false, olderThan: CUTOFF, archive: true, keepLatestRecommendationRuns: 0 });
 
       expect(report).toMatchObject({ status: 'applied', dryRun: false, archive: true });
       expect(report.archivePaths.map((entry) => entry.category).sort()).toEqual([
-        'import-diagnostic-details',
-        'import-report-payloads',
         'lifecycle-event-payloads',
         'planning-task-payloads',
         'superseded-recommendation-runs',
@@ -91,10 +85,6 @@ describe('SQLite retention maintenance compaction', () => {
       expect(scalar<string>(db, 'SELECT raw_request_json FROM planning_tasks WHERE task_id = ?', 'active-task')).toContain('ACTIVE_TASK_REQUEST');
       expect(count(db, 'SELECT count(*) AS count FROM recommendation_runs WHERE run_id = ?', 'rec-old')).toBe(0);
       expect(count(db, 'SELECT count(*) AS count FROM recommendation_runs WHERE run_id = ? AND is_current = 1', 'rec-current')).toBe(1);
-      expect(scalar<null>(db, 'SELECT verbose_report_json FROM import_runs WHERE run_id = ?', 'import-old')).toBeNull();
-      expect(scalar<string>(db, 'SELECT counts_json FROM import_runs WHERE run_id = ?', 'import-old')).toContain('items');
-      expect(scalar<null>(db, 'SELECT details_json FROM import_diagnostics WHERE diagnostic_id = ?', 'diag-old')).toBeNull();
-      expect(db.prepare('SELECT severity,code,message,ref,path FROM import_diagnostics WHERE diagnostic_id = ?').get('diag-old')).toMatchObject({ severity: 'warning', code: 'old-code', message: 'Old diagnostic', ref: 'item-keep', path: 'backlog/items/item-keep.md' });
       expect(scalar<string>(db, 'SELECT retained_summary_json FROM lifecycle_evidence WHERE evidence_key = ?', 'evidence-current')).toMatch(/active-build|Current lifecycle summary|build-session-keep/);
       expect(count(db, 'SELECT count(*) AS count FROM store_maintenance_runs WHERE status = ?', 'applied')).toBe(1);
       expect({

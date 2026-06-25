@@ -45,7 +45,7 @@ export async function compactPlanningStore(cwd: string, input: CompactPlanningSt
         const protectedBefore = snapshotProtectedCounts(store);
         preservedEvidenceCounts.lifecycleEvidence = preserveLifecycleEvidenceSummaries(store);
         if (!policy.rebuildSearchAfter) markSearchIndexDirtyBatch(store, recommendationDirtyRecords);
-        for (const category of policy.categories) appliedCounts[category] = applyMaintenancePruning(store, category, candidates[category].ids, policy.cutoff, policy.keepLatestRecommendationRuns, policy.keepLatestImportRuns);
+        for (const category of policy.categories) appliedCounts[category] = applyMaintenancePruning(store, category, candidates[category].ids, policy.cutoff, policy.keepLatestRecommendationRuns);
         validateProtectedCounts(protectedBefore, store);
         recordMaintenanceRun(store, { runId, categories: policy.categories, startedAt, finishedAt: new Date().toISOString(), prunedCounts: appliedCounts, archivedCounts, preservedEvidenceCounts, status: 'applied' });
       });

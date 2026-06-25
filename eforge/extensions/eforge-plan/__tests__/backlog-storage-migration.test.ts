@@ -7,7 +7,6 @@ import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import eforgePlanExtension from '../index.js';
 import {
-  importLegacyBacklog,
   listBacklogEpicSnapshots,
   listBacklogEpics,
   listBacklogItemSnapshots,
@@ -102,9 +101,6 @@ describe('eforge-plan backlog storage migration', () => {
       await writeFile(join(cwd, '.backlog', 'items', 'shadowed.md'), '---\nid: other\nstatus: candidate\n---\n# Bad Shadow\n');
 
       expect(await listBacklogItems(cwd)).toMatchObject([{ id: 'shadowed', status: 'active' }]);
-      await expect(importLegacyBacklog(cwd, { kind: 'items', ids: ['shadowed'] })).resolves.toMatchObject({
-        items: { copied: [], skipped: [{ id: 'shadowed', reason: 'private-exists' }] },
-      });
     });
   });
 
@@ -170,78 +166,6 @@ describe('eforge-plan backlog storage migration', () => {
     });
   });
 
-  it('imports legacy records, skips existing private records, leaves legacy files, and reports private paths', async () => {
-    await withTempProject(async (cwd) => {
-      await writeLegacy(cwd, 'items', 'copy-item');
-      await writeLegacy(cwd, 'items', 'skip-item');
-      await writeLegacy(cwd, 'epics', 'copy-epic');
-      await writeLegacy(cwd, 'epics', 'skip-epic');
-      await writeBacklogItem(cwd, { id: 'skip-item', status: 'active', body: '# Private Item\n' });
-      await writeBacklogEpic(cwd, { id: 'skip-epic', status: 'active', body: '# Private Epic\n' });
-
-      const result = await importLegacyBacklog(cwd, { kind: 'all' });
-      expect(result.items.copied).toEqual([{ id: 'copy-item', path: '.eforge/storage/extensions/eforge-plan/backlog/items/copy-item.md' }]);
-      expect(result.epics.copied).toEqual([{ id: 'copy-epic', path: '.eforge/storage/extensions/eforge-plan/backlog/epics/copy-epic.md' }]);
-      expect(result.items.skipped).toEqual([{ id: 'skip-item', reason: 'private-exists' }]);
-      expect(result.epics.skipped).toEqual([{ id: 'skip-epic', reason: 'private-exists' }]);
-      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'copy-item'))).toBe(true);
-      expect(await readBacklogItem(cwd, 'skip-item')).toMatchObject({ title: 'Private Item' });
-    });
-  });
-
-  it('validates all legacy items and epics before importing any private copies', async () => {
-    await withTempProject(async (cwd) => {
-      await writeLegacy(cwd, 'items', 'copy-before-epic-failure');
-      await mkdir(join(cwd, '.backlog', 'epics'), { recursive: true });
-      await writeFile(join(cwd, '.backlog', 'epics', 'bad-epic.md'), '---\nid: nested/epic\nstatus: candidate\n---\n# Bad Epic\n');
-
-      await expect(importLegacyBacklog(cwd, { kind: 'all' })).rejects.toThrow(/Unsafe/);
-      expect(existsSync(resolveBacklogItemPath(cwd, 'copy-before-epic-failure'))).toBe(false);
-      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'copy-before-epic-failure'))).toBe(true);
-    });
-  });
-
-  it('rejects ambiguous selected ids for all-kind legacy imports', async () => {
-    await withTempProject(async (cwd) => {
-      await expect(importLegacyBacklog(cwd, { kind: 'all', ids: ['one'] })).rejects.toThrow(/ids may only be used/);
-    });
-  });
-
-  it('throws for missing selected legacy records before importing any private copies', async () => {
-    await withTempProject(async (cwd) => {
-      await writeLegacy(cwd, 'items', 'copy-before-missing');
-
-      await expect(importLegacyBacklog(cwd, { kind: 'items', ids: ['copy-before-missing', 'missing-selected'] })).rejects.toThrow(/ENOENT|no such file|not found/i);
-      expect(existsSync(resolveBacklogItemPath(cwd, 'copy-before-missing'))).toBe(false);
-      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'copy-before-missing'))).toBe(true);
-    });
-  });
-
-  it('validates all selected legacy records before importing any private copies', async () => {
-    await withTempProject(async (cwd) => {
-      await writeLegacy(cwd, 'items', 'copy-before-failure');
-      await mkdir(join(cwd, '.backlog', 'items'), { recursive: true });
-      await writeFile(join(cwd, '.backlog', 'items', 'bad-selected.md'), '---\nid: other-id\nstatus: candidate\n---\n# Bad Selected\n');
-
-      await expect(importLegacyBacklog(cwd, { kind: 'items', ids: ['copy-before-failure', 'bad-selected'] })).rejects.toThrow(/id mismatch/);
-      expect(existsSync(resolveBacklogItemPath(cwd, 'copy-before-failure'))).toBe(false);
-      expect(existsSync(resolveBacklogItemPath(cwd, 'bad-selected'))).toBe(false);
-      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'copy-before-failure'))).toBe(true);
-    });
-  });
-
-  it('validates selected legacy epic records before importing any private epic copies', async () => {
-    await withTempProject(async (cwd) => {
-      await writeLegacy(cwd, 'epics', 'epic-before-failure');
-      await mkdir(join(cwd, '.backlog', 'epics'), { recursive: true });
-      await writeFile(join(cwd, '.backlog', 'epics', 'bad-epic.md'), '---\nid: nested/epic\nstatus: candidate\n---\n# Bad Epic\n');
-
-      await expect(importLegacyBacklog(cwd, { kind: 'epics', ids: ['epic-before-failure', 'bad-epic'] })).rejects.toThrow(/Unsafe/);
-      expect(existsSync(resolveBacklogEpicPath(cwd, 'epic-before-failure'))).toBe(false);
-      expect(existsSync(resolveBacklogEpicPath(cwd, 'bad-epic'))).toBe(false);
-      expect(existsSync(resolveLegacyBacklogEpicPath(cwd, 'epic-before-failure'))).toBe(true);
-    });
-  });
 
   it('projects merged visible records through list-board with private duplicate precedence', async () => {
     await withTempProject(async (cwd) => {
@@ -308,7 +232,7 @@ describe('eforge-plan backlog storage migration', () => {
     });
   });
 
-  it('dispatches actions with private paths and legacy import side effects', async () => {
+  it('dispatches capture and epic actions with private paths', async () => {
     await withTempProject(async (cwd) => {
       const registry = loadRegistry(cwd);
       const capture = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:capture-item', input: { title: 'Add captured item flow', claim: 'Add a captured backlog item flow for migration smoke coverage.', acceptanceCriteria: 'Captured item is written to private storage and reports the private path.' }, requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
@@ -320,12 +244,6 @@ describe('eforge-plan backlog storage migration', () => {
       expect(epic).toMatchObject({ kind: 'success' });
       if (epic.kind !== 'success') throw new Error(epic.message);
       expect((epic.output as { path: string }).path).toMatch(/^\.eforge\/storage\/extensions\/eforge-plan\/backlog\/epics\//);
-
-      await writeLegacy(cwd, 'items', 'dispatch-import');
-      const imported = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:import-legacy-backlog', input: { kind: 'items', ids: ['dispatch-import'] }, requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
-      expect(imported).toMatchObject({ kind: 'success' });
-      if (imported.kind !== 'success') throw new Error(imported.message);
-      expect((imported.output as { items: { copied: unknown[] } }).items.copied).toHaveLength(1);
     });
   });
 });

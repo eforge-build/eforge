@@ -9,9 +9,9 @@ function selection(overrides: Partial<BacklogSelection> = {}): BacklogSelection 
   return {
     selected: new Set(),
     selectedIds: [],
-    selectedReadyIds: [],
+    selectedPlanEligibleIds: [],
     titles: new Map([['item-one', 'Item One'], ['item-two', 'Item Two'], ['item-three', 'Item Three']]),
-    readyIds: new Set(['item-one', 'item-two', 'item-three']),
+    planEligibleIds: new Set(['item-one', 'item-two', 'item-three']),
     toggle: vi.fn(),
     toggleItem: vi.fn(),
     clear: vi.fn(),

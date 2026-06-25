@@ -18,7 +18,6 @@ import { listBoard, renderBoardMarkdown } from './board-actions.js';
 import { backlogQueryActions } from './backlog-query-actions.js';
 import { searchActions } from './search/index.js';
 import {
-  importLegacyBacklog,
   readBacklogEpic,
   readBacklogItem,
   resolveBacklogEpicRelativePath,
@@ -39,7 +38,6 @@ import { planRevisionActions } from './plan-revision-actions.js';
 import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
 import { eforgePlanAgentTasks } from './agent-task-contributions.js';
-import { importPlanningStoreAction } from './importer/index.js';
 import { maintenanceActions } from './maintenance/index.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
@@ -58,26 +56,6 @@ const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(
 const PromoteSelectionInput = PromotionSelectionInputSchema;
 const PromoteSelectionOutput = PromotionSelectionOutputSchema;
 const ActionObjectOutput = ActionObjectOutputSchema;
-const BacklogIdInput = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)[^/\\\\\\0]+$' });
-const ImportLegacyInput = Type.Object({
-  kind: Type.Optional(Type.Union([Type.Literal('items'), Type.Literal('epics'), Type.Literal('all')])),
-  ids: Type.Optional(Type.Array(BacklogIdInput, { uniqueItems: true })),
-}, {
-  additionalProperties: false,
-  anyOf: [
-    { not: { required: ['ids'] } },
-    { required: ['ids', 'kind'], properties: { kind: { enum: ['items', 'epics'] } } },
-  ],
-});
-const ImportLegacyKindOutput = Type.Object({
-  copied: Type.Array(Type.Object({ id: Type.String(), path: Type.String() }, { additionalProperties: false })),
-  skipped: Type.Array(Type.Object({ id: Type.String(), reason: Type.Literal('private-exists') }, { additionalProperties: false })),
-}, { additionalProperties: false });
-const ImportLegacyOutput = Type.Object({
-  schemaVersion: Type.Literal(1),
-  items: ImportLegacyKindOutput,
-  epics: ImportLegacyKindOutput,
-}, { additionalProperties: false });
 const PLANNING_WORKSTATION_EFFECTIVE_ID = 'eforge-plan:planning-workstation';
 const PLANNING_WORKSTATION_ROUTE = '/console/workstations/eforge-plan%3Aplanning-workstation';
 const PLANNING_ENTRY_ACTION_EFFECTIVE_ID = 'eforge-plan:open-planning-entry';
@@ -123,7 +101,7 @@ const captureItem = defineExtensionAction({
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria, ''].join('\n');
     const item = captureCanonicalBacklogItem(ctx.cwd, { id, title: input.title, status: 'candidate', priority: input.priority, tags: input.tags ?? [], dependsOn: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.userStatus, path: resolveBacklogItemRelativePath(ctx.cwd, item.id), storage: { kind: 'canonical-sqlite', id: item.id }, legacyPathDeprecated: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
+    return toJsonSafeObject({ itemId: item.id, status: item.userStatus, path: resolveBacklogItemRelativePath(ctx.cwd, item.id), storage: { kind: 'canonical-sqlite', id: item.id } });
   },
 });
 
@@ -137,7 +115,7 @@ const upsertEpic = defineExtensionAction({
     const body = input.body ?? existing?.body ?? `# ${input.title}\n\n`;
     const epic = upsertCanonicalEpic(ctx.cwd, { id, title: input.title, ...(input.status !== undefined && { status: normalizedStatus(input.status, 'candidate') }), priority: input.priority, tags: input.tags, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
-    return toJsonSafeObject({ epicId: epic.id, status: epic.userStatus, path: resolveBacklogEpicRelativePath(ctx.cwd, epic.id), storage: { kind: 'canonical-sqlite', id: epic.id }, legacyPathDeprecated: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
+    return toJsonSafeObject({ epicId: epic.id, status: epic.userStatus, path: resolveBacklogEpicRelativePath(ctx.cwd, epic.id), storage: { kind: 'canonical-sqlite', id: epic.id } });
   },
 });
 
@@ -195,18 +173,6 @@ const promoteSelection = defineExtensionAction({
   },
 });
 
-const importLegacyBacklogAction = defineExtensionAction({
-  id: 'import-legacy-backlog',
-  title: 'Import legacy backlog',
-  description: 'Copy validated legacy .backlog records into private eforge-plan backlog storage without deleting legacy files.',
-  inputSchema: ImportLegacyInput,
-  outputSchema: ImportLegacyOutput,
-  sideEffects: ['local-read', 'local-write'],
-  async handler(input, ctx) {
-    return toJsonSafeObject(await importLegacyBacklog(ctx.cwd, input));
-  },
-});
-
 // registerAction infers a single (TInput, TOutput) per call, so a heterogeneous
 // array of actions cannot be passed element-by-element while preserving each
 // action's input/output schema generics (the handler is contravariant in its
@@ -230,8 +196,6 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(captureItem);
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
-  eforge.registerAction(importLegacyBacklogAction);
-  eforge.registerAction(importPlanningStoreAction as unknown as RegistrableAction);
   eforge.registerAction(openPlanningEntry);
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
@@ -285,8 +249,6 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-button', title: 'Open planning workstation', content: 'Return the generic planning entry URL for the eforge-plan workstation.', action: { actionId: 'open-planning-entry' } },
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a session-plan-ready candidate backlog item with concrete acceptance criteria.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
-      { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
-      { rendererId: 'action-form', title: 'Import planning store', content: 'Dry-run-first legacy importer for canonical SQLite planning-store rows.', action: { actionId: 'import-planning-store', inputDefaults: {} } },
       { rendererId: 'action-form', title: 'Fork recommendation to draft unit', content: 'Create an editable draft plan unit from a recommendation safe-to-parallelize lane.', action: { actionId: 'fork-recommendation-to-draft-unit' } },
       { rendererId: 'action-form', title: 'Create draft unit', content: 'Create a user-authored draft plan unit from hand-picked backlog items.', action: { actionId: 'create-draft-unit' } },
       { rendererId: 'action-button', title: 'List draft units', content: 'List all draft plan units newest-first.', action: { actionId: 'list-draft-units' } },
@@ -321,7 +283,6 @@ export default defineEforgeExtension((eforge) => {
       'optimize-search-index',
       'vacuum-planning-store',
       'update-item',
-      'import-planning-store',
       'render-board-markdown',
       'get-recommendations',
       'put-recommendations',

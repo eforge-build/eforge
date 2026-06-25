@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { captureCanonicalBacklogItem } from '../canonical/backlog-records.js';
 import { listBoardCompactProjection } from '../projections/index.js';
-import { invokePlanAction, seedProjectionBacklog, withTempProjectionProject } from './sqlite-projection-fixtures.js';
+import { invokePlanAction, seedProjectionBacklog, withTempProjectionProject, writeSessionPlan } from './sqlite-projection-fixtures.js';
 
 function byId(items: unknown[]): Map<string, Record<string, unknown>> {
   return new Map(items.map((entry) => [(entry as { id: string }).id, entry as Record<string, unknown>]));
@@ -24,6 +25,19 @@ describe('SQLite board projections', () => {
       expect(cards.get('blocked')).toMatchObject({ lane: 'blocked', reasonCodes: ['unresolved-dependency'], unresolvedDependsOn: ['missing-dep'] });
       expect(cards.get('shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', reasonCodes: ['shipped-result'] });
       expect(cards.get('archived')).toMatchObject({ lane: 'archive', reasonCodes: ['explicit-archive-status'] });
+    });
+  });
+
+  it('keeps explicit shipped status closed even with historical session-plan links', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      captureCanonicalBacklogItem(cwd, { id: 'curated-shipped', title: 'Curated shipped', status: 'shipped', epicId: 'epic-a' });
+      writeSessionPlan(cwd, 'historical-submitted', ['curated-shipped'], { status: 'submitted', provenance: 'selected-item' });
+
+      const output = await listBoardCompactProjection(cwd, { includeClosed: true, includeArchive: true, limit: 100 });
+      const cards = byId(output.items);
+
+      expect(cards.get('curated-shipped')).toMatchObject({ lane: 'done', lifecycleState: 'shipped', closed: true, reasonCodes: ['explicit-shipped-status'] });
     });
   });
 

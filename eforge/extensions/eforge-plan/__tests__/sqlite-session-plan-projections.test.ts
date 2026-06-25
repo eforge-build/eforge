@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from '../projections/index.js';
+import { openEforgePlanStore } from '../sqlite/index.js';
 import { seedProjectionBacklog, withTempProjectionProject, writeSessionPlan } from './sqlite-projection-fixtures.js';
 
 describe('SQLite session-plan projections', () => {
@@ -31,12 +33,30 @@ describe('SQLite session-plan projections', () => {
 
       expect(output).toMatchObject({ session: 'plan-body', path: expect.stringContaining('.eforge/session-plans/plan-body.md') });
       expect(output.body).toContain('This text must come from Markdown.');
-      expect(output.sourceRefs).toEqual(expect.arrayContaining([
+      expect(output.sourceRefs).toMatchObject({ sourceItemIds: ['candidate', 'running'], sourceEpicIds: [], recommendationRef: 'lane:body' });
+      expect(output.sourceRefRows).toEqual(expect.arrayContaining([
         expect.objectContaining({ itemRef: 'candidate', provenance: 'selected-item', sourceRecommendationRef: 'lane:body' }),
         expect.objectContaining({ itemRef: 'running', provenance: 'selected-item', sourceRecommendationRef: 'lane:body' }),
       ]));
       expect(output.lifecycle).toMatchObject({ session: 'plan-body', itemIds: ['candidate', 'running'], state: 'partial' });
       expect(output.lifecycle.associatedLinks).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'build-run', runId: 'run-1' })]));
+    });
+  });
+
+  it('hides imported trace-sidecar placeholders from active artifact lists', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      const store = openEforgePlanStore(cwd);
+      const db = new DatabaseSync(store.path);
+      store.close();
+      try {
+        db.prepare("INSERT INTO session_plans (session, path, topic, status, frontmatter_json, import_origin) VALUES (?, ?, ?, ?, '{}', ?)")
+          .run('trace-placeholder', '.eforge/session-plans/archive/trace-placeholder.md', 'Trace placeholder', 'ready', 'trace-sidecar');
+      } finally { db.close(); }
+
+      const output = await listPlanningArtifactsProjection(cwd, { limit: 100, includeSubmitted: true });
+
+      expect(output.artifacts.some((artifact: { session?: string }) => artifact.session === 'trace-placeholder')).toBe(false);
     });
   });
 

@@ -9,7 +9,6 @@ export interface NormalizedMaintenancePolicy {
   rowLimit: number;
   sampleLimit: number;
   keepLatestRecommendationRuns: number;
-  keepLatestImportRuns: number;
   rebuildSearchAfter: boolean;
 }
 
@@ -28,7 +27,6 @@ export function normalizeMaintenancePolicy(input: CompactPlanningStoreInput = {}
     rowLimit: clampInteger(input.rowLimit, 1000, 1, 10000),
     sampleLimit: clampInteger(input.sampleLimit, 20, 0, 100),
     keepLatestRecommendationRuns: clampInteger(input.keepLatestRecommendationRuns, 5, 0, 1000),
-    keepLatestImportRuns: clampInteger(input.keepLatestImportRuns, 10, 0, 1000),
     rebuildSearchAfter: input.rebuildSearchAfter ?? true,
   };
 }
