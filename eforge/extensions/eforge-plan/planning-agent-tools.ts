@@ -1,4 +1,3 @@
-import { Type } from '@sinclair/typebox';
 import {
   EforgePlanPlanningBacklogCurationDraftSchema,
   EforgePlanPlanningDraftResultSchema,
@@ -10,7 +9,7 @@ import {
   type EforgePlanPlanningDraftResult,
   type EforgePlanPlanningSessionPlanCreationDraft,
 } from '@eforge-build/client';
-import type { CustomTool } from '../harness.js';
+import { Type, type ExtensionAgentTaskCustomTool } from '@eforge-build/extension-sdk';
 
 export interface EforgePlanPlanningProgressUpdate {
   currentSection?: string;
@@ -102,7 +101,7 @@ export function sanitizeProgressUpdate(input: unknown): EforgePlanPlanningProgre
   return update;
 }
 
-export function createPlanningProgressTool(onProgress?: EforgePlanPlanningProgressCallback, name = PLANNING_PROGRESS_TOOL_NAME): CustomTool {
+export function createPlanningProgressTool(onProgress?: EforgePlanPlanningProgressCallback, name = PLANNING_PROGRESS_TOOL_NAME): ExtensionAgentTaskCustomTool {
   return {
     name,
     description: 'Report telemetry-only section progress while drafting. This never replaces the final submission and does not affect readiness.',
@@ -116,7 +115,7 @@ export function createPlanningProgressTool(onProgress?: EforgePlanPlanningProgre
       }
       return 'Section progress recorded.';
     },
-  };
+  } as ExtensionAgentTaskCustomTool;
 }
 
 export function createPlanningDraftSubmitTool(options: {
@@ -124,11 +123,11 @@ export function createPlanningDraftSubmitTool(options: {
   name?: string;
   validate?: PlanningDraftResultValidator;
   successMessage?: string;
-}): { tool: CustomTool; getSubmitted: () => EforgePlanPlanningDraftResult | undefined; getRejections: () => string[] } {
+}): { tool: ExtensionAgentTaskCustomTool; getSubmitted: () => EforgePlanPlanningDraftResult | undefined; getRejections: () => string[] } {
   let submitted: EforgePlanPlanningDraftResult | undefined;
   const rejections: string[] = [];
   const submitToolName = options.name ?? PLANNING_DRAFT_SUBMIT_TOOL_NAME;
-  const tool: CustomTool = {
+  const tool: ExtensionAgentTaskCustomTool = {
     name: submitToolName,
     description: 'Submit the final eforge-plan planning draft result. This is the only accepted output channel for this task.',
     inputSchema: planningDraftSubmissionToolSchema,
@@ -153,7 +152,7 @@ export function createPlanningDraftSubmitTool(options: {
       submitted = parsed;
       return options.successMessage ?? 'Planning draft result submitted successfully.';
     },
-  };
+  } as ExtensionAgentTaskCustomTool;
   return { tool, getSubmitted: () => submitted, getRejections: () => [...rejections] };
 }
 

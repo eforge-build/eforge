@@ -1,5 +1,11 @@
+import { readFile } from 'node:fs/promises';
 import { describe, it, expect } from 'vitest';
-import { loadPrompt } from '@eforge-build/engine/prompts';
+import { loadPrompt, renderPromptTemplate } from '@eforge-build/engine/prompts';
+
+async function renderExtensionPlanningPrompt(variables: Record<string, string>): Promise<string> {
+  const template = await readFile('eforge/extensions/eforge-plan/prompts/eforge-plan-planning-draft.md', 'utf-8');
+  return renderPromptTemplate(template, variables, undefined, 'eforge-plan-planning-draft');
+}
 
 describe('loadPrompt() throws on unresolved template variables', () => {
   it('throws when called with partial vars for the planner prompt', async () => {
@@ -45,8 +51,19 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).not.toMatch(/\{\{[a-zA-Z0-9_]+\}\}/);
   });
 
+  it('renders neutral prompt templates with the shared fail-closed interpolation helper', () => {
+    expect(renderPromptTemplate('Hello {{name}}', { name: 'Ada' }, undefined, 'neutral')).toBe('Hello Ada');
+    expect(renderPromptTemplate('Hello {{ name }}', { name: 'Ada' }, undefined, 'neutral')).toBe('Hello Ada');
+    expect(() => renderPromptTemplate('Hello {{missing}}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: missing');
+  });
+
+  it('throws for spaced and hyphenated unresolved template tokens', () => {
+    expect(() => renderPromptTemplate('Hello {{ missing }}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: missing');
+    expect(() => renderPromptTemplate('Hello {{source-text}}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: source-text');
+  });
+
   it('includes open-target guidance in the eforge-plan planning draft prompt', async () => {
-    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+    const prompt = await renderExtensionPlanningPrompt({
       topic: 'Backlog cleanup',
       session: 'session-one',
       planningType: 'maintenance',
@@ -83,7 +100,7 @@ describe('loadPrompt() throws on unresolved template variables', () => {
   });
 
   it('includes optional Mermaid guidance for planning drafts', async () => {
-    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+    const prompt = await renderExtensionPlanningPrompt({
       topic: 'Architecture flow',
       session: 'session-diagram',
       planningType: 'architecture',
@@ -104,7 +121,7 @@ describe('loadPrompt() throws on unresolved template variables', () => {
   });
 
   it('includes exact-id and no-alias guidance for session-plan creation drafts', async () => {
-    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+    const prompt = await renderExtensionPlanningPrompt({
       topic: 'Fast UX bugfix group',
       session: 'group-fast-ux-bugfixes',
       planningType: 'bugfix',

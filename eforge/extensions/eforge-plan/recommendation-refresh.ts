@@ -1,5 +1,6 @@
 import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { RECOMMENDATION_REFRESH_TASK_ID } from './agent-task-contributions.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { preparePlannerContext } from './planner-orchestration.js';
 import { computeRecommendationSourceFingerprint } from './recommendation-status.js';
@@ -22,7 +23,7 @@ const ACTIVE_REFRESH_STATUSES = new Set(['queued', 'running']);
 const refreshStartChains = new Map<string, Promise<unknown>>();
 
 type RefreshTaskStartRequest = {
-  kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
+  task: { id: typeof RECOMMENDATION_REFRESH_TASK_ID };
   input: {
     topic: string;
     sourceText: string;
@@ -88,7 +89,7 @@ export async function buildRecommendationRefreshSource(cwd: string, redraft?: Re
 
 async function startRefreshTask(ctx: ExtensionActionContext, sourceText: string): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: RefreshTaskStartRequest = {
-    kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
+    task: { id: RECOMMENDATION_REFRESH_TASK_ID },
     input: {
       topic: REFRESH_TOPIC,
       sourceText,

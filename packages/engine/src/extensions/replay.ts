@@ -21,7 +21,7 @@ import {
 import { compilePattern } from '../hooks.js';
 import { loadNativeExtensions } from './loader.js';
 import { withNativeEventHooks } from './event-runtime.js';
-import { buildActionDetails, buildConsoleContributionDetails, buildConsoleWorkstationDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
+import { buildActionDetails, buildAgentTaskDetails, buildConsoleContributionDetails, buildConsoleWorkstationDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
 import type {
   EventHookRegistration,
   NativeExtensionCandidate,
@@ -70,6 +70,7 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   tools: 0,
   prdEnrichers: 0,
   actions: 0,
+  agentTasks: 0,
   consoleContributions: 0,
   consoleWorkstations: 0,
   integrationCommands: 0,
@@ -90,6 +91,7 @@ const DEFERRED_FAMILIES = [
   'tools',
   'prdEnrichers',
   'actions',
+  'agentTasks',
   'consoleContributions',
   'consoleWorkstations',
   'integrationCommands',
@@ -368,6 +370,7 @@ function selectRegistry(registry: NativeExtensionRegistry, options: Pick<NativeE
     tools: registry.tools.filter(matches),
     prdEnrichers: registry.prdEnrichers.filter(matches),
     actions: registry.actions.filter(matches),
+    agentTasks: registry.agentTasks.filter(matches),
     consoleContributions: registry.consoleContributions.filter(matches),
     consoleWorkstations: registry.consoleWorkstations.filter(matches),
     integrationCommands: registry.integrationCommands.filter(matches),
@@ -477,6 +480,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
     const reviewerPerspectiveDetails = collectReviewerPerspectiveDetails(registry, candidate.name, candidate.path);
     const validationProviderDetails = collectValidationProviderDetails(registry, candidate.name, candidate.path);
     const actionDetails = buildActionDetails(registry, candidate.name, candidate.path);
+    const agentTaskDetails = buildAgentTaskDetails(registry, candidate.name, candidate.path);
     const consoleContributionDetails = buildConsoleContributionDetails(registry, candidate.name, candidate.path);
     const consoleWorkstationDetails = buildConsoleWorkstationDetails(registry, candidate.name, candidate.path);
     const integrationCommandDetails = buildIntegrationCommandDetails(registry, candidate.name, candidate.path);
@@ -515,6 +519,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
       ...(validationProviderDetails !== undefined && { validationProviderDetails }),
       ...(actionDetails !== undefined && { actionDetails }),
+      ...(agentTaskDetails !== undefined && { agentTaskDetails }),
       ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
       ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
       ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),

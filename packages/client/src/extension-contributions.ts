@@ -20,6 +20,7 @@ export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = routePatternToRegexP
 const ENCODED_DOT_SEGMENT_PATTERN = '(?:\\.|%2[eE]){1,2}';
 const CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN = `^(?!\\s)(?!.*\\s$)(?!.*[#\\\\\\u0000-\\u001F\\u007F])(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*|(?!(?:[A-Za-z][A-Za-z0-9+.-]*:|/))(?![^?]*%(?![0-9A-Fa-f]{2}))(?:(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:/|\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+/)*(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*)?)$`;
 const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
+const EXTENSION_AGENT_TASK_PROMPT_ASSET_PATTERN = '^(?=.*\\S)(?!/)(?![A-Za-z]:[\\\\/])(?!.*\\u0000)(?:(?!\\.{1,2}(?:[\\\\/]|$))[^\\\\/\\u0000]+)(?:[\\\\/](?!\\.{1,2}(?:[\\\\/]|$))[^\\\\/\\u0000]+)*$';
 
 function routePatternToRegexPattern(
   pattern: string,
@@ -178,6 +179,32 @@ const TypeBoxObjectWireSchema = Type.Intersect([
   Type.Object({ type: Type.Literal('object') }),
 ]);
 
+export const ExtensionAgentTaskPromptSourceManifestSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal('asset'),
+    asset: Type.String({ minLength: 1, pattern: EXTENSION_AGENT_TASK_PROMPT_ASSET_PATTERN }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    kind: Type.Literal('export'),
+    module: Type.String({ minLength: 1 }),
+    exportName: Type.Optional(Type.String({ minLength: 1 })),
+  }, { additionalProperties: false }),
+]);
+
+export const ExtensionAgentTaskManifestEntrySchema = Type.Object({
+  id: Type.String(),
+  localId: Type.String(),
+  extensionName: Type.String(),
+  extensionPath: Type.String(),
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+  inputSchema: TypeBoxObjectWireSchema,
+  outputSchema: Type.Optional(TypeBoxSchemaDocumentSchema),
+  prompt: ExtensionAgentTaskPromptSourceManifestSchema,
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
+}, { additionalProperties: false });
+
 export const ExtensionActionManifestEntrySchema = Type.Object({
   id: Type.String(),
   localId: Type.String(),
@@ -320,6 +347,7 @@ export const ExtensionContributionManifestResponseSchema = Type.Object({
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
   generatedAt: Type.String(),
   actions: Type.Array(ExtensionActionManifestEntrySchema),
+  agentTasks: Type.Optional(Type.Array(ExtensionAgentTaskManifestEntrySchema)),
   consoleContributions: Type.Array(ConsoleContributionManifestEntrySchema),
   consoleWorkstations: Type.Array(ConsoleWorkstationManifestEntrySchema),
   integrationCommands: Type.Array(IntegrationCommandManifestEntrySchema),
@@ -386,6 +414,8 @@ export type ExtensionContributionAvailability = Static<typeof ExtensionContribut
 export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRendererIdSchema>;
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;
 export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifestEntrySchema>;
+export type ExtensionAgentTaskPromptSourceManifest = Static<typeof ExtensionAgentTaskPromptSourceManifestSchema>;
+export type ExtensionAgentTaskManifestEntry = Static<typeof ExtensionAgentTaskManifestEntrySchema>;
 export type ConsoleContributionManifestEntry = Static<typeof ConsoleContributionManifestEntrySchema>;
 export type ConsoleWorkstationFrameBundleAssetRef = Static<typeof ConsoleWorkstationFrameBundleAssetRefSchema>;
 export type ConsoleWorkstationFrameBundleManifest = Static<typeof ConsoleWorkstationFrameBundleManifestSchema>;

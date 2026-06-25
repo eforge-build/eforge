@@ -120,6 +120,7 @@ function manifestFor(entrypoint: ReturnType<typeof assetRef>): ExtensionContribu
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
     generatedAt: new Date(0).toISOString(),
     actions: [],
+    agentTasks: [],
     consoleContributions: [],
     consoleWorkstations: [{
       id: 'bundle:board',
@@ -167,6 +168,7 @@ function registryFor(cwd: string): NativeExtensionRegistry {
     tools: [],
     prdEnrichers: [],
     actions: [],
+    agentTasks: [],
     consoleContributions: [],
     consoleWorkstations: [{
       kind: 'consoleWorkstation',

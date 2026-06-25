@@ -49,6 +49,7 @@ import type {
   ExtensionDeepLink,
   IntegrationCommand,
 } from './contributions.js';
+import type { ExtensionAgentTaskContribution } from './agent-tasks.js';
 import type { TObject, TSchema } from './schema.js';
 
 /**
@@ -338,6 +339,16 @@ export interface EforgeExtensionAPI {
    */
   registerTool(tool: ExtensionTool): void;
 
+  /**
+   * Register a prompt-backed agent task contribution owned by this extension.
+   *
+   * Prompt sources are declared by trusted extension code and projected only as
+   * safe metadata. Callers start tasks by contribution reference; they do not
+   * supply prompt asset paths or raw prompt text.
+   */
+  registerAgentTask<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
+    task: ExtensionAgentTaskContribution<TInput, TOutput>,
+  ): void;
   registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
     action: ExtensionAction<TInput, TOutput>,
   ): void;

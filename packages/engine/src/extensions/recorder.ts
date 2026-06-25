@@ -2,6 +2,7 @@ import {
   collectActionSpecWarnings,
   validateActionBindingJson,
   validateActionSpec,
+  validateAgentTaskSpec,
   validateConsoleContributionSpec,
   validateConsoleWorkstationSpec,
   validateDeepLinkSpec,
@@ -44,6 +45,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     tools: [],
     prdEnrichers: [],
     actions: [],
+    agentTasks: [],
     consoleContributions: [],
     consoleWorkstations: [],
     integrationCommands: [],
@@ -190,6 +192,15 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.tools.push({ kind: 'tool', extensionName, extensionPath, name: tool.name, value: tool as unknown as ExtensionTool });
     },
+    registerAgentTask(task: unknown): void {
+      const result = validateAgentTaskSpec(task);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerAgentTask registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      const id = resolveExtensionContributionId(extensionName, result.id);
+      state.agentTasks.push({ kind: 'agentTask', extensionName, extensionPath, localId: result.id, id, value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
+    },
     registerAction(action: unknown): void {
       const result = validateActionSpec(action);
       if (!result.ok || result.value === undefined || result.id === undefined) {
@@ -254,6 +265,7 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.validationProviders, source.validationProviders, 'validation provider', diagnostics, target.diagnostics);
   const acceptedActionRegistrations = mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
+  mergeIdRegistrations(target.agentTasks, source.agentTasks, 'agent task', diagnostics, target.diagnostics);
   const acceptedActionWarnings = acceptedActionRegistrations.flatMap((registration) => collectActionSpecWarnings(registration.value, { localId: registration.localId, effectiveId: registration.id }).map((warning) => ({
     severity: 'warning' as const,
     code: warning.code,

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 
-const PROMPT_PATH = join(process.cwd(), 'packages/engine/src/prompts/eforge-plan-planning-draft.md');
+const PROMPT_PATH = join(process.cwd(), 'eforge/extensions/eforge-plan/prompts/eforge-plan-planning-draft.md');
 
 describe('backlog curation prompt evidence contract', () => {
   it('names git-delta candidates, exact closure prefixes, ambiguous prefixes, and no-inventing evidence guidance', async () => {

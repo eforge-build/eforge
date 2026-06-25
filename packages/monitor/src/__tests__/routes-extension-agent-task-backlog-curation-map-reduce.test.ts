@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/client';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
@@ -6,6 +8,11 @@ import type { AgentRole } from '@eforge-build/engine/events';
 import {
   BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
+  BacklogCurationMapReduceFindingSchema,
+  BacklogCurationMapReduceItemPacketSchema,
+  BacklogCurationMapReduceReducerInputSchema,
+  BacklogCurationMapReduceRuntimeIdentitySchema,
+  EforgePlanPlanningDraftResultSchema,
   type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceItemPacket,
   type BacklogCurationMapReduceSourceBundle,
@@ -14,6 +21,9 @@ import { runBacklogCurationMapReduceTask } from '../routes/extensions/backlog-cu
 
 const SHA = '1'.repeat(64);
 const BODY_SHA = '2'.repeat(64);
+const TypeBoxKind = Symbol.for('TypeBox.Kind');
+const StringSchema = { type: 'string', [TypeBoxKind]: 'String' } as never;
+const EmptyObjectSchema = { type: 'object', additionalProperties: true, properties: {}, [TypeBoxKind]: 'Object' } as never;
 
 const packet: BacklogCurationMapReduceItemPacket = {
   schemaVersion: 1,
@@ -174,6 +184,7 @@ describe('backlog curation map/reduce runner', () => {
 type RunnerOptions = Parameters<typeof runBacklogCurationMapReduceTask>[0];
 
 function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]; curationProgress?: Array<Parameters<NonNullable<RunnerOptions['backlogCurationProgress']>>[0]>; providerHooks?: RunnerOptions['providerHooks']; sourceBundle?: BacklogCurationMapReduceSourceBundle; abortController?: AbortController; itemAuditConcurrency?: number }): RunnerOptions {
+  const contributions = curationContributionHandles();
   return {
     cwd: process.cwd(),
     taskId: 'task-map-reduce',
@@ -185,12 +196,78 @@ function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]
       buildBacklogCurationReducerInput: (globalContext, outcomes) => ({ schemaVersion: 1, sourceFingerprint: globalContext.sourceFingerprint, globalContext, outcomes: [...outcomes], diagnostics: [] }),
     },
     runtimeIdentity: { provider: 'stub', modelId: 'stub-model' },
+    itemAuditContribution: contributions.itemAuditContribution,
+    reducerContribution: contributions.reducerContribution,
     ...(overrides.itemAuditConcurrency !== undefined && { itemAuditConcurrency: overrides.itemAuditConcurrency }),
     abortController: overrides.abortController ?? new AbortController(),
     progress: async (message) => { overrides.progress?.push(message); },
     backlogCurationProgress: async (progress) => { overrides.curationProgress?.push(progress); },
     sectionProgress: async () => {},
   };
+}
+
+function curationContributionHandles(): Pick<RunnerOptions, 'itemAuditContribution' | 'reducerContribution'> {
+  const extensionRoot = join(process.cwd(), 'eforge/extensions/eforge-plan');
+  const owner = { extensionName: 'eforge-plan', extensionPath: extensionRoot };
+  const itemPrompt = 'prompts/eforge-plan-backlog-curation-item-audit.md';
+  const reducerPrompt = 'prompts/eforge-plan-backlog-curation-reducer.md';
+  const itemAuditContribution = {
+    contribution: {
+      kind: 'agentTask' as const,
+      extensionName: owner.extensionName,
+      extensionPath: owner.extensionPath,
+      localId: 'backlog-item-audit',
+      id: 'eforge-plan:backlog-item-audit',
+      value: {
+        id: 'backlog-item-audit',
+        title: 'Backlog item audit',
+        inputSchema: { type: 'object', additionalProperties: false, required: ['packet'], properties: { packet: BacklogCurationMapReduceItemPacketSchema, runtimeIdentity: BacklogCurationMapReduceRuntimeIdentitySchema, promptVersion: StringSchema }, [TypeBoxKind]: 'Object' } as never,
+        outputSchema: BacklogCurationMapReduceFindingSchema,
+        prompt: { kind: 'asset' as const, asset: itemPrompt },
+        resolvePrompt(ctx: { input: { packet: BacklogCurationMapReduceItemPacket; runtimeIdentity?: unknown; promptVersion?: string }; effectiveCustomToolName?: (name: string) => string }) {
+          let submitted: unknown;
+          const packetSha256 = sha256Json(ctx.input.packet);
+          return {
+            variables: { itemId: ctx.input.packet.itemId, sourceFingerprint: ctx.input.packet.sourceFingerprint, packetSha256, promptVersion: ctx.input.promptVersion ?? BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION, runtimeIdentityJson: JSON.stringify(ctx.input.runtimeIdentity ?? null), runtimeIdentityInstruction: 'Runtime identity is server-owned; do not submit this field.', packetJson: JSON.stringify(ctx.input.packet, null, 2), submitTool: ctx.effectiveCustomToolName?.('submit_eforge_plan_backlog_item_finding') ?? 'submit_eforge_plan_backlog_item_finding', progressTool: 'report_eforge_plan_planning_progress' },
+            run: { role: 'planner', toolsPreset: 'read-only', tools: [{ name: 'submit_eforge_plan_backlog_item_finding', description: 'submit', inputSchema: BacklogCurationMapReduceFindingSchema, handler: async (input: unknown) => { submitted = input; return 'submitted'; } }, { name: 'report_eforge_plan_planning_progress', description: 'progress', inputSchema: EmptyObjectSchema, handler: async () => 'progress' }] },
+            getResult: () => submitted,
+            missingResultMessage: 'missing item finding',
+          };
+        },
+      },
+    },
+    owner,
+    promptTemplate: readFileSync(join(extensionRoot, itemPrompt), 'utf-8'),
+  };
+  const reducerContribution = {
+    contribution: {
+      kind: 'agentTask' as const,
+      extensionName: owner.extensionName,
+      extensionPath: owner.extensionPath,
+      localId: 'backlog-reducer',
+      id: 'eforge-plan:backlog-reducer',
+      value: {
+        id: 'backlog-reducer',
+        title: 'Backlog reducer',
+        inputSchema: { type: 'object', additionalProperties: false, required: ['reducerInput'], properties: { reducerInput: BacklogCurationMapReduceReducerInputSchema, requestedOutputSections: { type: 'array', items: StringSchema, [TypeBoxKind]: 'Array' }, validationErrors: { type: 'array', items: StringSchema, [TypeBoxKind]: 'Array' } }, [TypeBoxKind]: 'Object' } as never,
+        outputSchema: EforgePlanPlanningDraftResultSchema,
+        prompt: { kind: 'asset' as const, asset: reducerPrompt },
+        resolvePrompt(ctx: { input: { reducerInput: unknown; requestedOutputSections?: string[]; validationErrors?: string[] }; effectiveCustomToolName?: (name: string) => string }) {
+          let submitted: unknown;
+          const reducerInputJson = JSON.stringify(ctx.input.reducerInput, null, 2).replace(/RAW_GIT_DELTA_SENTINEL|RAW_FULL_IMPLEMENTATION_AUDIT_SENTINEL|UNRELATED_FULL_ITEM_BODY_SENTINEL/g, 'stripped');
+          return {
+            variables: { reducerInputJson, requestedOutputSections: ctx.input.requestedOutputSections?.join(', ') ?? 'backlogCurationDraft, recommendations', validationErrors: JSON.stringify(ctx.input.validationErrors ?? []), submitTool: ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result', progressTool: 'report_eforge_plan_planning_progress', resultSchema: 'type: object' },
+            run: { role: 'planner', toolsPreset: 'none', tools: [{ name: 'submit_eforge_plan_planning_result', description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input: unknown) => { submitted = input; return 'submitted'; } }, { name: 'report_eforge_plan_planning_progress', description: 'progress', inputSchema: EmptyObjectSchema, handler: async () => 'progress' }] },
+            getResult: () => submitted,
+            missingResultMessage: 'missing reducer result',
+          };
+        },
+      },
+    },
+    owner,
+    promptTemplate: readFileSync(join(extensionRoot, reducerPrompt), 'utf-8'),
+  };
+  return { itemAuditContribution, reducerContribution } as Pick<RunnerOptions, 'itemAuditContribution' | 'reducerContribution'>;
 }
 
 class MapReduceHarness implements AgentHarness {

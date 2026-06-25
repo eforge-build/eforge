@@ -103,6 +103,18 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
+export type {
+  ExtensionAgentTaskContribution,
+  ExtensionAgentTaskContributionOutput,
+  ExtensionAgentTaskCustomTool,
+  ExtensionAgentTaskPromptResolver,
+  ExtensionAgentTaskPromptSource,
+  ExtensionAgentTaskResolverContext,
+  ExtensionAgentTaskResolverResult,
+  ExtensionAgentTaskSectionProgressUpdate,
+} from './agent-tasks.js';
+export { defineExtensionAgentTaskContribution } from './agent-tasks.js';
+
 // Project-local and scoped storage helpers
 export type { ProjectLocalStoragePathOptions } from './project-storage.js';
 export { resolveProjectLocalStoragePath } from './project-storage.js';

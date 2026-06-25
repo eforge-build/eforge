@@ -92,7 +92,7 @@ describe('planning agent task actions', () => {
         timeoutMs: 1000,
         agentTasks: () => ({
           async start(request) {
-            calls.push(request as { kind: string; input: Record<string, unknown> });
+            calls.push(request as { task?: { id: string }; kind?: string; input: Record<string, unknown> });
             const source = JSON.parse(String(request.input.sourceText));
             expect(source).toMatchObject({ userGoal: 'Plan item one', context: { schemaVersion: 1, selection: { itemIds: ['item-one'] } } });
             expect(source.context.items[0]).toMatchObject({ id: 'item-one', sections: { Claim: 'Plan it.' } });
@@ -103,7 +103,7 @@ describe('planning agent task actions', () => {
         }),
       });
       expect(result).toMatchObject({ kind: 'success', output: { task: { taskId: 'task-started' } } });
-      expect(calls).toEqual([expect.objectContaining({ kind: 'eforge-plan.planning-draft', input: expect.objectContaining({ topic: 'Plan item one' }) })]);
+      expect(calls).toEqual([expect.objectContaining({ task: { id: 'session-plan-creation' }, input: expect.objectContaining({ topic: 'Plan item one', requestedOutputSections: ['sessionPlanCreationDraft'] }) })]);
     });
   });
   it('bounds planner context before starting a daemon-owned planning task', async () => {
@@ -915,7 +915,7 @@ describe('planning agent task actions', () => {
         planningDepth: 'deep',
         includeRoadmap,
       });
-      let started: { kind: string; input: Record<string, unknown> } | undefined;
+      let started: { task?: { id: string }; input: Record<string, unknown> } | undefined;
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:retry-planning-agent-task',
         input: { taskId: 'task-original' },
@@ -923,13 +923,14 @@ describe('planning agent task actions', () => {
         cwd,
         timeoutMs: 1000,
         agentTasks: () => ({
-          async start(request) { started = request as { kind: string; input: Record<string, unknown> }; return { task: runningTask('task-retry') }; },
+          async start(request) { started = request as { task?: { id: string }; input: Record<string, unknown> }; return { task: runningTask('task-retry') }; },
           async get() { throw new Error('unexpected get'); },
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
       expect(result.kind).toBe('success');
       if (result.kind !== 'success') throw new Error(result.message);
+      expect(started).toMatchObject({ task: { id: 'session-plan-creation' } });
       expect(started?.input).toMatchObject({ topic: 'Draft a session plan for Item One.', session: 'session-x', planningType: 'feature', planningDepth: 'deep', requestedOutputSections: ['sessionPlanCreationDraft'] });
       // Parse the serialized planner context to prove the preserved roadmap flag is honored.
       const source = JSON.parse(String(started?.input.sourceText));
@@ -985,7 +986,7 @@ describe('planning agent task actions', () => {
         itemAuditConcurrency: 6,
         sourceFingerprint: 'old-fingerprint',
       });
-      let started: { input: Record<string, unknown> } | undefined;
+      let started: { task?: { id: string }; input: Record<string, unknown> } | undefined;
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:retry-planning-agent-task',
         input: { taskId: 'task-curation-original' },
@@ -1000,6 +1001,7 @@ describe('planning agent task actions', () => {
       });
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', itemAuditConcurrency: 6, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
+      expect(started?.task).toEqual({ id: 'planning-draft' });
       expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 6 } } });
       expect(started?.input.sourceText).toBeUndefined();
     });
@@ -1019,7 +1021,7 @@ describe('planning agent task actions', () => {
         itemAuditConcurrency: 7,
         sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       });
-      let started: { input: Record<string, unknown> } | undefined;
+      let started: { task?: { id: string }; input: Record<string, unknown> } | undefined;
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:redraft-planning-agent-task',
         input: { taskId: 'task-curation', steering: 'Prefer conservative status changes.' },
@@ -1034,6 +1036,7 @@ describe('planning agent task actions', () => {
       });
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', itemAuditConcurrency: 7, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
+      expect(started?.task).toEqual({ id: 'planning-draft' });
       expect(started?.input.sourceText).toBeUndefined();
       expect(started?.input).toMatchObject({ sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 7, redraft: { parentTaskId: 'task-curation', steering: 'Prefer conservative status changes.', previousBacklogCurationDraft: expect.any(Object) } } } });
     });

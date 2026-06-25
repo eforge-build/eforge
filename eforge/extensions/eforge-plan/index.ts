@@ -9,6 +9,7 @@ import {
   defineIntegrationCommand,
   type EventHookContext,
   type ExtensionAction,
+  type ExtensionAgentTaskContribution,
   type TObject,
   type TSchema,
 } from '@eforge-build/extension-sdk';
@@ -37,6 +38,7 @@ import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
 import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
+import { eforgePlanAgentTasks } from './agent-task-contributions.js';
 import { importPlanningStoreAction } from './importer/index.js';
 import { maintenanceActions } from './maintenance/index.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
@@ -212,6 +214,7 @@ const importLegacyBacklogAction = defineExtensionAction({
 // every input against the action's own inputSchema at call time, so accepting
 // the generic-erased action shape here is safe.
 type RegistrableAction = ExtensionAction<TObject, TSchema | undefined>;
+type RegistrableAgentTask = ExtensionAgentTaskContribution<TObject, TSchema | undefined>;
 
 function registerActions(
   eforge: { registerAction(action: RegistrableAction): void },
@@ -222,6 +225,7 @@ function registerActions(
 
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
+  for (const task of eforgePlanAgentTasks as unknown as readonly RegistrableAgentTask[]) eforge.registerAgentTask(task);
   eforge.registerAction(listBoard);
   eforge.registerAction(captureItem);
   eforge.registerAction(upsertEpic);

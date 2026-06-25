@@ -1,5 +1,6 @@
 import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, paginateContributionItems, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { PLANNING_DRAFT_TASK_ID, RECOMMENDATION_REFRESH_TASK_ID, SESSION_PLAN_CREATION_TASK_ID } from './agent-task-contributions.js';
 import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
   applyCompletedPlanningAgentTaskResult,
@@ -82,7 +83,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
     const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requestedOutputSections, planningType, planningDepth);
     throwIfAborted(ctx.signal);
     const response = await ctx.agentTasks.start({
-      kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
+      task: { id: planningTaskIdForSections(requestedOutputSections) },
       input: {
         topic: derivedGoal,
         sourceText,
@@ -329,8 +330,8 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     assertNoCanonicalNonterminalCoverage(ctx.cwd, selection.itemIds, { excludePlanningTaskIds: [parent.taskId] });
   }
   const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requested, parent.planningType, parent.planningDepth);
-  const response = await ctx.agentTasks.start({
-    kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
+  const startRequest = {
+    task: { id: linkedPlanningTaskId(parent, requested) },
     input: {
       topic: params.derivedGoal,
       ...(params.sourceText !== undefined && { sourceText: params.sourceText }),
@@ -342,7 +343,8 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
       ...(requested !== undefined && { requestedOutputSections: requested }),
       ...(sessionPlanCreationReadiness !== undefined && { sessionPlanCreationReadiness }),
     },
-  });
+  };
+  const response = await (ctx.agentTasks.start as unknown as (request: Record<string, unknown>) => Promise<{ task: ExtensionAgentTaskRecord }>)(startRequest);
   const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildEntry({
     taskId: response.task.taskId,
     parentTaskId: parent.taskId,
@@ -395,6 +397,15 @@ interface BuildEntryParams {
   itemAuditConcurrency?: number;
   sourceFingerprint?: string;
 }
+function planningTaskIdForSections(sections: RequestedOutputSections | undefined): string {
+  return sections?.includes('sessionPlanCreationDraft') ? SESSION_PLAN_CREATION_TASK_ID : PLANNING_DRAFT_TASK_ID;
+}
+
+function linkedPlanningTaskId(parent: PlanningTaskWorkflowEntry, sections: RequestedOutputSections | undefined): string {
+  if (isRecommendationRefreshWorkflowEntry(parent)) return RECOMMENDATION_REFRESH_TASK_ID;
+  return planningTaskIdForSections(sections);
+}
+
 function backlogCurationSourceProviderInput(redraft?: Record<string, unknown>, itemAuditConcurrency?: number): typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number; redraft?: Record<string, unknown> } } {
   return { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }), ...(redraft !== undefined && { redraft }) } };
 }

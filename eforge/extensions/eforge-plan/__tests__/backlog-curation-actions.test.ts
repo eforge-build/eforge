@@ -64,7 +64,7 @@ describe('analyze-all-backlog action', () => {
       const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
       expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toEqual({ kind: 'eforge-plan.planning-draft', input: { topic: 'Analyze and curate all open eforge-plan backlog records.', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
+      expect(starts[0]).toEqual({ task: { id: 'planning-draft', extensionName: 'eforge-plan' }, input: { topic: 'Analyze and curate all open eforge-plan backlog records.', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', itemAuditConcurrency: 4, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
     });

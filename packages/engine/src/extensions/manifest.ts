@@ -1,4 +1,5 @@
 import type {
+  AgentTaskDetail,
   ConsoleContributionBlock,
   ConsoleContributionDetail,
   ConsoleContributionManifestEntry,
@@ -7,6 +8,7 @@ import type {
   ExtensionActionBindingManifest,
   ExtensionActionDetail,
   ExtensionActionManifestEntry,
+  ExtensionAgentTaskManifestEntry,
   ExtensionContributionManifestResponse,
   ExtensionDeepLinkDetail,
   ExtensionDeepLinkManifestEntry,
@@ -26,6 +28,7 @@ import type {
   DeepLinkRegistration,
   ExtensionActionBindingSpec,
   ActionRegistration,
+  AgentTaskRegistration,
   IntegrationCommandRegistration,
   NativeExtensionDiagnostic,
   NativeExtensionRegistry,
@@ -38,6 +41,7 @@ export function buildExtensionContributionManifest(registry: NativeExtensionRegi
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     generatedAt: new Date().toISOString(),
     actions: registry.actions.map(buildActionManifestEntry).sort(sortById),
+    agentTasks: registry.agentTasks.map(buildAgentTaskManifestEntry).sort(sortById),
     consoleContributions: registry.consoleContributions.map(buildConsoleContributionManifestEntry).sort(sortById),
     consoleWorkstations: collectConsoleWorkstationManifestEntries(registry, projectionDiagnostics).sort(sortById),
     integrationCommands: registry.integrationCommands.map(buildIntegrationCommandManifestEntry).sort(sortById),
@@ -62,6 +66,22 @@ export function buildActionManifestEntry(reg: ActionRegistration): ExtensionActi
     requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
     availability: projectAvailability(reg.availability),
   }) as unknown as ExtensionActionManifestEntry;
+}
+
+export function buildAgentTaskManifestEntry(reg: AgentTaskRegistration): ExtensionAgentTaskManifestEntry {
+  return omitUndefined({
+    id: reg.id,
+    localId: reg.localId,
+    extensionName: reg.extensionName,
+    extensionPath: reg.extensionPath,
+    title: reg.value.title,
+    description: reg.value.description,
+    inputSchema: cloneSchema(reg.value.inputSchema),
+    outputSchema: reg.value.outputSchema === undefined ? undefined : cloneSchema(reg.value.outputSchema),
+    prompt: cloneSchema(reg.value.prompt),
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
+  }) as unknown as ExtensionAgentTaskManifestEntry;
 }
 
 export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRegistration): ConsoleContributionManifestEntry {
@@ -131,6 +151,11 @@ export function buildDeepLinkManifestEntry(reg: DeepLinkRegistration): Extension
 
 export function buildActionDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): ExtensionActionDetail[] | undefined {
   const details = registry.actions.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildActionManifestEntry);
+  return details.length > 0 ? details : undefined;
+}
+
+export function buildAgentTaskDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): AgentTaskDetail[] | undefined {
+  const details = registry.agentTasks.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildAgentTaskManifestEntry);
   return details.length > 0 ? details : undefined;
 }
 

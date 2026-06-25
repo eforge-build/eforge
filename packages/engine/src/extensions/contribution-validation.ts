@@ -4,6 +4,7 @@ import type { TSchema } from '@sinclair/typebox';
 import { isValidExtensionLocalContributionId } from './ids.js';
 import { validateWorkstationFrameBundleSource } from './workstation-bundle-paths.js';
 import type {
+  AgentTaskRegistrationSpec,
   ConsoleContributionBlockSpec,
   ConsoleContributionSpec,
   ConsoleWorkstationSpec,
@@ -65,6 +66,69 @@ export function isNonBlankString(value: unknown): value is string {
 
 export function isObjectRootSchema(value: unknown): value is Record<string, unknown> {
   return isNonArrayObject(value) && value.type === 'object';
+}
+
+export function validateAgentTaskSpec(value: unknown): RegistrationValidationResult<AgentTaskRegistrationSpec> {
+  const base = validateBase(value, 'registerAgentTask', 'title');
+  if (!base.ok) return base as RegistrationValidationResult<AgentTaskRegistrationSpec>;
+  const spec = value as Record<string, unknown>;
+  const inputSchemaResult = validateSchemaDocument(spec.inputSchema, { requireObjectRoot: true });
+  if (!inputSchemaResult.ok) return fail(base.id, `registerAgentTask inputSchema must be a JSON-safe object-root schema (type: "object"): ${inputSchemaResult.message}`);
+  if (spec.outputSchema !== undefined) {
+    const outputSchemaResult = validateSchemaDocument(spec.outputSchema);
+    if (!outputSchemaResult.ok) return fail(base.id, `registerAgentTask outputSchema must be a JSON-safe schema document: ${outputSchemaResult.message}`);
+  }
+  const prompt = normalizeAgentTaskPromptSource(spec.prompt ?? spec.promptSource);
+  if (!prompt.ok) return fail(base.id, prompt.message ?? 'registerAgentTask prompt is invalid');
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (spec.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(spec.requirements, 'registerAgentTask requirements');
+    if (!requirementsResult.ok) return fail(base.id, requirementsResult.message ?? 'registerAgentTask requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
+  if (spec.tools !== undefined && (!Array.isArray(spec.tools) || !spec.tools.every(isValidAgentTaskTool))) {
+    return fail(base.id, 'registerAgentTask tools must be an array of extension tool specs');
+  }
+  if (spec.resolvePrompt !== undefined && typeof spec.resolvePrompt !== 'function') return fail(base.id, 'registerAgentTask resolvePrompt must be a function');
+  return {
+    ok: true,
+    id: base.id,
+    value: {
+      ...(value as AgentTaskRegistrationSpec),
+      prompt: prompt.value!,
+      ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }),
+    },
+  };
+}
+
+function normalizeAgentTaskPromptSource(value: unknown): RegistrationValidationResult<AgentTaskRegistrationSpec['prompt']> {
+  if (!isNonArrayObject(value)) return fail(undefined, 'registerAgentTask prompt must be { kind: "asset", asset } or { kind: "export", module }');
+  if (value.kind === 'asset') {
+    if (!isSafePromptAsset(value.asset)) return fail(undefined, 'registerAgentTask prompt asset must be a non-empty relative path without absolute roots, NULs, or .. segments');
+    return { ok: true, value: { kind: 'asset', asset: value.asset } };
+  }
+  if (value.kind === 'export') {
+    if (!isSafePromptModule(value.module)) return fail(undefined, 'registerAgentTask prompt export module must be a non-empty relative path without absolute roots, NULs, or .. segments');
+    if (value.exportName !== undefined && !isNonBlankString(value.exportName)) return fail(undefined, 'registerAgentTask prompt exportName must be a non-empty string when present');
+    return { ok: true, value: { kind: 'export', module: value.module, ...(value.exportName !== undefined && { exportName: value.exportName }) } };
+  }
+  return fail(undefined, 'registerAgentTask prompt kind must be "asset" or "export"');
+}
+
+function isSafePromptAsset(value: unknown): value is string {
+  if (!isNonBlankString(value)) return false;
+  if (value.includes('\0') || value.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(value)) return false;
+  return value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+}
+
+function isSafePromptModule(value: unknown): value is string {
+  if (!isNonBlankString(value)) return false;
+  const normalized = value.startsWith('./') || value.startsWith('.\\') ? value.slice(2) : value;
+  return isSafePromptAsset(normalized);
+}
+
+function isValidAgentTaskTool(value: unknown): boolean {
+  return isNonArrayObject(value) && isNonBlankString(value.name) && isNonBlankString(value.description) && isObjectRootSchema(value.inputSchema) && typeof value.handler === 'function';
 }
 
 export function validateActionSpec(value: unknown): RegistrationValidationResult<ExtensionActionSpec> {

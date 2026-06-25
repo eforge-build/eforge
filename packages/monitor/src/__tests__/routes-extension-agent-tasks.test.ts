@@ -3,9 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { API_ROUTES, buildPath, type EforgeEvent } from '@eforge-build/client';
+import { API_ROUTES, buildPath, EforgePlanPlanningDraftInputSchema, EforgePlanPlanningDraftResultSchema, type EforgeEvent } from '@eforge-build/client';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole } from '@eforge-build/engine/events';
+import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { openDatabase, type MonitorDB } from '../db.js';
 import { startServer } from '../server.js';
@@ -47,7 +48,7 @@ describe('extension agent task routes and service', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-'));
     const harness = new SubmitHarness(submittedResult);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const start = await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans' } });
       expect(start.status).toBe(200);
@@ -66,7 +67,7 @@ describe('extension agent task routes and service', () => {
         'extension:agent-task:progress',
         'extension:agent-task:complete',
       ]);
-      expect(events.map((event) => event.extensionName)).toEqual(['daemon-route', 'daemon-route', 'daemon-route']);
+      expect(events.map((event) => event.extensionName)).toEqual(['eforge-plan', 'eforge-plan', 'eforge-plan']);
       expect(events.map((event) => event.status)).toEqual(['running', 'running', 'completed']);
     } finally {
       await server.stop();
@@ -80,7 +81,7 @@ describe('extension agent task routes and service', () => {
     const progress = { currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'], message: 'Drafting scope' };
     const harness = new ProgressSubmitHarness(submittedResult, progress);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
@@ -114,7 +115,7 @@ describe('extension agent task routes and service', () => {
     };
     const harness = new SubmitHarness(creationResult);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['sessionPlanCreationDraft'] } })).json() as { task: { taskId: string } };
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
@@ -136,7 +137,7 @@ describe('extension agent task routes and service', () => {
     };
     const harness = new SubmitHarness(curationResult);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] } })).json() as { task: { taskId: string } };
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
@@ -159,7 +160,7 @@ describe('extension agent task routes and service', () => {
     };
     const harness = new SubmitHarness(curationWithRecommendations);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } })).json() as { task: { taskId: string } };
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
@@ -184,7 +185,7 @@ describe('extension agent task routes and service', () => {
     };
     const harness = new SubmitHarness(malformedResult);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] } })).json() as { task: { taskId: string } };
       const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
@@ -199,6 +200,7 @@ describe('extension agent task routes and service', () => {
 
   it('writes a running record before queueing the harness call', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-service-'));
+    await installPlanningExtension(cwd);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     let startedTaskId = '';
     let resolveRecorded!: () => void;
@@ -231,7 +233,8 @@ describe('extension agent task routes and service', () => {
   it('resolves deferred source providers in the background task before running the planner', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-source-provider-'));
     const extensionRoot = join(cwd, '.eforge', 'extensions', 'source-owner');
-    await mkdir(extensionRoot, { recursive: true });
+    await mkdir(join(extensionRoot, 'prompts'), { recursive: true });
+    await writeFile(join(extensionRoot, 'prompts', 'planning.md'), 'Source: {{sourceText}}\n', 'utf-8');
     await writeFile(join(extensionRoot, 'source-provider.mjs'), `export function buildSource({ input }) { return { sourceText: 'deferred-source:' + input.marker }; }\n`);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const harness = new SubmitHarness(submittedResult);
@@ -239,8 +242,8 @@ describe('extension agent task routes and service', () => {
     try {
       const service = new ExtensionAgentTaskService(context);
       const started = await service.start(
-        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build with deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'alpha' } } } },
-        { owner: { extensionName: 'source-owner', extensionPath: extensionRoot } },
+        { task: { id: 'planning-draft' }, input: { topic: 'Build with deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'alpha' } } } },
+        { owner: { extensionName: 'source-owner', extensionPath: extensionRoot }, registry: planningRegistryForOwner('source-owner', extensionRoot) },
       );
       await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
       expect(String(harness.calls[0]?.prompt)).toContain('deferred-source:alpha');
@@ -255,7 +258,8 @@ describe('extension agent task routes and service', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-file-source-provider-'));
     const extensionDir = join(cwd, '.eforge', 'extensions');
     const extensionPath = join(extensionDir, 'source-owner.mjs');
-    await mkdir(extensionDir, { recursive: true });
+    await mkdir(join(extensionDir, 'prompts'), { recursive: true });
+    await writeFile(join(extensionDir, 'prompts', 'planning.md'), 'Source: {{sourceText}}\n', 'utf-8');
     await writeFile(extensionPath, `export default function extension() {}\n`);
     await writeFile(join(extensionDir, 'source-provider.mjs'), `export function buildSource({ input }) { return { sourceText: 'file-layout-source:' + input.marker }; }\n`);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -264,8 +268,8 @@ describe('extension agent task routes and service', () => {
     try {
       const service = new ExtensionAgentTaskService(context);
       const started = await service.start(
-        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build with file-layout deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'beta' } } } },
-        { owner: { extensionName: 'source-owner', extensionPath } },
+        { task: { id: 'planning-draft' }, input: { topic: 'Build with file-layout deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'beta' } } } },
+        { owner: { extensionName: 'source-owner', extensionPath }, registry: planningRegistryForOwner('source-owner', extensionPath) },
       );
       await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
       expect(String(harness.calls[0]?.prompt)).toContain('file-layout-source:beta');
@@ -281,9 +285,12 @@ describe('extension agent task routes and service', () => {
     const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
     try {
       const service = new ExtensionAgentTaskService(context);
+      const ownerRoot = join(cwd, '.eforge', 'extensions', 'owner-extension');
+      await mkdir(join(ownerRoot, 'prompts'), { recursive: true });
+      await writeFile(join(ownerRoot, 'prompts', 'planning.md'), 'Topic: {{topic}}\n', 'utf-8');
       const started = await service.start(
-        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build owner plans' } },
-        { owner: { extensionName: 'owner-extension', extensionPath: '/project/.eforge/extensions/owner-extension.js' } },
+        { task: { id: 'planning-draft' }, input: { topic: 'Build owner plans' } },
+        { owner: { extensionName: 'owner-extension', extensionPath: ownerRoot }, registry: planningRegistryForOwner('owner-extension', ownerRoot) },
       );
       await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
       const events = taskEvents(db, started.task.taskId);
@@ -299,7 +306,7 @@ describe('extension agent task routes and service', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-cancel-'));
     const harness = new AbortAwareHarness();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Cancel me' } })).json() as { task: { taskId: string } };
       await harness.started;
@@ -309,7 +316,7 @@ describe('extension agent task routes and service', () => {
       expect(harness.aborted).toBe(true);
       const events = taskEvents(db, startBody.task.taskId);
       expect(events.map((event) => event.type)).toContain('extension:agent-task:cancelled');
-      expect(events.find((event) => event.type === 'extension:agent-task:cancelled')).toMatchObject({ extensionName: 'daemon-route', status: 'cancelled' });
+      expect(events.find((event) => event.type === 'extension:agent-task:cancelled')).toMatchObject({ extensionName: 'eforge-plan', status: 'cancelled' });
     } finally {
       await server.stop();
       db.close();
@@ -321,7 +328,7 @@ describe('extension agent task routes and service', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-fail-'));
     const harness = new FailingHarness(new Error('secret failure details'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Fail' } })).json() as { task: { taskId: string } };
       const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
@@ -329,7 +336,7 @@ describe('extension agent task routes and service', () => {
       expect(await fetch(`${server.url}${API_ROUTES.health}`)).toBeDefined();
       const events = taskEvents(db, startBody.task.taskId);
       expect(events.map((event) => event.type)).toContain('extension:agent-task:failed');
-      expect(events.find((event) => event.type === 'extension:agent-task:failed')).toMatchObject({ extensionName: 'daemon-route', status: 'failed' });
+      expect(events.find((event) => event.type === 'extension:agent-task:failed')).toMatchObject({ extensionName: 'eforge-plan', status: 'failed' });
     } finally {
       await server.stop();
       db.close();
@@ -341,7 +348,7 @@ describe('extension agent task routes and service', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-no-submit-'));
     const harness = new NoSubmitHarness();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Never submit' } })).json() as { task: { taskId: string } };
       const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
@@ -353,7 +360,7 @@ describe('extension agent task routes and service', () => {
       expect(failed.result).toBeUndefined();
       const events = taskEvents(db, startBody.task.taskId);
       const failedEvent = events.find((event) => event.type === 'extension:agent-task:failed');
-      expect(failedEvent).toMatchObject({ extensionName: 'daemon-route', status: 'failed' });
+      expect(failedEvent).toMatchObject({ extensionName: 'eforge-plan', status: 'failed' });
     } finally {
       await server.stop();
       db.close();
@@ -364,13 +371,13 @@ describe('extension agent task routes and service', () => {
   it('rejects unsafe requests with expected status codes', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-security-'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
     try {
       expect((await rawPost(server.port, API_ROUTES.extensionAgentTaskStart, '{}', { Host: 'evil.example', 'content-type': 'application/json' })).status).toBe(403);
       expect((await rawPost(server.port, API_ROUTES.extensionAgentTaskStart, '{}', { Host: 'localhost', 'Sec-Fetch-Site': 'cross-site', 'content-type': 'application/json' })).status).toBe(403);
       expect((await fetch(`${server.url}${API_ROUTES.extensionAgentTaskStart}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })).status).toBe(400);
       expect((await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'unsupported', input: { topic: 'x' } })).status).toBe(400);
-      expect((await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'x', sourceProvider: { module: './provider.mjs' } } })).status).toBe(400);
+      expect((await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { task: { id: 'missing-task' }, input: { topic: 'x', sourceProvider: { module: './provider.mjs' } } })).status).toBe(404);
       expect((await fetch(`${server.url}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'bad id' })}`)).status).toBe(400);
       expect((await fetch(`${server.url}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'task-missing' })}`)).status).toBe(404);
     } finally {
@@ -380,6 +387,50 @@ describe('extension agent task routes and service', () => {
     }
   });
 });
+
+async function startAgentTaskServer(cwd: string, ...args: Parameters<typeof startServer>): Promise<Awaited<ReturnType<typeof startServer>>> {
+  await installPlanningExtension(cwd);
+  return await startServer(...args);
+}
+
+async function installPlanningExtension(cwd: string): Promise<void> {
+  const extensionDir = join(cwd, '.eforge', 'extensions');
+  await mkdir(join(extensionDir, 'prompts'), { recursive: true });
+  await mkdir(join(cwd, 'eforge'), { recursive: true });
+  await writeFile(join(cwd, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
+  await writeFile(join(extensionDir, 'prompts', 'planning.md'), 'Topic: {{topic}}\nSource:\n{{sourceText}}\nUse {{submitTool}}.\n', 'utf-8');
+  await writeFile(join(extensionDir, 'eforge-plan.mjs'), `
+import { EforgePlanPlanningDraftInputSchema, EforgePlanPlanningDraftResultSchema } from '@eforge-build/client';
+export default function extension(eforge) {
+  eforge.registerAgentTask({
+    id: 'planning-draft',
+    title: 'Planning draft',
+    inputSchema: EforgePlanPlanningDraftInputSchema,
+    outputSchema: EforgePlanPlanningDraftResultSchema,
+    prompt: { kind: 'asset', asset: 'prompts/planning.md' },
+    resolvePrompt(ctx) {
+      let submitted;
+      const submitTool = ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result';
+      const progressTool = ctx.effectiveCustomToolName?.('report_eforge_plan_planning_progress') ?? 'report_eforge_plan_planning_progress';
+      return {
+        variables: { topic: ctx.input.topic, sourceText: ctx.input.sourceText ?? '(none)', submitTool, ...Object.fromEntries(Object.entries(ctx.input).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])) },
+        run: { role: 'planner', tools: [{ name: submitTool, description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input) => { submitted = input; return 'submitted'; } }, { name: progressTool, description: 'progress', inputSchema: { type: 'object', additionalProperties: true }, handler: async (input) => { await ctx.onProgress?.(input); return 'progress'; } }] },
+        getResult: () => submitted,
+        missingResultMessage: 'did not call submit_eforge_plan_planning_result',
+      };
+    },
+  });
+}
+`, 'utf-8');
+}
+
+function planningRegistryForOwner(extensionName: string, extensionPath: string): NativeExtensionRegistry {
+  const owner = { extensionName, extensionPath };
+  return {
+    agentTasks: [{ kind: 'agentTask', ...owner, localId: 'planning-draft', id: `${extensionName}:planning-draft`, value: { id: 'planning-draft', title: 'Planning draft', inputSchema: EforgePlanPlanningDraftInputSchema, outputSchema: EforgePlanPlanningDraftResultSchema, prompt: { kind: 'asset' as const, asset: 'prompts/planning.md' }, resolvePrompt: (ctx: any) => ({ variables: { topic: ctx.input.topic, sourceText: ctx.input.sourceText ?? '(none)' }, run: { role: 'planner', tools: [{ name: ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result', description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input: unknown) => { (ctx as any).submitted = input; return 'submitted'; } }] }, getResult: () => (ctx as any).submitted, missingResultMessage: 'missing result' }) } }],
+    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
+  } as NativeExtensionRegistry;
+}
 
 async function postJson(base: string, path: string, body: unknown): Promise<Response> {
   return fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });

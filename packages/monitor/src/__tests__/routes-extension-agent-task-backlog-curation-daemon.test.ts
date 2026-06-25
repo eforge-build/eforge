@@ -1,11 +1,17 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
+  BacklogCurationMapReduceFindingSchema,
+  BacklogCurationMapReduceItemPacketSchema,
+  BacklogCurationMapReduceReducerInputSchema,
+  BacklogCurationMapReduceRuntimeIdentitySchema,
+  EforgePlanPlanningDraftInputSchema,
+  EforgePlanPlanningDraftResultSchema,
   type BacklogCurationMapReduceItemPacket,
   type BacklogCurationMapReduceSourceBundle,
   type EforgeEvent,
@@ -21,6 +27,10 @@ const SOURCE_FINGERPRINT = '3'.repeat(64);
 const BODY_SHA = '4'.repeat(64);
 const RAW_GIT_DELTA_SENTINEL = 'RAW_GIT_DELTA_SENTINEL_DO_NOT_PROMPT';
 const RAW_FULL_AUDIT_SENTINEL = 'RAW_FULL_IMPLEMENTATION_AUDIT_SENTINEL_DO_NOT_PROMPT';
+const RAW_ITEM_BODY_SENTINEL = 'RAW_ITEM_BODY_SENTINEL_DO_NOT_PROMPT';
+const TypeBoxKind = Symbol.for('TypeBox.Kind');
+const StringSchema = { type: 'string', [TypeBoxKind]: 'String' } as never;
+const EmptyObjectSchema = { type: 'object', additionalProperties: true, properties: {}, [TypeBoxKind]: 'Object' } as never;
 
 const packets: BacklogCurationMapReduceItemPacket[] = ['item-1', 'item-2'].map((itemId) => ({
   schemaVersion: 1,
@@ -83,11 +93,13 @@ describe('extension agent task backlog curation daemon map/reduce', () => {
   it('uses compact map/reduce prompts instead of large deferred legacy source text', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-curation-daemon-'));
     const extensionRoot = join(cwd, '.eforge', 'extensions', 'eforge-plan');
-    await mkdir(extensionRoot, { recursive: true });
+    await mkdir(join(extensionRoot, 'prompts'), { recursive: true });
+    await copyPromptAssets(extensionRoot);
     const legacySourceText = JSON.stringify({
       sourceFingerprint: SOURCE_FINGERPRINT,
       gitDelta: `${RAW_GIT_DELTA_SENTINEL}:${'g'.repeat(120_000)}`,
       fullImplementationAudit: `${RAW_FULL_AUDIT_SENTINEL}:${'a'.repeat(120_000)}`,
+      items: packets.map((packet) => ({ id: packet.itemId, body: `${RAW_ITEM_BODY_SENTINEL}:${packet.itemId}:${'b'.repeat(120_000)}` })),
     });
     await writeFile(join(extensionRoot, 'source-provider.mjs'), `
       export function buildSource() { return { sourceText: ${JSON.stringify(legacySourceText)}, backlogCurationMapReduce: ${JSON.stringify(bundle)} }; }
@@ -100,7 +112,7 @@ describe('extension agent task backlog curation daemon map/reduce', () => {
       const service = new ExtensionAgentTaskService(context);
       const started = await service.start(
         { kind: 'eforge-plan.planning-draft', input: { topic: 'Analyze all backlog', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource' } } },
-        { owner: { extensionName: 'eforge-plan', extensionPath: extensionRoot } },
+        { owner: { extensionName: 'eforge-plan', extensionPath: extensionRoot }, registry: registryForExtensionRoot(extensionRoot) as never },
       );
       const completed = await waitForCompletedTask(service, started.task.taskId);
 
@@ -111,6 +123,7 @@ describe('extension agent task backlog curation daemon map/reduce', () => {
       for (const prompt of harness.prompts) {
         expect(prompt).not.toContain(RAW_GIT_DELTA_SENTINEL);
         expect(prompt).not.toContain(RAW_FULL_AUDIT_SENTINEL);
+        expect(prompt).not.toContain(RAW_ITEM_BODY_SENTINEL);
         expect(prompt).not.toContain(legacySourceText);
       }
       expect(Buffer.byteLength(harness.reducerPrompts[0] ?? '', 'utf-8')).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES * 2);
@@ -120,6 +133,77 @@ describe('extension agent task backlog curation daemon map/reduce', () => {
     }
   });
 });
+
+async function copyPromptAssets(extensionRoot: string): Promise<void> {
+  for (const name of ['eforge-plan-planning-draft.md', 'eforge-plan-backlog-curation-item-audit.md', 'eforge-plan-backlog-curation-reducer.md']) {
+    const source = await readFile(join(process.cwd(), 'eforge/extensions/eforge-plan/prompts', name), 'utf-8');
+    await writeFile(join(extensionRoot, 'prompts', name), source);
+  }
+}
+
+function registryForExtensionRoot(extensionRoot: string) {
+  const owner = { extensionName: 'eforge-plan', extensionPath: extensionRoot };
+  const tool = (name: string, schema: object) => ({ name, description: name, inputSchema: schema, handler: async () => 'submitted' });
+  const itemTask = {
+    kind: 'agentTask' as const,
+    ...owner,
+    localId: 'backlog-item-audit',
+    id: 'eforge-plan:backlog-item-audit',
+    value: {
+      id: 'backlog-item-audit',
+      title: 'Backlog item audit',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['packet'], properties: { packet: BacklogCurationMapReduceItemPacketSchema, runtimeIdentity: BacklogCurationMapReduceRuntimeIdentitySchema, promptVersion: StringSchema }, [TypeBoxKind]: 'Object' } as never,
+      outputSchema: BacklogCurationMapReduceFindingSchema,
+      prompt: { kind: 'asset' as const, asset: 'prompts/eforge-plan-backlog-curation-item-audit.md' },
+      resolvePrompt(ctx: { input: { packet: BacklogCurationMapReduceItemPacket; runtimeIdentity?: unknown; promptVersion?: string }; effectiveCustomToolName?: (name: string) => string }) {
+        let submitted: unknown;
+        return {
+          variables: { itemId: ctx.input.packet.itemId, sourceFingerprint: ctx.input.packet.sourceFingerprint, packetSha256: sha256Json(ctx.input.packet), promptVersion: ctx.input.promptVersion ?? BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION, runtimeIdentityJson: JSON.stringify(ctx.input.runtimeIdentity ?? null), runtimeIdentityInstruction: 'Runtime identity is server-owned; do not submit this field.', packetJson: JSON.stringify(ctx.input.packet, null, 2), submitTool: ctx.effectiveCustomToolName?.('submit_eforge_plan_backlog_item_finding') ?? 'submit_eforge_plan_backlog_item_finding', progressTool: 'report_eforge_plan_planning_progress' },
+          run: { role: 'planner', toolsPreset: 'read-only', tools: [{ ...tool('submit_eforge_plan_backlog_item_finding', BacklogCurationMapReduceFindingSchema), handler: async (input: unknown) => { submitted = input; return 'submitted'; } }, tool('report_eforge_plan_planning_progress', EmptyObjectSchema)] },
+          getResult: () => submitted,
+          missingResultMessage: 'missing item finding',
+        };
+      },
+    },
+  };
+  const planningTask = {
+    kind: 'agentTask' as const,
+    ...owner,
+    localId: 'planning-draft',
+    id: 'eforge-plan:planning-draft',
+    value: {
+      id: 'planning-draft',
+      title: 'Planning draft',
+      inputSchema: EforgePlanPlanningDraftInputSchema,
+      outputSchema: EforgePlanPlanningDraftResultSchema,
+      prompt: { kind: 'asset' as const, asset: 'prompts/eforge-plan-planning-draft.md' },
+      resolvePrompt: () => ({ variables: {}, run: { role: 'planner', toolsPreset: 'read-only', tools: [] }, missingResultMessage: 'missing planning result' }),
+    },
+  };
+  const reducerTask = {
+    kind: 'agentTask' as const,
+    ...owner,
+    localId: 'backlog-reducer',
+    id: 'eforge-plan:backlog-reducer',
+    value: {
+      id: 'backlog-reducer',
+      title: 'Backlog reducer',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['reducerInput'], properties: { reducerInput: BacklogCurationMapReduceReducerInputSchema, requestedOutputSections: { type: 'array', items: StringSchema, [TypeBoxKind]: 'Array' }, validationErrors: { type: 'array', items: StringSchema, [TypeBoxKind]: 'Array' } }, [TypeBoxKind]: 'Object' } as never,
+      outputSchema: EforgePlanPlanningDraftResultSchema,
+      prompt: { kind: 'asset' as const, asset: 'prompts/eforge-plan-backlog-curation-reducer.md' },
+      resolvePrompt(ctx: { input: { reducerInput: unknown; requestedOutputSections?: string[]; validationErrors?: string[] }; effectiveCustomToolName?: (name: string) => string }) {
+        let submitted: unknown;
+        return {
+          variables: { reducerInputJson: JSON.stringify(ctx.input.reducerInput, null, 2), requestedOutputSections: ctx.input.requestedOutputSections?.join(', ') ?? 'backlogCurationDraft, recommendations', validationErrors: JSON.stringify(ctx.input.validationErrors ?? []), submitTool: ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result', progressTool: 'report_eforge_plan_planning_progress', resultSchema: 'type: object' },
+          run: { role: 'planner', toolsPreset: 'none', tools: [{ ...tool('submit_eforge_plan_planning_result', EforgePlanPlanningDraftResultSchema), handler: async (input: unknown) => { submitted = input; return 'submitted'; } }, tool('report_eforge_plan_planning_progress', EmptyObjectSchema)] },
+          getResult: () => submitted,
+          missingResultMessage: 'missing reducer result',
+        };
+      },
+    },
+  };
+  return { agentTasks: [planningTask, itemTask, reducerTask], actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [] };
+}
 
 class DaemonMapReduceHarness implements AgentHarness {
   readonly prompts: string[] = [];
@@ -149,6 +233,9 @@ class DaemonMapReduceHarness implements AgentHarness {
         promptVersion: BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
         runtimeIdentity: { provider: 'stub', modelId: 'stub-model' },
         disposition: 'recheck',
+        verdict: 'still-needed',
+        closureEvidenceRoles: ['supporting'],
+        checkedPaths: [{ path: 'src/item.ts', reason: 'searched current source' }],
         summary: 'No material changes.',
         rationale: 'Compact packet is sufficient.',
         citations: [],

@@ -62,16 +62,16 @@ describe('recommendation refresh action', () => {
   it('starts a recommendation-only planning task with bounded source context and workflow metadata', async () => {
     await withTempProject(async (cwd) => {
       await seedRecommendationContext(cwd);
-      const starts: Array<{ kind: string; input: Record<string, unknown> }> = [];
+      const starts: Array<{ task?: { id: string }; input: Record<string, unknown> }> = [];
       const result = await refresh(cwd, () => ({
-        async start(request) { starts.push(request as { kind: string; input: Record<string, unknown> }); return { task: task('refresh-one', 'queued') }; },
+        async start(request) { starts.push(request as { task?: { id: string }; input: Record<string, unknown> }); return { task: task('refresh-one', 'queued') }; },
         async get() { throw new Error('no active task should exist before first refresh'); },
         async cancel() { throw new Error('unexpected cancel'); },
       }));
 
       expect(result).toMatchObject({ kind: 'success', output: { task: { taskId: 'refresh-one', status: 'queued' } } });
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ kind: 'eforge-plan.planning-draft', input: expect.objectContaining({ requestedOutputSections: ['recommendations'] }) });
+      expect(starts[0]).toMatchObject({ task: { id: 'recommendation-refresh' }, input: expect.objectContaining({ requestedOutputSections: ['recommendations'] }) });
       const input = starts[0]!.input;
       expect(input.includeRoadmap).toBe(true);
       const sourceText = String(input.sourceText);

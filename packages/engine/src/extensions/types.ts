@@ -17,6 +17,7 @@ import type {
   ExtensionActionSideEffect,
   ExtensionAgentTaskCancelResponse,
   ExtensionAgentTaskGetResponse,
+  ExtensionAgentTaskPromptSourceManifest,
   ExtensionAgentTaskStartRequest,
   ExtensionAgentTaskStartResponse,
   ExtensionJsonValue,
@@ -107,12 +108,29 @@ export interface ReviewerPerspectiveSpec { key: string; label: string; descripti
 export interface ValidationProviderSpec { name: string; description: string; validate?: ExtensionHandler; commands?: string[] }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
+export type AgentTaskPromptSourceSpec = ExtensionAgentTaskPromptSourceManifest;
+export interface AgentTaskRegistrationSpec {
+  id: string;
+  title: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  prompt: AgentTaskPromptSourceSpec;
+  requirements?: NativeExtensionContributionRequirements;
+  availability?: NativeExtensionContributionAvailability;
+  tools?: ExtensionTool[];
+  resolvePrompt?: ExtensionHandler;
+}
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 
 // --- eforge:region extension-agent-task-context ---
+type ExtensionAgentTaskStartRequestWithoutRequester = ExtensionAgentTaskStartRequest extends infer T
+  ? T extends unknown ? Omit<T, 'requestedBy'> : never
+  : never;
+
 export interface ExtensionAgentTasksApiShape {
-  start(request: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>): Promise<ExtensionAgentTaskStartResponse>;
+  start(request: ExtensionAgentTaskStartRequestWithoutRequester): Promise<ExtensionAgentTaskStartResponse>;
   get(taskId: string): Promise<ExtensionAgentTaskGetResponse>;
   cancel(taskId: string, reason?: string): Promise<ExtensionAgentTaskCancelResponse>;
 }
@@ -192,6 +210,7 @@ export interface EforgeExtensionAPIShape {
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
   registerValidationProvider(spec: ValidationProviderSpec): void;
   registerTool(tool: ExtensionTool): void;
+  registerAgentTask(task: AgentTaskRegistrationSpec): void;
   registerAction(action: ExtensionActionSpec): void;
   registerConsoleContribution(contribution: ConsoleContributionSpec): void;
   registerConsoleWorkstation(workstation: ConsoleWorkstationSpec): void;
@@ -321,6 +340,7 @@ export type ToolRegistration = BaseExtensionRegistration<'tool', ExtensionTool> 
 export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', PrdEnricherSpec> & { name: string };
 
 export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
+export type AgentTaskRegistration = BaseExtensionRegistration<'agentTask', AgentTaskRegistrationSpec> & { localId: string; id: string };
 export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
 export type ConsoleWorkstationRegistration = BaseExtensionRegistration<'consoleWorkstation', ConsoleWorkstationSpec> & { localId: string; id: string };
 export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
@@ -337,6 +357,7 @@ export interface NativeExtensionRecorderState {
   tools: ToolRegistration[];
   prdEnrichers: PrdEnricherRegistration[];
   actions: ActionRegistration[];
+  agentTasks: AgentTaskRegistration[];
   consoleContributions: ConsoleContributionRegistration[];
   consoleWorkstations: ConsoleWorkstationRegistration[];
   integrationCommands: IntegrationCommandRegistration[];
@@ -369,6 +390,7 @@ export interface LoadedNativeExtension {
     tools: number;
     prdEnrichers: number;
     actions: number;
+    agentTasks: number;
     consoleContributions: number;
     consoleWorkstations: number;
     integrationCommands: number;

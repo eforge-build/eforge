@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { ExtensionJsonObjectSchema } from './extension-contributions.js';
 import {
   EforgePlanPlanningBacklogCurationDraftSchema,
 } from './extension-agent-tasks/backlog-curation.js';
@@ -13,22 +14,10 @@ export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan
 
 export const ExtensionAgentTaskKindSchema = Type.Literal(EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT);
 
-export const ExtensionAgentTaskStatusSchema = Type.Union([
-  Type.Literal('queued'),
-  Type.Literal('running'),
-  Type.Literal('completed'),
-  Type.Literal('failed'),
-  Type.Literal('cancelled'),
-]);
+export const ExtensionAgentTaskStatusSchema = Type.Union([Type.Literal('queued'), Type.Literal('running'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]);
 
 export const ExtensionAgentTaskRequestedBySchema = Type.Object({
-  host: Type.Union([
-    Type.Literal('console'),
-    Type.Literal('pi'),
-    Type.Literal('claude'),
-    Type.Literal('mcp'),
-    Type.Literal('cli'),
-  ]),
+  host: Type.Union([Type.Literal('console'), Type.Literal('pi'), Type.Literal('claude'), Type.Literal('mcp'), Type.Literal('cli')]),
   surface: Type.Optional(Type.String()),
   sessionId: Type.Optional(Type.String()),
 }, { additionalProperties: false });
@@ -51,7 +40,12 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
 ]);
 
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
+export const EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN = '^(?:[A-Za-z0-9._:-]{1,128}|(?=.{1,256}$)(?!.*[/\\\\\\u0000-\\u001F\\u007F-\\u009F])(?!(?:\\.|\\.\\.):).+:[a-z][a-z0-9-]{0,63})$' as const;
 export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: EXTENSION_AGENT_TASK_ID_PATTERN });
+export const ExtensionAgentTaskContributionRefSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 256, pattern: EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN }),
+  extensionName: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })),
+}, { additionalProperties: false });
 export const EforgePlanPlanningTopicSchema = Type.String({ minLength: 1, pattern: '\\S' });
 
 export const EforgePlanPlanningSourceProviderSchema = Type.Object({
@@ -61,21 +55,9 @@ export const EforgePlanPlanningSourceProviderSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region session-plan-creation-readiness ---
-export const EforgePlanPlanningTypeSchema = Type.Union([
-  Type.Literal('bugfix'),
-  Type.Literal('feature'),
-  Type.Literal('refactor'),
-  Type.Literal('architecture'),
-  Type.Literal('docs'),
-  Type.Literal('maintenance'),
-  Type.Literal('unknown'),
-]);
+export const EforgePlanPlanningTypeSchema = Type.Union([Type.Literal('bugfix'), Type.Literal('feature'), Type.Literal('refactor'), Type.Literal('architecture'), Type.Literal('docs'), Type.Literal('maintenance'), Type.Literal('unknown')]);
 
-export const EforgePlanPlanningDepthSchema = Type.Union([
-  Type.Literal('quick'),
-  Type.Literal('focused'),
-  Type.Literal('deep'),
-]);
+export const EforgePlanPlanningDepthSchema = Type.Union([Type.Literal('quick'), Type.Literal('focused'), Type.Literal('deep')]);
 
 export const EforgePlanPlanningCreationDraftDimensionIdSchema = Type.String({
   minLength: 1,
@@ -172,10 +154,7 @@ export const EforgePlanPlanningClarificationQuestionSchema = Type.Object({
   options: Type.Optional(Type.Array(Type.String())),
 }, { additionalProperties: false });
 
-export const EforgePlanPlanningDecisionSchema = Type.Union([
-  Type.Literal('ready'),
-  Type.Literal('needs-input'),
-]);
+export const EforgePlanPlanningDecisionSchema = Type.Union([Type.Literal('ready'), Type.Literal('needs-input')]);
 
 export const SECTION_PROGRESS_MAX_STRING_LENGTH = 500 as const;
 export const SECTION_PROGRESS_MAX_ITEMS = 50 as const;
@@ -363,11 +342,22 @@ const EforgePlanPlanningStoredDraftResultSchema = Type.Union([
   EforgePlanPlanningLegacyCreationDraftRecordResultSchema,
 ]);
 
-export const ExtensionAgentTaskStartRequestSchema = Type.Object({
+export const ExtensionAgentTaskLegacyStartRequestSchema = Type.Object({
   kind: ExtensionAgentTaskKindSchema,
   input: EforgePlanPlanningDraftInputSchema,
   requestedBy: Type.Optional(ExtensionAgentTaskRequestedBySchema),
 }, { additionalProperties: false });
+
+export const ExtensionAgentTaskContributionStartRequestSchema = Type.Object({
+  task: ExtensionAgentTaskContributionRefSchema,
+  input: ExtensionJsonObjectSchema,
+  requestedBy: Type.Optional(ExtensionAgentTaskRequestedBySchema),
+}, { additionalProperties: false });
+
+export const ExtensionAgentTaskStartRequestSchema = Type.Union([
+  ExtensionAgentTaskContributionStartRequestSchema,
+  ExtensionAgentTaskLegacyStartRequestSchema,
+]);
 
 export const ExtensionAgentTaskGetRequestSchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,
@@ -380,14 +370,7 @@ export const ExtensionAgentTaskCancelRequestSchema = Type.Object({
 export const ExtensionAgentTaskBacklogCurationItemProgressSchema = Type.Object({
   itemId: Type.String({ minLength: 1, maxLength: 240 }),
   title: Type.Optional(Type.String({ maxLength: 300 })),
-  status: Type.Union([
-    Type.Literal('pending'),
-    Type.Literal('running'),
-    Type.Literal('cache-hit'),
-    Type.Literal('completed'),
-    Type.Literal('failed'),
-    Type.Literal('cancelled'),
-  ]),
+  status: Type.Union([Type.Literal('pending'), Type.Literal('running'), Type.Literal('cache-hit'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]),
   outcome: Type.Optional(Type.String({ maxLength: 80 })),
   verdict: Type.Optional(Type.String({ maxLength: 80 })),
   summary: Type.Optional(Type.String({ maxLength: 500 })),
@@ -475,6 +458,7 @@ export type ExtensionAgentTaskKind = Static<typeof ExtensionAgentTaskKindSchema>
 export type ExtensionAgentTaskId = Static<typeof ExtensionAgentTaskIdSchema>;
 export type ExtensionAgentTaskStatus = Static<typeof ExtensionAgentTaskStatusSchema>;
 export type ExtensionAgentTaskRequestedBy = Static<typeof ExtensionAgentTaskRequestedBySchema>;
+export type ExtensionAgentTaskContributionRef = Static<typeof ExtensionAgentTaskContributionRefSchema>;
 export type EforgePlanPlanningRequestedOutputSection = Static<typeof EforgePlanPlanningRequestedOutputSectionSchema>;
 export type EforgePlanPlanningDraftInput = Static<typeof EforgePlanPlanningDraftInputSchema>;
 export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDraftSchema>;
@@ -490,6 +474,8 @@ export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanning
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
 export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
+export type ExtensionAgentTaskLegacyStartRequest = Static<typeof ExtensionAgentTaskLegacyStartRequestSchema>;
+export type ExtensionAgentTaskContributionStartRequest = Static<typeof ExtensionAgentTaskContributionStartRequestSchema>;
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;
@@ -500,6 +486,15 @@ export type ExtensionAgentTaskRecord = Static<typeof ExtensionAgentTaskRecordSch
 export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskStartResponseSchema>;
 export type ExtensionAgentTaskGetResponse = Static<typeof ExtensionAgentTaskGetResponseSchema>;
 export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskCancelResponseSchema>;
+
+export function legacyExtensionAgentTaskStartToContributionRef(request: ExtensionAgentTaskLegacyStartRequest): ExtensionAgentTaskContributionStartRequest {
+  const separator = request.kind.indexOf('.');
+  const extensionName = separator > 0 ? request.kind.slice(0, separator) : request.kind;
+  const id = separator > 0 ? request.kind.slice(separator + 1) : request.kind;
+  return { task: { extensionName, id }, input: request.input, ...(request.requestedBy !== undefined && { requestedBy: request.requestedBy }) };
+}
+
+export function normalizeExtensionAgentTaskStartRequest(request: ExtensionAgentTaskStartRequest): ExtensionAgentTaskContributionStartRequest { return 'task' in request ? request : legacyExtensionAgentTaskStartToContributionRef(request); }
 
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
   const candidate = value as Record<string, unknown>;

@@ -3,26 +3,30 @@ import {
   BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
   BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION,
   BACKLOG_CURATION_PACKET_MAX_BYTES,
-  BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
   parseEforgePlanPlanningDraftResult,
   safeParseBacklogCurationMapReduceFinding,
   safeParseBacklogCurationMapReduceReducerInput,
   safeParseBacklogCurationMapReduceSourceBundle,
   safeParseWithSchema,
+  BacklogCurationMapReduceFindingSchema,
   BacklogCurationMapReduceItemPacketSchema,
+  EforgePlanPlanningDraftResultSchema,
   type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceItemOutcome,
   type BacklogCurationMapReduceItemPacket,
   type BacklogCurationMapReduceReducerInput,
   type BacklogCurationMapReduceRuntimeIdentity,
   type BacklogCurationMapReduceSourceBundle,
+  type EforgePlanPlanningDraftInput,
   type EforgePlanPlanningDraftResult,
   type ExtensionAgentTaskBacklogCurationProgress,
-  type ExtensionAgentTaskStartRequest,
 } from '@eforge-build/client';
-import type { AgentHarness, SdkPassthroughConfig } from '@eforge-build/engine/harness';
+import type { AgentHarness, CustomTool, SdkPassthroughConfig } from '@eforge-build/engine/harness';
 import type { ToolbeltSummary } from '@eforge-build/engine/agent-runtime-registry';
-import type { EforgePlanPlanningProgressUpdate } from '@eforge-build/engine/agents/extension-planning-task';
+import type { AgentRole } from '@eforge-build/engine/events';
+import type { AgentTaskRegistration } from '@eforge-build/engine/extensions/index';
+import { runResolvedAgentTask } from '@eforge-build/engine/agents/resolved-agent-task';
+import type { ExtensionAgentTaskOwner } from './agent-task-store.js';
 
 // --- eforge:region backlog-curation-map-reduce-runner ---
 export interface BacklogCurationMapReduceProviderHooks {
@@ -33,14 +37,29 @@ export interface BacklogCurationMapReduceProviderHooks {
   validateBacklogCurationPlanningDraftResult?: (cwd: string, result: EforgePlanPlanningDraftResult, context: { sourceFingerprint: string }) => Promise<string[]> | string[];
 }
 
+export interface BacklogCurationAgentTaskContributionHandle {
+  contribution: AgentTaskRegistration;
+  owner: ExtensionAgentTaskOwner;
+  promptTemplate: string;
+}
+
+export interface EforgePlanPlanningProgressUpdate {
+  currentSection?: string;
+  coveredSections?: string[];
+  remainingSections?: string[];
+  message?: string;
+}
+
 export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughConfig {
   cwd: string;
   taskId: string;
-  input: ExtensionAgentTaskStartRequest['input'];
+  input: EforgePlanPlanningDraftInput;
   harness: AgentHarness;
   sourceBundle: BacklogCurationMapReduceSourceBundle;
   providerHooks: BacklogCurationMapReduceProviderHooks;
   runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity;
+  itemAuditContribution: BacklogCurationAgentTaskContributionHandle;
+  reducerContribution: BacklogCurationAgentTaskContributionHandle;
   itemAuditConcurrency?: number;
   abortController: AbortController;
   progress: (message: string) => Promise<void>;
@@ -230,11 +249,16 @@ async function auditOnePacket(options: BacklogCurationMapReduceRunnerOptions, pa
   const byteLength = Buffer.byteLength(JSON.stringify(parsedPacket.data), 'utf-8');
   if (byteLength > BACKLOG_CURATION_PACKET_MAX_BYTES) return oversizedPacketOutcome(parsedPacket.data, packetSha256, byteLength);
   try {
-    const { runBacklogCurationItemAuditTask } = await import('@eforge-build/engine/agents/backlog-curation-map-reduce');
-    const task = runBacklogCurationItemAuditTask({ ...options, packet, taskId: `${options.taskId}:${packet.itemId}`, phase: 'standalone', stage: 'extension-agent-task:item-audit', onProgress: options.sectionProgress });
-    let next = await task.next();
-    while (!next.done) next = await task.next();
-    const normalizedFinding = isRecord(next.value) ? { ...next.value, runtimeIdentity: options.runtimeIdentity } : next.value;
+    const result = await runRegisteredContributionTask({
+      options,
+      handle: options.itemAuditContribution,
+      input: { packet, runtimeIdentity: options.runtimeIdentity, promptVersion },
+      outputSchema: BacklogCurationMapReduceFindingSchema,
+      promptLabel: `extension agent task ${options.itemAuditContribution.contribution.id}`,
+      taskId: `${options.taskId}:${packet.itemId}`,
+      stage: 'extension-agent-task:item-audit',
+    });
+    const normalizedFinding = isRecord(result) ? { ...result, runtimeIdentity: options.runtimeIdentity } : result;
     const parsedFinding = safeParseBacklogCurationMapReduceFinding(normalizedFinding);
     if (!parsedFinding.success) return invalidFindingOutcome(packet, parsedFinding.error.errors.map((error) => `${error.path}: ${error.message}`));
     const outcome = outcomeFromFinding('audited-finding', parsedFinding.data);
@@ -255,27 +279,38 @@ function buildReducerInput(options: BacklogCurationMapReduceRunnerOptions, bundl
     ?? { ...bundle.reducerInput, outcomes: [...outcomes] };
   const parsed = safeParseBacklogCurationMapReduceReducerInput(reducerInput);
   if (!parsed.success) throw new Error(`Invalid backlog curation reducer input: ${parsed.error.message}`);
-  const bytes = Buffer.byteLength(JSON.stringify(parsed.data), 'utf-8');
-  if (bytes > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) throw new Error(`Backlog curation reducer input is ${bytes} bytes; cap is ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES}.`);
   return parsed.data;
 }
 
 async function runReducer(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput): Promise<EforgePlanPlanningDraftResult> {
-  const { runBacklogCurationReducerTask } = await import('@eforge-build/engine/agents/backlog-curation-map-reduce');
-  const task = runBacklogCurationReducerTask({
-    ...options,
-    reducerInput,
-    requestedOutputSections: options.input.requestedOutputSections,
-    taskId: `${options.taskId}:reducer`,
-    phase: 'standalone',
-    stage: 'extension-agent-task:reducer',
-    onProgress: options.sectionProgress,
-    validateResult: async (result) => validateReducerResult(options, result),
-    repair: { enabled: true },
-  });
-  let next = await task.next();
-  while (!next.done) next = await task.next();
-  return parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(next.value)));
+  const first = await runReducerAttempt(options, reducerInput, undefined, `${options.taskId}:reducer`);
+  if (first.errors.length === 0) return first.result;
+  throwIfAborted(options.abortController.signal);
+  const repairErrors = boundValidationErrors(first.errors);
+  const second = await runReducerAttempt(options, reducerInput, repairErrors, `${options.taskId}:reducer:repair`);
+  if (second.errors.length === 0) return second.result;
+  return boundedNeedsInputPlanningResult([...repairErrors, ...second.errors], 'Reducer repair submission failed validation.');
+}
+
+async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput, validationErrors: string[] | undefined, taskId: string): Promise<{ result: EforgePlanPlanningDraftResult; errors: string[] }> {
+  try {
+    const rawResult = await runRegisteredContributionTask({
+      options,
+      handle: options.reducerContribution,
+      input: { reducerInput, requestedOutputSections: options.input.requestedOutputSections, validationErrors: validationErrors ?? [] },
+      outputSchema: EforgePlanPlanningDraftResultSchema,
+      promptLabel: `extension agent task ${options.reducerContribution.contribution.id}`,
+      taskId,
+      stage: validationErrors === undefined ? 'extension-agent-task:reducer' : 'extension-agent-task:reducer-repair',
+    });
+    const result = parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(rawResult)));
+    const errors = await validateReducerResult(options, result) ?? [];
+    return { result, errors };
+  } catch (err) {
+    if (options.abortController.signal.aborted) throwIfAborted(options.abortController.signal);
+    const message = errorMessage(err);
+    return { result: boundedNeedsInputPlanningResult([message], 'Reducer submission failed validation.'), errors: [message] };
+  }
 }
 
 async function validateReducerResult(options: BacklogCurationMapReduceRunnerOptions, result: EforgePlanPlanningDraftResult): Promise<string[] | undefined> {
@@ -319,6 +354,109 @@ function oversizedPacketOutcome(packet: BacklogCurationMapReduceItemPacket, pack
 
 function cancelledOutcome(packet: BacklogCurationMapReduceItemPacket, packetSha256: string): BacklogCurationMapReduceItemOutcome {
   return { schemaVersion: BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION, outcome: 'cancelled', itemId: packet.itemId, sourceFingerprint: packet.sourceFingerprint, packetSha256, bodySha256: packet.bodySha256, diagnostics: [{ code: 'item-audit-cancelled', severity: 'warning' }], reason: 'Task cancelled' };
+}
+
+async function runRegisteredContributionTask(options: {
+  options: BacklogCurationMapReduceRunnerOptions;
+  handle: BacklogCurationAgentTaskContributionHandle;
+  input: Record<string, unknown>;
+  outputSchema: Parameters<typeof safeParseWithSchema>[0];
+  promptLabel: string;
+  taskId: string;
+  stage: string;
+}): Promise<unknown> {
+  const parsedInput = safeParseWithSchema(options.handle.contribution.value.inputSchema as Parameters<typeof safeParseWithSchema>[0], options.input);
+  if (!parsedInput.success) throw new Error(`Task contribution input failed schema validation: ${parsedInput.error.message}`);
+  const resolved = await resolveRegisteredContributionPrompt(options.handle, parsedInput.data as Record<string, unknown>, {
+    signal: options.options.abortController.signal,
+    effectiveCustomToolName: (name) => options.options.harness.effectiveCustomToolName(name),
+    onProgress: options.options.sectionProgress,
+  });
+  const role = (resolved.run?.role ?? 'planner') as AgentRole;
+  const customTools = (resolved.run?.tools ?? options.handle.contribution.value.tools ?? []).map(toCustomTool);
+  const task = runResolvedAgentTask({
+    ...options.options,
+    promptTemplate: resolved.prompt && resolved.prompt.trim().length > 0 ? resolved.prompt : options.handle.promptTemplate,
+    variables: resolved.variables,
+    promptLabel: options.promptLabel,
+    role,
+    tools: resolved.run?.toolsPreset ?? 'read-only',
+    customTools,
+    abortController: options.options.abortController,
+    taskId: options.taskId,
+    phase: 'standalone',
+    stage: options.stage,
+    getResult: resolved.getResult ?? (() => undefined),
+    missingResultMessage: resolved.missingResultMessage ?? `Task contribution ${options.handle.contribution.id} did not submit a result.`,
+  });
+  let next = await task.next();
+  while (!next.done) next = await task.next();
+  const output = JSON.parse(JSON.stringify(next.value));
+  const parsedOutput = safeParseWithSchema(options.outputSchema, output);
+  if (!parsedOutput.success) throw new Error(`Task contribution output failed schema validation: ${parsedOutput.error.message}`);
+  return parsedOutput.data;
+}
+
+interface ResolvedRegisteredContributionPrompt {
+  prompt?: string;
+  variables?: Record<string, string>;
+  run?: { role?: string; tools?: Array<CustomTool | ExtensionToolLike>; toolsPreset?: 'coding' | 'read-only' | 'none' };
+  getResult?: () => unknown;
+  missingResultMessage?: string;
+}
+
+interface ExtensionToolLike {
+  name: string;
+  description: string;
+  inputSchema: object;
+  handler: (input: unknown) => Promise<string> | string;
+}
+
+async function resolveRegisteredContributionPrompt(
+  handle: BacklogCurationAgentTaskContributionHandle,
+  input: Record<string, unknown>,
+  hooks: { signal: AbortSignal; effectiveCustomToolName: (name: string) => string; onProgress: (update: EforgePlanPlanningProgressUpdate) => void | Promise<void> },
+): Promise<ResolvedRegisteredContributionPrompt> {
+  const resolver = handle.contribution.value.resolvePrompt;
+  if (typeof resolver !== 'function') return { variables: stringifyPromptVariables(input), run: { tools: handle.contribution.value.tools?.map(toCustomTool) } };
+  const raw = await resolver({ input, extensionName: handle.owner.extensionName, extensionPath: handle.owner.extensionPath, signal: hooks.signal, effectiveCustomToolName: hooks.effectiveCustomToolName, onProgress: hooks.onProgress } as never);
+  if (!isRecord(raw)) return { variables: stringifyPromptVariables(input) };
+  return {
+    ...(typeof raw.prompt === 'string' && { prompt: raw.prompt }),
+    variables: isStringRecord(raw.variables) ? raw.variables : stringifyPromptVariables(input),
+    ...(isRecord(raw.run) && { run: raw.run as ResolvedRegisteredContributionPrompt['run'] }),
+    ...(typeof raw.getResult === 'function' && { getResult: raw.getResult as () => unknown }),
+    ...(typeof raw.missingResultMessage === 'string' && { missingResultMessage: raw.missingResultMessage }),
+  };
+}
+
+function toCustomTool(tool: unknown): CustomTool {
+  const candidate = tool as ExtensionToolLike;
+  return { name: candidate.name, description: candidate.description, inputSchema: candidate.inputSchema as CustomTool['inputSchema'], handler: async (input: unknown) => String(await candidate.handler(input)) };
+}
+
+function stringifyPromptVariables(input: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === 'string');
+}
+
+function boundedNeedsInputPlanningResult(errors: string[], rationale: string): EforgePlanPlanningDraftResult {
+  const boundedErrors = boundValidationErrors(errors);
+  return {
+    summary: 'Backlog curation reducer needs input before a safe draft can be produced.',
+    assumptionsOpenQuestions: boundedErrors,
+    decision: 'needs-input',
+    clarificationQuestions: [{ question: 'Review the backlog curation reducer validation errors and decide how to proceed.', why: boundedErrors[0] ?? 'The reducer could not produce a valid planning result after one repair attempt.' }],
+    rationale: `${rationale} ${boundedErrors[0] ?? 'No accepted reducer submission was produced.'}`,
+  };
+}
+
+function boundValidationErrors(errors: string[], maxErrors = 12, maxBytes = 2_000): string[] {
+  const bounded = errors.slice(0, maxErrors).map((error) => error.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, Math.max(80, Math.floor(maxBytes / Math.max(1, Math.min(errors.length, maxErrors))))));
+  return bounded.length > 0 ? bounded : ['Reducer did not produce an accepted planning result.'];
 }
 
 function itemAuditConcurrency(value: unknown): number {

@@ -22,6 +22,10 @@ import type { ExtensionAgentTaskService } from './agent-task-service.js';
 import { isHttpRouteError } from '../../http/route-errors.js';
 import { prepareEnqueueRequest, markSessionPlanSubmittedAfterEnqueue } from '../enqueue-service.js';
 
+type ExtensionAgentTaskStartRequestWithoutRequester = ExtensionAgentTaskStartRequest extends infer T
+  ? T extends unknown ? Omit<T, 'requestedBy'> : never
+  : never;
+
 export interface LoadedContributionRuntime {
   config: { extensions: unknown };
   configDir: string;
@@ -87,7 +91,7 @@ export async function invokeExtensionAction(
       // --- eforge:region extension-agent-task-context ---
       ...(agentTaskService !== undefined && {
         agentTasks: (extension: { extensionName: string; extensionPath: string }) => ({
-          start: (taskRequest: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>) => agentTaskService.start({ ...taskRequest, requestedBy: request.requestedBy }, { owner: extension, requestedBy: request.requestedBy }),
+          start: (taskRequest: ExtensionAgentTaskStartRequestWithoutRequester) => agentTaskService.start({ ...taskRequest, requestedBy: request.requestedBy } as ExtensionAgentTaskStartRequest, { owner: extension, requestedBy: request.requestedBy, registry: runtime.registry as never }),
           get: (taskId: string) => agentTaskService.get(taskId, extension),
           cancel: (taskId: string, reason?: string) => agentTaskService.cancel(taskId, reason, extension),
         }),

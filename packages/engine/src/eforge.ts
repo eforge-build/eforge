@@ -211,7 +211,7 @@ export class EforgeEngine {
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
     this.extensionRegistry = extensionRegistry ?? {
-      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], actions: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [],
+      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], actions: [], agentTasks: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [],
     };
     this.extensionDiagnostics = extensionDiagnostics;
     this.profileUsageProvider = options.profileUsageProvider;

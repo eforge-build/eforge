@@ -149,6 +149,7 @@ describe('plan revision annotations', () => {
       const annotationId = (created.annotations as Array<{ annotationId: string }>)[0].annotationId;
       const output = await dispatch(cwd, 'start-plan-revision-turn', { session: 'open-only', includeOpenAnnotations: true }, tasks, starts);
       expect(output.turn).toMatchObject({ userMessage: 'Revise from 1 plan annotation.', annotationSnapshot: { selectedAnnotationIds: [], openAnnotationIds: [annotationId], annotations: [{ annotationId, snapshotReason: 'open' }] } });
+      expect(starts[0]).toMatchObject({ task: { id: 'plan-revision' } });
       const source = JSON.parse(String((starts[0] as { input: { sourceText: string } }).input.sourceText));
       expect(source.context).toMatchObject({ userMessage: 'Revise from 1 plan annotation.', annotationSnapshot: { includeOpenAnnotations: true, openAnnotationIds: [annotationId] } });
     });
@@ -167,6 +168,7 @@ describe('plan revision annotations', () => {
       const start = await dispatch(cwd, 'start-plan-revision-turn', { session: 'annotated', annotationIds: [annotation.annotationId], includeOpenAnnotations: false, steering: 'Prefer minimal edits.' }, tasks, starts);
       const turn = start.turn as { taskId: string; turnId: string; basePlanFingerprint: string; annotationSnapshot: { annotations: Array<{ annotationId: string; body?: string }> } };
       expect(turn.annotationSnapshot.annotations).toMatchObject([{ annotationId: annotation.annotationId, body: 'Fix this scope now.' }]);
+      expect(starts[0]).toMatchObject({ task: { id: 'plan-revision' } });
       const source = JSON.parse(String((starts[0] as { input: { sourceText: string } }).input.sourceText));
       expect(source.context.annotationSnapshot).toMatchObject({ steering: 'Prefer minimal edits.', annotations: [expect.objectContaining({ target: expect.objectContaining({ kind: 'selection', dimension: 'scope', quoteContext: expect.objectContaining({ exact: 'Existing scope.' }) }) })] });
       await dispatch(cwd, 'update-plan-revision-annotation', { session: 'annotated', annotationId: annotation.annotationId, body: 'Edited after start.' }, tasks);
