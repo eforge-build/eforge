@@ -4,6 +4,8 @@ import { relative } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { EforgePlanStore, JsonObject, JsonValue, SessionPlanRow, SessionPlanUpsert } from '../sqlite/index.js';
 import { getBacklogItem, getEpic, getSessionPlan, recordLifecycleEvidence, replaceAllSessionPlanEpics, replaceAllSessionPlanItems, upsertQueuePrd, upsertSessionPlan } from '../sqlite/index.js';
+import { getDatabase } from '../sqlite/store-internal.js';
+import { isTerminalSessionPlanStatus } from '../planning-state-policy.js';
 import { markCanonicalSearchDirty } from './search-dirty.js';
 import { canonicalNowIso, canonicalSha256, withCanonicalTransaction } from './store.js';
 
@@ -42,6 +44,8 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
   const fm = { ...(existing?.frontmatter ?? {}), ...parsed.frontmatter, ...(input.frontmatter ?? {}) } as JsonObject;
   const source = sourceRefs(fm, input);
   const now = canonicalNowIso();
+  const artifactBodyHash = content ? canonicalSha256(content) : existing?.artifactBodyHash;
+  const readinessSummary = input.readinessSummary ?? (artifactBodyHash === existing?.artifactBodyHash ? existing?.readinessSummary : undefined);
   const row = upsertSessionPlan(store, {
     session: input.session,
     path: input.path ? relative(cwd, input.path) : existing?.path,
@@ -56,13 +60,17 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
     createdAt: input.createdAt ?? existing?.createdAt ?? now,
     updatedAt: input.updatedAt ?? now,
     summaryText: input.summaryText ?? existing?.summaryText,
-    artifactBodyHash: content ? canonicalSha256(parsed.body) : existing?.artifactBodyHash,
-    readinessSummary: input.readinessSummary ?? existing?.readinessSummary,
+    artifactBodyHash,
+    readinessSummary,
     frontmatter: fm,
   } satisfies SessionPlanUpsert);
   replaceSessionPlanLinks(store, { session: input.session, itemIds: source.itemIds, epicIds: source.epicIds, sourceRecommendationRef: source.recommendationRef, sourceTaskId: input.sourceTaskId, provenance: input.provenance ?? 'canonical-sync' });
-  for (const itemId of source.itemIds) {
-    recordLifecycleEvidence(store, { evidenceKey: `planned:${input.session}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, lifecycleState: 'planned', reasonCode: 'planned-session-plan', evidenceKind: 'session-plan', isCurrent: true, isTerminal: false, occurredAt: input.updatedAt ?? now, links: jsonValue({ session: input.session, path: row.path }) });
+  if (isTerminalSessionPlanStatus(row.status)) {
+    markPlannedSessionEvidenceNonCurrent(store, input.session, row.status, input.updatedAt ?? now);
+  } else {
+    for (const itemId of source.itemIds) {
+      recordLifecycleEvidence(store, { evidenceKey: `planned:${input.session}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, lifecycleState: 'planned', reasonCode: 'planned-session-plan', evidenceKind: 'session-plan', status: row.status, isCurrent: true, isTerminal: false, occurredAt: input.updatedAt ?? now, links: jsonValue({ session: input.session, path: row.path, status: row.status }) });
+    }
   }
   markCanonicalSearchDirty(store, [
     { documentType: 'session_plan', documentId: input.session, reason: 'canonical-session-plan-sync' },
@@ -91,6 +99,10 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     { documentType: 'session_plan', documentId: input.session, reason: 'session-plan-submitted' },
     ...(input.itemIds ?? []).map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'session-plan-submitted' })),
   ]);
+}
+
+function markPlannedSessionEvidenceNonCurrent(store: EforgePlanStore, session: string, status: string | undefined, timestamp: string): void {
+  getDatabase(store).prepare(`UPDATE lifecycle_evidence SET is_current = 0, is_terminal = 1, status = COALESCE(?, status), superseded_at = ? WHERE is_current = 1 AND session = ? AND reason_code = 'planned-session-plan'`).run(status ?? null, timestamp, session);
 }
 
 function readContentIfAvailable(path: string | undefined): string | undefined {

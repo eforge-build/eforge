@@ -27,9 +27,10 @@ export interface AssociatedPlanBuildLink {
   metadata?: JsonValue;
 }
 export interface CoverageEntry { itemId: string; reasonCode: LifecycleReasonCode | string; lifecycleState: LifecycleState; associatedLinks: AssociatedPlanBuildLink[]; terminal: boolean }
+export interface PlanEligibilityFields { planEligible: boolean; planEligibilityReasonCode?: LifecycleReasonCode | string; planEligibilityReasonMessage?: string; planEligibilityLinks?: AssociatedPlanBuildLink[] }
 export interface CoverageResult { schemaVersion: 1; ok: boolean; entries: CoverageEntry[]; coveredItemIds: string[] }
 
-export interface CompactItemProjection {
+export interface CompactItemProjection extends PlanEligibilityFields {
   id: string; title: string; status: UserStatus; userStatus: UserStatus; priority: string; tags: string[]; lane: KanbanLane; reasons: string[]; reasonCodes: string[];
   dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean;
   epic?: string; lifecycleState: LifecycleState | 'queue'; effectiveLifecycle: LifecycleState | 'queue'; associatedLinks?: AssociatedPlanBuildLink[]; path?: string; hasBody?: boolean; updatedAt?: string;

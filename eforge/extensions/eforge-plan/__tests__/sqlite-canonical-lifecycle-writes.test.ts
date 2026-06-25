@@ -7,7 +7,8 @@ import { captureCanonicalBacklogItem } from '../canonical/backlog-records.js';
 import { findCanonicalNonterminalCoverage } from '../canonical/coverage.js';
 import { recordCanonicalLifecycleEvent } from '../canonical/lifecycle-records.js';
 import { syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
-import { openEforgePlanStore } from '../sqlite/index.js';
+import { openEforgePlanStore, recordLifecycleEvidence } from '../sqlite/index.js';
+import { withCanonicalTransaction } from '../canonical/store.js';
 
 function tempProject(): string { return mkdtempSync(join(tmpdir(), 'eforge-plan-canonical-lifecycle-')); }
 function raw(cwd: string): DatabaseSync { const store = openEforgePlanStore(cwd); const db = new DatabaseSync(store.path); store.close(); return db; }
@@ -57,7 +58,7 @@ describe('canonical SQLite lifecycle writes', () => {
     expect((db.prepare('SELECT count(*) AS count FROM lifecycle_evidence WHERE source_event_key = ? AND lifecycle_state = ?').get('auto-merge-1', 'shipped') as { count: number }).count).toBe(1);
     expect(db.prepare('SELECT user_status FROM backlog_items WHERE id = ?').get('item-1')).toMatchObject({ user_status: 'shipped' });
     expect(db.prepare('SELECT user_status FROM backlog_items WHERE id = ?').get('item-2')).toMatchObject({ user_status: 'shipped' });
-    expect(findCanonicalNonterminalCoverage(cwd, ['item-1']).ok).toBe(true);
+    expect(findCanonicalNonterminalCoverage(cwd, ['item-1'])).toMatchObject({ ok: false, entries: [expect.objectContaining({ reasonCode: 'shipped-result', lifecycleState: 'shipped' })] });
     db.close();
   });
 
@@ -72,6 +73,19 @@ describe('canonical SQLite lifecycle writes', () => {
     const db = raw(cwd);
     expect((db.prepare('SELECT count(*) AS count FROM lifecycle_evidence WHERE source_event_key = ? AND lifecycle_state = ? AND session = ?').get('session-fail-1', 'failed', 'plan-session-1') as { count: number }).count).toBe(2);
     expect((db.prepare('SELECT count(*) AS count FROM lifecycle_evidence WHERE item_ref IN (?, ?) AND is_current = 1').get('item-1', 'item-2') as { count: number }).count).toBeGreaterThanOrEqual(2);
+    expect(findCanonicalNonterminalCoverage(cwd, ['item-1'])).toMatchObject({ ok: false, entries: expect.arrayContaining([expect.objectContaining({ reasonCode: 'failed-result', lifecycleState: 'failed' })]) });
     db.close();
+  });
+
+  it.each([
+    ['partial', 'partial-plan'],
+    ['merged', 'merged-result'],
+  ])('treats current %s result evidence as canonical coverage', (state, reasonCode) => {
+    const cwd = tempProject();
+    const itemId = `item-${state}`;
+    captureCanonicalBacklogItem(cwd, { id: itemId, title: itemId });
+    withCanonicalTransaction(cwd, (store) => recordLifecycleEvidence(store, { evidenceKey: `manual-${state}`, itemRef: itemId, itemId, lifecycleState: state as never, reasonCode, evidenceKind: 'event', status: state, isCurrent: true, isTerminal: true, occurredAt: '2026-01-01T00:05:00.000Z' }));
+
+    expect(findCanonicalNonterminalCoverage(cwd, [itemId])).toMatchObject({ ok: false, entries: [expect.objectContaining({ reasonCode, lifecycleState: state })] });
   });
 });

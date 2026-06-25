@@ -133,7 +133,7 @@ export const createSessionPlanAction = defineExtensionAction({
       agentProfile: input.agentProfile,
     });
     const readiness = await planning.flat.readiness({ cwd: ctx.cwd, session: result.plan.session });
-    await syncFlatSessionPlan(ctx.cwd, result.plan.session, result.path);
+    await syncFlatSessionPlan(ctx.cwd, result.plan.session, result.path, readiness);
     return toJsonSafeObject({ session: result.plan.session, path: result.path, plan: projectSessionPlan(result.plan), readiness });
   },
 });
@@ -154,7 +154,7 @@ export const setSessionPlanSectionAction = defineExtensionAction({
       content: input.content,
     });
     const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
-    await syncFlatSessionPlan(ctx.cwd, input.session, path);
+    await syncFlatSessionPlan(ctx.cwd, input.session, path, result.readiness);
     return toJsonSafeObject({ session: input.session, path, readiness: result.readiness, plan: projectSessionPlan(result.plan) });
   },
 });
@@ -176,7 +176,7 @@ export const selectSessionPlanDimensions = defineExtensionAction({
       overwrite: input.overwrite,
     });
     const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
-    await syncFlatSessionPlan(ctx.cwd, input.session, path);
+    await syncFlatSessionPlan(ctx.cwd, input.session, path, result.readiness);
     return toJsonSafeObject({
       session: input.session,
       path,
@@ -211,10 +211,11 @@ export const setSessionPlanReady = defineExtensionAction({
     const planning = adapter();
     const readiness = await planning.flat.readiness({ cwd: ctx.cwd, session: input.session });
     if (!readiness.ready) {
+      await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness);
       return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness, message: 'Session plan is not ready; status was left unchanged.' });
     }
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'ready' });
-    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }));
+    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness);
     return toJsonSafeObject({ kind: 'ready', session: input.session, status: result.plan.status, readiness, plan: projectSessionPlan(result.plan) });
   },
 });
@@ -229,7 +230,7 @@ export const deleteSessionPlanAction = defineExtensionAction({
   async handler(input, ctx) {
     const planning = adapter();
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'abandoned' });
-    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }));
+    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), await planning.flat.readiness({ cwd: ctx.cwd, session: input.session }));
     return toJsonSafeObject({
       kind: 'deleted',
       session: input.session,
@@ -257,11 +258,12 @@ export const updateSessionPlanMetadataAction = defineExtensionAction({
     });
     const planning = adapter();
     const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
-    await syncFlatSessionPlan(ctx.cwd, input.session, path);
+    const readiness = await planning.flat.readiness({ cwd: ctx.cwd, session: input.session });
+    await syncFlatSessionPlan(ctx.cwd, input.session, path, readiness);
     return toJsonSafeObject({
       session: input.session,
       path,
-      readiness: await planning.flat.readiness({ cwd: ctx.cwd, session: input.session }),
+      readiness,
       plan: projectSessionPlan(plan),
     });
   },
@@ -337,8 +339,8 @@ export const sessionPlanActions = [
   handoffSessionPlan,
 ] as const;
 
-async function syncFlatSessionPlan(cwd: string, session: string, path: string): Promise<void> {
-  await syncSessionPlanFile(cwd, session, path);
+async function syncFlatSessionPlan(cwd: string, session: string, path: string, readinessSummary?: unknown): Promise<void> {
+  await syncSessionPlanFile(cwd, session, path, readinessSummary === undefined ? {} : { readinessSummary: readinessSummary as never });
 }
 
 async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
