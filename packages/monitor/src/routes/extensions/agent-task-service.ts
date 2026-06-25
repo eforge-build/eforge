@@ -370,6 +370,7 @@ export class ExtensionAgentTaskService {
     await this.updateTaskRecord({
       taskId,
       allowedStatuses: ['running'],
+      activityMessage: message,
       update: (current, now) => ({ ...current, updatedAt: now, metadata: { ...current.metadata, progressMessage: message } }),
       emit: (updated) => emitAgentTaskProgress(this.context, eventBase(updated), message),
     });
@@ -399,6 +400,7 @@ export class ExtensionAgentTaskService {
     await this.updateTaskRecord({
       taskId,
       allowedStatuses: ['running'],
+      activityMessage: message,
       update: (latest, now) => {
         const sectionProgress: NonNullable<ExtensionAgentTaskSanitizedMetadata['sectionProgress']> = { ...latest.metadata?.sectionProgress };
         if (update.currentSection !== undefined) sectionProgress.currentSection = update.currentSection;

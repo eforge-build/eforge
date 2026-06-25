@@ -121,6 +121,36 @@ describe('PlanningTaskCard curation behavior', () => {
     expect(screen.queryByText('2 +1 more')).toBeNull();
   });
 
+  it('keeps progress summaries visible with activity history and omits older timeline entries', () => {
+    const item = curationItem('running');
+    item.task!.metadata = {
+      progressMessage: 'Audited 2/4 items',
+      sectionProgress: { currentSection: 'backlogCurationDraft', coveredSections: ['source scan'], remainingSections: ['recommendations'] },
+      backlogCurationProgress: {
+        total: 2,
+        cacheHits: 0,
+        misses: 2,
+        completed: 1,
+        running: 1,
+        remaining: 0,
+        items: [{ itemId: 'item-running', title: 'Running item', status: 'running' }],
+      },
+      activityLog: [
+        { timestamp: '2026-06-07T00:30:01.000Z', message: 'Older activity should stay in drawer timeline only.' },
+        { timestamp: '2026-06-07T00:30:02.000Z', message: 'Newest activity appears compactly.' },
+      ],
+    };
+
+    renderCard(item);
+
+    expect(screen.getByText('Audited 2/4 items')).toBeTruthy();
+    expect(screen.getByText(/Current section:/)).toBeTruthy();
+    expect(screen.getByText('backlogCurationDraft')).toBeTruthy();
+    expect(screen.getByText('Backlog item agents')).toBeTruthy();
+    expect(screen.getByText('Newest activity appears compactly.')).toBeTruthy();
+    expect(screen.queryByText('Older activity should stay in drawer timeline only.')).toBeNull();
+  });
+
   it('shows cancel while running and retry for failed available tasks', () => {
     const { unmount } = renderCard(curationItem('running'));
     expect(screen.getByRole('button', { name: /Cancel/ })).toBeTruthy();
