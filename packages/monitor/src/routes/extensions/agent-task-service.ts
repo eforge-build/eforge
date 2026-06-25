@@ -225,6 +225,7 @@ export class ExtensionAgentTaskService {
         ...(sourceProviderItemAuditConcurrency({ kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, input: contribution.originalInput as LegacyExtensionAgentTaskStartRequest['input'] }) !== undefined && { itemAuditConcurrency: sourceProviderItemAuditConcurrency({ kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, input: contribution.originalInput as LegacyExtensionAgentTaskStartRequest['input'] }) }),
         abortController: options.controller,
         progress: (message) => this.updateProgress(options.taskId, message),
+        activity: (message) => this.updateActivity(options.taskId, message),
         backlogCurationProgress: (progress) => this.updateBacklogCurationProgress(options.taskId, progress),
         sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
       });
@@ -297,7 +298,7 @@ export class ExtensionAgentTaskService {
   private async resolveDeferredInput(taskId: string, input: LegacyExtensionAgentTaskStartRequest['input'], owner: ExtensionAgentTaskOwner, controller: AbortController): Promise<ResolvedDeferredSourceInput> {
     const provider = input.sourceProvider;
     if (provider === undefined) return { input };
-    await this.updateProgress(taskId, 'Preparing planner source');
+    await this.updateActivity(taskId, 'Preparing planner source');
     const source = await runDeferredSourceProvider({
       cwd: this.requireCwd(),
       owner,
@@ -310,7 +311,7 @@ export class ExtensionAgentTaskService {
     return { ...source, input: { ...inputWithoutProvider, sourceText: source.sourceText } };
   }
 
-  // --- eforge:region plan-01-activity-contract-daemon-core ---
+  // --- eforge:region extension-agent-task-activity-log ---
   private async complete(taskId: string, result: EforgePlanPlanningDraftResult, startedAtMs: number): Promise<void> {
     const safeResult = parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(result)));
     await this.updateTaskRecord({
@@ -369,7 +370,6 @@ export class ExtensionAgentTaskService {
     await this.updateTaskRecord({
       taskId,
       allowedStatuses: ['running'],
-      activityMessage: message,
       update: (current, now) => ({ ...current, updatedAt: now, metadata: { ...current.metadata, progressMessage: message } }),
       emit: (updated) => emitAgentTaskProgress(this.context, eventBase(updated), message),
     });
@@ -380,7 +380,7 @@ export class ExtensionAgentTaskService {
       taskId,
       allowedStatuses: ['running'],
       activityMessage: message,
-      update: (current, now) => ({ ...current, updatedAt: now, metadata: current.metadata }),
+      update: (current, now) => ({ ...current, updatedAt: now, metadata: { ...current.metadata, progressMessage: message } }),
       emit: (updated) => emitAgentTaskProgress(this.context, eventBase(updated), message),
     });
   }
@@ -389,7 +389,6 @@ export class ExtensionAgentTaskService {
     await this.updateTaskRecord({
       taskId,
       allowedStatuses: ['running'],
-      activityMessage: 'Backlog curation progress updated',
       update: (current, now) => ({ ...current, updatedAt: now, metadata: { ...current.metadata, backlogCurationProgress: progress } }),
       emit: (updated) => emitAgentTaskProgress(this.context, eventBase(updated), updated.metadata?.progressMessage ?? 'Backlog curation progress updated'),
     });
@@ -400,7 +399,6 @@ export class ExtensionAgentTaskService {
     await this.updateTaskRecord({
       taskId,
       allowedStatuses: ['running'],
-      activityMessage: message,
       update: (latest, now) => {
         const sectionProgress: NonNullable<ExtensionAgentTaskSanitizedMetadata['sectionProgress']> = { ...latest.metadata?.sectionProgress };
         if (update.currentSection !== undefined) sectionProgress.currentSection = update.currentSection;
@@ -468,7 +466,7 @@ export class ExtensionAgentTaskService {
     }
     return sanitizeMetadata({ ...metadata, activityLog });
   }
-  // --- eforge:endregion plan-01-activity-contract-daemon-core ---
+  // --- eforge:endregion extension-agent-task-activity-log ---
 
   private async readExisting(taskId: string, owner?: ExtensionAgentTaskOwner): Promise<StoredExtensionAgentTaskRecord> {
     try {

@@ -261,7 +261,7 @@ export function countOutputSections(result: EforgePlanPlanningDraftResult): numb
 }
 
 type DeferredSourceProviderSpec = NonNullable<LegacyExtensionAgentTaskStartRequest['input']['sourceProvider']>;
-// --- eforge:region plan-01-activity-contract-daemon-core ---
+// --- eforge:region extension-agent-task-activity-log ---
 type DeferredSourceProviderContext = {
   cwd: string;
   input: Record<string, unknown>;
@@ -270,7 +270,7 @@ type DeferredSourceProviderContext = {
   activity?: (message: string) => Promise<void> | void;
 };
 type DeferredSourceProviderHandler = (context: DeferredSourceProviderContext) => Promise<unknown> | unknown;
-// --- eforge:endregion plan-01-activity-contract-daemon-core ---
+// --- eforge:endregion extension-agent-task-activity-log ---
 
 export interface ResolvedDeferredSourceInput {
   input: LegacyExtensionAgentTaskStartRequest['input'];

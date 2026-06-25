@@ -124,6 +124,25 @@ describe('backlog curation source', () => {
     });
   });
 
+  it('emits coarse source assembly milestones without source excerpts', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      const milestones: string[] = [];
+
+      await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false, progress: async (message) => { milestones.push(message); } });
+
+      expect(milestones).toEqual(expect.arrayContaining([
+        'Starting backlog curation source assembly',
+        'Reading backlog records',
+        'Scanning git delta',
+        'Classifying evidence',
+        'Running source-first audit',
+        'Preparing map/reduce packets',
+      ]));
+      expect(milestones.indexOf('Reading backlog records')).toBeLessThan(milestones.indexOf('Scanning git delta'));
+    });
+  });
+
   it('attaches full-audit scope, current-state evidence classes, metadata, and fix-forward guidance', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'alpha-crane-parser', status: 'candidate', body: '# Alpha Crane Parser\n' });

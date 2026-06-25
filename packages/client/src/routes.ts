@@ -140,7 +140,7 @@ export type {
 export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
-} from './extension-agent-tasks.js';
+} from './extension-agent-tasks/constants.js';
 
 export type {
   ExtensionAgentTaskActivityEntry,

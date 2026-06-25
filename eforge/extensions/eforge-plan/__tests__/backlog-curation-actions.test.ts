@@ -44,6 +44,30 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
+  it('forwards source-provider progress callbacks while preserving minimal context support', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      const minimal = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {} });
+      const milestones: string[] = [];
+      const activityMilestones: string[] = [];
+
+      await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {}, progress: async (message) => { milestones.push(message); } });
+      await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {}, activity: async (message) => { activityMilestones.push(message); } });
+
+      const expectedMilestones = [
+        'Reading backlog records',
+        'Scanning git delta',
+        'Classifying evidence',
+        'Running source-first audit',
+        'Preparing map/reduce packets',
+        'Finished source metadata preview write',
+      ];
+      expect(minimal.backlogCurationMapReduce.globalContext.itemCount).toBe(1);
+      expect(milestones).toEqual(expect.arrayContaining(expectedMilestones));
+      expect(activityMilestones).toEqual(expect.arrayContaining(expectedMilestones));
+    });
+  });
+
   it('starts a curation planning task with workflow purpose and no build queue side effect', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });

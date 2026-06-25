@@ -60,10 +60,10 @@ export function sanitizeMetadata(metadata: ExtensionAgentTaskSanitizedMetadata |
   if (sectionProgress !== undefined) result.sectionProgress = sectionProgress;
   const backlogCurationProgress = sanitizeBacklogCurationProgress(metadata.backlogCurationProgress);
   if (backlogCurationProgress !== undefined) result.backlogCurationProgress = backlogCurationProgress;
-  // --- eforge:region plan-01-activity-contract-daemon-core ---
+  // --- eforge:region extension-agent-task-activity-log ---
   const activityLog = sanitizeActivityLog(metadata.activityLog);
   if (activityLog !== undefined) result.activityLog = activityLog;
-  // --- eforge:endregion plan-01-activity-contract-daemon-core ---
+  // --- eforge:endregion extension-agent-task-activity-log ---
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -113,7 +113,7 @@ function sanitizeBacklogCurationProgress(progress: ExtensionAgentTaskSanitizedMe
   };
 }
 
-// --- eforge:region plan-01-activity-contract-daemon-core ---
+// --- eforge:region extension-agent-task-activity-log ---
 function sanitizeActivityLog(activityLog: ExtensionAgentTaskSanitizedMetadata['activityLog']): ExtensionAgentTaskSanitizedMetadata['activityLog'] {
   if (!Array.isArray(activityLog)) return undefined;
   const entries = activityLog
@@ -135,7 +135,7 @@ function normalizeActivityTimestamp(timestamp: string): string | undefined {
   const normalized = new Date(time).toISOString();
   return normalized === timestamp ? normalized : undefined;
 }
-// --- eforge:endregion plan-01-activity-contract-daemon-core ---
+// --- eforge:endregion extension-agent-task-activity-log ---
 
 function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
   const metadata = sanitizeMetadata(base.metadata);

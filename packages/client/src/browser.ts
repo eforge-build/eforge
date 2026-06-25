@@ -15,9 +15,11 @@
 export {
   API_ROUTES,
   buildPath,
+} from './routes.js';
+export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
-} from './routes.js';
+} from './extension-agent-tasks/constants.js';
 export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,

@@ -4,10 +4,17 @@ import {
   EforgePlanPlanningBacklogCurationDraftSchema,
 } from './extension-agent-tasks/backlog-curation.js';
 import { EforgePlanPlanningPlanRevisionTurnSchema } from './extension-agent-tasks/plan-revision.js';
+import {
+  ExtensionAgentTaskActivityEntrySchema,
+  ExtensionAgentTaskBacklogCurationProgressSchema,
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  extensionAgentTaskActivityTimestampError,
+} from './extension-agent-tasks/task-metadata.js';
 export * from './extension-agent-tasks/common.js';
 export * from './extension-agent-tasks/backlog-curation.js';
 export * from './extension-agent-tasks/backlog-curation-map-reduce.js';
 export * from './extension-agent-tasks/plan-revision.js';
+export * from './extension-agent-tasks/task-metadata.js';
 import { formatSchemaError, parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
 export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan.planning-draft' as const;
@@ -15,10 +22,6 @@ export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan
 export const ExtensionAgentTaskKindSchema = Type.Literal(EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT);
 
 export const ExtensionAgentTaskStatusSchema = Type.Union([Type.Literal('queued'), Type.Literal('running'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]);
-
-export const EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES = 50 as const; export const EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH = 500 as const;
-const EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$' as const;
-const EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_RE = new RegExp(EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN);
 
 export const ExtensionAgentTaskRequestedBySchema = Type.Object({
   host: Type.Union([Type.Literal('console'), Type.Literal('pi'), Type.Literal('claude'), Type.Literal('mcp'), Type.Literal('cli')]),
@@ -371,29 +374,6 @@ export const ExtensionAgentTaskCancelRequestSchema = Type.Object({
   reason: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
-export const ExtensionAgentTaskBacklogCurationItemProgressSchema = Type.Object({
-  itemId: Type.String({ minLength: 1, maxLength: 240 }),
-  title: Type.Optional(Type.String({ maxLength: 300 })),
-  status: Type.Union([Type.Literal('pending'), Type.Literal('running'), Type.Literal('cache-hit'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]),
-  outcome: Type.Optional(Type.String({ maxLength: 80 })),
-  verdict: Type.Optional(Type.String({ maxLength: 80 })),
-  summary: Type.Optional(Type.String({ maxLength: 500 })),
-  startedAt: Type.Optional(Type.String({ maxLength: 120 })),
-  completedAt: Type.Optional(Type.String({ maxLength: 120 })),
-}, { additionalProperties: false });
-
-export const ExtensionAgentTaskBacklogCurationProgressSchema = Type.Object({
-  total: Type.Integer({ minimum: 0 }),
-  cacheHits: Type.Integer({ minimum: 0 }),
-  misses: Type.Integer({ minimum: 0 }),
-  running: Type.Integer({ minimum: 0 }),
-  completed: Type.Integer({ minimum: 0 }),
-  remaining: Type.Integer({ minimum: 0 }),
-  items: Type.Array(ExtensionAgentTaskBacklogCurationItemProgressSchema, { maxItems: 1_000 }),
-}, { additionalProperties: false });
-
-export const ExtensionAgentTaskActivityEntrySchema = Type.Object({ timestamp: Type.String({ minLength: 1, pattern: EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_PATTERN }), message: Type.String({ minLength: 1, maxLength: EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
-
 export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   label: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
@@ -486,9 +466,6 @@ export type ExtensionAgentTaskContributionStartRequest = Static<typeof Extension
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;
-export type ExtensionAgentTaskBacklogCurationItemProgress = Static<typeof ExtensionAgentTaskBacklogCurationItemProgressSchema>;
-export type ExtensionAgentTaskBacklogCurationProgress = Static<typeof ExtensionAgentTaskBacklogCurationProgressSchema>;
-export type ExtensionAgentTaskActivityEntry = Static<typeof ExtensionAgentTaskActivityEntrySchema>;
 export type ExtensionAgentTaskSanitizedMetadata = Static<typeof ExtensionAgentTaskSanitizedMetadataSchema>;
 export type ExtensionAgentTaskRecord = Static<typeof ExtensionAgentTaskRecordSchema>;
 export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskStartResponseSchema>;
@@ -610,21 +587,6 @@ export function parseExtensionAgentTaskCancelResponse(value: unknown): Extension
   const result = safeParseExtensionAgentTaskCancelResponse(value);
   if (result.success) return result.data;
   throw new Error(formatSchemaError(result.error));
-}
-
-function extensionAgentTaskActivityTimestampError(record: ExtensionAgentTaskRecord, pathPrefix = '') {
-  const entries = record.metadata?.activityLog;
-  const invalidIndex = entries?.findIndex((entry) => !isCanonicalExtensionAgentTaskActivityTimestamp(entry.timestamp)) ?? -1;
-  if (invalidIndex < 0) return undefined;
-  const path = `${pathPrefix}/metadata/activityLog/${invalidIndex}/timestamp`;
-  const message = 'Expected canonical ISO timestamp with millisecond precision';
-  return { message: `${path}: ${message}`, errors: [{ path, message }] };
-}
-
-function isCanonicalExtensionAgentTaskActivityTimestamp(timestamp: string): boolean {
-  if (!EXTENSION_AGENT_TASK_ACTIVITY_TIMESTAMP_RE.test(timestamp)) return false;
-  const parsed = Date.parse(timestamp);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === timestamp;
 }
 
 export function formatExtensionAgentTaskSchemaError(result: SafeParseResult<unknown>): string | undefined {
