@@ -659,7 +659,6 @@ describe('parseEvaluationBlock', () => {
     ]);
   });
 
-  // --- eforge:region plan-04-evaluator-issue-references ---
   it('extracts comma-separated issueIds from evaluator verdict attributes', () => {
     const text = `
 <evaluation>
@@ -697,7 +696,6 @@ describe('parseEvaluationBlock', () => {
     expect(result[0].issueIds).toEqual(['review-r0-code-1']);
     expect(result[1].issueIds).toBeUndefined();
   });
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
 
   it('returns undefined hunk for verdicts without hunk attribute', () => {
     const text = `

@@ -63,12 +63,10 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   shardScope?: ShardScope;
   /** Zero-based review-cycle round for evaluator lifecycle event metadata. */
   round?: number;
-  // --- eforge:region plan-04-evaluator-issue-references ---
   /** Current reviewer issues the evaluator can reference with verdict issueIds. */
   reviewIssues?: ReviewIssue[];
   /** Best-effort review-fixer statuses keyed by reviewer issue ID, when available. */
   reviewIssueReferences?: ReviewFixIssueReference[];
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
 }
 
 /**
@@ -168,7 +166,6 @@ Do NOT run tests — test verification is handled by dedicated test stages in th
 
 Fix any issues that arise from verification. Only proceed to commit when all verification passes.`;
 
-// --- eforge:region plan-04-evaluator-issue-references ---
 function issueReferenceLines(issueId: string, referencesByIssueId: Map<string, ReviewFixIssueReference[]>): string[] {
   const references = referencesByIssueId.get(issueId) ?? [];
   if (references.length === 0) return [];
@@ -212,7 +209,6 @@ export function formatEvaluatorReviewIssueContext(
   }
   return lines.join('\n');
 }
-// --- eforge:endregion plan-04-evaluator-issue-references ---
 
 /**
  * Turn 1: Implement a plan. The agent reads the plan, implements it,
@@ -443,9 +439,7 @@ The previous evaluator run was interrupted before a final verdict submission was
   }
 
   let structuredSubmission: EvaluationSubmission | undefined;
-  // --- eforge:region plan-04-evaluator-issue-references ---
   const reviewerIssueContext = formatEvaluatorReviewIssueContext(options.reviewIssues, options.reviewIssueReferences);
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
   const customTools = options.evaluatorSnapshot
     ? createEvaluationTools(options.evaluatorSnapshot, (submission) => {
       if (structuredSubmission) return false;
@@ -462,9 +456,7 @@ The previous evaluator run was interrupted before a final verdict submission was
     evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
     continuation_context: continuationContextText,
     validation_repair_context: options.validationRepairContext ?? '',
-    // --- eforge:region plan-04-evaluator-issue-references ---
     review_issue_context: reviewerIssueContext,
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     list_files_tool: options.harness.effectiveCustomToolName('list_evaluation_files'),
     get_diff_tool: options.harness.effectiveCustomToolName('get_evaluation_diff'),
     submit_verdicts_tool: options.harness.effectiveCustomToolName('submit_evaluation_verdicts'),

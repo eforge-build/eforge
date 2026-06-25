@@ -164,14 +164,12 @@ async function* runEvaluatorAttempt(
     const validationRepairContext = typeof input.evaluatorOptions.validationRepairContext === 'string'
       ? input.evaluatorOptions.validationRepairContext
       : undefined;
-    // --- eforge:region plan-04-evaluator-issue-references ---
     const reviewIssues = Array.isArray(input.evaluatorOptions.reviewIssues)
       ? input.evaluatorOptions.reviewIssues as ReviewIssue[]
       : undefined;
     const reviewIssueReferences = Array.isArray(input.evaluatorOptions.reviewIssueReferences)
       ? input.evaluatorOptions.reviewIssueReferences as ReviewFixIssueReference[]
       : undefined;
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     const evaluator = builderEvaluate(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
@@ -230,7 +228,6 @@ type BuildStageContextWithEvaluation = BuildStageContext & {
   __plan02LastBuildEvaluation?: LastBuildEvaluation;
 };
 
-// --- eforge:region plan-04-evaluator-issue-references ---
 type BuildStageContextWithReviewFixIssueReferences = BuildStageContext & {
   __plan04ReviewFixIssueReferences?: ReviewFixIssueReference[];
 };
@@ -242,7 +239,6 @@ function setLastReviewFixIssueReferences(ctx: BuildStageContext, references: Rev
 function getLastReviewFixIssueReferences(ctx: BuildStageContext): ReviewFixIssueReference[] | undefined {
   return (ctx as BuildStageContextWithReviewFixIssueReferences).__plan04ReviewFixIssueReferences;
 }
-// --- eforge:endregion plan-04-evaluator-issue-references ---
 
 function setLastBuildEvaluation(ctx: BuildStageContext, evaluation: LastBuildEvaluation): void {
   (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation = evaluation;
@@ -672,9 +668,7 @@ async function* reviewFixStageInner(
   ctx: BuildStageContext,
   options?: { round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
 ): AsyncGenerator<EforgeEvent> {
-  // --- eforge:region plan-04-evaluator-issue-references ---
   setLastReviewFixIssueReferences(ctx, undefined);
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
   if (ctx.reviewIssues.length === 0) return;
 
   // Snapshot HEAD at stage entry — used as baseRef for agent:activity attribution
@@ -707,11 +701,9 @@ async function* reviewFixStageInner(
       reviewFixerPolicy,
       initialInput,
     )) {
-      // --- eforge:region plan-04-evaluator-issue-references ---
       if (event.type === 'plan:build:review:fix:complete') {
         setLastReviewFixIssueReferences(ctx, event.issueReferences);
       }
-      // --- eforge:endregion plan-04-evaluator-issue-references ---
       yield event;
     }
   } catch (err) {

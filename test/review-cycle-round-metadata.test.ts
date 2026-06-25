@@ -162,11 +162,8 @@ describe('review-cycle round lifecycle metadata', () => {
     const emittedIssueIds = reviewCompletes.flatMap((event) => event.issues.map((issue) => issue.issueId));
     expect(emittedIssueIds).toEqual(['review-r0-code-1', 'review-r1-code-1']);
     expect(new Set(emittedIssueIds).size).toBe(emittedIssueIds.length);
-    // --- eforge:region plan-03-review-fixer-references ---
     expect(harness.prompts[1]).toContain('Issue ID: review-r0-code-1');
     expect(harness.prompts[4]).toContain('Issue ID: review-r1-code-1');
-    // --- eforge:endregion plan-03-review-fixer-references ---
-    // --- eforge:region plan-04-evaluator-issue-references ---
     expect(harness.prompts[2]).toContain('Current Reviewer Issue Context');
     expect(harness.prompts[2]).toContain('Issue ID: review-r0-code-1');
     expect(harness.prompts[2]).toContain('File: src/app.ts');
@@ -176,7 +173,6 @@ describe('review-cycle round lifecycle metadata', () => {
     expect(harness.prompts[2]).toContain('Fixer status: addressed — Updated the value.');
     const evaluateCompletes = filterEvents(events, 'plan:build:evaluate:complete');
     expect(evaluateCompletes[0].verdicts).toEqual([{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt', issueIds: ['review-r0-code-1'] }]);
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
   });
 
   it('assigns unique issue IDs to review-cycle synthetic reviewer failures', async () => {

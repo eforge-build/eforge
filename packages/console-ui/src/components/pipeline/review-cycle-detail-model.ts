@@ -22,7 +22,6 @@ export interface ReviewCycleReviewerDetail {
   threadAssociationInferred?: boolean;
 }
 
-// --- eforge:region plan-05-console-linked-traces ---
 export interface ReviewCycleIssueTrace {
   issueId: string;
   reviewer?: {
@@ -35,16 +34,13 @@ export interface ReviewCycleIssueTrace {
   evaluatorVerdicts: EvaluatorVerdict[];
   danglingReferenceSources: Array<'fixer' | 'evaluator'>;
 }
-// --- eforge:endregion plan-05-console-linked-traces ---
 
 export interface ReviewCycleRound {
   round: number;
   roundLabel: string;
   reviewers: ReviewCycleReviewerDetail[];
-  // --- eforge:region plan-05-console-linked-traces ---
   linkedTraces: ReviewCycleIssueTrace[];
   unlinkedFixerReferences: ReviewFixIssueReference[];
-  // --- eforge:endregion plan-05-console-linked-traces ---
   perspectiveErrors: Array<{ perspective: string; error: string }>;
   reviewFix: {
     ran: boolean;
@@ -114,10 +110,8 @@ function makeRound(round: number): RoundBucket {
     round,
     roundLabel: `Round ${round + 1}`,
     reviewers: [],
-    // --- eforge:region plan-05-console-linked-traces ---
     linkedTraces: [],
     unlinkedFixerReferences: [],
-    // --- eforge:endregion plan-05-console-linked-traces ---
     perspectiveErrors: [],
     reviewFix: { ran: false, continuations: [] },
     evaluator: { ran: false, verdicts: [] },
@@ -182,7 +176,6 @@ function matchingThread(threads: AgentThread[], agent: string, bounds: { start: 
   return allowInferredFallback && candidates.length === 1 ? { thread: candidates[0], inferred: true } : undefined;
 }
 
-// --- eforge:region plan-05-console-linked-traces ---
 function validIssueId(value: unknown): value is string {
   return typeof value === 'string' && /\S/.test(value);
 }
@@ -250,7 +243,6 @@ function deriveLinkedTraces(round: RoundBucket) {
   round.reviewers = unlinkedReviewers;
   round.linkedTraces = [...traces.values()];
 }
-// --- eforge:endregion plan-05-console-linked-traces ---
 
 function attachThreads(rounds: RoundBucket[], threads: AgentThread[], inferred: boolean) {
   const allowInferredFallback = inferred && rounds.length === 1;

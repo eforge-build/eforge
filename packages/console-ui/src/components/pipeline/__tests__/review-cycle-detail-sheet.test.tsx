@@ -192,7 +192,6 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.getByText('No unlinked evaluator verdicts were recorded for this round.')).toBeTruthy();
   });
 
-  // --- eforge:region plan-05-console-linked-traces ---
   it('renders linked trace labels and fixer statuses before legacy lane headings', () => {
     const detail: ReviewCycleDetail = {
       planId: 'plan-01',
@@ -272,5 +271,4 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.getByText('Legacy problem.')).toBeTruthy();
     expect(screen.getByText('Legacy verdict')).toBeTruthy();
   });
-  // --- eforge:endregion plan-05-console-linked-traces ---
 });

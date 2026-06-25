@@ -58,7 +58,6 @@ function syntheticPerspectiveErrorIssue(perspective: string, err: unknown): Revi
   };
 }
 
-// --- eforge:region plan-02-reviewer-issue-ids ---
 function assignPerspectiveReviewIssueIds(issues: ReviewIssue[], perspective: string, round: number | undefined): ReviewIssue[] {
   return assignReviewIssueIds(issues, { round, lane: perspective });
 }
@@ -71,7 +70,6 @@ function aggregateIssuesInPerspectiveOrder(
     .filter((entry) => entry.perspective === perspective)
     .flatMap((entry) => entry.issues));
 }
-// --- eforge:endregion plan-02-reviewer-issue-ids ---
 
 /**
  * Compute the changeset metrics used by the auto-threshold parallelization

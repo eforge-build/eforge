@@ -74,7 +74,6 @@ describe('buildReviewCycleDetail', () => {
     expect(detail.rounds[1].evaluator.accepted).toBe(2);
   });
 
-  // --- eforge:region plan-05-console-linked-traces ---
   it('links reviewer issue, fixer reference, and evaluator verdict by issue id', () => {
     const detail = buildReviewCycleDetail([
       stored('review', { type: 'plan:build:review:parallel:perspective:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, perspective: 'code', issues: [issue('src/linked.ts', 'Linked issue', 'review-issue-1')], round: 0 }),
@@ -143,7 +142,6 @@ describe('buildReviewCycleDetail', () => {
     expect(detail.rounds[0].unlinkedFixerReferences[0].note).toBe('No issue id supplied');
     expect(detail.rounds[0].evaluator.verdicts[0].reason).toBe('Legacy verdict');
   });
-  // --- eforge:endregion plan-05-console-linked-traces ---
 
   it('falls back to inferred grouping for legacy events without round metadata', () => {
     const detail = buildReviewCycleDetail([

@@ -217,7 +217,6 @@ describe('runReviewFixer — continuation context rendering', () => {
 // runReviewFixer — issue reference reporting
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-03-review-fixer-references ---
 describe('runReviewFixer — issue reference reporting', () => {
   const ISSUE_REFERENCE_ISSUES: ReviewIssue[] = [
     { issueId: 'review-r0-code-1', severity: 'warning', category: 'bugs', file: 'src/foo.ts', description: 'Fix foo' },
@@ -414,7 +413,6 @@ describe('runReviewFixer — issue reference reporting', () => {
     expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
   });
 });
-// --- eforge:endregion plan-03-review-fixer-references ---
 
 // ---------------------------------------------------------------------------
 // buildReviewFixerContinuationInput — git safety

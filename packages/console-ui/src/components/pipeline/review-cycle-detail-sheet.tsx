@@ -51,7 +51,6 @@ function IssueCard({ issue }: { issue: ReviewIssue }) {
   );
 }
 
-// --- eforge:region plan-05-console-linked-traces ---
 function EvaluatorVerdictCard({ verdict }: { verdict: ReviewCycleRound['evaluator']['verdicts'][number] }) {
   return (
     <div className="rounded border border-border bg-bg-tertiary p-2 space-y-1">
@@ -96,7 +95,6 @@ function TraceCard({ trace, onOpenAgent }: { trace: ReviewCycleIssueTrace; onOpe
     </div>
   );
 }
-// --- eforge:endregion plan-05-console-linked-traces ---
 
 function ReviewerCard({ reviewer, onOpenAgent }: { reviewer: ReviewCycleReviewerDetail; onOpenAgent: (agentId: string) => void }) {
   const label = reviewer.perspective ?? 'single review';
@@ -157,14 +155,12 @@ function RoundCard({ round, onOpenAgent }: { round: ReviewCycleRound; onOpenAgen
   return (
     <div className="rounded border border-border bg-bg-secondary/60 p-3 space-y-3">
       <div className="font-semibold text-sm">{round.roundLabel}</div>
-      {/* --- eforge:region plan-05-console-linked-traces --- */}
       {round.linkedTraces.length > 0 && (
         <div>
           <SectionTitle>Linked issue traces</SectionTitle>
           <div className="space-y-2">{round.linkedTraces.map((trace) => <TraceCard key={trace.issueId} trace={trace} onOpenAgent={onOpenAgent} />)}</div>
         </div>
       )}
-      {/* --- eforge:endregion plan-05-console-linked-traces --- */}
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <SectionTitle>Reviewers</SectionTitle>
@@ -191,11 +187,9 @@ function RoundCard({ round, onOpenAgent }: { round: ReviewCycleRound; onOpenAgen
               {round.reviewFix.continuations.map((continuation, i) => (
                 <div key={i} className="text-10px text-amber-300">Continuation {continuation.attempt}/{continuation.maxContinuations}</div>
               ))}
-              {/* --- eforge:region plan-05-console-linked-traces --- */}
               {round.unlinkedFixerReferences.map((reference, i) => (
                 <div key={i} className="text-10px text-text-dim">Unlinked fixer reference: <span className="font-medium">{reference.status}</span>{reference.note ? ` · ${reference.note}` : ''}</div>
               ))}
-              {/* --- eforge:endregion plan-05-console-linked-traces --- */}
               <ActivityList activity={round.reviewFix.activity} />
             </div>
           ) : <div className="text-10px text-text-dim italic">No review-fixer activity was recorded for this round.</div>}

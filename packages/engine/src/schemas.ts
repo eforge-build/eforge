@@ -162,10 +162,8 @@ export const reviewIssueSchema = Type.Object({
   runtimeFailureKind: Type.Optional(validationRuntimeFailureKindSchema),
 });
 
-// --- eforge:region plan-03-review-fixer-references ---
 export const reviewFixerIssueReferenceSubmissionSchema = Type.Object({ issueReferences: Type.Array(ReviewFixIssueReferenceSchema, { description: 'Best-effort issue-reference statuses submitted by the review-fixer. Unknown but syntactically valid issueId values are preserved.' }) });
 export type ReviewFixerIssueReferenceSubmission = Static<typeof reviewFixerIssueReferenceSubmissionSchema>; export function getReviewFixerIssueReferenceSubmissionSchemaYaml(): string { return getSchemaYaml('review-fixer-issue-reference-submission', reviewFixerIssueReferenceSubmissionSchema); }
-// --- eforge:endregion plan-03-review-fixer-references ---
 
 // ---------------------------------------------------------------------------
 // Clarification schema

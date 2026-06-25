@@ -241,7 +241,6 @@ const VALID_EVALUATION_ISSUE_OUTCOMES = new Set([
   'split_to_followup',
 ]);
 
-// --- eforge:region plan-04-evaluator-issue-references ---
 function parseEvaluationIssueIds(attrs: string): string[] | undefined {
   const issueIdsMatch = attrs.match(/issueIds="([^"]*)"/) ?? attrs.match(/issue-ids="([^"]*)"/);
   if (!issueIdsMatch) return undefined;
@@ -252,7 +251,6 @@ function parseEvaluationIssueIds(attrs: string): string[] | undefined {
     .filter((issueId) => safeParseWithSchema(ReviewIssueIdSchema, issueId).success);
   return issueIds.length > 0 ? issueIds : undefined;
 }
-// --- eforge:endregion plan-04-evaluator-issue-references ---
 
 /**
  * Extract text content of a child element from XML content.
@@ -324,9 +322,7 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         ? rawIssueOutcome as EvaluationVerdict['issueOutcome']
         : undefined;
       const retryGuidanceAttrMatch = attrs.match(/retryGuidance="([^"]+)"/) ?? attrs.match(/retry-guidance="([^"]+)"/);
-      // --- eforge:region plan-04-evaluator-issue-references ---
       const issueIds = parseEvaluationIssueIds(attrs);
-      // --- eforge:endregion plan-04-evaluator-issue-references ---
 
       // Try to extract structured evidence child elements
       const staged = extractChildElement(innerContent, 'staged') ?? extractChildElement(innerContent, 'original');
@@ -381,9 +377,7 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         ...(evidence && { evidence }),
         ...(hunk !== undefined && { hunk }),
         ...(issueOutcome !== undefined && { issueOutcome }),
-        // --- eforge:region plan-04-evaluator-issue-references ---
         ...(issueIds !== undefined && { issueIds }),
-        // --- eforge:endregion plan-04-evaluator-issue-references ---
         ...(retryGuidance !== undefined && retryGuidance.length > 0 && { retryGuidance }),
       });
     }

@@ -90,9 +90,7 @@ export function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {
     reason: v.reason,
     ...(v.hunk !== undefined && { hunk: v.hunk }),
     ...(v.issueOutcome !== undefined && { issueOutcome: v.issueOutcome }),
-    // --- eforge:region plan-04-evaluator-issue-references ---
     ...(v.issueIds !== undefined && { issueIds: v.issueIds }),
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     ...(v.retryGuidance !== undefined && { retryGuidance: v.retryGuidance }),
   }));
 }
@@ -109,9 +107,7 @@ function feedbackItem(verdict: EvaluationVerdict): ReviewCycleFeedbackItem {
     reason: verdict.reason,
     ...(verdict.hunk !== undefined && { hunk: verdict.hunk }),
     ...(verdict.issueOutcome !== undefined && { issueOutcome: verdict.issueOutcome }),
-    // --- eforge:region plan-04-evaluator-issue-references ---
     ...(verdict.issueIds !== undefined && { issueIds: verdict.issueIds }),
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     ...(verdict.retryGuidance !== undefined && { retryGuidance: verdict.retryGuidance }),
   };
 }
@@ -142,8 +138,6 @@ function formatFeedbackLocation(item: ReviewCycleFeedbackItem): string {
 function formatFeedbackLine(item: ReviewCycleFeedbackItem): string {
   const outcome = item.issueOutcome ?? (item.action === 'accept' ? 'resolved' : 'unresolved');
   const guidance = item.retryGuidance ? ` Retry guidance: ${item.retryGuidance}` : '';
-  // --- eforge:region plan-04-evaluator-issue-references ---
   const issueIds = item.issueIds && item.issueIds.length > 0 ? ` Issue IDs: ${item.issueIds.join(', ')}.` : '';
   return `- ${formatFeedbackLocation(item)} — action=${item.action}, issueOutcome=${outcome}.${issueIds} Reason: ${item.reason}${guidance}`;
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
 }

@@ -256,7 +256,6 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
   }
 }
 
-// --- eforge:region plan-02-reviewer-issue-ids ---
 function extractReviewIssueId(attrs: string): string | undefined {
   const issueIdMatch = attrs.match(/issueId="([^"]*)"/);
   const kebabIssueIdMatch = attrs.match(/issue-id="([^"]*)"/);
@@ -270,7 +269,6 @@ function reviewIssueLaneForParseResult(parseResult: ParseReviewIssuesResult): st
 function assignParsedReviewIssueIds(parseResult: ParseReviewIssuesResult, round: number | undefined): ReviewIssue[] {
   return assignReviewIssueIds(parseResult.issues, { round, lane: reviewIssueLaneForParseResult(parseResult) });
 }
-// --- eforge:endregion plan-02-reviewer-issue-ids ---
 
 /**
  * Build a synthetic critical ReviewIssue representing a reviewer contract violation.

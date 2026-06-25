@@ -9,14 +9,12 @@ import { pickSdkOptions, isMaxTurnsError } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import type { ReviewFixerContinuationContext } from '../retry.js';
-// --- eforge:region plan-03-review-fixer-references ---
 import { getReviewFixerIssueReferenceSubmissionSchemaYaml, type ReviewFixerIssueReferenceSubmission } from '../schemas.js';
 import {
   createReviewFixerIssueReferencesTool,
   parseReviewFixerIssueReferencesBlock,
   REVIEW_FIXER_ISSUE_REFERENCES_TOOL_NAME,
 } from './review-fixer-issue-references.js';
-// --- eforge:endregion plan-03-review-fixer-references ---
 
 export interface ReviewFixerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
@@ -179,23 +177,19 @@ export async function* runReviewFixer(
 
   const issuesText = formatIssuesForPrompt(issues);
   const continuationText = renderContinuationContext(continuationContext);
-  // --- eforge:region plan-03-review-fixer-references ---
   let structuredIssueReferenceSubmission: ReviewFixerIssueReferenceSubmission | undefined;
   const customTools = [createReviewFixerIssueReferencesTool((submission) => {
     if (structuredIssueReferenceSubmission) return false;
     structuredIssueReferenceSubmission = submission;
   })];
   const submitIssueReferencesTool = harness.effectiveCustomToolName(REVIEW_FIXER_ISSUE_REFERENCES_TOOL_NAME);
-  // --- eforge:endregion plan-03-review-fixer-references ---
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
     evaluator_feedback_context: evaluatorFeedbackContext ?? '',
     validation_repair_context: validationRepairContext ?? '',
     continuation_context: continuationText,
-    // --- eforge:region plan-03-review-fixer-references ---
     submit_issue_references_tool: submitIssueReferencesTool,
     issue_reference_submission_schema: getReviewFixerIssueReferenceSubmissionSchemaYaml(),
-    // --- eforge:endregion plan-03-review-fixer-references ---
   }, options.promptAppend);
 
   // Bounded buffer of recent agent:message events. Yielded before rethrowing
@@ -211,9 +205,7 @@ export async function* runReviewFixer(
         cwd,
         maxTurns,
         tools: 'coding',
-        // --- eforge:region plan-03-review-fixer-references ---
         customTools,
-        // --- eforge:endregion plan-03-review-fixer-references ---
         abortSignal: abortController?.signal,
         ...pickSdkOptions(options),
       },
@@ -255,10 +247,8 @@ export async function* runReviewFixer(
     // Other fixer failures are non-fatal
   }
 
-  // --- eforge:region plan-03-review-fixer-references ---
   const issueReferences = structuredIssueReferenceSubmission?.issueReferences ?? parseReviewFixerIssueReferencesBlock(fullText);
   const issueReferenceMetadata = issueReferences.length > 0 ? { issueReferences } : {};
-  // --- eforge:endregion plan-03-review-fixer-references ---
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId, ...roundMetadata, ...issueReferenceMetadata };
 }

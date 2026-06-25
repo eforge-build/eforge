@@ -165,7 +165,6 @@ describe('build evaluator enforcement stage', () => {
     });
   });
 
-  // --- eforge:region plan-04-evaluator-issue-references ---
   it('passes reviewer issue IDs to the evaluator prompt and preserves structured verdict references', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src.txt', 'base\n');
@@ -262,7 +261,6 @@ describe('build evaluator enforcement stage', () => {
     expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
     expect(complete?.verdicts).toEqual([{ file: 'src.txt', action: 'accept', reason: 'Correct' }]);
   });
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
 
   it('preserves hunk metadata in completion summaries', async () => {
     const repo = await initRepo(makeTempDir());
@@ -812,16 +810,12 @@ describe('build evaluator enforcement stage', () => {
     const secondFixerPrompt = harness.prompts[4];
     expect(secondReviewerPrompt).toContain('Prior Evaluator Issue Outcomes');
     expect(secondReviewerPrompt).toContain('noisy.txt');
-    // --- eforge:region plan-04-evaluator-issue-references ---
     expect(secondReviewerPrompt).toContain('Issue IDs: review-r0-single-2');
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     expect(secondReviewerPrompt).not.toContain('Retry narrowly by editing only src.txt');
     expect(secondFixerPrompt).toContain('Previous Evaluator Feedback');
     expect(secondFixerPrompt).toContain('Retry narrowly by editing only src.txt; do not touch noisy.txt.');
     expect(secondFixerPrompt).toContain('noisy.txt');
-    // --- eforge:region plan-04-evaluator-issue-references ---
     expect(secondFixerPrompt).toContain('Issue IDs: review-r0-single-1');
-    // --- eforge:endregion plan-04-evaluator-issue-references ---
     expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
   });
 

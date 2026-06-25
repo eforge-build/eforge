@@ -38,7 +38,6 @@ function makeSnapshot(): EvaluationSnapshot {
 }
 
 describe('evaluation custom tools', () => {
-  // --- eforge:region plan-04-evaluator-issue-references ---
   it('accepts structured verdict submissions with multiple reviewer issue IDs', () => {
     const result = safeParseWithSchema(evaluationSubmissionSchema, {
       verdicts: [{
@@ -111,7 +110,6 @@ describe('evaluation custom tools', () => {
       { file: 'src/bar.ts', hunk: 1, action: 'reject', reason: 'Still wrong', issueIds: ['review-r0-code-1'] },
     ] }]);
   });
-  // --- eforge:endregion plan-04-evaluator-issue-references ---
 
   it('lists captured files and returns immutable captured diffs', async () => {
     const snapshot = makeSnapshot();
