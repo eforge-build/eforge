@@ -11,7 +11,6 @@ import {
   planningDraftResultSchemaYaml,
   PLANNING_DRAFT_SUBMIT_TOOL_NAME,
   PLANNING_PROGRESS_TOOL_NAME,
-  type EforgePlanPlanningProgressUpdate,
 } from './planning-agent-tools.js';
 import { backlogCurationAgentTasks } from './backlog-curation-agent-tasks.js';
 
@@ -24,10 +23,7 @@ const PLANNING_PROMPT_ASSET = 'prompts/eforge-plan-planning-draft.md' as const;
 
 type PlanningTaskContribution = ExtensionAgentTaskContribution<typeof EforgePlanPlanningDraftInputSchema, typeof EforgePlanPlanningDraftResultSchema>;
 
-interface PlanningResolverContext extends ExtensionAgentTaskResolverContext<EforgePlanPlanningDraftInput> {
-  effectiveCustomToolName?: (name: string) => string;
-  onProgress?: (update: EforgePlanPlanningProgressUpdate) => void | Promise<void>;
-}
+interface PlanningResolverContext extends ExtensionAgentTaskResolverContext<EforgePlanPlanningDraftInput> {}
 
 export interface ResolvedPlanningAgentTask {
   prompt: string;

@@ -9,27 +9,37 @@ export type ExtensionAgentTaskPromptSource =
   | { kind: 'asset'; asset: string }
   | { kind: 'export'; module: string; exportName?: string };
 
+export interface ExtensionAgentTaskSectionProgressUpdate {
+  currentSection?: string;
+  coveredSections?: string[];
+  remainingSections?: string[];
+  message?: string;
+}
+
 export interface ExtensionAgentTaskResolverContext<TInput = unknown> {
   input: TInput;
   extensionName: string;
   extensionPath: string;
   signal: AbortSignal;
+  effectiveCustomToolName: (name: string) => string;
+  onProgress: (update: ExtensionAgentTaskSectionProgressUpdate) => void | Promise<void>;
 }
 
-export interface ExtensionAgentTaskResolverResult {
-  prompt: string;
-  systemPrompt?: string;
+export interface ExtensionAgentTaskResolverResult<TOutput = unknown> {
+  prompt?: string;
+  variables?: Record<string, string>;
   run?: {
     role?: string;
-    profile?: string;
     tools?: ExtensionAgentTaskCustomTool[];
+    toolsPreset?: 'coding' | 'read-only' | 'none';
   };
-  metadata?: Record<string, unknown>;
+  getResult?: () => TOutput | undefined;
+  missingResultMessage?: string;
 }
 
-export type ExtensionAgentTaskPromptResolver<TInput = unknown> = (
+export type ExtensionAgentTaskPromptResolver<TInput = unknown, TOutput = unknown> = (
   ctx: ExtensionAgentTaskResolverContext<TInput>,
-) => ExtensionAgentTaskResolverResult | Promise<ExtensionAgentTaskResolverResult>;
+) => ExtensionAgentTaskResolverResult<TOutput> | Promise<ExtensionAgentTaskResolverResult<TOutput>>;
 
 export type ExtensionAgentTaskCustomTool = ExtensionTool;
 
@@ -46,7 +56,7 @@ export interface ExtensionAgentTaskContribution<
   requirements?: ExtensionContributionRequirements;
   availability?: ExtensionContributionAvailability;
   tools?: ExtensionAgentTaskCustomTool[];
-  resolvePrompt?: ExtensionAgentTaskPromptResolver<Static<TInput>>;
+  resolvePrompt?: ExtensionAgentTaskPromptResolver<Static<TInput>, ExtensionAgentTaskContributionOutput<TOutput>>;
 }
 
 export type ExtensionAgentTaskContributionOutput<TOutput extends TSchema | undefined = undefined> =

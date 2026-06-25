@@ -4,10 +4,10 @@ import {
   parseEforgePlanPlanningDraftResult,
   safeParseExtensionAgentTaskStartRequest,
   safeParseWithSchema,
+  normalizeExtensionAgentTaskStartRequest,
   type EforgePlanPlanningDraftResult,
   type ExtensionAgentTaskCancelResponse,
   type ExtensionAgentTaskGetResponse,
-  type ExtensionAgentTaskKind,
   type ExtensionAgentTaskBacklogCurationProgress,
   type ExtensionAgentTaskRequestedBy,
   type ExtensionAgentTaskSanitizedMetadata,
@@ -16,7 +16,6 @@ import {
 } from '@eforge-build/client';
 import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { AgentRole } from '@eforge-build/engine/events';
-import type { CustomTool } from '@eforge-build/engine/harness';
 import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import type { MonitorContext } from '../../context.js';
 import {
@@ -68,20 +67,12 @@ import {
 
 export { AgentTaskServiceError } from './agent-task-service-helpers.js';
 
-type LegacyExtensionAgentTaskStartRequest = Extract<ExtensionAgentTaskStartRequest, { kind: ExtensionAgentTaskKind }>;
+type LegacyExtensionAgentTaskStartRequest = Extract<ExtensionAgentTaskStartRequest, { kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT }>;
 
 export interface ExtensionAgentTaskStartOptions {
   owner?: ExtensionAgentTaskOwner;
   requestedBy?: ExtensionAgentTaskRequestedBy;
   registry?: NativeExtensionRegistry;
-}
-
-function legacyPlanningContributionId(input: Record<string, unknown>): string {
-  const sections = Array.isArray(input.requestedOutputSections) ? input.requestedOutputSections : [];
-  if (sections.includes('planRevisionTurn') || typeof input.existingSessionPlan === 'string') return 'plan-revision';
-  if (sections.includes('sessionPlanCreationDraft')) return 'session-plan-creation';
-  if (sections.length > 0 && sections.every((section) => section === 'recommendations')) return 'recommendation-refresh';
-  return 'planning-draft';
 }
 
 function isPlanningDraftOutputSchema(schema: unknown): boolean {
@@ -101,17 +92,13 @@ export class ExtensionAgentTaskService {
       throw new AgentTaskServiceError(`Invalid task start request: ${parsed.error.message}`, 400);
     }
     const validRequest = parsed.data;
-    const contribution = 'task' in validRequest
-      ? await this.resolveContributionStart(validRequest, options)
-      : undefined;
-    if ('kind' in validRequest && validRequest.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) {
-      throw new AgentTaskServiceError(`Unsupported task kind: ${validRequest.kind as string}`, 400);
-    }
-    if ('task' in validRequest && contribution !== undefined && !isPlanningDraftOutputSchema(contribution.contribution.value.outputSchema)) {
+    const contributionRequest = normalizeExtensionAgentTaskStartRequest(validRequest);
+    const contribution = await this.resolveContributionStart(contributionRequest, options);
+    if (!isPlanningDraftOutputSchema(contribution.contribution.value.outputSchema)) {
       throw new AgentTaskServiceError(`Task contribution ${contribution.contribution.id} cannot be started directly because it does not produce a planning draft result.`, 400);
     }
-    const owner = contribution?.owner ?? options.owner;
-    if ('kind' in validRequest && validRequest.input.sourceProvider !== undefined && owner === undefined) {
+    const owner = contribution.owner;
+    if (contribution.input.sourceProvider !== undefined && owner === undefined) {
       throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
     }
     const now = new Date().toISOString();
@@ -133,7 +120,7 @@ export class ExtensionAgentTaskService {
     this.controllers.set(taskId, controller);
     emitAgentTaskStart(this.context, eventBase(record));
     queueMicrotask(() => {
-      void this.runInBackground({ taskId, request: validRequest, contribution, controller, startedAtMs: Date.now(), owner, registry: options.registry })
+      void this.runInBackground({ taskId, contribution, controller, startedAtMs: Date.now(), owner, registry: options.registry })
         .catch((err: unknown) => logBackgroundTaskError(taskId, err));
     });
     return { task: projectAgentTaskRecord(record) };
@@ -167,11 +154,9 @@ export class ExtensionAgentTaskService {
     return { task: projectAgentTaskRecord(cancelled) };
   }
 
-  private async runInBackground(options: { taskId: string; request: ExtensionAgentTaskStartRequest; contribution?: ResolvedAgentTaskContributionStart; controller: AbortController; startedAtMs: number; owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<void> {
+  private async runInBackground(options: { taskId: string; contribution: ResolvedAgentTaskContributionStart; controller: AbortController; startedAtMs: number; owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<void> {
     try {
-      const result = options.contribution !== undefined
-        ? await this.runContributionTask({ ...options, contribution: options.contribution })
-        : await this.runPlannerTask({ ...options, request: options.request as LegacyExtensionAgentTaskStartRequest });
+      const result = await this.runContributionTask({ ...options, contribution: options.contribution });
       await this.complete(options.taskId, result, options.startedAtMs);
     } catch (err) {
       await this.failUnlessCancelled(options.taskId, err, options.startedAtMs, options.controller.signal.aborted);
@@ -183,15 +168,6 @@ export class ExtensionAgentTaskService {
   private async resolveContributionStart(request: ContributionStartRequest, options: ExtensionAgentTaskStartOptions): Promise<ResolvedAgentTaskContributionStart> {
     const registry = options.registry ?? await loadNativeExtensionRegistry(this.requireCwd());
     return await this.resolveContributionFromRegistry(registry, request, request.input, options.owner);
-  }
-
-  private async resolveLegacyContributionStart(input: Record<string, unknown>, options: ExtensionAgentTaskStartOptions): Promise<ResolvedAgentTaskContributionStart> {
-    const registry = options.registry ?? await loadNativeExtensionRegistry(this.requireCwd());
-    const contributionRequest: ContributionStartRequest = {
-      task: { id: legacyPlanningContributionId(input), extensionName: 'eforge-plan' },
-      input: input as ContributionStartRequest['input'],
-    };
-    return await this.resolveContributionFromRegistry(registry, contributionRequest, input, options.owner);
   }
 
   private async resolveContributionFromRegistry(registry: NativeExtensionRegistry, request: ContributionStartRequest, input: Record<string, unknown>, owner?: ExtensionAgentTaskOwner): Promise<ResolvedAgentTaskContributionStart> {
@@ -213,7 +189,7 @@ export class ExtensionAgentTaskService {
     };
   }
 
-  private async runContributionTask(options: { taskId: string; contribution: ResolvedAgentTaskContributionStart; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<EforgePlanPlanningDraftResult> {
+  private async runContributionTask(options: { taskId: string; contribution: ResolvedAgentTaskContributionStart; controller: AbortController; owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<EforgePlanPlanningDraftResult> {
     const cwd = this.requireCwd();
     const { loadConfig } = await import('@eforge-build/engine/config');
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
@@ -227,7 +203,7 @@ export class ExtensionAgentTaskService {
     const contribution = await this.resolveContributionDeferredSource(options);
     if (isEforgePlanCurationMapReduceTask(contribution.deferredSource, contribution.owner)) {
       const plannerConfig = resolveAgentConfig('planner', config, undefined, plannerToolbeltSummary);
-      const curationContributions = await this.resolveBacklogCurationContributions({ owner: contribution.owner });
+      const curationContributions = await this.resolveBacklogCurationContributions({ owner: contribution.owner, registry: options.registry });
       return await runBacklogCurationMapReduceTask({
         ...plannerConfig,
         harness: resolverHarness,
@@ -287,118 +263,6 @@ export class ExtensionAgentTaskService {
     return parseEforgePlanPlanningDraftResult(output);
   }
 
-  private async runPlannerTask(options: { taskId: string; request: LegacyExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<EforgePlanPlanningDraftResult> {
-    const cwd = this.requireCwd();
-    const deferredSource = await this.resolveDeferredSourceInput(options);
-    const input = deferredSource.input;
-    const { loadConfig } = await import('@eforge-build/engine/config');
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const { buildAgentRuntimeRegistry, singletonRegistry } = await import('@eforge-build/engine/agent-runtime-registry');
-
-    const { config, warnings } = await loadConfig(cwd);
-    for (const warning of warnings) process.stderr.write(`${warning}\n`);
-    const agentRuntimes = await resolveAgentRuntimes(this.context.options.agentRuntimes, config, buildAgentRuntimeRegistry, singletonRegistry);
-    const { harness, toolbeltSummary } = agentRuntimes.forRoleResolved('planner');
-    const plannerConfig = resolveAgentConfig('planner', config, undefined, toolbeltSummary);
-    if (isEforgePlanCurationMapReduceTask(deferredSource, options.owner)) {
-      const curationContributions = await this.resolveBacklogCurationContributions(options);
-      return await runBacklogCurationMapReduceTask({
-        ...plannerConfig,
-        harness,
-        cwd,
-        taskId: options.taskId,
-        input,
-        sourceBundle: deferredSource.structuredSource,
-        providerHooks: deferredSource.providerHooks,
-        runtimeIdentity: buildBacklogCurationRuntimeIdentity(plannerConfig, toolbeltSummary),
-        itemAuditContribution: curationContributions.itemAuditContribution,
-        reducerContribution: curationContributions.reducerContribution,
-        ...(sourceProviderItemAuditConcurrency(options.request) !== undefined && { itemAuditConcurrency: sourceProviderItemAuditConcurrency(options.request) }),
-        abortController: options.controller,
-        progress: (message) => this.updateProgress(options.taskId, message),
-        backlogCurationProgress: (progress) => this.updateBacklogCurationProgress(options.taskId, progress),
-        sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
-      });
-    }
-    try {
-      const contribution = await this.resolveLegacyContributionStart(input, { owner: options.owner, registry: options.registry });
-      return await this.runContributionTask({ taskId: options.taskId, contribution, controller: options.controller, owner: options.owner });
-    } catch (err) {
-      if (!(err instanceof AgentTaskServiceError) || err.status !== 404) throw err;
-      return await this.runLegacyPlanningTask({ taskId: options.taskId, input, controller: options.controller });
-    }
-  }
-
-  private async runLegacyPlanningTask(options: { taskId: string; input: LegacyExtensionAgentTaskStartRequest['input']; controller: AbortController }): Promise<EforgePlanPlanningDraftResult> {
-    const cwd = this.requireCwd();
-    const { loadConfig } = await import('@eforge-build/engine/config');
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const { buildAgentRuntimeRegistry, singletonRegistry } = await import('@eforge-build/engine/agent-runtime-registry');
-    const { runResolvedAgentTask } = await import('@eforge-build/engine/agents/resolved-agent-task');
-
-    const { config, warnings } = await loadConfig(cwd);
-    for (const warning of warnings) process.stderr.write(`${warning}\n`);
-    const agentRuntimes = await resolveAgentRuntimes(this.context.options.agentRuntimes, config, buildAgentRuntimeRegistry, singletonRegistry);
-    const { harness, toolbeltSummary } = agentRuntimes.forRoleResolved('planner');
-    const plannerConfig = resolveAgentConfig('planner', config, undefined, toolbeltSummary);
-    let submitted: EforgePlanPlanningDraftResult | undefined;
-    const submitToolName = harness.effectiveCustomToolName('submit_eforge_plan_planning_result');
-    const progressToolName = harness.effectiveCustomToolName('report_eforge_plan_planning_progress');
-    const customTools: CustomTool[] = [
-      {
-        name: submitToolName,
-        description: 'Submit the final eforge-plan planning draft result. This is the only accepted output channel for this task.',
-        inputSchema: EforgePlanPlanningDraftResultSchema as unknown as CustomTool['inputSchema'],
-        handler: async (input: unknown) => { submitted = parseEforgePlanPlanningDraftResult(input); return 'Planning draft result submitted successfully.'; },
-      },
-      {
-        name: progressToolName,
-        description: 'Report telemetry-only section progress while drafting.',
-        inputSchema: { type: 'object', additionalProperties: true } as CustomTool['inputSchema'],
-        handler: async (input: unknown) => { await this.updateSectionProgress(options.taskId, input as SectionProgressUpdate); return 'Section progress recorded.'; },
-      },
-    ];
-    const variables = {
-      topic: options.input.topic,
-      session: options.input.session ?? '(none)',
-      planningType: options.input.planningType ?? '(unspecified)',
-      planningDepth: options.input.planningDepth ?? '(unspecified)',
-      sourceText: options.input.sourceText ?? '(none)',
-      existingSessionPlan: options.input.existingSessionPlan ?? '(none)',
-      requestedOutputSections: options.input.requestedOutputSections?.join(', ') ?? '(agent should choose applicable sections)',
-      submitTool: submitToolName,
-      progressTool: progressToolName,
-    };
-    const task = runResolvedAgentTask({
-      ...plannerConfig,
-      harness,
-      cwd,
-      promptTemplate: 'Topic: {{topic}}\nSource:\n{{sourceText}}\nUse {{submitTool}} to submit the final planning result. Report progress with {{progressTool}}.',
-      variables,
-      promptLabel: 'extension agent task eforge-plan:planning-draft',
-      role: 'planner',
-      tools: 'read-only',
-      customTools,
-      abortController: options.controller,
-      maxTurns: plannerConfig.maxTurns,
-      taskId: options.taskId,
-      phase: 'standalone',
-      stage: 'extension-agent-task',
-      getResult: () => submitted,
-      missingResultMessage: `eforge-plan planning draft task did not call ${submitToolName}.`,
-    });
-    let sawProgress = false;
-    let next = await task.next();
-    while (!next.done) {
-      if (!sawProgress) {
-        sawProgress = true;
-        await this.updateProgress(options.taskId, 'Planner task is running');
-      }
-      next = await task.next();
-    }
-    return parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(next.value)));
-  }
-
   private async resolveBacklogCurationContributions(options: { owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<{ itemAuditContribution: BacklogCurationAgentTaskContributionHandle; reducerContribution: BacklogCurationAgentTaskContributionHandle }> {
     if (options.owner === undefined) throw new AgentTaskServiceError('Backlog curation map/reduce requires an extension owner', 400);
     const registry = options.registry ?? await loadNativeExtensionRegistry(this.requireCwd());
@@ -421,14 +285,6 @@ export class ExtensionAgentTaskService {
   private async resolveContributionDeferredSource(options: { taskId: string; contribution: ResolvedAgentTaskContributionStart; controller: AbortController }): Promise<ResolvedAgentTaskContributionStart & { originalInput: Record<string, unknown>; deferredSource: ResolvedDeferredSourceInput }> {
     const deferredSource = await this.resolveDeferredInput(options.taskId, options.contribution.input as LegacyExtensionAgentTaskStartRequest['input'], options.contribution.owner, options.controller);
     return { ...options.contribution, originalInput: options.contribution.input, input: deferredSource.input, deferredSource };
-  }
-
-  private async resolveDeferredSourceInput(options: { taskId: string; request: LegacyExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ResolvedDeferredSourceInput> {
-    if (options.owner === undefined) {
-      if (options.request.input.sourceProvider !== undefined) throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
-      return { input: options.request.input };
-    }
-    return await this.resolveDeferredInput(options.taskId, options.request.input, options.owner, options.controller);
   }
 
   private async resolveDeferredInput(taskId: string, input: LegacyExtensionAgentTaskStartRequest['input'], owner: ExtensionAgentTaskOwner, controller: AbortController): Promise<ResolvedDeferredSourceInput> {

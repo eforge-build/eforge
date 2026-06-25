@@ -1,11 +1,12 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole } from '@eforge-build/engine/events';
-import type { EforgeEvent } from '@eforge-build/client';
+import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
+import { EforgePlanPlanningDraftInputSchema, EforgePlanPlanningDraftResultSchema, type EforgeEvent } from '@eforge-build/client';
 import { createMonitorContext } from '../context.js';
 import { openDatabase } from '../db.js';
 import { ExtensionAgentTaskService } from '../routes/extensions/agent-task-service.js';
@@ -28,8 +29,13 @@ describe('extension agent task plan revision metadata', () => {
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(revisionResult)) });
     try {
+      await mkdir(join(cwd, 'prompts'), { recursive: true });
+      await writeFile(join(cwd, 'prompts', 'planning.md'), 'Topic: {{topic}}\n', 'utf-8');
       const service = new ExtensionAgentTaskService(context);
-      const started = await service.start({ kind: 'eforge-plan.planning-draft', input: { topic: 'Revise plan', requestedOutputSections: ['planRevisionTurn'], existingSessionPlan: '# Scope\nExisting.' } });
+      const started = await service.start(
+        { kind: 'eforge-plan.planning-draft', input: { topic: 'Revise plan', requestedOutputSections: ['planRevisionTurn'], existingSessionPlan: '# Scope\nExisting.' } },
+        { registry: planningRegistry(cwd) },
+      );
       const completed = await waitForTask(service, started.task.taskId);
       expect(completed.metadata?.outputSectionCount).toBe(1);
       expect(completed.result?.planRevisionTurn?.targetSession).toBe('demo-session');
@@ -39,6 +45,13 @@ describe('extension agent task plan revision metadata', () => {
     }
   });
 });
+
+function planningRegistry(extensionPath: string): NativeExtensionRegistry {
+  return {
+    agentTasks: [{ kind: 'agentTask', extensionName: 'eforge-plan', extensionPath, localId: 'planning-draft', id: 'eforge-plan:planning-draft', value: { id: 'planning-draft', title: 'Planning draft', inputSchema: EforgePlanPlanningDraftInputSchema, outputSchema: EforgePlanPlanningDraftResultSchema, prompt: { kind: 'asset' as const, asset: 'prompts/planning.md' }, resolvePrompt: (ctx: any) => { let submitted: unknown; const submitTool = ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result'; return { variables: { topic: ctx.input.topic }, run: { role: 'planner', tools: [{ name: submitTool, description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input: unknown) => { submitted = input; return 'submitted'; } }] }, getResult: () => submitted, missingResultMessage: 'missing result' }; } } }],
+    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
+  } as NativeExtensionRegistry;
+}
 
 async function waitForTask(service: ExtensionAgentTaskService, taskId: string): Promise<any> {
   for (let i = 0; i < 250; i += 1) {

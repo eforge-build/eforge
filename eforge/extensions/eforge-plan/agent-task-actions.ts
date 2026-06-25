@@ -1,5 +1,5 @@
 import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, paginateContributionItems, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { PLANNING_DRAFT_TASK_ID, RECOMMENDATION_REFRESH_TASK_ID, SESSION_PLAN_CREATION_TASK_ID } from './agent-task-contributions.js';
 import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
@@ -331,7 +331,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
   }
   const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requested, parent.planningType, parent.planningDepth);
   const startRequest = {
-    ...(isBacklogCurationWorkflowEntry(parent) ? { kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } : { task: { id: linkedPlanningTaskId(parent, requested) } }),
+    task: { id: linkedPlanningTaskId(parent, requested) },
     input: {
       topic: params.derivedGoal,
       ...(params.sourceText !== undefined && { sourceText: params.sourceText }),

@@ -986,7 +986,7 @@ describe('planning agent task actions', () => {
         itemAuditConcurrency: 6,
         sourceFingerprint: 'old-fingerprint',
       });
-      let started: { input: Record<string, unknown> } | undefined;
+      let started: { task?: { id: string }; input: Record<string, unknown> } | undefined;
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:retry-planning-agent-task',
         input: { taskId: 'task-curation-original' },
@@ -1001,6 +1001,7 @@ describe('planning agent task actions', () => {
       });
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', itemAuditConcurrency: 6, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
+      expect(started?.task).toEqual({ id: 'planning-draft' });
       expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 6 } } });
       expect(started?.input.sourceText).toBeUndefined();
     });
@@ -1020,7 +1021,7 @@ describe('planning agent task actions', () => {
         itemAuditConcurrency: 7,
         sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       });
-      let started: { input: Record<string, unknown> } | undefined;
+      let started: { task?: { id: string }; input: Record<string, unknown> } | undefined;
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:redraft-planning-agent-task',
         input: { taskId: 'task-curation', steering: 'Prefer conservative status changes.' },
@@ -1035,6 +1036,7 @@ describe('planning agent task actions', () => {
       });
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', itemAuditConcurrency: 7, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
+      expect(started?.task).toEqual({ id: 'planning-draft' });
       expect(started?.input.sourceText).toBeUndefined();
       expect(started?.input).toMatchObject({ sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 7, redraft: { parentTaskId: 'task-curation', steering: 'Prefer conservative status changes.', previousBacklogCurationDraft: expect.any(Object) } } } });
     });

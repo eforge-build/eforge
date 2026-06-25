@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Type } from '@sinclair/typebox';
 
 import {
+  legacyExtensionAgentTaskStartToContributionRef,
   safeParseExtensionAgentTaskStartRequest,
   safeParseExtensionContributionManifest,
 } from '../index.js';
@@ -11,6 +12,17 @@ describe('extension agent task contribution contracts', () => {
     expect(safeParseExtensionAgentTaskStartRequest({ task: { id: 'planning-draft' }, input: { topic: 'Demo' } }).success).toBe(true);
     expect(safeParseExtensionAgentTaskStartRequest({ task: { id: '@eforge+plan:planning-draft' }, input: { topic: 'Demo' } }).success).toBe(true);
     expect(safeParseExtensionAgentTaskStartRequest({ kind: 'eforge-plan.planning-draft', input: { topic: 'Demo' } }).success).toBe(true);
+  });
+
+  it('maps legacy kinds to owner-scoped contribution refs without input special cases', () => {
+    const start = legacyExtensionAgentTaskStartToContributionRef({
+      kind: 'eforge-plan.planning-draft',
+      input: { topic: 'Demo', requestedOutputSections: ['sessionPlanCreationDraft'] },
+    });
+    expect(start).toEqual({
+      task: { extensionName: 'eforge-plan', id: 'planning-draft' },
+      input: { topic: 'Demo', requestedOutputSections: ['sessionPlanCreationDraft'] },
+    });
   });
 
   it('rejects caller-supplied prompt paths in start requests', () => {

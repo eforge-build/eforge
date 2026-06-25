@@ -495,6 +495,15 @@ export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskSt
 export type ExtensionAgentTaskGetResponse = Static<typeof ExtensionAgentTaskGetResponseSchema>;
 export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskCancelResponseSchema>;
 
+export function legacyExtensionAgentTaskStartToContributionRef(request: ExtensionAgentTaskLegacyStartRequest): ExtensionAgentTaskContributionStartRequest {
+  const separator = request.kind.indexOf('.');
+  const extensionName = separator > 0 ? request.kind.slice(0, separator) : request.kind;
+  const id = separator > 0 ? request.kind.slice(separator + 1) : request.kind;
+  return { task: { extensionName, id }, input: request.input, ...(request.requestedBy !== undefined && { requestedBy: request.requestedBy }) };
+}
+
+export function normalizeExtensionAgentTaskStartRequest(request: ExtensionAgentTaskStartRequest): ExtensionAgentTaskContributionStartRequest { return 'task' in request ? request : legacyExtensionAgentTaskStartToContributionRef(request); }
+
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
   const candidate = value as Record<string, unknown>;
   if (candidate.decision === 'ready' && candidate.sessionPlanCreationDraft !== undefined) return true;

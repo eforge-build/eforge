@@ -30,7 +30,6 @@ import {
   planningDraftResultSchemaYaml,
   PLANNING_DRAFT_SUBMIT_TOOL_NAME,
   PLANNING_PROGRESS_TOOL_NAME,
-  type EforgePlanPlanningProgressUpdate,
   type PlanningDraftResultValidator,
 } from './planning-agent-tools.js';
 
@@ -65,14 +64,9 @@ export interface BacklogCurationReducerTaskInput {
   validationErrors?: string[];
 }
 
-interface ItemAuditResolverContext extends ExtensionAgentTaskResolverContext<BacklogCurationItemAuditTaskInput> {
-  effectiveCustomToolName?: (name: string) => string;
-  onProgress?: (update: EforgePlanPlanningProgressUpdate) => void | Promise<void>;
-}
+interface ItemAuditResolverContext extends ExtensionAgentTaskResolverContext<BacklogCurationItemAuditTaskInput> {}
 
 interface ReducerResolverContext extends ExtensionAgentTaskResolverContext<BacklogCurationReducerTaskInput> {
-  effectiveCustomToolName?: (name: string) => string;
-  onProgress?: (update: EforgePlanPlanningProgressUpdate) => void | Promise<void>;
   validateResult?: PlanningDraftResultValidator;
 }
 

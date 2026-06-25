@@ -10,6 +10,7 @@ import {
   BacklogCurationMapReduceItemPacketSchema,
   BacklogCurationMapReduceReducerInputSchema,
   BacklogCurationMapReduceRuntimeIdentitySchema,
+  EforgePlanPlanningDraftInputSchema,
   EforgePlanPlanningDraftResultSchema,
   type BacklogCurationMapReduceItemPacket,
   type BacklogCurationMapReduceSourceBundle,
@@ -165,6 +166,20 @@ function registryForExtensionRoot(extensionRoot: string) {
       },
     },
   };
+  const planningTask = {
+    kind: 'agentTask' as const,
+    ...owner,
+    localId: 'planning-draft',
+    id: 'eforge-plan:planning-draft',
+    value: {
+      id: 'planning-draft',
+      title: 'Planning draft',
+      inputSchema: EforgePlanPlanningDraftInputSchema,
+      outputSchema: EforgePlanPlanningDraftResultSchema,
+      prompt: { kind: 'asset' as const, asset: 'prompts/eforge-plan-planning-draft.md' },
+      resolvePrompt: () => ({ variables: {}, run: { role: 'planner', toolsPreset: 'read-only', tools: [] }, missingResultMessage: 'missing planning result' }),
+    },
+  };
   const reducerTask = {
     kind: 'agentTask' as const,
     ...owner,
@@ -187,7 +202,7 @@ function registryForExtensionRoot(extensionRoot: string) {
       },
     },
   };
-  return { agentTasks: [itemTask, reducerTask], actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [] };
+  return { agentTasks: [planningTask, itemTask, reducerTask], actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [] };
 }
 
 class DaemonMapReduceHarness implements AgentHarness {

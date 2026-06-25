@@ -88,20 +88,71 @@ export function findAgentTaskContribution(
 
 export async function loadContributionPromptTemplate(contribution: AgentTaskRegistration): Promise<string> {
   const prompt = contribution.value.prompt;
-  if (prompt.kind !== 'asset') throw new AgentTaskServiceError(`Unsupported task prompt source for ${contribution.id}`, 400);
-  const root = await resolveExtensionOwnerRoot(contribution.extensionPath);
-  const target = resolve(root, prompt.asset);
+  if (prompt.kind === 'asset') return await loadContributionPromptAsset(contribution.extensionPath, prompt.asset);
+  if (prompt.kind === 'export') return await loadContributionPromptExport(contribution, prompt.module, prompt.exportName);
+  throw new AgentTaskServiceError(`Unsupported task prompt source for ${contribution.id}`, 400);
+}
+
+async function loadContributionPromptAsset(extensionPath: string, asset: string): Promise<string> {
+  const realTarget = await resolveContainedExtensionPath(extensionPath, asset, 'Task prompt asset');
+  return await readFile(realTarget, 'utf-8');
+}
+
+async function loadContributionPromptExport(contribution: AgentTaskRegistration, moduleSpecifier: string, exportName: string | undefined): Promise<string> {
+  const exportLabel = exportName ?? 'default';
+  let modulePath: string;
+  try {
+    modulePath = await resolveContainedExtensionPath(contribution.extensionPath, moduleSpecifier, 'Task prompt export module');
+  } catch (err) {
+    throw wrapContributionPromptExportError(contribution.id, moduleSpecifier, exportLabel, 'resolve', err);
+  }
+  if (!/\.(?:mjs|js|mts|ts)$/.test(modulePath)) {
+    throw new AgentTaskServiceError(`Task prompt export module ${moduleSpecifier} for ${contribution.id} must be .js, .mjs, .ts, or .mts`, 400);
+  }
+  let moduleExports: Record<string, unknown>;
+  try {
+    moduleExports = await importExtensionModule(modulePath);
+  } catch (err) {
+    throw wrapContributionPromptExportError(contribution.id, moduleSpecifier, exportLabel, 'import', err);
+  }
+  const selected = exportName === undefined ? moduleExports.default : moduleExports[exportName];
+  if (selected === undefined) {
+    throw new AgentTaskServiceError(`Task prompt export ${exportLabel} was not found for ${contribution.id} in ${moduleSpecifier}`, 500);
+  }
+  let value: unknown;
+  try {
+    value = typeof selected === 'function' ? selected() : selected;
+  } catch (err) {
+    throw wrapContributionPromptExportError(contribution.id, moduleSpecifier, exportLabel, 'invoke', err);
+  }
+  if (typeof value !== 'string') {
+    throw new AgentTaskServiceError(`Task prompt export ${exportLabel} for ${contribution.id} in ${moduleSpecifier} must be a string or no-arg function returning a string`, 500);
+  }
+  return value;
+}
+
+function wrapContributionPromptExportError(contributionId: string, moduleSpecifier: string, exportName: string, phase: 'resolve' | 'import' | 'invoke', err: unknown): AgentTaskServiceError {
+  if (err instanceof AgentTaskServiceError) {
+    return new AgentTaskServiceError(`Task prompt export ${exportName} for ${contributionId} in ${moduleSpecifier} failed to ${phase}: ${err.message}`, err.status);
+  }
+  const detail = err instanceof Error ? err.message : String(err);
+  return new AgentTaskServiceError(`Task prompt export ${exportName} for ${contributionId} in ${moduleSpecifier} failed to ${phase}: ${detail}`, 500);
+}
+
+async function resolveContainedExtensionPath(extensionPath: string, pathSpecifier: string, label: string): Promise<string> {
+  const root = await resolveExtensionOwnerRoot(extensionPath);
+  const target = resolve(root, pathSpecifier);
   const rel = relative(root, target);
   if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw new AgentTaskServiceError('Task prompt asset must stay within the extension root', 400);
+    throw new AgentTaskServiceError(`${label} must stay within the extension root`, 400);
   }
   const realRoot = await realpath(root);
   const realTarget = await realpath(target);
   const realRel = relative(realRoot, realTarget);
   if (realRel === '' || realRel === '..' || realRel.startsWith(`..${sep}`) || isAbsolute(realRel)) {
-    throw new AgentTaskServiceError('Task prompt asset must stay within the extension root', 400);
+    throw new AgentTaskServiceError(`${label} must stay within the extension root`, 400);
   }
-  return await readFile(realTarget, 'utf-8');
+  return realTarget;
 }
 
 export async function resolveContributionPrompt(
@@ -267,6 +318,10 @@ async function resolveExtensionOwnerRoot(extensionPath: string): Promise<string>
 }
 
 async function importDeferredSourceProviderModule(modulePath: string): Promise<Record<string, unknown>> {
+  return await importExtensionModule(modulePath);
+}
+
+async function importExtensionModule(modulePath: string): Promise<Record<string, unknown>> {
   if (/\.[cm]?tsx?$/.test(modulePath)) {
     const require = createRequire(import.meta.url);
     const { createJiti } = require('jiti') as { createJiti: (filename: string, options?: { moduleCache?: boolean }) => { import: (id: string) => Promise<unknown> } };

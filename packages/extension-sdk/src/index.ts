@@ -112,6 +112,7 @@ export type {
   ExtensionAgentTaskPromptSource,
   ExtensionAgentTaskResolverContext,
   ExtensionAgentTaskResolverResult,
+  ExtensionAgentTaskSectionProgressUpdate,
 } from './agent-tasks.js';
 export { defineExtensionAgentTaskContribution } from './agent-tasks.js';
 // --- eforge:endregion plan-01-agent-task-contribution-contract ---
