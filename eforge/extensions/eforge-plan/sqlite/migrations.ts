@@ -1,12 +1,21 @@
 import { createHash } from 'node:crypto';
 import type { EforgePlanStore } from './types.js';
-import { INITIAL_MIGRATION_DESCRIPTION, INITIAL_MIGRATION_ID, INITIAL_MIGRATION_NAME, LATEST_EFORGE_PLAN_SCHEMA_VERSION } from './constants.js';
+import { DROP_LEGACY_IMPORT_TABLES_MIGRATION_DESCRIPTION, DROP_LEGACY_IMPORT_TABLES_MIGRATION_ID, DROP_LEGACY_IMPORT_TABLES_MIGRATION_NAME, INITIAL_MIGRATION_DESCRIPTION, INITIAL_MIGRATION_ID, INITIAL_MIGRATION_NAME, LATEST_EFORGE_PLAN_SCHEMA_VERSION } from './constants.js';
 import { EforgePlanStoreError } from './errors.js';
 import { INITIAL_SCHEMA_SQL } from './schema.js';
 import { getDatabase } from './store-internal.js';
 
 interface Migration { id: string; name: string; description: string; version: number; sql: string }
-export const MIGRATIONS: readonly Migration[] = [{ id: INITIAL_MIGRATION_ID, name: INITIAL_MIGRATION_NAME, description: INITIAL_MIGRATION_DESCRIPTION, version: 1, sql: INITIAL_SCHEMA_SQL }];
+
+const DROP_LEGACY_IMPORT_TABLES_SQL = `
+DROP TABLE IF EXISTS import_diagnostics;
+DROP TABLE IF EXISTS import_runs;
+`;
+
+export const MIGRATIONS: readonly Migration[] = [
+  { id: INITIAL_MIGRATION_ID, name: INITIAL_MIGRATION_NAME, description: INITIAL_MIGRATION_DESCRIPTION, version: 1, sql: INITIAL_SCHEMA_SQL },
+  { id: DROP_LEGACY_IMPORT_TABLES_MIGRATION_ID, name: DROP_LEGACY_IMPORT_TABLES_MIGRATION_NAME, description: DROP_LEGACY_IMPORT_TABLES_MIGRATION_DESCRIPTION, version: 2, sql: DROP_LEGACY_IMPORT_TABLES_SQL },
+];
 export function migrationChecksum(sql: string): string { return createHash('sha256').update(sql).digest('hex'); }
 
 export function ensureMigrationTable(store: EforgePlanStore): void {

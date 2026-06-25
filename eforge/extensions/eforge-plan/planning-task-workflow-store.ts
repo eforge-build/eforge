@@ -155,7 +155,7 @@ export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowInde
 
 function readCanonicalWorkflowIndex(cwd: string): { index: PlanningTaskWorkflowIndex; hasRows: boolean } {
   if (!existsSync(resolveEforgePlanStorePath(cwd))) return { index: emptyIndex(), hasRows: false };
-  const store = openEforgePlanStore(cwd, { create: false, migrate: false, readonly: true });
+  const store = openEforgePlanStore(cwd, { create: false, migrate: true, readonly: true });
   try {
     return store.transaction(() => {
       const db = getDatabase(store);

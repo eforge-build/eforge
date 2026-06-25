@@ -23,6 +23,10 @@ export function openEforgePlanStore(cwd: string, options: StoreOpenOptions = {})
     if (cause instanceof EforgePlanStoreError) throw cause;
     throw new EforgePlanStoreError('open-failed', `Failed to create eforge-plan SQLite store directory: ${dirname(dbPath)}`, { cause });
   }
+  if (readonly && migrate && existsSync(dbPath)) {
+    const migrated = openEforgePlanStore(cwd, { create: false, migrate: true, readonly: false });
+    migrated.close();
+  }
   let store!: EforgePlanStore;
   let db: DatabaseSync;
   try {
