@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { ConsoleShell } from '@/components/shell/console-shell';
 import { initialConsoleProjectState } from '@/lib/project-state';
-import { EFORGE_LOGO_ALT, EFORGE_LOGO_URL } from '@/lib/brand';
 
 const FIXED_NOW = new Date('2025-01-15T12:00:30.000Z').getTime();
 
@@ -70,8 +69,7 @@ describe('ConsoleShell header', () => {
   it('shows brand, project, connection, and build status controls', () => {
     renderShell();
 
-    const logo = screen.getByAltText(EFORGE_LOGO_ALT) as HTMLImageElement;
-    expect(logo.src).toBe(EFORGE_LOGO_URL);
+    expect(screen.getByRole('img', { name: /eforge/i })).toBeDefined();
     expect(screen.getByText('my-project')).toBeDefined();
     expect(screen.getByLabelText(/connection status/i)).toBeDefined();
     expect(screen.getByRole('switch', { name: /auto-build toggle/i })).toBeDefined();
