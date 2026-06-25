@@ -69,9 +69,7 @@ export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onR
         detailLoading={detailState === 'loading'}
         detailError={detailError}
       />
-      {/* --- eforge:region plan-03-workstation-activity-timeline --- */}
       <PlanningTaskActivityTimeline activityLog={detailItem.task?.metadata?.activityLog} />
-      {/* --- eforge:endregion plan-03-workstation-activity-timeline --- */}
     </Drawer>
   );
 }

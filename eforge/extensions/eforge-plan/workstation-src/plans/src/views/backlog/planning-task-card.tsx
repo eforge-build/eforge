@@ -68,9 +68,7 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
       {!item.available && <p className="mt-2 text-xs text-muted-foreground">{item.staleReason ?? 'Task record is no longer available from the daemon.'}</p>}
 
       {running && <RunningProgress task={task} />}
-      {/* --- eforge:region plan-03-workstation-activity-timeline --- */}
       <PlanningTaskLatestActivity activityLog={task?.metadata?.activityLog} />
-      {/* --- eforge:endregion plan-03-workstation-activity-timeline --- */}
 
       {detailLoading && (
         <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Spinner className="h-3.5 w-3.5" /> Loading full task result…</p>
