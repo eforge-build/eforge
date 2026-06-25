@@ -181,15 +181,15 @@ describe('RecommendationsRail actionability', () => {
     expect(onForkLane).not.toHaveBeenCalled();
   });
 
-  it('falls back to legacy recommendation rendering only when actionability is absent', () => {
+  it('falls back to selection planEligibleIds only when actionability is absent', () => {
     const planLane = vi.fn(async () => undefined);
     const pickItem = vi.fn();
-    renderRail({ actionability: null, selection: selection({ planLane, pickItem }) });
+    renderRail({ actionability: null, selection: selection({ planLane, pickItem, planEligibleIds: new Set(['item-one', 'item-three']) }) });
 
     fireEvent.click(screen.getByRole('button', { name: /Item One/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Plan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan (2)' }));
 
     expect(pickItem).toHaveBeenCalledWith('item-one');
-    expect(planLane).toHaveBeenCalledWith(['item-one', 'item-two', 'item-three'], 'lane-1');
+    expect(planLane).toHaveBeenCalledWith(['item-one', 'item-three'], 'lane-1');
   });
 });

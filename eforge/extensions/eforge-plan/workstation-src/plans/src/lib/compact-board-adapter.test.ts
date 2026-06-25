@@ -27,6 +27,18 @@ describe('compact board adapter', () => {
     expect(recommended?.recLanes).toContain('Planning foundations');
   });
 
+  it('preserves backend plan eligibility during initial hydration', () => {
+    const board = boardFromCompact(getMockCompactBoard({ limit: 10 }), mockRecommendations);
+
+    expect(board.items.find((item) => item.id === 'recommend-next-work')).toMatchObject({ planEligible: true });
+    expect(board.items.find((item) => item.id === 'add-import-preview')).toMatchObject({
+      planEligible: false,
+      planEligibilityReasonCode: 'partial-plan',
+      planEligibilityReasonMessage: expect.stringContaining('partial session plan'),
+      planEligibilityLinks: expect.arrayContaining([expect.objectContaining({ kind: 'session-plan' })]),
+    });
+  });
+
   it('defaults compact dependency refs from ids and unresolved blockers', () => {
     const board = boardFromCompact(getMockCompactBoard({ limit: 10 }), null);
     const blocked = board.items.find((item) => item.id === 'auto-mode');
@@ -39,10 +51,34 @@ describe('compact board adapter', () => {
     const withClosed = mergeCompactLanePage(initial, getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 10 }), mockRecommendations, { scope: 'lane', lane: 'done' });
     const closed = withClosed.items.find((item) => item.id === 'legacy-cleanup');
 
-    expect(closed).toBeDefined();
+    expect(closed).toMatchObject({
+      planEligible: false,
+      planEligibilityReasonCode: 'merged-result',
+      planEligibilityReasonMessage: expect.stringContaining('merged result'),
+    });
     const detailed = mergeCompactItemDetail(withClosed.items.find((item) => item.id === 'add-import-preview')!, getMockCompactItemDetail('add-import-preview'));
     expect(detailed.notes.claim).toContain('Users want');
     expect(detailed.lifecycleLinks?.length).toBeGreaterThan(0);
+    expect(detailed).toMatchObject({
+      planEligible: false,
+      planEligibilityReasonCode: 'partial-plan',
+      planEligibilityLinks: expect.arrayContaining([expect.objectContaining({ kind: 'session-plan' })]),
+    });
+  });
+
+  it('preserves summary eligibility when detail payload omits eligibility fields', () => {
+    const summary = boardFromCompact(getMockCompactBoard({ limit: 10 }), mockRecommendations).items.find((item) => item.id === 'add-import-preview')!;
+    const detail = getMockCompactItemDetail('add-import-preview');
+    const merged = mergeCompactItemDetail(summary, {
+      ...detail,
+      item: { ...detail.item, planEligible: undefined, planEligibilityReasonCode: undefined, planEligibilityReasonMessage: undefined, planEligibilityLinks: undefined },
+    });
+
+    expect(merged).toMatchObject({
+      planEligible: false,
+      planEligibilityReasonCode: 'partial-plan',
+      planEligibilityLinks: expect.arrayContaining([expect.objectContaining({ kind: 'session-plan' })]),
+    });
   });
 
   it('keeps global open-board pagination when merging a done lane page', () => {

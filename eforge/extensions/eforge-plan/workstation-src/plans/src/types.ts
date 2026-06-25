@@ -137,6 +137,10 @@ export interface BoardItem {
   effectiveLifecycle?: string;
   reasonCodes?: string[];
   associatedLinks?: LifecycleLinkRow[];
+  planEligible?: boolean;
+  planEligibilityReasonCode?: string;
+  planEligibilityReasonMessage?: string;
+  planEligibilityLinks?: LifecycleLinkRow[];
   snippets?: string[];
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
@@ -145,6 +149,7 @@ export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[];
 
 export interface CompactBoardItem { id: string; title: string; status: string; priority: string; tags: string[]; lane: string; reasons: string[]; dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons?: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean; epic?: string; lifecycleState?: string;
   userStatus?: string; effectiveLifecycle?: string; reasonCodes?: string[]; associatedLinks?: LifecycleLinkRow[]; linkRows?: LifecycleLinkRow[];
+  planEligible?: boolean; planEligibilityReasonCode?: string; planEligibilityReasonMessage?: string; planEligibilityLinks?: LifecycleLinkRow[];
   rank?: number; snippet?: SearchSnippet; matchedFields?: string[];
 }
 export interface CompactItemDetail extends CompactBoardItem {

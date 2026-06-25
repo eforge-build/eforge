@@ -4,13 +4,14 @@ import type { Board, BoardItem } from '@/types';
 import type { PlanningTaskWorkflowsApi } from '@/views/backlog/use-planning-task-workflows';
 import { useBacklogSelection } from './use-backlog-selection';
 
-function item(id: string, planEligible: boolean): BoardItem {
+function item(id: string, fallbackPlanEligible: boolean, backendPlanEligible?: boolean): BoardItem {
   return {
-    id, title: `Title ${id}`, status: planEligible ? 'candidate' : 'planned', priority: 'medium', tags: [], lane: planEligible ? 'inbox' : 'ready',
-    reasons: [planEligible ? 'candidate-no-evidence' : 'planned-session-plan'], reasonCodes: [planEligible ? 'candidate-no-evidence' : 'planned-session-plan'],
+    id, title: `Title ${id}`, status: fallbackPlanEligible ? 'candidate' : 'planned', priority: 'medium', tags: [], lane: fallbackPlanEligible ? 'inbox' : 'ready',
+    reasons: [fallbackPlanEligible ? 'candidate-no-evidence' : 'planned-session-plan'], reasonCodes: [fallbackPlanEligible ? 'candidate-no-evidence' : 'planned-session-plan'],
     unresolvedDependsOn: [], activeTraceReasons: [], blocked: false,
-    ready: !planEligible, reviewDue: false, closed: false, dependencies: [], dependents: [],
+    ready: !fallbackPlanEligible, reviewDue: false, closed: false, dependencies: [], dependents: [],
     notes: { claim: '', evidence: '', recheck: '', promotionPaths: '' }, recLanes: [],
+    ...(backendPlanEligible !== undefined ? { planEligible: backendPlanEligible } : {}),
   };
 }
 
@@ -57,11 +58,14 @@ describe('useBacklogSelection', () => {
     expect(result.current.selectedIds).toEqual([]);
   });
 
-  it('exposes only the plan-eligible subset of the selection', () => {
+  it('exposes only the backend plan-eligible subset of the selection when present', () => {
     const { api } = stubWorkflows();
-    const { result } = renderHook(() => useBacklogSelection(board([item('a', true), item('b', false)]), api));
+    const backendEligibleDespiteFallback = item('a', false, true);
+    const backendIneligibleDespiteFallback = item('b', true, false);
+    const { result } = renderHook(() => useBacklogSelection(board([backendEligibleDespiteFallback, backendIneligibleDespiteFallback]), api));
     act(() => { result.current.toggle('a'); result.current.toggle('b'); });
     expect([...result.current.selectedPlanEligibleIds].sort()).toEqual(['a']);
+    expect([...result.current.planEligibleIds].sort()).toEqual(['a']);
   });
 
   it('promote starts a task on the plan-eligible subset and clears the selection on success', async () => {
@@ -82,9 +86,9 @@ describe('useBacklogSelection', () => {
     expect(result.current.selectedIds).toEqual(['b']);
   });
 
-  it('planLane carries the recommendation ref and only the eligible items', async () => {
+  it('planLane carries the recommendation ref and only backend-eligible items', async () => {
     const { api, start } = stubWorkflows();
-    const { result } = renderHook(() => useBacklogSelection(board([item('a', true), item('b', false)]), api));
+    const { result } = renderHook(() => useBacklogSelection(board([item('a', false, true), item('b', true, false)]), api));
     await act(async () => { await result.current.planLane(['a', 'b'], 'rec-1'); });
     expect(start).toHaveBeenCalledWith({ itemIds: ['a'], sourceRecommendationRef: 'rec-1' });
   });

@@ -42,6 +42,7 @@ const NON_PLAN_ELIGIBLE_REASONS = new Set([
 ]);
 
 export function isPlanEligible(item: BoardItem): boolean {
+  if (typeof item.planEligible === 'boolean') return item.planEligible;
   if (item.closed || item.blocked) return false;
   if (item.lane === 'in-progress' || item.lane === 'done' || item.lane === 'archive' || item.lane === 'blocked') return false;
   return !(item.reasonCodes ?? []).some((reason) => NON_PLAN_ELIGIBLE_REASONS.has(reason));

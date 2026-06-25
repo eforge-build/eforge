@@ -49,18 +49,21 @@ const items: BoardItem[] = [
     tags: ['ux', 'cli'], ready: true, recRank: 2, epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     notes: { claim: 'Users want a dry-run preview before importing.', evidence: '', recheck: '', promotionPaths: '' },
     lifecycleState: 'partial', userStatus: 'planned', effectiveLifecycle: 'partial', reasonCodes: ['partial-plan'], associatedLinks: multiItemPartialRows, lifecycleLinks: multiItemPartialRows, epicProgress: mockEpicProgress,
+    planEligible: false, planEligibilityReasonCode: 'partial-plan', planEligibilityReasonMessage: 'A partial session plan already covers add-import-preview.', planEligibilityLinks: multiItemPartialRows,
   }),
   card({
     id: 'recommend-next-work', title: 'Maintain next-work recommendations', status: 'planned', lane: 'ready', priority: 'medium',
     ready: true, recRank: 1, recLanes: ['Planning foundations'], epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     dependents: [{ id: 'add-import-preview', title: 'Add import preview', status: 'planned', missing: false, blocking: false }],
     lifecycleState: 'pr-open', userStatus: 'planned', effectiveLifecycle: 'pr-open', reasonCodes: ['open-pr'], associatedLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }), lifecycleLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }),
+    planEligible: true,
   }),
   card({
     id: 'plan-workstation', title: 'Move planning into workstation', status: 'active', lane: 'in-progress', priority: 'high',
     activeTraceReasons: ['active build run trace run-12'], reasons: ['active build run trace run-12'],
     epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     lifecycleState: 'active', userStatus: 'active', effectiveLifecycle: 'build', reasonCodes: ['running-build'], associatedLinks: lifecycleRows({ itemIds: ['plan-workstation'], session: '2026-06-07-plan-workstation', state: 'active' }), lifecycleLinks: lifecycleRows({ itemIds: ['plan-workstation'], session: '2026-06-07-plan-workstation', state: 'active' }), epicProgress: mockEpicProgress,
+    planEligible: false, planEligibilityReasonCode: 'running-build', planEligibilityReasonMessage: 'plan-workstation is covered by running-build.',
   }),
   card({
     id: 'auto-mode', title: 'Explore auto-mode draining', status: 'planned', lane: 'blocked', priority: 'low',
@@ -68,14 +71,17 @@ const items: BoardItem[] = [
     dependencies: [{ id: 'traceability', title: 'Trace sidecars', status: 'planned', missing: false, blocking: true }],
     epic: 'extensions', epicRef: { id: 'extensions', title: 'Extension platform', status: 'planned', missing: false },
     lifecycleState: 'failed', userStatus: 'planned', effectiveLifecycle: 'failed', reasonCodes: ['failed-result'], associatedLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }), lifecycleLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }),
+    planEligible: false, planEligibilityReasonCode: 'failed-result', planEligibilityReasonMessage: 'auto-mode is covered by failed-result.',
   }),
   card({
     id: 'traceability', title: 'Trace sidecars', status: 'planned', lane: 'ready', priority: 'medium', ready: true,
     dependents: [{ id: 'auto-mode', title: 'Explore auto-mode draining', status: 'planned', missing: false, blocking: true }],
+    planEligible: true,
   }),
   card({
     id: 'legacy-cleanup', title: 'Remove legacy board renderer', status: 'shipped', lane: 'done', priority: 'low', closed: true,
     lifecycleState: 'merged', lifecycleLinks: lifecycleRows({ itemIds: ['legacy-cleanup'], session: '2026-06-07-legacy-cleanup', state: 'merged', prUrl: 'https://example.test/pr/legacy-cleanup', commitSha: 'fedcba' }),
+    planEligible: false, planEligibilityReasonCode: 'merged-result', planEligibilityReasonMessage: 'legacy-cleanup already has merged result evidence.',
   }),
   card({
     id: 'stale-idea', title: 'Revisit cron triggers', status: 'planned', lane: 'inbox', priority: 'low', reviewDue: true,
@@ -105,7 +111,7 @@ export function getMockCompactItemDetail(id: string): CompactBoardDetailResponse
   return { schemaVersion: 1, item: { ...compactItem(item), path: `mock://backlog/items/${item.id}.md`, sections: { Claim: item.notes.claim || `${item.title} claim.`, Evidence: item.notes.evidence, Recheck: item.notes.recheck, 'Promotion Paths': item.notes.promotionPaths }, linkRows: item.linkRows ?? item.lifecycleLinks ?? [], failureEvidence: item.failureEvidence ?? [] }, dependencies: item.dependencies.filter((ref) => !ref.missing).map(refItem), dependents: item.dependents.filter((ref) => !ref.missing).map(refItem) };
 }
 function laneSummary(entry: { lane: string; title: string }, selectedLane: string | undefined, pagination: CompactBoardResponse['pagination']) { const allLaneItems = items.filter((item) => item.lane === entry.lane); return { lane: entry.lane, title: entry.title, count: allLaneItems.length, openCount: allLaneItems.filter((item) => !item.closed).length, closedCount: allLaneItems.filter((item) => item.closed).length, ...(selectedLane === entry.lane ? { pagination } : {}) }; }
-function compactItem(item: BoardItem): CompactBoardItem { return { id: item.id, title: item.title, status: item.status, priority: item.priority, tags: item.tags, lane: item.lane, reasons: item.reasons, dependsOn: item.dependencies.map((dependency) => dependency.id), unresolvedDependsOn: item.unresolvedDependsOn, activeTraceReasons: item.activeTraceReasons, blocked: item.blocked, ready: item.ready, reviewDue: item.reviewDue, closed: item.closed, ...(item.epic ? { epic: item.epic } : {}), lifecycleState: item.lifecycleState, userStatus: item.userStatus, effectiveLifecycle: item.effectiveLifecycle, reasonCodes: item.reasonCodes, associatedLinks: item.associatedLinks, linkRows: item.linkRows }; }
+function compactItem(item: BoardItem): CompactBoardItem { return { id: item.id, title: item.title, status: item.status, priority: item.priority, tags: item.tags, lane: item.lane, reasons: item.reasons, dependsOn: item.dependencies.map((dependency) => dependency.id), unresolvedDependsOn: item.unresolvedDependsOn, activeTraceReasons: item.activeTraceReasons, blocked: item.blocked, ready: item.ready, reviewDue: item.reviewDue, closed: item.closed, ...(item.epic ? { epic: item.epic } : {}), lifecycleState: item.lifecycleState, userStatus: item.userStatus, effectiveLifecycle: item.effectiveLifecycle, reasonCodes: item.reasonCodes, associatedLinks: item.associatedLinks, planEligible: item.planEligible, planEligibilityReasonCode: item.planEligibilityReasonCode, planEligibilityReasonMessage: item.planEligibilityReasonMessage, planEligibilityLinks: item.planEligibilityLinks, linkRows: item.linkRows }; }
 
 export const mockRecommendations: RecommendationModel = {
   schemaVersion: 1,

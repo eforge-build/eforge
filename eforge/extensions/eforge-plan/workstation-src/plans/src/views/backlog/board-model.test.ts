@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, BoardItem } from '@/types';
-import { buildColumns, matchesFilter, standaloneEpics } from './board-model';
+import { buildColumns, matchesFilter, standaloneEpics, stats } from './board-model';
 
 function item(overrides: Partial<BoardItem>): BoardItem {
   return {
@@ -40,6 +40,26 @@ describe('matchesFilter', () => {
   it('treats open unblocked inbox candidates as plan eligible but excludes session-covered work', () => {
     expect(matchesFilter(item({ lane: 'inbox', reasonCodes: ['candidate-no-evidence'] }), 'ready')).toBe(true);
     expect(matchesFilter(item({ lane: 'ready', ready: true, reasonCodes: ['planned-session-plan'] }), 'ready')).toBe(false);
+  });
+
+  it('uses backend plan eligibility before legacy lane and reason-code rules', () => {
+    expect(matchesFilter(item({ planEligible: true, lane: 'ready', reasonCodes: ['planned-session-plan'] }), 'ready')).toBe(true);
+    expect(matchesFilter(item({ planEligible: true, lane: 'in-progress', reasonCodes: [] }), 'ready')).toBe(true);
+    expect(matchesFilter(item({ planEligible: false, lane: 'inbox', reasonCodes: ['candidate-no-evidence'] }), 'ready')).toBe(false);
+  });
+
+  it('uses legacy fallback only when backend plan eligibility is absent', () => {
+    expect(matchesFilter(item({ lane: 'inbox', reasonCodes: ['candidate-no-evidence'] }), 'ready')).toBe(true);
+    expect(matchesFilter(item({ lane: 'blocked', blocked: true, reasonCodes: [] }), 'ready')).toBe(false);
+  });
+
+  it('counts ready stats from backend plan eligibility when present', () => {
+    const eligibleDespiteReason = item({ id: 'eligible', planEligible: true, lane: 'ready', reasonCodes: ['planned-session-plan'] });
+    const eligibleDespiteLane = item({ id: 'eligible-lane', planEligible: true, lane: 'in-progress', reasonCodes: [] });
+    const ineligibleDespiteFallback = item({ id: 'ineligible', planEligible: false, lane: 'inbox', reasonCodes: ['candidate-no-evidence'] });
+    const fallbackEligible = item({ id: 'fallback', lane: 'inbox', reasonCodes: ['candidate-no-evidence'] });
+
+    expect(stats([eligibleDespiteReason, eligibleDespiteLane, ineligibleDespiteFallback, fallbackEligible]).ready).toBe(3);
   });
 });
 

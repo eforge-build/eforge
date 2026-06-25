@@ -78,11 +78,11 @@ export function computeEffectiveLifecycle(input: { userStatus: UserStatus; evide
   }
   if (input.hasUnresolvedDependency && reasonCode === 'candidate-no-evidence') reasonCode = 'unresolved-dependency';
   const closed = lifecycleState === 'shipped' || lifecycleState === 'merged' || reasonCode === 'explicit-shipped-status' || reasonCode === 'explicit-archive-status';
-  const blockers = blockersFromLifecycleInput({ itemId: input.itemId ?? '', evidence: input.evidence, sessionItems: input.sessionItems, taskItems: input.taskItems, links: input.links });
-  const eligibility = planEligibilityFromBlockers(input.itemId ?? '', blockers, input.hasUnresolvedDependency);
-  const blocked = input.hasUnresolvedDependency || lifecycleState === 'failed' || lifecycleState === 'partial';
-  const lane: KanbanLane = (input.userStatus === 'stale' || input.userStatus === 'superseded') && (reasonCode === 'explicit-archive-status') ? 'archive' : blocked ? 'blocked' : lifecycleState === 'shipped' || lifecycleState === 'merged' ? 'done' : lifecycleState === 'build' || lifecycleState === 'queued' || lifecycleState === 'submitted' || lifecycleState === 'pr-open' || lifecycleState === 'active' ? 'in-progress' : lifecycleState === 'planned' ? 'ready' : 'inbox';
   const selectedState = lifecycleState ?? 'none';
   const selectedReason = reasonCode ?? 'candidate-no-evidence';
+  const blockers = blockersFromLifecycleInput({ itemId: input.itemId ?? '', evidence: input.evidence, sessionItems: input.sessionItems, taskItems: input.taskItems, links: input.links });
+  const eligibility = closed && blockers.length === 0 ? { planEligible: false, planEligibilityReasonCode: selectedReason, planEligibilityReasonMessage: `Item ${input.itemId ?? ''} is closed by ${selectedReason}.`, planEligibilityLinks: [] } : planEligibilityFromBlockers(input.itemId ?? '', blockers, input.hasUnresolvedDependency);
+  const blocked = input.hasUnresolvedDependency || lifecycleState === 'failed' || lifecycleState === 'partial';
+  const lane: KanbanLane = (input.userStatus === 'stale' || input.userStatus === 'superseded') && (reasonCode === 'explicit-archive-status') ? 'archive' : blocked ? 'blocked' : lifecycleState === 'shipped' || lifecycleState === 'merged' ? 'done' : lifecycleState === 'build' || lifecycleState === 'queued' || lifecycleState === 'submitted' || lifecycleState === 'pr-open' || lifecycleState === 'active' ? 'in-progress' : lifecycleState === 'planned' ? 'ready' : 'inbox';
   return { lifecycleState: publicLifecycleState(selectedState), reasonCode: selectedReason, reasons: [selectedReason], closed, lane, blocked, ready: lane === 'ready', reviewDue: false, evidence, ...eligibility };
 }
