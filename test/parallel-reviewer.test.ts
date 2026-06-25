@@ -8,6 +8,12 @@ import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { deduplicateIssues, runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runReviewFixer } from '@eforge-build/engine/agents/review-fixer';
 
+function expectUniqueIssueIds(issues: ReviewIssue[]): void {
+  const issueIds = issues.map((issue) => issue.issueId);
+  expect(issueIds.every((issueId) => typeof issueId === 'string' && issueId.length > 0)).toBe(true);
+  expect(new Set(issueIds).size).toBe(issueIds.length);
+}
+
 describe('deduplicateIssues', () => {
   it('removes exact duplicates keeping highest severity', () => {
     const issues: ReviewIssue[] = [
@@ -173,6 +179,59 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
   <issue severity="warning" category="bug" file="src/parallel.ts" line="12">Parallel reviewer finding</issue>
 </review-issues>`;
 
+  it('assigns generated issue IDs containing round and perspective lane', async () => {
+    const backend = new StubHarness([{ text: validLateReviewXml }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-perspective-issue-ids',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code'],
+        round: 2,
+      }),
+    );
+
+    const perspectiveComplete = filterEvents(events, 'plan:build:review:parallel:perspective:complete')[0];
+    expect(perspectiveComplete.issues[0].issueId).toBe('review-r2-code-1');
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues[0].issueId).toBe('review-r2-code-1');
+  });
+
+  it('deduplicates aggregate issue IDs after supplied duplicates and generated collisions', async () => {
+    class RoutedHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        const text = options.perspective === 'docs'
+          ? '<review-issues><issue issueId="review-r3-aggregate-2" severity="warning" category="stale-docs" file="docs.md">Docs issue</issue></review-issues>'
+          : '<review-issues><issue issueId="review-r3-aggregate-2" severity="warning" category="bugs" file="src/app.ts">Code issue</issue></review-issues>';
+        for await (const event of new StubHarness([{ text }]).run(options, agent, planId)) {
+          yield event;
+        }
+      }
+    }
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: new RoutedHarness([]),
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-aggregate-issue-id-collisions',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'docs'],
+        round: 3,
+      }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:complete');
+    const issueIds = complete!.issues.map((issue) => issue.issueId);
+    expect(new Set(issueIds).size).toBe(issueIds.length);
+    expect(issueIds).toEqual(['review-r3-aggregate-2', 'review-r3-aggregate-2-2']);
+  });
+
   it('single delegation preserves parsed issues after a late transient reviewer error', async () => {
     const backend = new StubHarness([{
       resultText: validLateReviewXml,
@@ -187,14 +246,17 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
         planId: 'plan-test-single-late-reviewer-error',
         cwd: '/tmp',
         strategy: 'single',
+        round: 1,
       }),
     );
 
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
+    expect(complete!.round).toBe(1);
     expect(complete!.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts', issueId: 'review-r1-single-1' }),
     ]));
+    expect(new Set(complete!.issues.map((issue) => issue.issueId)).size).toBe(complete!.issues.length);
     expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
   });
 
@@ -362,6 +424,13 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
       }),
     );
 
+    const docsComplete = events.find(
+      (event): event is Extract<EforgeEvent, { type: 'plan:build:review:parallel:perspective:complete' }> =>
+        event.type === 'plan:build:review:parallel:perspective:complete' && event.perspective === 'docs',
+    );
+    expect(docsComplete).toBeDefined();
+    expect(docsComplete!.issues[0]?.issueId).toBe('review-r0-docs-1');
+
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
 
@@ -371,6 +440,8 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     expect(
       complete!.issues.some((i) => i.severity === 'critical' && i.category === 'review-contract'),
     ).toBe(true);
+    expectUniqueIssueIds(complete!.issues);
+    expect(complete!.issues.map((issue) => issue.issueId)).toContain(docsComplete!.issues[0]!.issueId);
   });
 
   it('aggregate includes synthetic critical issue when one perspective returns malformed XML', async () => {
@@ -403,13 +474,14 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     );
     expect(docsComplete).toBeDefined();
     expect(docsComplete!.issues).toHaveLength(1);
-    expect(docsComplete!.issues[0]).toMatchObject({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' });
+    expect(docsComplete!.issues[0]).toMatchObject({ issueId: 'review-r0-docs-1', severity: 'critical', category: 'review-contract', file: 'reviewer-output' });
 
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
+      expect.objectContaining({ issueId: docsComplete!.issues[0]!.issueId, severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
     ]));
+    expectUniqueIssueIds(complete!.issues);
   });
 
   it('aggregate includes synthetic critical issue when one perspective throws', async () => {
@@ -440,8 +512,9 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
+      expect.objectContaining({ issueId: 'review-r0-docs-1', severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
     ]));
+    expectUniqueIssueIds(complete!.issues);
     expect(complete!.issues[0].description).toContain('docs reviewer unavailable');
   });
 
@@ -475,13 +548,14 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     );
     expect(docsComplete).toBeDefined();
     expect(docsComplete!.issues).toHaveLength(1);
-    expect(docsComplete!.issues[0]).toMatchObject({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' });
+    expect(docsComplete!.issues[0]).toMatchObject({ issueId: 'review-r0-docs-1', severity: 'critical', category: 'review-contract', file: 'reviewer-output' });
 
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
+      expect.objectContaining({ issueId: docsComplete!.issues[0]!.issueId, severity: 'critical', category: 'review-contract', file: 'reviewer-output' }),
     ]));
+    expectUniqueIssueIds(complete!.issues);
   });
 
   it('aggregate includes synthetic critical issue when an extension perspective violates the contract', async () => {

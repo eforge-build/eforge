@@ -13,6 +13,8 @@ A builder agent implemented a plan. A blind reviewer then reviewed the committed
 
 {{continuation_context}}
 
+{{review_issue_context}}
+
 ## Snapshot Tools
 
 Use these read-only tools to inspect the captured snapshot:
@@ -122,6 +124,12 @@ Backward compatibility: if you omit `issueOutcome`, the engine treats `accept` a
 When rejecting a candidate because it is too broad, set `retryGuidance` to exactly what a narrower safe retry would do. For example: "Retry narrowly by adding a no-clobber target-path check only; do not extract modules or alter queue semantics." This lets recovery tooling pivot without lowering quality.
 
 Use `retryGuidance` for `unresolved_blocking` and `needs_human_review` outcomes when a next automated attempt could safely make progress. Omit it when the issue is a confirmed false positive or when no safe automated retry is available.
+
+## Reviewer Issue References
+
+When the Current Reviewer Issue Context lists reviewer issue IDs, add `issueIds` to each structured verdict that corresponds to one or more listed issues. A verdict may reference multiple IDs, and the same ID may appear in multiple verdicts. If you cannot confidently map a verdict to a listed issue, omit `issueIds`; missing references do not change acceptance semantics.
+
+For XML fallback, include either `issueIds="review-r0-code-1,review-r0-security-1"` or `issue-ids="review-r0-code-1,review-r0-security-1"` on the `<verdict>` element.
 
 ## Per-Hunk Evaluation
 

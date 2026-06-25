@@ -14,6 +14,36 @@ The following issues were identified by specialist reviewers, sorted by severity
 
 {{continuation_context}}
 
+# Issue Reference Reporting
+
+Each issue includes an `Issue ID`. After applying fixes, optionally submit best-effort per-issue status metadata with the `{{submit_issue_references_tool}}` tool. This metadata is informational only; do not spend extra time if the mapping is unclear.
+
+Use this submission schema:
+
+```yaml
+{{issue_reference_submission_schema}}
+```
+
+Status meanings:
+
+- `addressed` — you applied a fix intended to resolve the reviewer issue.
+- `deferred` — you intentionally skipped the issue because it was unclear, unsafe, too broad, manual/follow-up only, or out of scope for this fixer pass.
+- `obsolete` — the issue no longer applies because the relevant code changed or the finding was superseded.
+
+Prefer the `{{submit_issue_references_tool}}` tool. If the tool is unavailable, you may output this legacy fallback XML block once:
+
+```xml
+<issue-references>
+  <issue-reference>
+    <issueId>review-r0-code-1</issueId>
+    <status>addressed</status>
+    <note>Optional short note.</note>
+  </issue-reference>
+</issue-references>
+```
+
+Include at most one `issueId` per `<issue-reference>` entry. Omit the metadata entirely if you are unsure.
+
 # Instructions
 
 1. Work through the issues in the order listed (critical first, then warning, then suggestion).

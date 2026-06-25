@@ -16,6 +16,7 @@ import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
+import { assignReviewIssueIds } from '../review-issue-traceability.js';
 import {
   runReview,
   parseReviewIssuesStrict,
@@ -55,6 +56,19 @@ function syntheticPerspectiveErrorIssue(perspective: string, err: unknown): Revi
     file: 'reviewer-output',
     description: `Reviewer perspective "${perspective}" failed: ${err instanceof Error ? err.message : String(err)}`,
   };
+}
+
+function assignPerspectiveReviewIssueIds(issues: ReviewIssue[], perspective: string, round: number | undefined): ReviewIssue[] {
+  return assignReviewIssueIds(issues, { round, lane: perspective });
+}
+
+function aggregateIssuesInPerspectiveOrder(
+  allIssues: Array<{ perspective: string; issues: ReviewIssue[] }>,
+  perspectives: string[],
+): ReviewIssue[] {
+  return perspectives.flatMap((perspective) => allIssues
+    .filter((entry) => entry.perspective === perspective)
+    .flatMap((entry) => entry.issues));
 }
 
 /**
@@ -366,13 +380,15 @@ export async function* runParallelReview(
             }
 
             const parseResult = parseReviewIssuesStrict(fullText);
-            allIssues.push({ perspective, issues: parseResult.issues });
+            const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+            allIssues.push({ perspective, issues });
 
-            yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
+            yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
           } catch (err) {
             const parseResult = parseReviewIssuesStrict(fullText);
             if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
-              allIssues.push({ perspective, issues: parseResult.issues });
+              const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+              allIssues.push({ perspective, issues });
               yield {
                 timestamp: new Date().toISOString(),
                 type: 'agent:warning',
@@ -382,10 +398,10 @@ export async function* runParallelReview(
                 code: 'reviewer-late-infrastructure-error-downgraded',
                 message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
               };
-              yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
+              yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
               return;
             }
-            allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
+            allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
             yield {
               timestamp: new Date().toISOString(),
               type: 'plan:build:review:parallel:perspective:error',
@@ -397,7 +413,7 @@ export async function* runParallelReview(
           }
           return;
         } catch (err) {
-          allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
+          allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
           yield {
             timestamp: new Date().toISOString(),
             type: 'plan:build:review:parallel:perspective:error',
@@ -449,13 +465,15 @@ export async function* runParallelReview(
         }
 
         const parseResult = parseReviewIssuesStrict(fullText);
-        allIssues.push({ perspective, issues: parseResult.issues });
+        const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+        allIssues.push({ perspective, issues });
 
-        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
       } catch (err) {
         const parseResult = parseReviewIssuesStrict(fullText);
         if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
-          allIssues.push({ perspective, issues: parseResult.issues });
+          const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+          allIssues.push({ perspective, issues });
           yield {
             timestamp: new Date().toISOString(),
             type: 'agent:warning',
@@ -465,10 +483,10 @@ export async function* runParallelReview(
             code: 'reviewer-late-infrastructure-error-downgraded',
             message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
           };
-          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues: parseResult.issues, ...roundMetadata };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
           return;
         }
-        allIssues.push({ perspective, issues: [syntheticPerspectiveErrorIssue(perspective, err)] });
+        allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
         yield {
           timestamp: new Date().toISOString(),
           type: 'plan:build:review:parallel:perspective:error',
@@ -487,8 +505,9 @@ export async function* runParallelReview(
   }
 
   // Aggregate and deduplicate issues
-  const mergedIssues = deduplicateIssues(
-    allIssues.flatMap((r) => r.issues),
+  const mergedIssues = assignReviewIssueIds(
+    deduplicateIssues(aggregateIssuesInPerspectiveOrder(allIssues, perspectives)),
+    { round, lane: 'aggregate' },
   );
 
   yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: mergedIssues, ...roundMetadata };

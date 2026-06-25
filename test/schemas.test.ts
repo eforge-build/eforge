@@ -24,11 +24,14 @@ import {
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
+import { loadPrompt } from '@eforge-build/engine/prompts';
 import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
+import { getReviewFixerIssueReferenceSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
     const yaml = getSchemaYaml('test-review-issue', reviewIssueSchema);
+    expect(yaml).toContain('issueId');
     expect(yaml).toContain('severity');
     expect(yaml).toContain('category');
     expect(yaml).toContain('file');
@@ -55,8 +58,9 @@ describe('getSchemaYaml', () => {
 });
 
 describe('perspective-specific schema YAML getters', () => {
-  it('getReviewIssueSchemaYaml contains general categories', () => {
+  it('getReviewIssueSchemaYaml contains issueId and general categories', () => {
     const yaml = getReviewIssueSchemaYaml();
+    expect(yaml).toContain('issueId');
     expect(yaml).toContain('bugs');
     expect(yaml).toContain('security');
     expect(yaml).toContain('maintainability');
@@ -103,6 +107,7 @@ describe('perspective-specific schema YAML getters', () => {
 describe('reviewIssueSchema safeParse', () => {
   it('accepts a valid ReviewIssue', () => {
     const result = safeParseWithSchema(reviewIssueSchema, {
+      issueId: 'custom-1',
       severity: 'critical',
       category: 'bugs',
       file: 'src/index.ts',
@@ -354,6 +359,7 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('accept');
     expect(yaml).toContain('reject');
     expect(yaml).toContain('review');
+    expect(yaml).toContain('issueIds');
   });
 
   it('getEvaluationSubmissionSchemaYaml contains verdict submission fields', () => {
@@ -363,6 +369,37 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('action');
     expect(yaml).toContain('reason');
     expect(yaml).toContain('hunk');
+    expect(yaml).toContain('issueIds');
+  });
+
+  it('evaluator prompt renders issueIds guidance and XML fallback attributes', async () => {
+    const prompt = await loadPrompt('evaluator', {
+      plan_id: 'plan-01',
+      plan_name: 'Plan One',
+      validation_repair_context: '',
+      continuation_context: '',
+      review_issue_context: '## Current Reviewer Issue Context\n- Issue ID: review-r0-code-1',
+      list_files_tool: 'list_evaluation_files',
+      get_diff_tool: 'get_evaluation_diff',
+      submit_verdicts_tool: 'submit_evaluation_verdicts',
+      strictness: '',
+      evaluation_schema: getEvaluationSchemaYaml(),
+      evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
+    });
+
+    expect(prompt).toContain('add `issueIds`');
+    expect(prompt).toContain('A verdict may reference multiple IDs, and the same ID may appear in multiple verdicts');
+    expect(prompt).toContain('issueIds="review-r0-code-1,review-r0-security-1"');
+    expect(prompt).toContain('issue-ids="review-r0-code-1,review-r0-security-1"');
+  });
+
+  it('getReviewFixerIssueReferenceSubmissionSchemaYaml contains all reference statuses', () => {
+    const yaml = getReviewFixerIssueReferenceSubmissionSchemaYaml();
+    expect(yaml).toContain('issueReferences');
+    expect(yaml).toContain('issueId');
+    expect(yaml).toContain('addressed');
+    expect(yaml).toContain('deferred');
+    expect(yaml).toContain('obsolete');
   });
 
   it('getClarificationSchemaYaml contains question fields', () => {

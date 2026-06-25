@@ -8,8 +8,9 @@ function stored(eventId: string, event: Record<string, unknown>): StoredEvent {
   return { eventId, event: event as unknown as StoredEvent['event'] };
 }
 
-function issue(file: string, description = 'Fix this'): ReviewIssue {
+function issue(file: string, description = 'Fix this', issueId?: string): ReviewIssue {
   return {
+    ...(issueId ? { issueId } : {}),
     severity: 'warning',
     category: 'code',
     file,
@@ -71,6 +72,75 @@ describe('buildReviewCycleDetail', () => {
     expect(detail.rounds[0].evaluator.verdicts[0].action).toBe('reject');
     expect(detail.rounds[1].reviewers[0].issues[0].description).toBe('Second round issue');
     expect(detail.rounds[1].evaluator.accepted).toBe(2);
+  });
+
+  it('links reviewer issue, fixer reference, and evaluator verdict by issue id', () => {
+    const detail = buildReviewCycleDetail([
+      stored('review', { type: 'plan:build:review:parallel:perspective:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, perspective: 'code', issues: [issue('src/linked.ts', 'Linked issue', 'review-issue-1')], round: 0 }),
+      stored('fix', { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:02:00.000Z', planId: PLAN_ID, issueReferences: [{ issueId: 'review-issue-1', status: 'addressed', note: 'Patched' }], round: 0 }),
+      stored('eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, accepted: 1, rejected: 0, verdicts: [{ file: 'src/linked.ts', action: 'accept', reason: 'Resolved', issueIds: ['review-issue-1'] }], round: 0 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].linkedTraces).toHaveLength(1);
+    expect(detail.rounds[0].linkedTraces[0].issueId).toBe('review-issue-1');
+    expect(detail.rounds[0].linkedTraces[0].reviewer?.issue.description).toBe('Linked issue');
+    expect(detail.rounds[0].linkedTraces[0].fixerReferences[0].status).toBe('addressed');
+    expect(detail.rounds[0].linkedTraces[0].evaluatorVerdicts[0].reason).toBe('Resolved');
+    expect(detail.rounds[0].reviewers).toHaveLength(0);
+    expect(detail.rounds[0].evaluator.verdicts).toHaveLength(0);
+    expect(detail.rounds[0].unlinkedFixerReferences).toHaveLength(0);
+  });
+
+  it('links one evaluator verdict to every referenced reviewer issue id', () => {
+    const detail = buildReviewCycleDetail([
+      stored('review', { type: 'plan:build:review:parallel:perspective:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, perspective: 'code', issues: [issue('src/one.ts', 'First issue', 'review-issue-1'), issue('src/two.ts', 'Second issue', 'review-issue-2')], round: 0 }),
+      stored('eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, accepted: 0, rejected: 2, verdicts: [{ file: 'src/shared.ts', action: 'reject', reason: 'Both remain', issueIds: ['review-issue-1', 'review-issue-2'] }], round: 0 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].linkedTraces).toHaveLength(2);
+    expect(detail.rounds[0].linkedTraces.map((trace) => trace.issueId)).toEqual(['review-issue-1', 'review-issue-2']);
+    expect(detail.rounds[0].linkedTraces[0].evaluatorVerdicts[0].reason).toBe('Both remain');
+    expect(detail.rounds[0].linkedTraces[1].evaluatorVerdicts[0]).toBe(detail.rounds[0].linkedTraces[0].evaluatorVerdicts[0]);
+    expect(detail.rounds[0].evaluator.verdicts).toHaveLength(0);
+  });
+
+  it('creates a dangling trace for an evaluator verdict that references an unknown issue id', () => {
+    const detail = buildReviewCycleDetail([
+      stored('eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, accepted: 0, rejected: 1, verdicts: [{ file: 'src/missing.ts', action: 'reject', reason: 'Still missing', issueIds: ['unknown-review-issue'] }], round: 0 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].linkedTraces).toHaveLength(1);
+    expect(detail.rounds[0].linkedTraces[0].issueId).toBe('unknown-review-issue');
+    expect(detail.rounds[0].linkedTraces[0].reviewer).toBeUndefined();
+    expect(detail.rounds[0].linkedTraces[0].danglingReferenceSources).toEqual(['evaluator']);
+    expect(detail.rounds[0].linkedTraces[0].evaluatorVerdicts[0].reason).toBe('Still missing');
+    expect(detail.rounds[0].evaluator.verdicts).toHaveLength(0);
+  });
+
+  it('creates a dangling trace for a fixer reference that references an unknown issue id', () => {
+    const detail = buildReviewCycleDetail([
+      stored('fix', { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:02:00.000Z', planId: PLAN_ID, issueReferences: [{ issueId: 'unknown-review-issue', status: 'deferred', note: 'Could not find it' }], round: 0 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].linkedTraces).toHaveLength(1);
+    expect(detail.rounds[0].linkedTraces[0].issueId).toBe('unknown-review-issue');
+    expect(detail.rounds[0].linkedTraces[0].reviewer).toBeUndefined();
+    expect(detail.rounds[0].linkedTraces[0].danglingReferenceSources).toEqual(['fixer']);
+    expect(detail.rounds[0].linkedTraces[0].fixerReferences[0].note).toBe('Could not find it');
+    expect(detail.rounds[0].unlinkedFixerReferences).toHaveLength(0);
+  });
+
+  it('keeps legacy no-id reviewer issues, fixer references, and evaluator verdicts in unlinked lanes', () => {
+    const detail = buildReviewCycleDetail([
+      stored('review', { type: 'plan:build:review:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, issues: [issue('src/legacy.ts')], round: 0 }),
+      stored('fix', { type: 'plan:build:review:fix:complete', timestamp: '2025-01-01T00:01:30.000Z', planId: PLAN_ID, issueReferences: [{ issueId: '', status: 'deferred', note: 'No issue id supplied' }], round: 0 }),
+      stored('eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:02:00.000Z', planId: PLAN_ID, accepted: 0, rejected: 1, verdicts: [{ file: 'src/legacy.ts', action: 'review', reason: 'Legacy verdict' }], round: 0 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].linkedTraces).toHaveLength(0);
+    expect(detail.rounds[0].reviewers[0].issues[0].file).toBe('src/legacy.ts');
+    expect(detail.rounds[0].unlinkedFixerReferences[0].note).toBe('No issue id supplied');
+    expect(detail.rounds[0].evaluator.verdicts[0].reason).toBe('Legacy verdict');
   });
 
   it('falls back to inferred grouping for legacy events without round metadata', () => {

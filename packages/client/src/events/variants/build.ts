@@ -29,6 +29,8 @@ import {
   ReconciliationReportSchema,
   RecoveryVerdictSchema,
   ReviewCycleRoundField,
+  ReviewFixIssueReferenceSchema,
+  ReviewIssueIdSchema,
   ReviewIssueSchema,
   ReviewPerspectiveKeySchema,
   ReviewProfileConfigSchema,
@@ -108,7 +110,14 @@ export const buildEventVariants = [
     issueCount: Type.Number(),
     ...ReviewCycleRoundField,
   }),
-  Type.Object({ type: Type.Literal('plan:build:review:fix:complete'), planId: Type.String(), ...ReviewCycleRoundField }),
+  Type.Object({
+    type: Type.Literal('plan:build:review:fix:complete'),
+    planId: Type.String(),
+    ...ReviewCycleRoundField,
+    // --- eforge:region review-issue-traceability ---
+    issueReferences: Type.Optional(Type.Array(ReviewFixIssueReferenceSchema)),
+    // --- eforge:endregion review-issue-traceability ---
+  }),
   Type.Object({
     type: Type.Literal('plan:build:review:fix:continuation'),
     planId: Type.String(),
@@ -136,6 +145,9 @@ export const buildEventVariants = [
         Type.Object({
           file: Type.String(), action: Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]), reason: Type.String(),
           hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()),
+          // --- eforge:region review-issue-traceability ---
+          issueIds: Type.Optional(Type.Array(ReviewIssueIdSchema)),
+          // --- eforge:endregion review-issue-traceability ---
         }),
       ),
     ),

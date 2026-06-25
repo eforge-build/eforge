@@ -8,6 +8,7 @@
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import {
   REVIEW_PERSPECTIVES,
+  ReviewIssueIdSchema, ReviewFixIssueReferenceSchema,
   ReviewPerspectiveKeySchema,
   getSchemaYaml,
   safeParseWithSchema,
@@ -146,6 +147,7 @@ const planReviewCategorySchema = Type.Union(
 
 /** Base review issue schema with string category (union of all perspectives). */
 export const reviewIssueSchema = Type.Object({
+  issueId: Type.Optional(ReviewIssueIdSchema),
   severity: severitySchema,
   category: Type.String({ description: 'Review category — allowed values depend on the review perspective' }),
   file: Type.String({ description: 'Relative file path from the repository root' }),
@@ -159,6 +161,9 @@ export const reviewIssueSchema = Type.Object({
   validationProviderName: Type.Optional(Type.String({ description: 'Name of the validation provider that produced this issue' })),
   runtimeFailureKind: Type.Optional(validationRuntimeFailureKindSchema),
 });
+
+export const reviewFixerIssueReferenceSubmissionSchema = Type.Object({ issueReferences: Type.Array(ReviewFixIssueReferenceSchema, { description: 'Best-effort issue-reference statuses submitted by the review-fixer. Unknown but syntactically valid issueId values are preserved.' }) });
+export type ReviewFixerIssueReferenceSubmission = Static<typeof reviewFixerIssueReferenceSubmissionSchema>; export function getReviewFixerIssueReferenceSubmissionSchemaYaml(): string { return getSchemaYaml('review-fixer-issue-reference-submission', reviewFixerIssueReferenceSubmissionSchema); }
 
 // ---------------------------------------------------------------------------
 // Clarification schema

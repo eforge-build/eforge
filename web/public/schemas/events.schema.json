@@ -5066,6 +5066,12 @@
                   "description"
                 ],
                 "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
                   "severity": {
                     "anyOf": [
                       {
@@ -5317,6 +5323,12 @@
                   "description"
                 ],
                 "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
                   "severity": {
                     "anyOf": [
                       {
@@ -5568,6 +5580,12 @@
                   "description"
                 ],
                 "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
                   "severity": {
                     "anyOf": [
                       {
@@ -5970,6 +5988,12 @@
                   "description"
                 ],
                 "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
                   "severity": {
                     "anyOf": [
                       {
@@ -6187,6 +6211,12 @@
                   "description"
                 ],
                 "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
                   "severity": {
                     "anyOf": [
                       {
@@ -6388,6 +6418,45 @@
             "round": {
               "minimum": 0,
               "type": "integer"
+            },
+            "issueReferences": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "issueId",
+                  "status"
+                ],
+                "properties": {
+                  "issueId": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "addressed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deferred",
+                        "type": "string"
+                      },
+                      {
+                        "const": "obsolete",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "note": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         },
@@ -6592,6 +6661,15 @@
                   },
                   "retryGuidance": {
                     "type": "string"
+                  },
+                  "issueIds": {
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "\\S",
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -10470,6 +10548,12 @@
                           "description"
                         ],
                         "properties": {
+                          "issueId": {
+                            "minLength": 1,
+                            "maxLength": 4096,
+                            "pattern": "\\S",
+                            "type": "string"
+                          },
                           "severity": {
                             "anyOf": [
                               {
@@ -10690,6 +10774,15 @@
                               },
                               "retryGuidance": {
                                 "type": "string"
+                              },
+                              "issueIds": {
+                                "type": "array",
+                                "items": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                }
                               }
                             }
                           }
@@ -19366,6 +19459,12 @@
                                 "description"
                               ],
                               "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
                                 "severity": {
                                   "anyOf": [
                                     {
@@ -19617,6 +19716,12 @@
                                 "description"
                               ],
                               "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
                                 "severity": {
                                   "anyOf": [
                                     {
@@ -19868,6 +19973,12 @@
                                 "description"
                               ],
                               "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
                                 "severity": {
                                   "anyOf": [
                                     {
@@ -20270,6 +20381,12 @@
                                 "description"
                               ],
                               "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
                                 "severity": {
                                   "anyOf": [
                                     {
@@ -20487,6 +20604,12 @@
                                 "description"
                               ],
                               "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
                                 "severity": {
                                   "anyOf": [
                                     {
@@ -20688,6 +20811,45 @@
                           "round": {
                             "minimum": 0,
                             "type": "integer"
+                          },
+                          "issueReferences": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "issueId",
+                                "status"
+                              ],
+                              "properties": {
+                                "issueId": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "pattern": "\\S",
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "addressed",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "deferred",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "obsolete",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "minLength": 1,
+                                  "maxLength": 4096,
+                                  "type": "string"
+                                }
+                              }
+                            }
                           }
                         }
                       },
@@ -20892,6 +21054,15 @@
                                 },
                                 "retryGuidance": {
                                   "type": "string"
+                                },
+                                "issueIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "minLength": 1,
+                                    "maxLength": 4096,
+                                    "pattern": "\\S",
+                                    "type": "string"
+                                  }
                                 }
                               }
                             }
@@ -24770,6 +24941,12 @@
                                         "description"
                                       ],
                                       "properties": {
+                                        "issueId": {
+                                          "minLength": 1,
+                                          "maxLength": 4096,
+                                          "pattern": "\\S",
+                                          "type": "string"
+                                        },
                                         "severity": {
                                           "anyOf": [
                                             {
@@ -24990,6 +25167,15 @@
                                             },
                                             "retryGuidance": {
                                               "type": "string"
+                                            },
+                                            "issueIds": {
+                                              "type": "array",
+                                              "items": {
+                                                "minLength": 1,
+                                                "maxLength": 4096,
+                                                "pattern": "\\S",
+                                                "type": "string"
+                                              }
                                             }
                                           }
                                         }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PlanPreviewProvider } from '@/components/preview';
 import type { AgentThread, DecisionPoint, StoredEvent } from '@/lib/run-state';
 import { ThreadPipeline } from '../thread-pipeline';
@@ -126,6 +126,8 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 0,
           roundLabel: 'Round 1',
+          linkedTraces: [],
+          unlinkedFixerReferences: [{ issueId: '', status: 'deferred', note: 'No issue id supplied' }],
           reviewers: [
             {
               perspective: 'code',
@@ -150,6 +152,8 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 1,
           roundLabel: 'Round 2',
+          linkedTraces: [],
+          unlinkedFixerReferences: [],
           reviewers: [],
           perspectiveErrors: [],
           reviewFix: { ran: false, continuations: [] },
@@ -172,6 +176,10 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.getByText('Perspective error: docs')).toBeTruthy();
     expect(screen.getByText('Reviewer failed.')).toBeTruthy();
     expect(screen.getByText('Continuation 1/2')).toBeTruthy();
+    const firstRoundCard = screen.getByText('Round 1').parentElement as HTMLElement;
+    const fixerLane = within(firstRoundCard).getByText('Review-fixer').parentElement as HTMLElement;
+    expect(within(fixerLane).getByText('deferred')).toBeTruthy();
+    expect(within(fixerLane).getByText(/No issue id supplied/)).toBeTruthy();
     expect(screen.getByText('exact · 1 files · +2 -1')).toBeTruthy();
     expect(screen.getByText('src/app.ts')).toBeTruthy();
     expect(screen.getAllByText(/1 accepted \/ 1 rejected/).length).toBeGreaterThan(0);
@@ -179,8 +187,88 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.getByText(/Action:/)).toBeTruthy();
     expect(screen.getByText('Still broken.')).toBeTruthy();
     expect(screen.getByText('Retry guidance: Try again.')).toBeTruthy();
-    expect(screen.getByText('No reviewer issues were recorded for this round.')).toBeTruthy();
+    expect(screen.getByText('No unlinked reviewer issues were recorded for this round.')).toBeTruthy();
     expect(screen.getByText('No review-fixer activity was recorded for this round.')).toBeTruthy();
-    expect(screen.getByText('No evaluator verdicts were recorded for this round.')).toBeTruthy();
+    expect(screen.getByText('No unlinked evaluator verdicts were recorded for this round.')).toBeTruthy();
+  });
+
+  it('renders linked trace labels and fixer statuses before legacy lane headings', () => {
+    const detail: ReviewCycleDetail = {
+      planId: 'plan-01',
+      roundsInferred: false,
+      summary: {},
+      rounds: [
+        {
+          round: 0,
+          roundLabel: 'Round 1',
+          linkedTraces: [
+            {
+              issueId: 'review-issue-1',
+              reviewer: { perspective: 'code', issue: { issueId: 'review-issue-1', severity: 'warning', category: 'code', file: 'src/linked.ts', description: 'Linked problem.' } },
+              fixerReferences: [
+                { issueId: 'review-issue-1', status: 'addressed', note: 'Patched' },
+                { issueId: 'review-issue-1', status: 'deferred' },
+                { issueId: 'review-issue-1', status: 'obsolete' },
+              ],
+              evaluatorVerdicts: [{ file: 'src/linked.ts', action: 'accept', reason: 'Resolved', issueIds: ['review-issue-1'] }],
+              danglingReferenceSources: [],
+            },
+          ],
+          unlinkedFixerReferences: [],
+          reviewers: [],
+          perspectiveErrors: [],
+          reviewFix: { ran: true, continuations: [] },
+          evaluator: { ran: true, verdicts: [] },
+        },
+      ],
+    };
+
+    render(<ReviewCycleDetailSheet detail={detail} open onClose={() => {}} onOpenAgent={() => {}} />);
+
+    const traceCard = screen.getByText('Issue review-issue-1').parentElement?.parentElement as HTMLElement;
+    expect(traceCard).toBeTruthy();
+    expect(within(traceCard).getByText('addressed')).toBeTruthy();
+    expect(within(traceCard).getByText('deferred')).toBeTruthy();
+    expect(within(traceCard).getByText('obsolete')).toBeTruthy();
+    expect(within(traceCard).getByText('Resolved')).toBeTruthy();
+    const roundCard = screen.getByText('Round 1').parentElement as HTMLElement;
+    const linkedHeading = within(roundCard).getByText('Linked issue traces');
+    for (const laneHeading of ['Reviewers', 'Review-fixer', 'Evaluator']) {
+      expect(linkedHeading.compareDocumentPosition(within(roundCard).getByText(laneHeading)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it('renders legacy no-id reviewer and evaluator data after trace rendering', () => {
+    const detail: ReviewCycleDetail = {
+      planId: 'plan-01',
+      roundsInferred: false,
+      summary: {},
+      rounds: [
+        {
+          round: 0,
+          roundLabel: 'Round 1',
+          linkedTraces: [
+            {
+              issueId: 'unknown-review-issue',
+              fixerReferences: [],
+              evaluatorVerdicts: [{ file: 'src/unknown.ts', action: 'reject', reason: 'Unknown issue', issueIds: ['unknown-review-issue'] }],
+              danglingReferenceSources: ['evaluator'],
+            },
+          ],
+          unlinkedFixerReferences: [],
+          reviewers: [{ perspective: null, issues: [{ severity: 'warning', category: 'code', file: 'src/legacy.ts', description: 'Legacy problem.' }] }],
+          perspectiveErrors: [],
+          reviewFix: { ran: false, continuations: [] },
+          evaluator: { ran: true, verdicts: [{ file: 'src/legacy.ts', action: 'review', reason: 'Legacy verdict' }] },
+        },
+      ],
+    };
+
+    render(<ReviewCycleDetailSheet detail={detail} open onClose={() => {}} onOpenAgent={() => {}} />);
+
+    expect(screen.getByText('Unmatched issue reference unknown-review-issue')).toBeTruthy();
+    expect(screen.getByText(/Referenced by evaluator/)).toBeTruthy();
+    expect(screen.getByText('Legacy problem.')).toBeTruthy();
+    expect(screen.getByText('Legacy verdict')).toBeTruthy();
   });
 });

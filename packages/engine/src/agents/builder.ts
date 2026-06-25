@@ -3,7 +3,8 @@ import { promisify } from 'node:util';
 
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions, classifyAgentTerminalSubtype } from '../harness.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile, type ReviewIssue } from '../events.js';
+import type { ReviewFixIssueReference } from '@eforge-build/client';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml, getEvaluationSubmissionSchemaYaml } from '../schemas.js';
 import type { EvaluationSubmission, EvaluationVerdict, ShardScope } from '../schemas.js';
@@ -62,6 +63,10 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   shardScope?: ShardScope;
   /** Zero-based review-cycle round for evaluator lifecycle event metadata. */
   round?: number;
+  /** Current reviewer issues the evaluator can reference with verdict issueIds. */
+  reviewIssues?: ReviewIssue[];
+  /** Best-effort review-fixer statuses keyed by reviewer issue ID, when available. */
+  reviewIssueReferences?: ReviewFixIssueReference[];
 }
 
 /**
@@ -160,6 +165,50 @@ const VERIFICATION_BUILD_ONLY = `Before committing, run type checking and build 
 Do NOT run tests — test verification is handled by dedicated test stages in the pipeline.
 
 Fix any issues that arise from verification. Only proceed to commit when all verification passes.`;
+
+function issueReferenceLines(issueId: string, referencesByIssueId: Map<string, ReviewFixIssueReference[]>): string[] {
+  const references = referencesByIssueId.get(issueId) ?? [];
+  if (references.length === 0) return [];
+  return references.map((reference) => {
+    const note = reference.note ? ` — ${reference.note}` : '';
+    return `   Fixer status: ${reference.status}${note}`;
+  });
+}
+
+export function formatEvaluatorReviewIssueContext(
+  reviewIssues: readonly ReviewIssue[] | undefined,
+  reviewIssueReferences: readonly ReviewFixIssueReference[] | undefined = [],
+): string {
+  if (!reviewIssues || reviewIssues.length === 0) return '';
+  const referencesByIssueId = new Map<string, ReviewFixIssueReference[]>();
+  for (const reference of reviewIssueReferences) {
+    const existing = referencesByIssueId.get(reference.issueId) ?? [];
+    existing.push(reference);
+    referencesByIssueId.set(reference.issueId, existing);
+  }
+
+  const lines: string[] = [
+    '## Current Reviewer Issue Context',
+    '',
+    'When a verdict corresponds to one or more reviewer issues below, include their IDs in `issueIds`. Unknown IDs are still allowed when the mapping is ambiguous or the issue was synthesized elsewhere.',
+    '',
+  ];
+  for (const issue of reviewIssues) {
+    const line = issue.line ? `:${issue.line}` : '';
+    lines.push(issue.issueId
+      ? `- Issue ID: ${issue.issueId}`
+      : '- Reviewer issue (ID unavailable; omit issueIds for this item)');
+    lines.push(
+      `  File: ${issue.file}${line}`,
+      `  Severity: ${issue.severity}`,
+      `  Category: ${issue.category}`,
+      `  Description: ${issue.description}`,
+    );
+    if (issue.fix) lines.push(`  Suggested fix: ${issue.fix}`);
+    if (issue.issueId) lines.push(...issueReferenceLines(issue.issueId, referencesByIssueId));
+  }
+  return lines.join('\n');
+}
 
 /**
  * Turn 1: Implement a plan. The agent reads the plan, implements it,
@@ -390,6 +439,7 @@ The previous evaluator run was interrupted before a final verdict submission was
   }
 
   let structuredSubmission: EvaluationSubmission | undefined;
+  const reviewerIssueContext = formatEvaluatorReviewIssueContext(options.reviewIssues, options.reviewIssueReferences);
   const customTools = options.evaluatorSnapshot
     ? createEvaluationTools(options.evaluatorSnapshot, (submission) => {
       if (structuredSubmission) return false;
@@ -406,6 +456,7 @@ The previous evaluator run was interrupted before a final verdict submission was
     evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
     continuation_context: continuationContextText,
     validation_repair_context: options.validationRepairContext ?? '',
+    review_issue_context: reviewerIssueContext,
     list_files_tool: options.harness.effectiveCustomToolName('list_evaluation_files'),
     get_diff_tool: options.harness.effectiveCustomToolName('get_evaluation_diff'),
     submit_verdicts_tool: options.harness.effectiveCustomToolName('submit_evaluation_verdicts'),

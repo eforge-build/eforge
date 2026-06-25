@@ -165,6 +165,103 @@ describe('build evaluator enforcement stage', () => {
     });
   });
 
+  it('passes reviewer issue IDs to the evaluator prompt and preserves structured verdict references', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+
+    const harness = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{
+          file: 'src.txt',
+          action: 'accept',
+          reason: 'Resolves both reviewer issues',
+          issueIds: ['review-r0-code-1', 'review-r0-security-1'],
+        }] },
+        output: '',
+      }],
+    }]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.reviewIssues = [
+      { issueId: 'review-r0-code-1', severity: 'warning', category: 'bugs', file: 'src.txt', description: 'Fix logic' },
+      { issueId: 'review-r0-security-1', severity: 'critical', category: 'secrets', file: 'src.txt', description: 'Fix secret handling' },
+    ];
+
+    const events = await collect(getBuildStage('evaluate')(ctx));
+    const complete = events.find((e): e is Extract<EforgeEvent, { type: 'plan:build:evaluate:complete' }> => e.type === 'plan:build:evaluate:complete');
+
+    expect(harness.prompts[0]).toContain('Current Reviewer Issue Context');
+    expect(harness.prompts[0]).toContain('Issue ID: review-r0-code-1');
+    expect(harness.prompts[0]).toContain('Issue ID: review-r0-security-1');
+    expect(complete?.verdicts).toEqual([{ file: 'src.txt', action: 'accept', reason: 'Resolves both reviewer issues', issueIds: ['review-r0-code-1', 'review-r0-security-1'] }]);
+  });
+
+  it('accepts unknown evaluator issue IDs without failing the build', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+
+    const harness = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'src.txt', action: 'accept', reason: 'Correct', issueIds: ['unknown-review-issue'] }] },
+        output: '',
+      }],
+    }]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.reviewIssues = [
+      { issueId: 'review-r0-code-1', severity: 'warning', category: 'bugs', file: 'src.txt', description: 'Fix logic' },
+    ];
+
+    const events = await collect(getBuildStage('evaluate')(ctx));
+
+    const complete = events.find((e): e is Extract<EforgeEvent, { type: 'plan:build:evaluate:complete' }> => e.type === 'plan:build:evaluate:complete');
+
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(complete?.verdicts).toEqual([{ file: 'src.txt', action: 'accept', reason: 'Correct', issueIds: ['unknown-review-issue'] }]);
+  });
+
+  it('accepts omitted evaluator issue IDs when reviewer issue IDs exist', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src.txt', 'base\n');
+    await commitAll(repo, 'chore: initial');
+    const resetTarget = await head(repo);
+    await writeRepoFile(repo, 'src.txt', 'implementation\n');
+    await commitAll(repo, 'feat: implementation');
+    await writeRepoFile(repo, 'src.txt', 'implementation\nreview fix\n');
+
+    const harness = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'src.txt', action: 'accept', reason: 'Correct' }] },
+        output: '',
+      }],
+    }]);
+    const ctx = makeCtx(repo, harness, resetTarget);
+    ctx.reviewIssues = [
+      { issueId: 'review-r0-code-1', severity: 'warning', category: 'bugs', file: 'src.txt', description: 'Fix logic' },
+    ];
+
+    const events = await collect(getBuildStage('evaluate')(ctx));
+
+    const complete = events.find((e): e is Extract<EforgeEvent, { type: 'plan:build:evaluate:complete' }> => e.type === 'plan:build:evaluate:complete');
+
+    expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
+    expect(complete?.verdicts).toEqual([{ file: 'src.txt', action: 'accept', reason: 'Correct' }]);
+  });
+
   it('preserves hunk metadata in completion summaries', async () => {
     const repo = await initRepo(makeTempDir());
     const base = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`);
@@ -694,8 +791,8 @@ describe('build evaluator enforcement stage', () => {
       { text: firstReview },
       { text: 'Applied broad fix.' },
       { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [
-        { file: 'src.txt', action: 'reject', issueOutcome: 'unresolved_blocking', retryGuidance: 'Retry narrowly by editing only src.txt; do not touch noisy.txt.', reason: 'The attempted fix is too broad.' },
-        { file: 'noisy.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'The reviewer issue is invalid.' },
+        { file: 'src.txt', action: 'reject', issueOutcome: 'unresolved_blocking', retryGuidance: 'Retry narrowly by editing only src.txt; do not touch noisy.txt.', reason: 'The attempted fix is too broad.', issueIds: ['review-r0-single-1'] },
+        { file: 'noisy.txt', action: 'reject', issueOutcome: 'false_positive', reason: 'The reviewer issue is invalid.', issueIds: ['review-r0-single-2'] },
       ] }, output: '' }] },
       { text: secondReview },
       { text: 'Applied narrow fix.' },
@@ -713,10 +810,12 @@ describe('build evaluator enforcement stage', () => {
     const secondFixerPrompt = harness.prompts[4];
     expect(secondReviewerPrompt).toContain('Prior Evaluator Issue Outcomes');
     expect(secondReviewerPrompt).toContain('noisy.txt');
+    expect(secondReviewerPrompt).toContain('Issue IDs: review-r0-single-2');
     expect(secondReviewerPrompt).not.toContain('Retry narrowly by editing only src.txt');
     expect(secondFixerPrompt).toContain('Previous Evaluator Feedback');
     expect(secondFixerPrompt).toContain('Retry narrowly by editing only src.txt; do not touch noisy.txt.');
     expect(secondFixerPrompt).toContain('noisy.txt');
+    expect(secondFixerPrompt).toContain('Issue IDs: review-r0-single-1');
     expect(events.find(e => e.type === 'plan:build:failed')).toBeUndefined();
   });
 

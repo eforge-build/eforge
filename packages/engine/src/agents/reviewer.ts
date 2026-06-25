@@ -8,6 +8,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '.
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
+import { assignReviewIssueIds, normalizeReviewIssueId } from '../review-issue-traceability.js';
 
 const exec = promisify(execFile);
 
@@ -175,6 +176,7 @@ export function parseReviewIssues(text: string): ReviewIssue[] {
         const categoryMatch = attrs.match(/category="([^"]+)"/);
         const fileMatch = attrs.match(/file="([^"]+)"/);
         const lineMatch = attrs.match(/line="([^"]+)"/);
+        const issueId = extractReviewIssueId(attrs);
 
         if (!severityMatch || !categoryMatch || !fileMatch) continue;
 
@@ -205,6 +207,10 @@ export function parseReviewIssues(text: string): ReviewIssue[] {
           if (!isNaN(lineNum)) {
             issue.line = lineNum;
           }
+        }
+
+        if (issueId) {
+          issue.issueId = issueId;
         }
 
         if (fix) {
@@ -248,6 +254,20 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
     default:
       return undefined;
   }
+}
+
+function extractReviewIssueId(attrs: string): string | undefined {
+  const issueIdMatch = attrs.match(/issueId="([^"]*)"/);
+  const kebabIssueIdMatch = attrs.match(/issue-id="([^"]*)"/);
+  return normalizeReviewIssueId(issueIdMatch?.[1] ?? kebabIssueIdMatch?.[1]);
+}
+
+function reviewIssueLaneForParseResult(parseResult: ParseReviewIssuesResult): string {
+  return parseResult.valid ? 'single' : 'review-contract';
+}
+
+function assignParsedReviewIssueIds(parseResult: ParseReviewIssuesResult, round: number | undefined): ReviewIssue[] {
+  return assignReviewIssueIds(parseResult.issues, { round, lane: reviewIssueLaneForParseResult(parseResult) });
 }
 
 /**
@@ -359,6 +379,7 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
       const categoryMatch = attrs.match(/category="([^"]+)"/);
       const fileMatch = attrs.match(/file="([^"]+)"/);
       const lineMatch = attrs.match(/line="([^"]*)"/);
+      const issueId = extractReviewIssueId(attrs);
 
       if (!severityMatch) {
         errors.push('Issue is missing required severity attribute');
@@ -404,6 +425,10 @@ export function parseReviewIssuesStrict(text: string): ParseReviewIssuesResult {
           errors.push(`Issue has a non-numeric line attribute: "${rawLine}" (must be a positive integer or omitted)`);
           continue;
         }
+      }
+
+      if (issueId) {
+        issue.issueId = issueId;
       }
 
       if (fix) {
@@ -501,7 +526,7 @@ export async function* runReview(
         code: 'reviewer-late-infrastructure-error-downgraded',
         message: err instanceof Error ? err.message : String(err),
       };
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues, ...(round !== undefined ? { round } : {}) };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: assignParsedReviewIssueIds(parseResult, round), ...(round !== undefined ? { round } : {}) };
       return;
     }
     throw err;
@@ -509,5 +534,5 @@ export async function* runReview(
 
   const parseResult = parseReviewIssuesStrict(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: parseResult.issues, ...(round !== undefined ? { round } : {}) };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: assignParsedReviewIssueIds(parseResult, round), ...(round !== undefined ? { round } : {}) };
 }

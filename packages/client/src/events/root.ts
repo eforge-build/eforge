@@ -31,6 +31,9 @@ import {
   PrdValidationGapSchema,
   ReconciliationReportSchema,
   RecoveryVerdictSchema,
+  ReviewFixIssueReferenceSchema,
+  ReviewFixIssueStatusSchema,
+  ReviewIssueIdSchema,
   ReviewIssueSchema,
   ReviewPerspectiveSchema,
   ShardScopeSchema,
@@ -69,6 +72,11 @@ export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
 export type ValidationRepairClass = Static<typeof ValidationRepairClassSchema>;
+// --- eforge:region review-issue-traceability ---
+export type ReviewIssueId = Static<typeof ReviewIssueIdSchema>;
+export type ReviewFixIssueStatus = Static<typeof ReviewFixIssueStatusSchema>;
+export type ReviewFixIssueReference = Static<typeof ReviewFixIssueReferenceSchema>;
+// --- eforge:endregion review-issue-traceability ---
 export type ReviewIssue = Static<typeof ReviewIssueSchema>;
 export type TestIssue = Static<typeof TestIssueSchema>;
 export type PlanFile = Static<typeof PlanFileSchema>;
