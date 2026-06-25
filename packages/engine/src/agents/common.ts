@@ -8,7 +8,7 @@ import type { ClarificationQuestion, TestIssue, ReviewIssue } from '../events.js
 import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { pipelineBuildStageSpecSchema, pipelineReviewProfileConfigSchema } from '../schemas.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema, recoveryVerdictSchema } from '../schemas.js';
-import { safeParseWithSchema } from '@eforge-build/client';
+import { ReviewIssueIdSchema, safeParseWithSchema } from '@eforge-build/client';
 
 /**
  * Parse <clarification> XML blocks from assistant text into structured questions.
@@ -241,6 +241,19 @@ const VALID_EVALUATION_ISSUE_OUTCOMES = new Set([
   'split_to_followup',
 ]);
 
+// --- eforge:region plan-04-evaluator-issue-references ---
+function parseEvaluationIssueIds(attrs: string): string[] | undefined {
+  const issueIdsMatch = attrs.match(/issueIds="([^"]*)"/) ?? attrs.match(/issue-ids="([^"]*)"/);
+  if (!issueIdsMatch) return undefined;
+  const issueIds = issueIdsMatch[1]
+    .split(',')
+    .map((issueId) => issueId.trim())
+    .filter((issueId) => issueId.length > 0)
+    .filter((issueId) => safeParseWithSchema(ReviewIssueIdSchema, issueId).success);
+  return issueIds.length > 0 ? issueIds : undefined;
+}
+// --- eforge:endregion plan-04-evaluator-issue-references ---
+
 /**
  * Extract text content of a child element from XML content.
  * Returns undefined if the element is not found.
@@ -311,6 +324,9 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         ? rawIssueOutcome as EvaluationVerdict['issueOutcome']
         : undefined;
       const retryGuidanceAttrMatch = attrs.match(/retryGuidance="([^"]+)"/) ?? attrs.match(/retry-guidance="([^"]+)"/);
+      // --- eforge:region plan-04-evaluator-issue-references ---
+      const issueIds = parseEvaluationIssueIds(attrs);
+      // --- eforge:endregion plan-04-evaluator-issue-references ---
 
       // Try to extract structured evidence child elements
       const staged = extractChildElement(innerContent, 'staged') ?? extractChildElement(innerContent, 'original');
@@ -365,6 +381,9 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
         ...(evidence && { evidence }),
         ...(hunk !== undefined && { hunk }),
         ...(issueOutcome !== undefined && { issueOutcome }),
+        // --- eforge:region plan-04-evaluator-issue-references ---
+        ...(issueIds !== undefined && { issueIds }),
+        // --- eforge:endregion plan-04-evaluator-issue-references ---
         ...(retryGuidance !== undefined && retryGuidance.length > 0 && { retryGuidance }),
       });
     }

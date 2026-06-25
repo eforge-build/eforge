@@ -88,8 +88,10 @@ describe('evaluation application core', () => {
 
     const snapshot = await prepareEvaluationSnapshot(repo, resetTarget);
     const result = await applyEvaluationVerdicts(snapshot, [
-      { file: 'accepted.txt', action: 'accept', reason: 'Correct improvement' },
-      { file: 'rejected.txt', action: 'reject', reason: 'Incorrect improvement' },
+      // --- eforge:region plan-04-evaluator-issue-references ---
+      { file: 'accepted.txt', action: 'accept', reason: 'Correct improvement', issueIds: ['review-r0-code-1', 'review-r0-security-1'] },
+      { file: 'rejected.txt', action: 'reject', reason: 'Incorrect improvement', issueIds: ['unknown-review-issue'] },
+      // --- eforge:endregion plan-04-evaluator-issue-references ---
       { file: 'review.txt', action: 'review', reason: 'Needs another human pass' },
     ], { commitMessage: 'feat(plan-test): apply evaluated fixes' });
 
@@ -223,6 +225,12 @@ describe('evaluation application core', () => {
     expect(() => validateEvaluationVerdicts(snapshot, [
       { file: 'one.txt', action: 'accept', reason: 'ok' },
     ])).toThrow(EvaluationValidationError);
+    // --- eforge:region plan-04-evaluator-issue-references ---
+    expect(validateEvaluationVerdicts(snapshot, [
+      { file: 'one.txt', action: 'accept', reason: 'ok', issueIds: ['review-r0-code-1', 'unknown-review-issue'] },
+      { file: 'two.txt', action: 'reject', reason: 'no' },
+    ]).summary.fileLevel).toBe(2);
+    // --- eforge:endregion plan-04-evaluator-issue-references ---
     expect(await head(repo)).toBe(resetTarget);
   });
 

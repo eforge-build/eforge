@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';
 import { createEvaluationTools } from '@eforge-build/engine/evaluation';
+import { evaluationSubmissionSchema, safeParseWithSchema } from '@eforge-build/engine/schemas';
 
 function makeSnapshot(): EvaluationSnapshot {
   return {
@@ -37,6 +38,81 @@ function makeSnapshot(): EvaluationSnapshot {
 }
 
 describe('evaluation custom tools', () => {
+  // --- eforge:region plan-04-evaluator-issue-references ---
+  it('accepts structured verdict submissions with multiple reviewer issue IDs', () => {
+    const result = safeParseWithSchema(evaluationSubmissionSchema, {
+      verdicts: [{
+        file: 'src/foo.ts',
+        hunk: 1,
+        action: 'accept',
+        reason: 'Correct',
+        issueIds: ['review-r0-code-1', 'review-r0-security-1'],
+      }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid reviewer issue IDs in structured verdict submissions', async () => {
+    const invalidIssueIds = ['   ', 'x'.repeat(4097)];
+
+    for (const issueId of invalidIssueIds) {
+      const result = safeParseWithSchema(evaluationSubmissionSchema, {
+        verdicts: [{
+          file: 'src/foo.ts',
+          hunk: 1,
+          action: 'accept',
+          reason: 'Correct',
+          issueIds: [issueId],
+        }],
+      });
+
+      expect(result.success).toBe(false);
+    }
+
+    const submissions: unknown[] = [];
+    const submitTool = createEvaluationTools(makeSnapshot(), submission => {
+      submissions.push(submission);
+    }).find(tool => tool.name === 'submit_evaluation_verdicts');
+
+    await expect(submitTool!.handler({
+      verdicts: [{
+        file: 'src/foo.ts',
+        hunk: 1,
+        action: 'accept',
+        reason: 'Correct',
+        issueIds: ['   '],
+      }],
+    })).resolves.toContain('did not validate against the schema');
+
+    expect(submissions).toHaveLength(0);
+  });
+
+  it('accepts repeated reviewer issue IDs across structured tool verdicts', async () => {
+    const foo = makeSnapshot().files[0];
+    const snapshot: EvaluationSnapshot = {
+      ...makeSnapshot(),
+      files: [foo, { ...foo, path: 'src/bar.ts', diffHeader: 'diff --git a/src/bar.ts b/src/bar.ts\n' }],
+    };
+    const submissions: unknown[] = [];
+    const submitTool = createEvaluationTools(snapshot, submission => {
+      submissions.push(submission);
+    }).find(tool => tool.name === 'submit_evaluation_verdicts');
+
+    await expect(submitTool!.handler({
+      verdicts: [
+        { file: 'src/foo.ts', hunk: 1, action: 'accept', reason: 'Correct', issueIds: ['review-r0-code-1'] },
+        { file: 'src/bar.ts', hunk: 1, action: 'reject', reason: 'Still wrong', issueIds: ['review-r0-code-1'] },
+      ],
+    })).resolves.toContain('submitted successfully');
+
+    expect(submissions).toEqual([{ verdicts: [
+      { file: 'src/foo.ts', hunk: 1, action: 'accept', reason: 'Correct', issueIds: ['review-r0-code-1'] },
+      { file: 'src/bar.ts', hunk: 1, action: 'reject', reason: 'Still wrong', issueIds: ['review-r0-code-1'] },
+    ] }]);
+  });
+  // --- eforge:endregion plan-04-evaluator-issue-references ---
+
   it('lists captured files and returns immutable captured diffs', async () => {
     const snapshot = makeSnapshot();
     const tools = createEvaluationTools(snapshot, () => undefined);
@@ -75,7 +151,7 @@ describe('evaluation custom tools', () => {
 
     await expect(submitTool!.handler({
       verdicts: [
-        { file: 'src/foo.ts', hunk: 1, action: 'accept', reason: 'Correct' },
+        { file: 'src/foo.ts', hunk: 1, action: 'accept', reason: 'Correct', issueIds: ['review-r0-code-1', 'unknown-review-issue'] },
       ],
     })).resolves.toContain('submitted successfully');
     expect(submissions).toHaveLength(1);

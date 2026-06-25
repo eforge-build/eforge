@@ -659,6 +659,46 @@ describe('parseEvaluationBlock', () => {
     ]);
   });
 
+  // --- eforge:region plan-04-evaluator-issue-references ---
+  it('extracts comma-separated issueIds from evaluator verdict attributes', () => {
+    const text = `
+<evaluation>
+  <verdict file="src/app.ts" action="accept" issueIds="review-r0-code-1, review-r0-security-1">Good</verdict>
+</evaluation>`;
+
+    const result = parseEvaluationBlock(text);
+    expect(result[0]).toMatchObject({
+      file: 'src/app.ts',
+      action: 'accept',
+      reason: 'Good',
+      issueIds: ['review-r0-code-1', 'review-r0-security-1'],
+    });
+  });
+
+  it('extracts comma-separated issue-ids from kebab-case evaluator verdict attributes', () => {
+    const text = `
+<evaluation>
+  <verdict file="src/app.ts" action="reject" issue-ids="review-r0-code-1,review-r0-code-2">No</verdict>
+</evaluation>`;
+
+    const result = parseEvaluationBlock(text);
+    expect(result[0].issueIds).toEqual(['review-r0-code-1', 'review-r0-code-2']);
+  });
+
+  it('drops schema-invalid evaluator issue ID tokens from XML fallback attributes', () => {
+    const overlongIssueId = `review-${'x'.repeat(5000)}`;
+    const text = `
+<evaluation>
+  <verdict file="src/app.ts" action="reject" issueIds="review-r0-code-1,${overlongIssueId}">No</verdict>
+  <verdict file="src/app.ts" action="accept" issueIds="${overlongIssueId}">Yes</verdict>
+</evaluation>`;
+
+    const result = parseEvaluationBlock(text);
+    expect(result[0].issueIds).toEqual(['review-r0-code-1']);
+    expect(result[1].issueIds).toBeUndefined();
+  });
+  // --- eforge:endregion plan-04-evaluator-issue-references ---
+
   it('returns undefined hunk for verdicts without hunk attribute', () => {
     const text = `
 <evaluation>

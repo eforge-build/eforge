@@ -130,8 +130,8 @@ describe('review-cycle round lifecycle metadata', () => {
 
     const harness = new FixingHarness([
       { text: issueXml('round 0 issue') },
-      { text: 'Applied round 0 fix.' },
-      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-0', input: { verdicts: [{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt' }] }, output: '' }] },
+      { toolCalls: [{ tool: 'submit_review_fixer_issue_references', toolUseId: 'refs-0', input: { issueReferences: [{ issueId: 'review-r0-code-1', status: 'addressed', note: 'Updated the value.' }] }, output: '' }], text: 'Applied round 0 fix.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-0', input: { verdicts: [{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt', issueIds: ['review-r0-code-1'] }] }, output: '' }] },
       { text: issueXml('round 1 issue') },
       { text: 'Applied round 1 fix.' },
       { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Correct now' }] }, output: '' }] },
@@ -166,6 +166,17 @@ describe('review-cycle round lifecycle metadata', () => {
     expect(harness.prompts[1]).toContain('Issue ID: review-r0-code-1');
     expect(harness.prompts[4]).toContain('Issue ID: review-r1-code-1');
     // --- eforge:endregion plan-03-review-fixer-references ---
+    // --- eforge:region plan-04-evaluator-issue-references ---
+    expect(harness.prompts[2]).toContain('Current Reviewer Issue Context');
+    expect(harness.prompts[2]).toContain('Issue ID: review-r0-code-1');
+    expect(harness.prompts[2]).toContain('File: src/app.ts');
+    expect(harness.prompts[2]).toContain('Severity: warning');
+    expect(harness.prompts[2]).toContain('Category: bugs');
+    expect(harness.prompts[2]).toContain('Description: round 0 issue');
+    expect(harness.prompts[2]).toContain('Fixer status: addressed — Updated the value.');
+    const evaluateCompletes = filterEvents(events, 'plan:build:evaluate:complete');
+    expect(evaluateCompletes[0].verdicts).toEqual([{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt', issueIds: ['review-r0-code-1'] }]);
+    // --- eforge:endregion plan-04-evaluator-issue-references ---
   });
 
   it('assigns unique issue IDs to review-cycle synthetic reviewer failures', async () => {

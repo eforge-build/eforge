@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
-import { EvaluationIssueOutcomeSchema, getSchemaYaml } from '@eforge-build/client';
+import { EvaluationIssueOutcomeSchema, ReviewIssueIdSchema, getSchemaYaml } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Evaluation schemas
@@ -27,6 +27,11 @@ export const evaluationVerdictSchema = Type.Object({
     description: 'Hunk number for per-hunk evaluation (1-indexed)',
   })),
   issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema),
+  // --- eforge:region plan-04-evaluator-issue-references ---
+  issueIds: Type.Optional(Type.Array(ReviewIssueIdSchema, {
+    description: 'Optional reviewer issue IDs this evaluator verdict addresses. Unknown IDs are accepted as observability metadata.',
+  })),
+  // --- eforge:endregion plan-04-evaluator-issue-references ---
   retryGuidance: Type.Optional(Type.String({
     minLength: 1,
     description: 'Actionable guidance for a narrower safe retry when this verdict rejects or flags an attempted fix as too broad, unsafe, or incomplete',

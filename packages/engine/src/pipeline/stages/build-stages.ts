@@ -5,6 +5,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import type { ReviewFixIssueReference } from '@eforge-build/client';
 import type { EforgeEvent, ReviewIssue } from '../../events.js';
 import type { BuildStageSpec, ShardScope } from '../../config.js';
 import { emitBuildDecision } from '../../decisions.js';
@@ -56,6 +57,9 @@ import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
+import { enforceShardScope, shardClaimsFile } from './shard-scope.js';
+
+export { enforceShardScope };
 
 const exec = promisify(execFile);
 
@@ -160,6 +164,14 @@ async function* runEvaluatorAttempt(
     const validationRepairContext = typeof input.evaluatorOptions.validationRepairContext === 'string'
       ? input.evaluatorOptions.validationRepairContext
       : undefined;
+    // --- eforge:region plan-04-evaluator-issue-references ---
+    const reviewIssues = Array.isArray(input.evaluatorOptions.reviewIssues)
+      ? input.evaluatorOptions.reviewIssues as ReviewIssue[]
+      : undefined;
+    const reviewIssueReferences = Array.isArray(input.evaluatorOptions.reviewIssueReferences)
+      ? input.evaluatorOptions.reviewIssueReferences as ReviewFixIssueReference[]
+      : undefined;
+    // --- eforge:endregion plan-04-evaluator-issue-references ---
     const evaluator = builderEvaluate(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
@@ -172,6 +184,8 @@ async function* runEvaluatorAttempt(
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       ...(input.evaluationSnapshot && { evaluatorSnapshot: input.evaluationSnapshot }),
       ...(validationRepairContext !== undefined ? { validationRepairContext } : {}),
+      ...(reviewIssues !== undefined ? { reviewIssues } : {}),
+      ...(reviewIssueReferences !== undefined ? { reviewIssueReferences } : {}),
       ...(input.round !== undefined ? { round: input.round } : {}),
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
@@ -215,6 +229,20 @@ type LastBuildEvaluation = {
 type BuildStageContextWithEvaluation = BuildStageContext & {
   __plan02LastBuildEvaluation?: LastBuildEvaluation;
 };
+
+// --- eforge:region plan-04-evaluator-issue-references ---
+type BuildStageContextWithReviewFixIssueReferences = BuildStageContext & {
+  __plan04ReviewFixIssueReferences?: ReviewFixIssueReference[];
+};
+
+function setLastReviewFixIssueReferences(ctx: BuildStageContext, references: ReviewFixIssueReference[] | undefined): void {
+  (ctx as BuildStageContextWithReviewFixIssueReferences).__plan04ReviewFixIssueReferences = references && references.length > 0 ? references : undefined;
+}
+
+function getLastReviewFixIssueReferences(ctx: BuildStageContext): ReviewFixIssueReference[] | undefined {
+  return (ctx as BuildStageContextWithReviewFixIssueReferences).__plan04ReviewFixIssueReferences;
+}
+// --- eforge:endregion plan-04-evaluator-issue-references ---
 
 function setLastBuildEvaluation(ctx: BuildStageContext, evaluation: LastBuildEvaluation): void {
   (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation = evaluation;
@@ -510,6 +538,8 @@ async function* evaluateStageInner(
     evaluationSnapshot: snapshot,
     evaluatorOptions: {
       ...(overrides?.validationRepairContext ? { validationRepairContext: overrides.validationRepairContext.promptContext } : {}),
+      reviewIssues: ctx.reviewIssues,
+      ...(getLastReviewFixIssueReferences(ctx) ? { reviewIssueReferences: getLastReviewFixIssueReferences(ctx) } : {}),
     },
   };
   const evaluatorPolicy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
@@ -642,6 +672,9 @@ async function* reviewFixStageInner(
   ctx: BuildStageContext,
   options?: { round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
 ): AsyncGenerator<EforgeEvent> {
+  // --- eforge:region plan-04-evaluator-issue-references ---
+  setLastReviewFixIssueReferences(ctx, undefined);
+  // --- eforge:endregion plan-04-evaluator-issue-references ---
   if (ctx.reviewIssues.length === 0) return;
 
   // Snapshot HEAD at stage entry — used as baseRef for agent:activity attribution
@@ -674,6 +707,11 @@ async function* reviewFixStageInner(
       reviewFixerPolicy,
       initialInput,
     )) {
+      // --- eforge:region plan-04-evaluator-issue-references ---
+      if (event.type === 'plan:build:review:fix:complete') {
+        setLastReviewFixIssueReferences(ctx, event.issueReferences);
+      }
+      // --- eforge:endregion plan-04-evaluator-issue-references ---
       yield event;
     }
   } catch (err) {
@@ -786,56 +824,6 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
  * Roots are matched by path prefix (with or without trailing slash).
  * Files are matched by exact path.
  */
-function shardClaimsFile(shard: ShardScope, file: string): boolean {
-  if (shard.roots) {
-    for (const root of shard.roots) {
-      const prefix = root.endsWith('/') ? root : `${root}/`;
-      if (file.startsWith(prefix) || file === root) return true;
-    }
-  }
-  if (shard.files) {
-    for (const f of shard.files) {
-      if (file === f) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Enforce that all staged files are claimed by exactly one shard.
- * Returns ok:true when all files match exactly one shard.
- * Returns ok:false with reason and offending files when:
- * - 'unclaimed': a file is not claimed by any shard
- * - 'overlap': a file is claimed by multiple shards (includes claiming shard IDs)
- */
-export function enforceShardScope(
-  stagedFiles: string[],
-  shards: ShardScope[],
-): { ok: true } | { ok: false; reason: 'unclaimed' | 'overlap'; files: string[]; shardIds?: string[][] } {
-  const unclaimedFiles: string[] = [];
-  const overlappingFiles: string[] = [];
-  const overlappingShardIds: string[][] = [];
-
-  for (const file of stagedFiles) {
-    const claimingShards = shards.filter((s) => shardClaimsFile(s, file));
-    if (claimingShards.length === 0) {
-      unclaimedFiles.push(file);
-    } else if (claimingShards.length > 1) {
-      overlappingFiles.push(file);
-      overlappingShardIds.push(claimingShards.map((s) => s.id));
-    }
-  }
-
-  if (unclaimedFiles.length > 0) {
-    return { ok: false, reason: 'unclaimed', files: unclaimedFiles };
-  }
-  if (overlappingFiles.length > 0) {
-    return { ok: false, reason: 'overlap', files: overlappingFiles, shardIds: overlappingShardIds };
-  }
-  return { ok: true };
-}
-
-
 /** Per-shard-attempt span + event processing. Creates a new span per attempt. */
 async function* runBuilderShardAttempt(
   input: BuilderShardContinuationInput,

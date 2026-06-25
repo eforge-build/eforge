@@ -24,6 +24,7 @@ import {
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
+import { loadPrompt } from '@eforge-build/engine/prompts';
 import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
 // --- eforge:region plan-03-review-fixer-references ---
 import { getReviewFixerIssueReferenceSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
@@ -360,6 +361,7 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('accept');
     expect(yaml).toContain('reject');
     expect(yaml).toContain('review');
+    expect(yaml).toContain('issueIds');
   });
 
   it('getEvaluationSubmissionSchemaYaml contains verdict submission fields', () => {
@@ -369,6 +371,28 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('action');
     expect(yaml).toContain('reason');
     expect(yaml).toContain('hunk');
+    expect(yaml).toContain('issueIds');
+  });
+
+  it('evaluator prompt renders issueIds guidance and XML fallback attributes', async () => {
+    const prompt = await loadPrompt('evaluator', {
+      plan_id: 'plan-01',
+      plan_name: 'Plan One',
+      validation_repair_context: '',
+      continuation_context: '',
+      review_issue_context: '## Current Reviewer Issue Context\n- Issue ID: review-r0-code-1',
+      list_files_tool: 'list_evaluation_files',
+      get_diff_tool: 'get_evaluation_diff',
+      submit_verdicts_tool: 'submit_evaluation_verdicts',
+      strictness: '',
+      evaluation_schema: getEvaluationSchemaYaml(),
+      evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
+    });
+
+    expect(prompt).toContain('add `issueIds`');
+    expect(prompt).toContain('A verdict may reference multiple IDs, and the same ID may appear in multiple verdicts');
+    expect(prompt).toContain('issueIds="review-r0-code-1,review-r0-security-1"');
+    expect(prompt).toContain('issue-ids="review-r0-code-1,review-r0-security-1"');
   });
 
   // --- eforge:region plan-03-review-fixer-references ---
