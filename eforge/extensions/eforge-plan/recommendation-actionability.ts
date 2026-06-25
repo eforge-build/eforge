@@ -14,7 +14,7 @@ import {
 } from './planning-task-workflow-store.js';
 import type { PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 import { readRecommendations } from './recommendations-store.js';
-import { getSessionPlanSourceMetadata } from './session-plan-metadata.js';
+import { getSessionPlanSourceMetadata, syncSessionPlanSourceMetadataProject } from './session-plan-metadata.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import type {
   BacklogRecommendationModel,
@@ -77,6 +77,7 @@ export async function assertRecommendationSelectionActionable(
 ): Promise<void> {
   if (selectedItemIds.length === 0) return;
   if (projectionStoreExists(cwd)) {
+    await syncSessionPlanSourceMetadataProject(cwd);
     const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)] });
     const suppressedItems: RecommendationItemActionability[] = coverage.entries.map((entry) => ({ itemId: entry.itemId, state: 'non-actionable' as const, lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode as RecommendationActionabilityReasonCode, reasonMessage: `Item ${entry.itemId} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks }));
     if (agentTasks !== undefined) {
@@ -111,6 +112,7 @@ async function buildSqlBackedRecommendationActionabilityIndex(
   recommendations: BacklogRecommendationModel,
   agentTasks?: AgentTaskReader,
 ): Promise<Map<string, RecommendationItemActionability>> {
+  await syncSessionPlanSourceMetadataProject(cwd);
   const projection = await buildSqlRecommendationActionability(cwd, recommendations) as RecommendationActionabilityProjection;
   const index = new Map<string, RecommendationItemActionability>();
   for (const entry of [...projection.activeWork, ...projection.readyCandidates, ...projection.recommendedNextSequence]) {

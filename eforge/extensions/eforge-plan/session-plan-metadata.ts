@@ -1,4 +1,5 @@
-import { loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPlan } from '@eforge-build/input';
+import { createSessionPlanningWorkflowAdapter, loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPlan } from '@eforge-build/input';
+import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 
 export interface SessionPlanSourceMetadata {
   sourceItemIds: string[];
@@ -49,7 +50,22 @@ export async function updateSessionPlanSourceMetadata(input: SessionPlanSourceMe
   const plan = await loadSessionPlan({ cwd: input.cwd, session: input.session });
   const updated = withSessionPlanSourceMetadata(plan, input);
   await writeSessionPlan({ cwd: input.cwd, plan: updated });
+  syncSessionPlanSourceMetadataRecord(input.cwd, input.session, updated, input);
   return updated;
+}
+
+export async function syncSessionPlanSourceMetadataProject(cwd: string): Promise<void> {
+  const planning = createSessionPlanningWorkflowAdapter();
+  const plans = await planning.flat.list({ cwd, includeSubmitted: true });
+  await Promise.all(plans.map(async (entry) => {
+    try {
+      const { plan } = await planning.flat.load({ cwd, session: entry.session });
+      const metadata = getSessionPlanSourceMetadata(plan);
+      if (metadata !== null) syncSessionPlanSourceMetadataRecord(cwd, entry.session, plan, metadata);
+    } catch {
+      // Ignore malformed or concurrently removed session-plan files while refreshing read projections.
+    }
+  }));
 }
 
 export function getSessionPlanSourceMetadata(plan: SessionPlan): SessionPlanSourceMetadata | null {
@@ -62,6 +78,19 @@ export function getSessionPlanSourceMetadata(plan: SessionPlan): SessionPlanSour
     return null;
   }
   return { sourceItemIds, sourceEpicIds, ...(sourceRecommendationRef !== undefined && { sourceRecommendationRef }), promotedAt };
+}
+
+function syncSessionPlanSourceMetadataRecord(cwd: string, session: string, plan: SessionPlan, metadata: SessionPlanSourceMetadata): void {
+  syncSessionPlanArtifact(cwd, {
+    session,
+    path: createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session }),
+    status: plan.status ?? 'planning',
+    sourceItemIds: metadata.sourceItemIds,
+    sourceEpicIds: metadata.sourceEpicIds,
+    ...(metadata.sourceRecommendationRef !== undefined && { sourceRecommendationRef: metadata.sourceRecommendationRef }),
+    provenance: 'metadata-update',
+    updatedAt: metadata.promotedAt,
+  });
 }
 
 function withSessionPlanSourceMetadata(plan: SessionPlan, metadata: SessionPlanSourceMetadata): SessionPlan {
