@@ -51,7 +51,6 @@ export interface EpicProgress {
   failedItemCount?: number;
   itemRows?: LifecycleItemProgressRow[];
 }
-
 export interface PlanSourceRefs {
   itemIds?: string[];
   epicIds?: string[];
