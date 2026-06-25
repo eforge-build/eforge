@@ -59,6 +59,9 @@ import {
   apiRemoveQueueItemIfRunning,
   // --- eforge:endregion host-queue-controls ---
   dispatchEforgeExtensionAction,
+  hostOutputMetadataDetail,
+  projectExtensionManagementResponse,
+  renderHostOutput,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -137,8 +140,9 @@ function yamlQuote(value: string): string {
   return value;
 }
 
-function jsonResult(data: unknown): { content: { type: "text"; text: string }[]; details: unknown } {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], details: data };
+export function jsonResult(data: unknown): { content: { type: "text"; text: string }[]; details: Record<string, unknown> } {
+  const rendered = renderHostOutput(data);
+  return { content: [{ type: "text", text: rendered.text }], details: hostOutputMetadataDetail(rendered) };
 }
 
 function compactPlaybookToolInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -949,7 +953,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_extension",
     label: "eforge extension",
     description:
-      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
+      'Manage native eforge extensions with compact host-safe output by default; use CLI --json or daemon/client HTTP surfaces for raw schemas, diagnostics, and detail arrays. Actions: "list" returns compact extension entries with status/provenance/diagnostic counts; "show" returns one compact extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "validate", "test", "new", "reload", "trust", "untrust", "install", "update", "remove", "promote", "demote"] as const, {
         description: "Extension operation to perform",
@@ -1010,7 +1014,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         helpers: piExtensionActionHelpers,
       });
       if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-      return jsonResult(result.data);
+      return jsonResult(projectExtensionManagementResponse(params.action, result.data));
     },
   });
 

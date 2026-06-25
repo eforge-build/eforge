@@ -177,7 +177,7 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(block).not.toContain('"/api/');
   });
 
-  it('MCP eforge_extension compact projections render giant daemon data within the host budget', () => {
+  it('MCP/Pi eforge_extension compact projections render giant daemon data within the host budget', () => {
     const extensions = Array.from({ length: 80 }, (_, index) => giantExtension(`giant-${index}`));
     const responses = [
       ['list', { extensions, diagnostics: extensions[0].diagnostics, totals: extensions[0].registrations }],
@@ -193,10 +193,20 @@ describe('MCP/Pi eforge_extension parity', () => {
     ] as const;
 
     for (const [action, response] of responses) {
-      const text = renderHostOutputText(projectExtensionManagementResponse(action, response));
+      const projection = projectExtensionManagementResponse(action, response);
+      const text = renderHostOutputText(projection);
       expect(text.length, action).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
       expect(text, action).not.toContain('field_0_120');
       expect(text, action).not.toContain('schema-detail-'.repeat(20));
+      expect(projection).toHaveProperty('nextSteps');
+      if (action === 'list' || action === 'show' || action === 'validate' || action === 'reload' || action === 'test' || action === 'install' || action === 'update') {
+        const serialized = JSON.stringify(projection);
+        expect(serialized, `${action} identity`).toContain('"name":"giant-0"');
+        expect(serialized, `${action} status`).toContain('"status":"loaded"');
+        expect(serialized, `${action} trust`).toContain('"trust"');
+        expect(serialized, `${action} registration counts`).toContain('"registrationTotal"');
+        expect(serialized, `${action} diagnostic counts`).toContain('"diagnostics":{"count"');
+      }
       if (text.includes('rawLength')) expect(text, action).toContain(HOST_OUTPUT_GUIDANCE);
     }
   });
@@ -210,7 +220,8 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(block).toContain('params,');
     expect(block).toContain('helpers: piExtensionActionHelpers');
     expect(block).toContain('if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE)');
-    expect(block).toContain('return jsonResult(result.data)');
+    expect(block).toContain('projectExtensionManagementResponse(params.action, result.data)');
+    expect(block).not.toContain('return jsonResult(result.data)');
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
   });

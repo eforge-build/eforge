@@ -107,6 +107,7 @@ function stripPiNoteBlock(text) {
 //   /eforge:<name>           →  eforge_<name>
 function normalizePluginBody(text) {
   return stripSkipBlocks(text)
+    .replace(/MCP\/Claude tool text/g, "Pi tool text")
     .replace(/mcp__eforge__eforge_([a-zA-Z0-9_-]+)/g, "eforge_$1")
     .replace(/\/eforge:([a-zA-Z0-9_-]+)/g, (_, name) =>
       // Convert the `-` in command names (e.g. backend-new) to `_`

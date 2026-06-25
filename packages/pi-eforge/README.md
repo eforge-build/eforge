@@ -22,8 +22,9 @@ Then, in your project:
 
 ## What this package provides
 
-- Native Pi tools for eforge daemon operations, including `eforge_extension_contribution` for compact `list`, focused `show`, and safe `invoke` of extension-provided actions, integration commands, and action-backed deep links with bounded shared Markdown/JSON formatting and summarized failed-invocation envelopes
+- Native Pi tools for eforge daemon operations, including `eforge_extension` and `eforge_extension_contribution` with compact default projections, bounded shared Markdown/JSON formatting, summarized failed-invocation envelopes, and a 12,000-character host-output budget for coding-agent tool text
 - Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions` list/show/invoke without dumping raw manifests by default), and `eforge-playbooks`-backed playbook management (`/eforge:playbook`) with interactive TUI panels and selectors
+- Compact Pi host output is the default for extension management and contribution tools. Large payloads are summarized or truncated within the 12,000-character budget; use CLI `--json` or typed daemon/client HTTP APIs for intentional raw/debug inspection.
 - Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:update`)
 - Generic contribution discovery/detail/invocation and workstation routing; when the eforge-plan extension is loaded/trusted, these can surface its planning entry, workstation deep link (for example `/console/workstations/eforge-plan%3Aplanning-workstation`), and SQLite store/search/maintenance actions through the same generic contribution surface
 - The `/eforge:extend` skill for assisted eforge TypeScript extension authoring

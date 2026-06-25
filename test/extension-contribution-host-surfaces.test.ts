@@ -175,6 +175,8 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain('formatExtensionContributionListText(result)');
     expect(source).toContain('formatExtensionContributionDetailText');
     expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('capHostOutputText');
+    expect(source).toContain('createHostOutputMetadata');
     expect(source).toContain('showExtensionContributionManifestEntry');
     expect(source).toContain('apiGetExtensionContributionManifestIfRunning');
     expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
