@@ -15,7 +15,7 @@ import {
 } from './backlog-domain.js';
 import { readBacklogEpic, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
 import { backlogItemRowToDomain, epicRowToDomain, readCanonicalBacklogItem, readCanonicalEpic } from './canonical/backlog-records.js';
-import { assertNoCanonicalNonterminalCoverage } from './canonical/coverage.js';
+import { assertRecommendationSelectionActionable, type AgentTaskReader } from './recommendation-actionability.js';
 import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 import { resolvePromotionSelection, type PromotionSelection } from './promotion-selection.js';
 import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from './trace-store.js';
@@ -129,8 +129,9 @@ export async function promoteBacklogItem(input: {
   status?: Extract<BacklogStatus, 'active' | 'planned'>;
   session?: string;
   profile?: 'errand' | 'excursion' | 'expedition' | null;
+  agentTasks?: AgentTaskReader;
 }): Promise<PromotionResult> {
-  const selection = await promoteBacklogSelection({ cwd: input.cwd, itemIds: [input.itemId], status: input.status, session: input.session, profile: input.profile });
+  const selection = await promoteBacklogSelection({ cwd: input.cwd, itemIds: [input.itemId], status: input.status, session: input.session, profile: input.profile, agentTasks: input.agentTasks });
   return {
     itemId: selection.itemIds[0]!,
     session: selection.session,
@@ -149,9 +150,10 @@ export async function promoteBacklogSelection(input: {
   session?: string;
   profile?: 'errand' | 'excursion' | 'expedition' | null;
   title?: string;
+  agentTasks?: AgentTaskReader;
 }): Promise<PromotionSelectionResult> {
   const selection = await resolvePromotionSelection(input);
-  if (input.itemIds !== undefined) assertNoCanonicalNonterminalCoverage(input.cwd, selection.itemIds);
+  if (input.itemIds !== undefined) await assertRecommendationSelectionActionable(input.cwd, selection.itemIds, input.agentTasks);
   const root = resolveSessionPlanRoot(input.cwd);
   await mkdir(root, { recursive: true });
   const { session, sessionPlanPath } = resolveSelectionPromotionTarget(input.cwd, selection.items, selection.session);

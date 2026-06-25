@@ -31,6 +31,10 @@ export interface AgentTaskReader {
   get(taskId: string): Promise<{ task: ExtensionAgentTaskRecord }>;
 }
 
+export interface ActionabilityAssertionOptions {
+  excludePlanningTaskIds?: readonly string[];
+}
+
 interface Evidence {
   code: RecommendationActionabilityReasonCode;
   message: string;
@@ -74,14 +78,15 @@ export async function assertRecommendationSelectionActionable(
   selectedItemIds: readonly string[],
   agentTasks?: AgentTaskReader,
   selectorPath = 'itemIds',
+  options: ActionabilityAssertionOptions = {},
 ): Promise<void> {
   if (selectedItemIds.length === 0) return;
   if (projectionStoreExists(cwd)) {
     await syncSessionPlanSourceMetadataProject(cwd);
-    const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)] });
+    const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)], includePlanningTasks: agentTasks === undefined, excludePlanningTaskIds: [...(options.excludePlanningTaskIds ?? [])] });
     const suppressedItems: RecommendationItemActionability[] = coverage.entries.map((entry) => ({ itemId: entry.itemId, state: 'non-actionable' as const, lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode as RecommendationActionabilityReasonCode, reasonMessage: `Item ${entry.itemId} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks }));
     if (agentTasks !== undefined) {
-      const taskEvidence = await collectActivePlanningTaskEvidence(cwd, await readRecommendations(cwd), agentTasks);
+      const taskEvidence = await collectActivePlanningTaskEvidence(cwd, await readRecommendations(cwd), agentTasks, options);
       for (const evidence of taskEvidence) {
         for (const itemId of affectedItemIds(evidence)) {
           if (selectedItemIds.includes(itemId)) suppressedItems.push(actionabilityFromEvidence(itemId, [evidence]));
@@ -95,7 +100,7 @@ export async function assertRecommendationSelectionActionable(
     return;
   }
   const recommendations = await readRecommendations(cwd);
-  const index = await buildRecommendationActionabilityIndex(cwd, recommendations ?? undefined, agentTasks);
+  const index = await buildRecommendationActionabilityIndex(cwd, recommendations ?? undefined, agentTasks, options);
   const suppressed = [...new Set(selectedItemIds)]
     .map((itemId) => actionabilityForItem(itemId, index))
     .filter((item) => item.state === 'non-actionable');
@@ -133,12 +138,13 @@ async function buildRecommendationActionabilityIndex(
   cwd: string,
   recommendations?: BacklogRecommendationModel | null,
   agentTasks?: AgentTaskReader,
+  options: ActionabilityAssertionOptions = {},
 ): Promise<Map<string, RecommendationItemActionability>> {
   const [items, traceSummaries, planEvidence, taskEvidence] = await Promise.all([
     listBacklogItems(cwd),
     summarizeProjectTraces(cwd),
     collectSessionPlanEvidence(cwd),
-    collectActivePlanningTaskEvidence(cwd, recommendations, agentTasks),
+    collectActivePlanningTaskEvidence(cwd, recommendations, agentTasks, options),
   ]);
   const evidenceByItemId = new Map<string, Evidence[]>();
   for (const evidence of [...traceEvidence(traceSummaries), ...taskEvidence, ...planEvidence]) {
@@ -184,11 +190,14 @@ async function collectActivePlanningTaskEvidence(
   cwd: string,
   recommendations: BacklogRecommendationModel | null | undefined,
   agentTasks?: AgentTaskReader,
+  options: ActionabilityAssertionOptions = {},
 ): Promise<Evidence[]> {
   if (agentTasks === undefined) return [];
+  const excludedTaskIds = new Set(options.excludePlanningTaskIds ?? []);
   const items = await listBacklogItems(cwd);
   const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(cwd))
     .filter((entry) => entry.appliedAt === undefined)
+    .filter((entry) => !excludedTaskIds.has(entry.taskId))
     .filter((entry) => !isRecommendationRefreshWorkflowEntry(entry) && !isBacklogCurationWorkflowEntry(entry));
   const evidence = await Promise.all(entries.map(async (entry): Promise<Evidence | undefined> => {
     const itemIds = resolveWorkflowItemIds(entry, items, recommendations);

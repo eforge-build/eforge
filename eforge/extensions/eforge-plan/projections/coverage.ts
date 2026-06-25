@@ -40,10 +40,13 @@ function queueBuildEvidenceForItems(store: EforgePlanStore, itemIds: readonly st
   });
 }
 
-export function findNonterminalCoverageFromStore(store: EforgePlanStore, input: { itemIds: string[]; includeTerminalReasons?: boolean }): CoverageResult {
+export interface NonterminalCoverageInput { itemIds: string[]; includeTerminalReasons?: boolean; includePlanningTasks?: boolean; excludePlanningTaskIds?: string[] }
+
+export function findNonterminalCoverageFromStore(store: EforgePlanStore, input: NonterminalCoverageInput): CoverageResult {
   const itemIds = [...new Set(input.itemIds)];
+  const excludedTaskIds = new Set(input.excludePlanningTaskIds ?? []);
   const sessionItems = listProjectionSessionItems(store);
-  const taskItems = listProjectionPlanningTaskItems(store);
+  const taskItems = input.includePlanningTasks === false ? [] : listProjectionPlanningTaskItems(store).filter((task) => !excludedTaskIds.has(task.taskId));
   const evidenceRows = [...listLifecycleEvidenceForItems(store, itemIds), ...queueBuildEvidenceForItems(store, itemIds, sessionItems)];
   const entries: CoverageEntry[] = [];
   for (const itemId of itemIds) {
@@ -68,6 +71,6 @@ export function findNonterminalCoverageFromStore(store: EforgePlanStore, input: 
   return { schemaVersion: 1 as const, ok: unique.length === 0, entries: unique, coveredItemIds: [...new Set(unique.map((entry) => entry.itemId))].sort() };
 }
 
-export async function findNonterminalCoverage(cwd: string, input: { itemIds: string[]; includeTerminalReasons?: boolean }): Promise<CoverageResult> {
+export async function findNonterminalCoverage(cwd: string, input: NonterminalCoverageInput): Promise<CoverageResult> {
   return withProjectionStore(cwd, (store) => findNonterminalCoverageFromStore(store, input), () => ({ schemaVersion: 1 as const, ok: true, entries: [], coveredItemIds: [] }));
 }

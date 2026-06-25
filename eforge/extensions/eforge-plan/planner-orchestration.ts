@@ -32,7 +32,7 @@ import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accep
 import { userActionError } from './action-errors.js';
 import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from './trace-store.js';
-import { findCanonicalNonterminalCoverage } from './canonical/coverage.js';
+import { findNonterminalCoverage } from './projections/index.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, listRecommendationRefreshWorkflowEntries, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
@@ -453,10 +453,10 @@ async function validatePlanningAgentTaskApplyTargets(
     ...resolvedHandoffs.flatMap((selection) => selection.itemIds),
     ...(creationDraft !== undefined ? creationDraftLinkage?.sourceItemIds ?? [] : []),
   ])];
-  const coverage = findCanonicalNonterminalCoverage(cwd, coveredItemIds, { excludePlanningTaskIds: [taskId] });
+  const coverage = await findNonterminalCoverage(cwd, { itemIds: coveredItemIds, excludePlanningTaskIds: [taskId] });
   if (!coverage.ok) {
     const reasons = [...new Set(coverage.entries.map((entry) => entry.reasonCode))].join(', ');
-    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never, suppressedItems: coverage.entries.map((entry) => ({ itemId: entry.itemRef, state: 'non-actionable', lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemRef} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks })) as never } });
+    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never, suppressedItems: coverage.entries.map((entry) => ({ itemId: entry.itemId, state: 'non-actionable', lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemId} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks })) as never } });
   }
   return targets;
 }
