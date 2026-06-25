@@ -9,8 +9,11 @@ type ReviewCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:review:compl
 type PerspectiveCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:review:parallel:perspective:complete' }>;
 type PerspectiveErrorEvent = Extract<EforgeEvent, { type: 'plan:build:review:parallel:perspective:error' }>;
 type ReviewFixStartEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:start' }>;
+type ReviewFixCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:complete' }>;
 type ReviewFixContinuationEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>;
 type EvaluateCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:evaluate:complete' }>;
+type ReviewFixIssueReference = NonNullable<ReviewFixCompleteEvent['issueReferences']>[number];
+type EvaluatorVerdict = NonNullable<EvaluateCompleteEvent['verdicts']>[number];
 
 export interface ReviewCycleReviewerDetail {
   perspective: string | null;
@@ -19,10 +22,29 @@ export interface ReviewCycleReviewerDetail {
   threadAssociationInferred?: boolean;
 }
 
+// --- eforge:region plan-05-console-linked-traces ---
+export interface ReviewCycleIssueTrace {
+  issueId: string;
+  reviewer?: {
+    perspective: string | null;
+    issue: ReviewIssue;
+    threadAgentId?: string;
+    threadAssociationInferred?: boolean;
+  };
+  fixerReferences: ReviewFixIssueReference[];
+  evaluatorVerdicts: EvaluatorVerdict[];
+  danglingReferenceSources: Array<'fixer' | 'evaluator'>;
+}
+// --- eforge:endregion plan-05-console-linked-traces ---
+
 export interface ReviewCycleRound {
   round: number;
   roundLabel: string;
   reviewers: ReviewCycleReviewerDetail[];
+  // --- eforge:region plan-05-console-linked-traces ---
+  linkedTraces: ReviewCycleIssueTrace[];
+  unlinkedFixerReferences: ReviewFixIssueReference[];
+  // --- eforge:endregion plan-05-console-linked-traces ---
   perspectiveErrors: Array<{ perspective: string; error: string }>;
   reviewFix: {
     ran: boolean;
@@ -36,7 +58,7 @@ export interface ReviewCycleRound {
     ran: boolean;
     accepted?: number;
     rejected?: number;
-    verdicts: Array<{ file: string; hunk?: number; action: 'accept' | 'reject' | 'review'; issueOutcome?: string; reason: string; retryGuidance?: string }>;
+    verdicts: EvaluatorVerdict[];
     threadAgentId?: string;
     threadAssociationInferred?: boolean;
   };
@@ -92,6 +114,10 @@ function makeRound(round: number): RoundBucket {
     round,
     roundLabel: `Round ${round + 1}`,
     reviewers: [],
+    // --- eforge:region plan-05-console-linked-traces ---
+    linkedTraces: [],
+    unlinkedFixerReferences: [],
+    // --- eforge:endregion plan-05-console-linked-traces ---
     perspectiveErrors: [],
     reviewFix: { ran: false, continuations: [] },
     evaluator: { ran: false, verdicts: [] },
@@ -155,6 +181,76 @@ function matchingThread(threads: AgentThread[], agent: string, bounds: { start: 
   if (timed) return { thread: timed, inferred: false };
   return allowInferredFallback && candidates.length === 1 ? { thread: candidates[0], inferred: true } : undefined;
 }
+
+// --- eforge:region plan-05-console-linked-traces ---
+function validIssueId(value: unknown): value is string {
+  return typeof value === 'string' && /\S/.test(value);
+}
+
+function ensureTrace(traces: Map<string, ReviewCycleIssueTrace>, issueId: string): ReviewCycleIssueTrace {
+  let trace = traces.get(issueId);
+  if (!trace) {
+    trace = { issueId, fixerReferences: [], evaluatorVerdicts: [], danglingReferenceSources: [] };
+    traces.set(issueId, trace);
+  }
+  return trace;
+}
+
+function deriveLinkedTraces(round: RoundBucket) {
+  const traces = new Map<string, ReviewCycleIssueTrace>();
+  const unlinkedReviewers: ReviewCycleReviewerDetail[] = [];
+
+  for (const reviewer of round.reviewers) {
+    const unlinkedIssues: ReviewIssue[] = [];
+    for (const issue of reviewer.issues) {
+      if (validIssueId(issue.issueId)) {
+        const trace = ensureTrace(traces, issue.issueId);
+        trace.reviewer ??= {
+          perspective: reviewer.perspective,
+          issue,
+          threadAgentId: reviewer.threadAgentId,
+          threadAssociationInferred: reviewer.threadAssociationInferred,
+        };
+      } else {
+        unlinkedIssues.push(issue);
+      }
+    }
+    if (unlinkedIssues.length > 0 || reviewer.issues.length === 0) {
+      unlinkedReviewers.push({ ...reviewer, issues: unlinkedIssues });
+    }
+  }
+
+  const fixReferences = round.unlinkedFixerReferences;
+  round.unlinkedFixerReferences = [];
+  for (const reference of fixReferences) {
+    if (validIssueId(reference.issueId)) {
+      const trace = ensureTrace(traces, reference.issueId);
+      trace.fixerReferences.push(reference);
+      if (!trace.reviewer && !trace.danglingReferenceSources.includes('fixer')) trace.danglingReferenceSources.push('fixer');
+    } else {
+      round.unlinkedFixerReferences.push(reference);
+    }
+  }
+
+  const verdicts = round.evaluator.verdicts;
+  round.evaluator.verdicts = [];
+  for (const verdict of verdicts) {
+    const issueIds = (verdict.issueIds ?? []).filter(validIssueId);
+    if (issueIds.length === 0) {
+      round.evaluator.verdicts.push(verdict);
+      continue;
+    }
+    for (const issueId of issueIds) {
+      const trace = ensureTrace(traces, issueId);
+      trace.evaluatorVerdicts.push(verdict);
+      if (!trace.reviewer && !trace.danglingReferenceSources.includes('evaluator')) trace.danglingReferenceSources.push('evaluator');
+    }
+  }
+
+  round.reviewers = unlinkedReviewers;
+  round.linkedTraces = [...traces.values()];
+}
+// --- eforge:endregion plan-05-console-linked-traces ---
 
 function attachThreads(rounds: RoundBucket[], threads: AgentThread[], inferred: boolean) {
   const allowInferredFallback = inferred && rounds.length === 1;
@@ -220,9 +316,12 @@ export function buildReviewCycleDetail(
         bucket.reviewFix.ran = true;
         bucket.reviewFix.issueCount = (event as ReviewFixStartEvent).issueCount;
         break;
-      case 'plan:build:review:fix:complete':
+      case 'plan:build:review:fix:complete': {
+        const complete = event as ReviewFixCompleteEvent;
         bucket.reviewFix.ran = true;
+        bucket.unlinkedFixerReferences.push(...(complete.issueReferences ?? []));
         break;
+      }
       case 'plan:build:review:fix:continuation': {
         const continuation = event as ReviewFixContinuationEvent;
         bucket.reviewFix.ran = true;
@@ -247,6 +346,7 @@ export function buildReviewCycleDetail(
 
   const sortedRounds = [...rounds.values()].sort((a, b) => a.round - b.round);
   attachThreads(sortedRounds, threads.filter((thread) => thread.planId === planId), roundsInferred);
+  for (const round of sortedRounds) deriveLinkedTraces(round);
 
   const reviewStrategy = decisions.find((dp): dp is DecisionPoint & { decision: ReviewStrategyDecision } => dp.decision.kind === 'review-strategy')?.decision;
   const terminated = decisions.find((dp): dp is DecisionPoint & { decision: CycleTerminatedDecision } => dp.decision.kind === 'cycle-terminated')?.decision;

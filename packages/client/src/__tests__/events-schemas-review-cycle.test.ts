@@ -261,6 +261,16 @@ describe('safeParseEforgeEvent — review issue traceability', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('rejects fix-complete issueReferences with an invalid status', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issueReferences: [{ issueId: 'review-issue-1', status: 'ignored' }],
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('safeParseEforgeEvent — ReviewIssue validation guidance', () => {
