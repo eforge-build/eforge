@@ -26,8 +26,11 @@ export async function loadExact(ctx: ExtensionActionContext, name: string, scope
   const path = playbookPath(ctx, scope, name);
   if (!await exists(path)) throw notFound(name);
   const raw = await readFile(path, 'utf-8');
-  try { return { playbook: parsePlaybook(raw), source: { source: scope, path }, shadows: [] }; }
-  catch (err) { return wrapUserError(err, `Playbook "${name}" at ${path} is invalid.`); }
+  try {
+    const playbook = parsePlaybook(raw);
+    assertRequestedPlaybookName(name, playbook.name);
+    return { playbook, source: { source: scope, path }, shadows: [] };
+  } catch (err) { return wrapUserError(err, `Playbook "${name}" at ${path} is invalid.`); }
 }
 
 export function projectEntry(entry: PlaybookEntry, includeShadowed: boolean): PlaybookEntry {
@@ -42,6 +45,10 @@ function assertPayloadScopeMatchesRequest(declaredScope: PlaybookScope | undefin
   if (declaredScope !== undefined && declaredScope !== requestedScope) {
     throw invalidField('/scope', `Payload scope "${declaredScope}" does not match requested scope "${requestedScope}".`);
   }
+}
+
+function assertRequiredBodyFields(playbook: Pick<Playbook, 'goal'>): void {
+  if (playbook.goal.trim().length === 0) throw userError('Playbook body requires a non-empty goal.', '/playbook/body/goal');
 }
 
 export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
@@ -80,6 +87,7 @@ export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
     if (!parsed.success) throw userError(`Invalid playbook frontmatter: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
   }
   if (input.name !== undefined && input.name !== playbook.name) throw invalidField('/name', `Top-level name "${input.name}" does not match playbook name "${playbook.name}".`);
+  assertRequiredBodyFields(playbook);
   return { ...playbook, scope: input.scope };
 }
 

@@ -13,7 +13,7 @@ const postMergeCommandSchema = z.string()
 
 export const playbookFrontmatterSchema = z.object({
   name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be kebab-case'),
-  description: frontmatterScalarSchema.min(1),
+  description: frontmatterScalarSchema.refine((value) => value.trim().length > 0, 'description must be non-empty'),
   scope: playbookScopeSchema,
   mode: z.enum(['autonomous', 'planning']),
   profile: frontmatterScalarSchema.optional(),
@@ -78,9 +78,10 @@ function parseBody(bodyText: string): PlaybookBody | { error: string } {
   }
   flush();
 
-  if (!sections.goal && sections.goal !== '') return { error: 'Missing required section: ## Goal' };
+  if (sections.goal === undefined) return { error: 'Missing required section: ## Goal' };
+  if (sections.goal.trim().length === 0) return { error: 'Required section must be non-empty: ## Goal' };
   return {
-    goal: sections.goal ?? '',
+    goal: sections.goal,
     outOfScope: sections.outOfScope ?? '',
     acceptanceCriteria: sections.acceptanceCriteria ?? '',
     plannerNotes: sections.plannerNotes ?? '',

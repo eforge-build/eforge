@@ -66,7 +66,6 @@ graph TD
     EforgeEngine --> Pipeline
     EforgeEngine --> Orchestrator
     EforgeEngine -->|"scope directory lookup"| Scopes
-    Input -->|"named-set resolution"| Scopes
     Pipeline --> Agents
     Agents -->|"AgentHarness interface"| Claude
     Agents -->|"AgentHarness interface"| Pi
@@ -101,7 +100,6 @@ flowchart TD
     monitor --> engine
     monitor --> input
     engine --> scopes
-    input --> scopes
     input --> extensionSdk
     extensionSdk --> scopes
     playbooksExt --> extensionSdk
@@ -112,7 +110,7 @@ flowchart TD
 **Allowed dependency edges:**
 
 - `engine` MAY depend on `scopes`. MUST NOT depend on `input`.
-- `input` MAY depend on `scopes` and `extension-sdk` for shared storage/path helpers, including project-local session-plan paths and scoped extension input contexts. MUST NOT depend on `engine`.
+- `input` MAY depend on `extension-sdk` for project-local session-plan paths and scoped extension input contexts. MUST NOT depend on `engine` or `scopes`.
 - `extension-sdk` MAY depend on `scopes` for scoped path/storage helpers.
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).

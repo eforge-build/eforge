@@ -59,6 +59,20 @@ describe('extension-owned playbook storage core', () => {
     expect(loaded.playbook.name).toBe('same-scope');
   }));
 
+  it('rejects playbooks whose storage name and frontmatter name differ', async () => withTempProject(async (cwd, configDir) => {
+    process.env.XDG_CONFIG_HOME = `${cwd}/.xdg`;
+    await writeRawPlaybook(cwd, 'project-local', 'foo', rawPlaybook({ name: 'bar', scope: 'project-local' }));
+    await expect(loadPlaybook({ cwd, configDir, name: 'foo' })).rejects.toThrow(/frontmatter name "bar" does not match requested name "foo"/);
+    await expect(movePlaybook({ cwd, configDir, name: 'foo', fromScope: 'project-local', toScope: 'project-team', overwrite: true })).rejects.toThrow(/frontmatter name "bar" does not match requested name "foo"/);
+    await expect(copyPlaybookToScope({ cwd, configDir, name: 'foo', targetScope: 'user' })).rejects.toThrow(/frontmatter name "bar" does not match requested name "foo"/);
+  }));
+
+  it('reports missing move sources before destination overwrite conflicts', async () => withTempProject(async (cwd, configDir) => {
+    process.env.XDG_CONFIG_HOME = `${cwd}/.xdg`;
+    await writeRawPlaybook(cwd, 'project-team', 'missing-source');
+    await expect(movePlaybook({ cwd, configDir, name: 'missing-source', fromScope: 'project-local', toScope: 'project-team' })).rejects.toThrow(/ENOENT|no such file/);
+  }));
+
   it('copies highest-precedence playbooks and reports missing names', async () => withTempProject(async (cwd, configDir) => {
     process.env.XDG_CONFIG_HOME = `${cwd}/.xdg`;
     await writeRawPlaybook(cwd, 'user', 'copy-me', rawPlaybook({ name: 'copy-me', scope: 'user', profile: 'user' }));

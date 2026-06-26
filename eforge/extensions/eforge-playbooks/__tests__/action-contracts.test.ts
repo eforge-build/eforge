@@ -56,6 +56,12 @@ describe('eforge-playbooks action contracts', () => {
 
       const missingExactScope = await dispatch(cwd, 'show-playbook', { name: 'shared', scope: 'project-local' });
       expect(missingExactScope).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('shared') });
+
+      await writePlaybook(cwd, 'project-local', 'alias', rawPlaybook({ name: 'actual-name', scope: 'project-local' }));
+      const showMismatch = await dispatch(cwd, 'show-playbook', { name: 'alias', scope: 'project-local' });
+      expect(showMismatch).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('does not match') });
+      const runMismatch = await dispatch(cwd, 'run-playbook', { name: 'alias', scope: 'project-local' });
+      expect(runMismatch).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('does not match') });
     });
   });
 
@@ -95,6 +101,24 @@ describe('eforge-playbooks action contracts', () => {
         plannerNotes: 'Use public APIs.',
       });
       expect(flattened).toMatchObject({ kind: 'success', output: { path: expect.stringContaining('flat-saved.md') } });
+
+      const blankNestedGoal = await dispatch(cwd, 'save-playbook', {
+        scope: 'project-team',
+        playbook: {
+          frontmatter: { name: 'blank-nested-goal', description: 'Blank nested goal', mode: 'planning' },
+          body: { goal: '   ' },
+        },
+      });
+      expect(blankNestedGoal).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('non-empty goal') });
+
+      const blankFlattenedGoal = await dispatch(cwd, 'save-playbook', {
+        scope: 'user',
+        name: 'blank-flat-goal',
+        description: 'Blank flat goal',
+        mode: 'autonomous',
+        goal: '\t',
+      });
+      expect(blankFlattenedGoal).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('non-empty goal') });
 
       const mismatch = await dispatch(cwd, 'save-playbook', {
         scope: 'project-local',

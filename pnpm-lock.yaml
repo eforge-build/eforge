@@ -554,9 +554,6 @@ importers:
       '@eforge-build/extension-sdk':
         specifier: workspace:*
         version: link:../extension-sdk
-      '@eforge-build/scopes':
-        specifier: workspace:*
-        version: link:../scopes
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

@@ -19,7 +19,9 @@ export const runPlaybookAction = defineExtensionAction({
     if (input.mode !== undefined && input.mode !== playbook.mode) {
       throw invalidField('/mode', `Requested mode "${input.mode}" does not match playbook mode "${playbook.mode}".`);
     }
-    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: input.profile ?? playbook.profile }));
+    const profileOverride = input.profile?.trim();
+    const requestedProfile = profileOverride && profileOverride.length > 0 ? profileOverride : undefined;
+    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: requestedProfile ?? playbook.profile }));
 
     const compiled = playbookToBuildSource(playbook);
     const quality = analyzeAcceptanceCriteriaInBody(compiled.source);
@@ -27,7 +29,7 @@ export const runPlaybookAction = defineExtensionAction({
     try {
       const enqueued = await ctx.buildQueue.enqueue(omitUndefined({
         source: compiled.source,
-        profile: input.profile ?? compiled.profile,
+        profile: requestedProfile ?? compiled.profile,
         postMerge: compiled.postMerge,
         afterQueueId: input.afterQueueId,
         landingAction: input.landingAction,

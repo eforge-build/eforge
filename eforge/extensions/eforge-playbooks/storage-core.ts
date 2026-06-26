@@ -54,6 +54,12 @@ function shadowEntries(name: string, shadows: ScopeShadow[], opts: { cwd: string
   return shadows.map((source) => ({ source, path: resolvePlaybookPath(source as PlaybookScope, opts, name) }));
 }
 
+function assertPlaybookNameMatchesRequested(requestedName: string, playbook: Playbook, path: string): void {
+  if (playbook.name !== requestedName) {
+    throw new Error(`Playbook "${requestedName}" at ${path} is invalid: frontmatter name "${playbook.name}" does not match requested name "${requestedName}".`);
+  }
+}
+
 async function fileExists(path: string): Promise<boolean> {
   try { await access(path); return true; } catch { return false; }
 }
@@ -109,6 +115,7 @@ export async function loadPlaybook(opts: LoadPlaybookOpts): Promise<{ playbook: 
   const raw = await readFile(entry.path, 'utf-8');
   const result = validatePlaybook(raw);
   if (!result.ok) throw new Error(`Playbook "${opts.name}" at ${entry.path} is invalid: ${result.errors.join('; ')}`);
+  assertPlaybookNameMatchesRequested(opts.name, result.playbook, entry.path);
   return { playbook: result.playbook, source: entry.scope, shadows: shadowEntries(opts.name, entry.shadows, opts) };
 }
 
@@ -128,11 +135,12 @@ export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: stri
   }
   const src = resolvePlaybookPath(opts.fromScope, opts, opts.name);
   const dst = resolvePlaybookPath(opts.toScope, opts, opts.name);
-  await mkdir(playbooksDir(opts.toScope, opts), { recursive: true });
-  if (!opts.overwrite && await fileExists(dst)) throw new Error(`Playbook "${opts.name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
   const raw = await readFile(src, 'utf-8');
   const result = validatePlaybook(raw);
   if (!result.ok) throw new Error(`Playbook "${opts.name}" at ${src} is invalid: ${result.errors.join('; ')}`);
+  assertPlaybookNameMatchesRequested(opts.name, result.playbook, src);
+  await mkdir(playbooksDir(opts.toScope, opts), { recursive: true });
+  if (!opts.overwrite && await fileExists(dst)) throw new Error(`Playbook "${opts.name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
   const tmp = `${dst}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, serializePlaybook({ ...result.playbook, scope: opts.toScope }), 'utf-8');
   await rename(tmp, dst);
@@ -147,6 +155,7 @@ export async function copyPlaybookToScope(opts: CopyPlaybookToScopeOpts): Promis
   const raw = await readFile(entry.path, 'utf-8');
   const result = validatePlaybook(raw);
   if (!result.ok) throw new Error(`Playbook "${opts.name}" at ${entry.path} is invalid: ${result.errors.join('; ')}`);
+  assertPlaybookNameMatchesRequested(opts.name, result.playbook, entry.path);
   const { path: targetPath } = await writePlaybook({ ...opts, scope: opts.targetScope, playbook: { ...result.playbook, scope: opts.targetScope } });
   return { sourcePath: entry.path, targetPath, targetScope: opts.targetScope };
 }

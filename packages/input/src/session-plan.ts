@@ -14,7 +14,6 @@ import { resolve, dirname, sep } from 'node:path';
 import { resolveProjectLocalStoragePath } from '@eforge-build/extension-sdk/project-storage';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
-import { playbookToPlanSeed, type Playbook } from './playbook.js';
 import { analyzeAcceptanceCriteria, type AcDiagnostic } from './acceptance-criteria-quality.js';
 import { assertSessionPlanRealpathWithinRoot } from './session-plan-realpath.js';
 // ---------------------------------------------------------------------------
@@ -61,12 +60,9 @@ export const sessionPlanFrontmatterSchema = z.object({
   skipped_dimensions: z.array(skippedDimensionSchema).default([]),
   open_questions: z.array(z.string()).default([]),
   profile: z.enum(['errand', 'excursion', 'expedition']).nullable().default(null),
-  /** Playbook name this plan was seeded from, when created via `createSessionPlanFromPlaybookSeed`. */
-  seeded_from_playbook: z.string().optional(),
   /**
-   * Inherited agent runtime profile name, set when a session plan is created from a planning-mode playbook
-   * that declares a `profile` in its frontmatter. Used as a per-build profile override when the session
-   * plan is submitted to the queue. Existence is validated at enqueue time, not at draft time.
+   * Optional producer-provided agent runtime profile name. Used as a per-build profile override when the
+   * session plan is submitted to the queue. Existence is validated at enqueue time, not at draft time.
    */
   agent_profile: z.string().optional(),
 }).passthrough();
@@ -250,7 +246,7 @@ function setBodySection(body: string, dimensionName: string, content: string): s
 }
 
 // ---------------------------------------------------------------------------
-// Dimension playbook
+// Dimension selection
 // ---------------------------------------------------------------------------
 
 export interface SessionPlanDimensionSpec {
@@ -391,8 +387,13 @@ export function serializeSessionPlan(plan: SessionPlan): string {
   // Cast to mutable record for serialization
   const fm = frontmatterFields as Record<string, unknown>;
 
-  // Remove passthrough-preserved legacy fields that have been migrated
+  // Remove passthrough-preserved legacy fields that have been migrated or retired.
   delete fm['dimensions'];
+  for (const key of Object.keys(fm)) {
+    if (key.startsWith('seeded_from_')) {
+      delete fm[key];
+    }
+  }
 
   const fmYaml = stringifyYaml(fm, { lineWidth: 0 });
 
@@ -585,8 +586,7 @@ export interface CreateSessionPlanOpts {
   planningDepth?: PlanningDepth;
   profile?: PlanningProfile;
   /**
-   * Optional inherited agent runtime profile name. Set when creating a session plan
-   * from a planning-mode playbook that declares a `profile` in its frontmatter.
+   * Optional producer-provided agent runtime profile name.
    * Validated at enqueue time, not at draft time.
    */
   agentProfile?: string;
@@ -635,79 +635,6 @@ export function setSessionPlanSection(plan: SessionPlan, dimensionName: string, 
     ...plan,
     body: newBody,
     sections: parseSections(newBody),
-  };
-}
-
-/**
- * Options for `createSessionPlanFromPlaybookSeed`.
- */
-export interface CreateSessionPlanFromPlaybookSeedOpts {
-  /** The planning-mode playbook to seed from. Throws `PlaybookModeMismatchError` if `mode !== 'planning'`. */
-  playbook: Playbook;
-  /** Override the suggested session ID (default: derived from current date + playbook name). */
-  session?: string;
-  /** Override the suggested topic (default: derived from playbook description). */
-  topic?: string;
-}
-
-/**
- * Create a `SessionPlan` seeded from a planning-mode `Playbook`.
- *
- * Throws `PlaybookModeMismatchError` when `playbook.mode !== 'planning'`.
- *
- * The playbook's body sections are written into the session plan body under
- * the following headings:
- * - `Goal`              → `## Goal`
- * - `Out of scope`      → `## Out of scope`
- * - `Acceptance criteria` → `## Acceptance criteria`
- * - `Notes for the planner` → `## Notes from playbook`
- *
- * The resulting plan starts with `status: 'planning'`, `planning_type: 'unknown'`,
- * `planning_depth: 'focused'`, empty dimension lists, and `profile: null` so the
- * planning skill's Step 3 reclassifies per-instance.
- *
- * The frontmatter field `seeded_from_playbook` is set to the playbook name.
- */
-export function createSessionPlanFromPlaybookSeed(opts: CreateSessionPlanFromPlaybookSeedOpts): SessionPlan {
-  const seed = playbookToPlanSeed(opts.playbook); // throws PlaybookModeMismatchError if mode !== 'planning'
-
-  const session = opts.session ?? seed.sessionId;
-  const topic = opts.topic ?? seed.topic;
-
-  const goalContent = seed.sections.get('goal') ?? '';
-  const outOfScopeContent = seed.sections.get('out of scope') ?? '';
-  const acContent = seed.sections.get('acceptance criteria') ?? '';
-  const notesContent = seed.sections.get('notes from playbook') ?? '';
-
-  const sectionParts: string[] = [];
-  sectionParts.push(`## Goal\n\n${goalContent}`);
-  if (outOfScopeContent.trim()) {
-    sectionParts.push(`## Out of scope\n\n${outOfScopeContent}`);
-  }
-  if (acContent.trim()) {
-    sectionParts.push(`## Acceptance criteria\n\n${acContent}`);
-  }
-  if (notesContent.trim()) {
-    sectionParts.push(`## Notes from playbook\n\n${notesContent}`);
-  }
-
-  const body = `\n# ${topic}\n\n${sectionParts.join('\n\n')}\n`;
-
-  return {
-    session,
-    topic,
-    status: 'planning',
-    planning_type: 'unknown',
-    planning_depth: 'focused',
-    required_dimensions: [],
-    optional_dimensions: [],
-    skipped_dimensions: [],
-    open_questions: [],
-    profile: null,
-    seeded_from_playbook: opts.playbook.name,
-    ...(seed.profile !== undefined && { agent_profile: seed.profile }),
-    body,
-    sections: parseSections(body),
   };
 }
 
@@ -1053,9 +980,9 @@ export interface NormalizeBuildSourceResult {
   /** Normalized content (converted build source for session plans; original for others). */
   content: string;
   /**
-   * Agent runtime profile inherited from the session plan's `agent_profile` frontmatter field.
+   * Agent runtime profile provided by the session plan's `agent_profile` frontmatter field.
    * Only present for session-plan paths that declare `agent_profile`. Used by callers to pass the
-   * inherited profile to the engine enqueue when no explicit profile override is provided.
+   * profile to the engine enqueue when no explicit profile override is provided.
    */
   agentProfile?: string;
 }

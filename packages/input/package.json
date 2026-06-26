@@ -1,7 +1,7 @@
 {
   "name": "@eforge-build/input",
   "version": "0.7.21",
-  "description": "Reusable input-artifact protocols for eforge: playbooks and session plans that compile to ordinary build source.",
+  "description": "Reusable domain-neutral input-artifact protocols for eforge session plans and build-source preprocessing.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@eforge-build/extension-sdk": "workspace:*",
-    "@eforge-build/scopes": "workspace:*",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

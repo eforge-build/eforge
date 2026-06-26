@@ -315,7 +315,7 @@ Keep all documentation in sync with the latest code changes.
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 
-**Planning playbooks**: when a planning-mode playbook has a `profile` field, `eforge-playbooks:run-playbook` includes it in the eforge-plan planning handoff seed. The eforge-plan flow applies it as the session plan's `agent_profile` frontmatter when a plan is created; when that session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Session-plan `agent_profile` metadata**: session-plan producers may set generic `agent_profile` frontmatter to carry a recommended agent runtime profile with the artifact. When that session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback**: omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 

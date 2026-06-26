@@ -8,13 +8,16 @@ describe('extension-owned playbook model', () => {
     expect(playbook).toMatchObject({ name: 'demo-plan', description: 'demo-plan description', scope: 'project-local', mode: 'planning', profile: 'team', outOfScope: '', goal: 'Ship demo-plan.' });
   });
 
-  it('reports invalid frontmatter and missing goal through validatePlaybook', () => {
+  it('reports invalid frontmatter and missing or blank goals through validatePlaybook', () => {
     for (const raw of [
       rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('name: bad\n', ''),
       rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('description: bad description\n', ''),
+      rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('description: bad description', 'description: "   "'),
       rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('scope: project-local\n', ''),
       rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('mode: autonomous\n', ''),
       rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('## Goal', '## Objective'),
+      rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('Ship bad.', ''),
+      rawPlaybook({ name: 'bad', scope: 'project-local' }).replace('Ship bad.', '   '),
     ]) expect(validatePlaybook(raw).ok).toBe(false);
   });
 

@@ -833,7 +833,7 @@ Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`,
 
 - **Layered singleton** - all existing scope files are returned in canonical merge order `user -> project-team -> project-local`. Used for `config.yaml`. The caller owns parsing and merge semantics.
 - **Named set** - directory entries are unique by name across tiers; same-name entries shadow lower-precedence tiers. Used for `profiles/` and `playbooks/`. The highest-precedence copy wins.
-- Project-local-only state (e.g. `.eforge/session-plans/*.md`) is not resolved through scope tiers; it is a project-local artifact and is read directly from the project-local scope by `@eforge-build/input`.
+- Project-local-only state (e.g. `.eforge/session-plans/*.md`) is not resolved through scope tiers; it is a project-local artifact read directly by `@eforge-build/input`.
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
@@ -853,11 +853,11 @@ profile: docs-heavy    # Optional — omit to allow router/active-profile/defaul
 ---
 ```
 
-**Precedence**: an optional `profile` field on the `eforge-playbooks:run-playbook` action input overrides the playbook frontmatter for that run. When no action input override is supplied, the playbook `profile` field overrides the project's active-profile marker and any registered profile router. For session-plan builds, an explicit `eforge build --profile <name>` flag or enqueue request `profile` field takes precedence over the session plan's inherited `agent_profile`.
+**Precedence**: an optional `profile` field on the `eforge-playbooks:run-playbook` action input overrides the playbook frontmatter for that run. When no action input override is supplied, the playbook `profile` field overrides the project's active-profile marker and any registered profile router. For session-plan builds, an explicit `eforge build --profile <name>` flag or enqueue request `profile` field takes precedence over the session plan's `agent_profile`.
 
-**Validation timing**: the named profile is validated at execution time, not when the playbook is saved or validated. A typo in `profile` is surfaced as an error when the playbook runs, not when it is created or edited. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
+**Validation timing**: the named profile is validated at execution time, not when the playbook is saved or validated. A typo in `profile` is surfaced as an error when the playbook runs, not when it is created or edited. `agent_profile` values on session plans are validated when the session plan is enqueued.
 
-**Planning playbooks and `agent_profile`**: when a planning-mode playbook has a `profile` field, `eforge-playbooks:run-playbook` includes it in the eforge-plan planning handoff seed. The eforge-plan planning flow applies it as the session plan's `agent_profile` frontmatter when a plan is created; when the session plan is later enqueued via `/eforge:build`, `agent_profile` is used as the effective profile unless an explicit enqueue/build `profile` override is supplied.
+**Session-plan `agent_profile` metadata**: session-plan producers may set generic `agent_profile` frontmatter to carry a recommended agent runtime profile with the artifact. When the session plan is later enqueued via `/eforge:build`, `agent_profile` is used as the effective profile unless an explicit enqueue/build `profile` override is supplied.
 
 **Blank profile fallback**: if `profile` is omitted or left empty, eforge resolves the profile at run time using:
 1. Any registered `registerProfileRouter` extension that selects a profile for the queued PRD
