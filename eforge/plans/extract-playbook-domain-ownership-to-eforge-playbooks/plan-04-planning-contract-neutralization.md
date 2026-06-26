@@ -132,3 +132,20 @@ No `pnpm-lock.yaml` change is expected because this module does not add or remov
   }
 }
 </build-config>
+
+## Recovery Guidance
+
+- Failed PRD: "extract-playbook-domain-ownership-to-eforge-playbooks"
+- Root failed plan: "[REDACTED_HIGH_ENTROPY]"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for extract-playbook-domain-ownership-to-eforge-playbooks. artifact source: feature-branch; 7 landed commit(s); failing plan: [REDACTED_HIGH_ENTROPY]; feature branch: eforge/extract-playbook-domain-ownership-to-eforge-playbooks. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
+- Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair extract-playbook-domain-ownership-to-eforge-playbooks`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair and complete [REDACTED_HIGH_ENTROPY] using preserved compiled artifacts."
+  - "Unblock and run plan-05-boundary-docs-validation after plan-04 is repaired."
+  - "Run final type-check, build, test, and maintainability validation."
+- Retry/resume guidance: Continue [REDACTED_HIGH_ENTROPY] for failed PRD extract-playbook-domain-ownership-to-eforge-playbooks from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-06-26T21:47:24.329Z
+- Source sidecar: .eforge/queue/failed/extract-playbook-domain-ownership-to-eforge-playbooks.recovery.json
+- Source identity: prdId=extract-playbook-domain-ownership-to-eforge-playbooks; setName=extract-playbook-domain-ownership-to-eforge-playbooks; featureBranch=eforge/extract-playbook-domain-ownership-to-eforge-playbooks; baseBranch=main
