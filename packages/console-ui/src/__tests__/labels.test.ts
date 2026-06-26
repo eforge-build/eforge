@@ -2,127 +2,58 @@ import { describe, it, expect } from 'vitest';
 import { selectPrdDisplayLabel, slugToDisplayLabel } from '@/lib/selectors/labels';
 
 describe('slugToDisplayLabel', () => {
-  it('title-cases hyphen-separated words', () => {
-    expect(slugToDisplayLabel('add-server-support')).toBe('Add Server Support');
-  });
-
-  it('title-cases underscore-separated words', () => {
-    expect(slugToDisplayLabel('fix_auth_flow')).toBe('Fix Auth Flow');
-  });
-
-  it('preserves PRD acronym', () => {
-    expect(slugToDisplayLabel('create-prd-template')).toBe('Create PRD Template');
-  });
-
-  it('preserves UI acronym', () => {
-    expect(slugToDisplayLabel('refactor-ui-layout')).toBe('Refactor UI Layout');
-  });
-
-  it('preserves MCP acronym', () => {
-    expect(slugToDisplayLabel('add-mcp-server')).toBe('Add MCP Server');
-  });
-
-  it('preserves CLI acronym', () => {
-    expect(slugToDisplayLabel('update-cli-commands')).toBe('Update CLI Commands');
-  });
-
-  it('preserves API acronym', () => {
-    expect(slugToDisplayLabel('fix-api-auth')).toBe('Fix API Auth');
-  });
-
-  it('strips date prefix with ISO format', () => {
-    expect(slugToDisplayLabel('2024-01-15-add-feature')).toBe('Add Feature');
-  });
-
-  it('strips .md extension', () => {
-    expect(slugToDisplayLabel('my-feature.md')).toBe('My Feature');
-  });
-
-  it('handles single word', () => {
-    expect(slugToDisplayLabel('cleanup')).toBe('Cleanup');
-  });
-
-  it('handles multiple acronyms in one slug', () => {
-    expect(slugToDisplayLabel('migrate-api-to-mcp')).toBe('Migrate API To MCP');
+  it.each([
+    ['hyphen-separated words', 'add-server-support', 'Add Server Support'],
+    ['underscore-separated words', 'fix_auth_flow', 'Fix Auth Flow'],
+    ['slug acronym: prd', 'create-prd-template', 'Create PRD Template'],
+    ['slug acronym: ui', 'refactor-ui-layout', 'Refactor UI Layout'],
+    ['slug acronym: mcp', 'add-mcp-server', 'Add MCP Server'],
+    ['slug acronym: cli', 'update-cli-commands', 'Update CLI Commands'],
+    ['slug acronym: api', 'fix-api-auth', 'Fix API Auth'],
+    ['date-prefix: ISO', '2024-01-15-add-feature', 'Add Feature'],
+    ['markdown extension: .md', 'my-feature.md', 'My Feature'],
+    ['single word', 'cleanup', 'Cleanup'],
+    ['multiple acronyms', 'migrate-api-to-mcp', 'Migrate API To MCP'],
+  ])('%s', (_label, slug, expected) => {
+    expect(slugToDisplayLabel(slug)).toBe(expected);
   });
 });
 
 describe('selectPrdDisplayLabel', () => {
   describe('explicit title', () => {
-    it('returns explicit title when present and clean', () => {
-      expect(selectPrdDisplayLabel('Add MCP Server Support', 'add-mcp-server')).toBe(
-        'Add MCP Server Support',
-      );
-    });
-
-    it('trims whitespace from explicit title', () => {
-      expect(selectPrdDisplayLabel('  My Feature  ', 'my-feature')).toBe('My Feature');
-    });
-
-    it('returns explicit title even when it matches a slug', () => {
-      expect(selectPrdDisplayLabel('CLI Improvements', 'cli-improvements')).toBe(
-        'CLI Improvements',
-      );
+    it.each([
+      ['clean title', 'Add MCP Server Support', 'add-mcp-server', 'Add MCP Server Support'],
+      ['trim whitespace', '  My Feature  ', 'my-feature', 'My Feature'],
+      ['title matches slug', 'CLI Improvements', 'cli-improvements', 'CLI Improvements'],
+    ])('%s', (_label, title, slug, expected) => {
+      expect(selectPrdDisplayLabel(title, slug)).toBe(expected);
     });
   });
 
   describe('markdown-title rejection', () => {
-    it('falls back to slug when title starts with markdown heading #', () => {
-      expect(selectPrdDisplayLabel('# Add MCP Server', 'add-mcp-server')).toBe('Add MCP Server');
-    });
-
-    it('falls back to slug when title has ## heading', () => {
-      expect(selectPrdDisplayLabel('## Overview', 'overview')).toBe('Overview');
-    });
-
-    it('falls back to slug when title contains bold markers', () => {
-      expect(selectPrdDisplayLabel('**Bold Title**', 'bold-title')).toBe('Bold Title');
-    });
-
-    it('falls back to slug when title contains backtick', () => {
-      expect(selectPrdDisplayLabel('Add `code` here', 'add-code')).toBe('Add Code');
-    });
-
-    it('falls back to slug when title contains markdown link', () => {
-      expect(selectPrdDisplayLabel('[Click here](http://example.com)', 'click-here')).toBe(
-        'Click Here',
-      );
-    });
-
-    it('falls back to slug when title contains a newline (markdown body leak)', () => {
-      const leakedBody = 'Add MCP Server\n\nThis PRD describes adding MCP server support.';
-      expect(selectPrdDisplayLabel(leakedBody, 'add-mcp-server')).toBe('Add MCP Server');
-    });
-
-    it('falls back to slug when title is an overly long string (markdown body leak)', () => {
-      const longTitle = 'A'.repeat(200);
-      expect(selectPrdDisplayLabel(longTitle, 'add-mcp-server')).toBe('Add MCP Server');
+    it.each([
+      ['markdown rejection: # heading', '# Add MCP Server', 'add-mcp-server', 'Add MCP Server'],
+      ['markdown rejection: ## heading', '## Overview', 'overview', 'Overview'],
+      ['markdown rejection: bold markers', '**Bold Title**', 'bold-title', 'Bold Title'],
+      ['markdown rejection: backtick', 'Add `code` here', 'add-code', 'Add Code'],
+      ['markdown rejection: link', '[Click here](http://example.com)', 'click-here', 'Click Here'],
+      ['markdown rejection: newline body leak', 'Add MCP Server\n\nThis PRD describes adding MCP server support.', 'add-mcp-server', 'Add MCP Server'],
+      ['markdown rejection: long body leak', 'A'.repeat(200), 'add-mcp-server', 'Add MCP Server'],
+    ])('%s', (_label, title, slug, expected) => {
+      expect(selectPrdDisplayLabel(title, slug)).toBe(expected);
     });
   });
 
   describe('slug title-casing fallback', () => {
-    it('title-cases slug when title is undefined', () => {
-      expect(selectPrdDisplayLabel(undefined, 'add-mcp-server')).toBe('Add MCP Server');
-    });
-
-    it('title-cases slug when title is null', () => {
-      expect(selectPrdDisplayLabel(null, 'refactor-ui-layout')).toBe('Refactor UI Layout');
-    });
-
-    it('title-cases slug when title is empty string', () => {
-      expect(selectPrdDisplayLabel('', 'fix-cli-output')).toBe('Fix CLI Output');
-    });
-
-    it('title-cases slug when title is whitespace only', () => {
-      expect(selectPrdDisplayLabel('   ', 'fix-api-timeout')).toBe('Fix API Timeout');
-    });
-
-    it('preserves CLI acronym from slug', () => {
-      expect(selectPrdDisplayLabel(undefined, 'improve-cli-ux')).toBe('Improve CLI Ux');
-    });
-
-    it('returns raw id when slug is empty after processing', () => {
-      expect(selectPrdDisplayLabel(undefined, 'x')).toBe('X');
+    it.each([
+      ['fallback: undefined title', undefined, 'add-mcp-server', 'Add MCP Server'],
+      ['fallback: null title', null, 'refactor-ui-layout', 'Refactor UI Layout'],
+      ['fallback: empty title', '', 'fix-cli-output', 'Fix CLI Output'],
+      ['fallback: whitespace title', '   ', 'fix-api-timeout', 'Fix API Timeout'],
+      ['fallback acronym: cli', undefined, 'improve-cli-ux', 'Improve CLI Ux'],
+      ['fallback: raw id when slug reduces to x', undefined, 'x', 'X'],
+    ])('%s', (_label, title, slug, expected) => {
+      expect(selectPrdDisplayLabel(title, slug)).toBe(expected);
     });
   });
 });

@@ -41,16 +41,26 @@ afterAll(async () => {
 
 const get = (path: string, init?: RequestInit) => fetch(`${baseUrl}${path}`, init);
 
-function getRawStatus(path: string): Promise<number> {
+interface RawResponse {
+  status: number;
+  body: string;
+}
+
+function getRaw(path: string): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
     const url = new URL(baseUrl);
     const req = request({ hostname: url.hostname, port: url.port, path }, (res) => {
-      res.resume();
-      res.on('end', () => resolve(res.statusCode ?? 0));
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
     });
     req.on('error', reject);
     req.end();
   });
+}
+
+async function getRawStatus(path: string): Promise<number> {
+  return (await getRaw(path)).status;
 }
 
 describe('serveStaticUiRequest', () => {
@@ -81,11 +91,21 @@ describe('serveStaticUiRequest', () => {
     expect((await get('/console/assets/missing.js')).status).toBe(404);
   });
 
-  it('rejects malformed percent escapes, encoded traversal, and multiple leading slashes under Console', async () => {
-    expect((await get('/console/%E0%A4%A')).status).toBe(400);
-    expect(await getRawStatus('/console/assets/%2e%2e/index.html')).toBe(404);
-    expect(await getRawStatus('/console//assets/missing.js')).toBe(400);
-    expect(await getRawStatus('/console/%2Fassets/missing.js')).toBe(400);
+  it.each([
+    ['malformed percent escape', '/console/%E0%A4%A', 400, get],
+    ['encoded traversal', '/console/assets/%2e%2e/index.html', 404, getRawStatus],
+    ['multiple leading slash rejection', '/console//assets/missing.js', 400, getRawStatus],
+    ['encoded slash rejection', '/console/%2Fassets/missing.js', 400, getRawStatus],
+  ] as const)('rejects %s under Console', async (_label, path, expectedStatus, requester) => {
+    const result = await requester(path);
+    const status = typeof result === 'number' ? result : result.status;
+    expect(status).toBe(expectedStatus);
+  });
+
+  it('rejects encoded traversal attempts escaping the Console root', async () => {
+    const res = await getRaw('/console/assets/%2e%2e%2f%2e%2e%2fsentinel.txt');
+    expect(res.status).toBe(404);
+    expect(res.body).not.toContain('outside');
   });
 
   it.skipIf(!symlinksAvailable)('rejects symlink escapes from the Console root', async () => {

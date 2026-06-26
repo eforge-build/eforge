@@ -11,22 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { safeParseEforgeEvent } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, isPersistedDaemonEventType } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
-import { NEW_VARIANT_TYPES, extensionDiagnosticVariants, extensionPolicyGateMatrixVariants, extensionPolicyVariants, newVariants } from './events-schema-test-helpers.js';
-
-describe('new plan lifecycle + merge-worktree variants — JSON roundtrip', () => {
-  it('roundtrips all 5 new variant types through JSON', () => {
-    for (const event of newVariants) {
-      const parsed = JSON.parse(JSON.stringify(event));
-      expect(parsed).toEqual(event);
-      expect(parsed.type).toBe(event.type);
-    }
-  });
-
-  it('covers all 5 new variant type literals', () => {
-    const types = new Set(newVariants.map((e) => e.type));
-    expect(types).toEqual(NEW_VARIANT_TYPES);
-  });
-});
+import { extensionDiagnosticVariants, extensionPolicyGateMatrixVariants, extensionPolicyVariants } from './events-schema-test-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Schema validation — valid payloads

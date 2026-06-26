@@ -13,60 +13,6 @@ export function expectJsonRoundTrip<T>(value: T): void {
   expect(JSON.parse(JSON.stringify(value))).toEqual(value);
 }
 
-export const newVariants: EforgeEvent[] = [
-  // plan:status:change — plan moves to running
-  {
-    type: 'plan:status:change',
-    timestamp: '2025-01-01T00:00:01.000Z',
-    planId: 'plan-01-foundation',
-    status: 'running',
-  },
-
-  // plan:status:change — plan completes
-  {
-    type: 'plan:status:change',
-    timestamp: '2025-01-01T00:10:00.000Z',
-    planId: 'plan-01-foundation',
-    status: 'completed',
-  },
-
-  // plan:error:set
-  {
-    type: 'plan:error:set',
-    timestamp: '2025-01-01T00:05:00.000Z',
-    planId: 'plan-02-mutate-state',
-    error: 'Agent exceeded max turns',
-  },
-
-  // plan:error:clear
-  {
-    type: 'plan:error:clear',
-    timestamp: '2025-01-01T00:06:00.000Z',
-    planId: 'plan-02-mutate-state',
-  },
-
-  // merge:worktree:set
-  {
-    type: 'merge:worktree:set',
-    timestamp: '2025-01-01T01:00:00.000Z',
-    path: '/project/.worktrees/merge-worktree-abc123',
-  },
-
-  // merge:worktree:clear
-  {
-    type: 'merge:worktree:clear',
-    timestamp: '2025-01-01T01:30:00.000Z',
-  },
-];
-
-export const NEW_VARIANT_TYPES = new Set([
-  'plan:status:change',
-  'plan:error:set',
-  'plan:error:clear',
-  'merge:worktree:set',
-  'merge:worktree:clear',
-]);
-
 export const extensionAgentTaskVariants: EforgeEvent[] = [
   {
     type: 'extension:agent-task:start',

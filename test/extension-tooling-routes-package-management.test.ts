@@ -259,25 +259,6 @@ describe('extension tooling daemon routes: package management', () => {
     });
   });
 
-  it('POST extensionUpdate applies version overrides only to npm sidecar sources', async () => {
-    const source = await readFile('packages/monitor/src/extension-package-management.ts', 'utf-8');
-    const updateBlock = source.slice(
-      source.indexOf('export async function updateExtensionPackage'),
-      source.indexOf('export interface RemoveExtensionResult'),
-    );
-    expect(updateBlock).toContain("assertOptionalString(body.version, 'version')");
-    expect(updateBlock).toContain('if (body.version !== undefined)');
-    expect(updateBlock).toContain("if (sidecar.sourceKind !== 'npm')");
-    expect(updateBlock).toContain('assertRegistryNpmPackageSpecForVersionOverride(sidecar.sourceSpec)');
-    expect(updateBlock).toContain('assertRegistryNpmVersionSpecifierForOverride(body.version)');
-    expect(updateBlock).toContain('effectiveSpec = updateNpmSpecVersion(sidecar.sourceSpec, body.version)');
-    expect(updateBlock).toContain('assertRegistryNpmPackageSpecForVersionOverride(effectiveSpec)');
-    expect(updateBlock).toContain("if (sidecar.sourceKind === 'npm')");
-    expect(updateBlock).toContain('acquireFromNpm(effectiveSpec, cwd)');
-    expect(updateBlock).toContain('sourceSpec: effectiveSpec');
-    expect(updateBlock).toContain('acquireFromTarball(sidecar.sourceSpec, cwd)');
-    expect(updateBlock).toContain('acquireFromLocalDir(sidecar.sourceSpec, cwd)');
-  });
 
   it('POST extensionUpdate persists the effective source spec for version-pinned npm updates', async () => {
     const tmpDir = makeTempDir();
@@ -403,13 +384,16 @@ process.stdout.write(JSON.stringify([{ name: 'registry-pkg', version, filename }
     await apiInstallExtension({ cwd: tmpDir, body: { source: './path-version-pkg' } });
     await apiInstallExtension({ cwd: tmpDir, body: { source: './tar-version-pkg-1.0.0.tgz' } });
 
-    for (const name of ['path-version-pkg', 'tar-version-pkg']) {
+    for (const { name, sourceKind } of [
+      { name: 'path-version-pkg', sourceKind: 'path sidecar source' },
+      { name: 'tar-version-pkg', sourceKind: 'tarball sidecar source' },
+    ]) {
       const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionUpdate}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, version: 'latest' }),
       });
-      expect(res.status, `Expected 400 for ${name}`).toBe(400);
+      expect(res.status, `Expected 400 for ${sourceKind}: ${name}`).toBe(400);
       await expect(res.text()).resolves.toContain('Version overrides are supported only for registry npm package specs');
     }
   });
