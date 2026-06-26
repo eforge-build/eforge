@@ -347,6 +347,11 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
+  // --- eforge:region plan-01-foundation-contracts ---
+  // Compile resilience advisory/failure events do not mutate run reducer state.
+  'planning:preflight',
+  'planning:scope-context:failure',
+  // --- eforge:endregion plan-01-foundation-contracts ---
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Console rendering is handled outside this session reducer.
   'build:terminal-failure',

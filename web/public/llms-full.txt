@@ -3886,7 +3886,7 @@ The recovery flow:
    - `continue-repair` - prepare root-plan `## Recovery Guidance`, then queue the failed PRD through the compiled-artifact repair path, preserving existing queue controls and reactivating skipped descendants whose dependency chain reaches the parent
    - `abandon` - remove the failed PRD and recovery sidecars from the queue because the work should not continue
    - `manual` - make no queue changes; a human must inspect the recovery report and decide whether bounded manual replanning or a deliberately authored follow-up PRD is appropriate
-4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence.
+4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence. Other `recoveryOptions` entries, such as `compile-scope-context`, are non-mutating guidance; surface their reason/action but keep the primary action tied to the verdict or continue-and-repair eligibility.
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` / `eforge apply-recovery <prdId>` for `retry` and `abandon`. For `continue-repair`, call `eforge_continue_repair` (Pi), `mcp__eforge__eforge_continue_repair` (Claude Code), or `eforge continue-repair <prdId> [--set-name <name>] [--profile <name>]` (CLI). These commands require current root-plan `## Recovery Guidance` before queueing the continued build and return queued metadata rather than a local worker session.
 
@@ -4058,7 +4058,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus a recommended `continue-repair` option. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 
@@ -5041,7 +5041,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 229
+Total variants: 231
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -5098,9 +5098,11 @@ Total variants: 229
 | `extension:validation-provider:error` | `command`, `details`, `exitCode`, `extensionName`, `extensionPath`, `message`, `planId`, `providerName`, `status` |
 | `extension:validation-provider:timeout` | `command`, `extensionName`, `extensionPath`, `planId`, `providerName`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
+| `planning:preflight` | `risk` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
+| `planning:scope-context:failure` | `failure` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

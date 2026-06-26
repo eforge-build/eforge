@@ -2,8 +2,9 @@ import type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarReport,
   RecoveryVerdictSidecar,
+  RecoverySidecarRecoveryOption,
 } from '@eforge-build/client';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
 

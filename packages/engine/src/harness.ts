@@ -264,6 +264,7 @@ export type AgentTerminalSubtype =
    * `ctx.ui.theme` access for headless SDK contexts.
    */
   | 'error_pi_tool_infrastructure'
+  | 'error_context_window'
   | 'error_transient_transport';
 
 /**

@@ -1,4 +1,8 @@
-import type { RecoveryVerdict } from '../events.js';
+import type {
+  CompileRecoveryAction,
+  CompileScopeContextFailure,
+  RecoveryVerdict,
+} from '../events.js';
 
 /** POST /api/recover */
 export interface RecoverRequest {
@@ -173,12 +177,31 @@ export type RecoverySidecarContinueRepairEligibility =
       checkedPath?: string;
     };
 
-export interface RecoverySidecarRecoveryOption {
+// --- eforge:region plan-01-foundation-contracts ---
+export interface RecoverySidecarContinueRepairOption {
   kind: 'continue-repair';
   action: 'continue-repair';
   recommended: boolean;
   reason: string;
 }
+
+export interface RecoverySidecarCompileScopeContextOption {
+  kind: 'compile-scope-context';
+  action: Exclude<CompileRecoveryAction, 'none'>;
+  recommended: boolean;
+  eligible: boolean;
+  reason: string;
+  attempted?: boolean;
+  attempt?: number;
+  maxAttempts?: number;
+  source?: CompileScopeContextFailure['source'];
+  failureKind?: CompileScopeContextFailure['failureKind'];
+}
+
+export type RecoverySidecarRecoveryOption =
+  | RecoverySidecarContinueRepairOption
+  | RecoverySidecarCompileScopeContextOption;
+// --- eforge:endregion plan-01-foundation-contracts ---
 
 interface ContinueRepairEligibilityIdentity {
   prdId: string;

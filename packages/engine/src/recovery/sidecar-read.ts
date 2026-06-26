@@ -1,8 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseWithSchema, type RecoveryVerdictSidecar } from '@eforge-build/client';
+import {
+  CompileRecoveryActionSchema,
+  CompileScopeContextFailureSchema,
+  parseWithSchema,
+  type RecoverySidecarRecoveryOption,
+  type RecoveryVerdictSidecar,
+} from '@eforge-build/client';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
 
 export interface RecoverySidecarProjection {
@@ -280,15 +286,62 @@ function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySideca
     const kind = requireString(obj.kind, 'recoveryOptions.kind', prdId);
     const action = requireString(obj.action, 'recoveryOptions.action', prdId);
     if (kind === 'compiled-build-resume' || action === 'eforge_' + 'resume_build') throw new Error(`recoveryOptions contains a legacy repair action${suffix(prdId)}`);
-    if (kind !== 'continue-repair') throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
-    if (action !== 'continue-repair') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
-    return {
-      kind,
-      action,
-      recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
-      reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
-    };
+    if (kind === 'continue-repair') return validateContinueRepairOption(obj, action, prdId);
+    if (kind === 'compile-scope-context') return validateCompileScopeContextOption(obj, action, prdId);
+    throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
   });
+}
+
+function validateContinueRepairOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
+  if (action !== 'continue-repair') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+  return {
+    kind: 'continue-repair',
+    action,
+    recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
+    reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
+  };
+}
+
+function validateCompileScopeContextOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
+  const compileAction = requireCompileRecoveryGuidanceAction(action, prdId);
+  return {
+    kind: 'compile-scope-context',
+    action: compileAction,
+    recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
+    eligible: requireBoolean(obj.eligible, 'recoveryOptions.eligible', prdId),
+    reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
+    ...(hasOwn(obj, 'attempted') ? { attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId) } : {}),
+    ...(hasOwn(obj, 'attempt') ? { attempt: requirePositiveInteger(obj.attempt, 'recoveryOptions.attempt', prdId) } : {}),
+    ...(hasOwn(obj, 'maxAttempts') ? { maxAttempts: requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId) } : {}),
+    ...(hasOwn(obj, 'source') ? { source: requireCompileScopeContextSource(obj.source, prdId) } : {}),
+    ...(hasOwn(obj, 'failureKind') ? { failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId) } : {}),
+  };
+}
+
+function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {
+  try {
+    const action = parseWithSchema(CompileRecoveryActionSchema, value);
+    if (action !== 'none') return action as Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'];
+  } catch {
+    // Use the sidecar-specific error below for compatibility with existing callers.
+  }
+  throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+}
+
+function requireCompileScopeContextSource(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['source'] {
+  try {
+    return parseWithSchema(CompileScopeContextFailureSchema.properties.source, value);
+  } catch {
+    throw new Error(`recoveryOptions.source is invalid${suffix(prdId)}`);
+  }
+}
+
+function requireCompileScopeContextFailureKind(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['failureKind'] {
+  try {
+    return parseWithSchema(CompileScopeContextFailureSchema.properties.failureKind, value);
+  } catch {
+    throw new Error(`recoveryOptions.failureKind is invalid${suffix(prdId)}`);
+  }
 }
 
 function validateOptionalStringRecord(value: unknown, label: string, keys: string[], prdId?: string): Record<string, string> {
@@ -339,9 +392,19 @@ function requireNumber(value: unknown, label: string, prdId?: string): number {
   return value;
 }
 
+function requirePositiveInteger(value: unknown, label: string, prdId?: string): number {
+  const numberValue = requireNumber(value, label, prdId);
+  if (!Number.isInteger(numberValue) || numberValue < 1) throw new Error(`${label} is invalid${suffix(prdId)}`);
+  return numberValue;
+}
+
 function requireBoolean(value: unknown, label: string, prdId?: string): boolean {
   if (typeof value !== 'boolean') throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
+}
+
+function hasOwn(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
 function suffix(prdId?: string): string {

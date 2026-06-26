@@ -16,6 +16,8 @@ export type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
@@ -475,6 +477,16 @@ export type {
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, AgentTerminalSubtypeSchema, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
@@ -486,6 +498,9 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
   StackProviderSchema, StackProviderOperationKindSchema, StackProviderConflictKindSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
+  BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
+  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
 } from './events.js';
 
 export type * from './types.js';

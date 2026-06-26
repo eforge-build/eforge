@@ -73,6 +73,16 @@ export type {
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from './events.schemas.js';
 
 export {
@@ -114,6 +124,17 @@ export {
   BuildResumeArtifactPlanSchema,
   BuildResumeArtifactsEventSchema,
   QueueDispatchFailureStageSchema,
+  BoundedDiagnosticOptionsSchema,
+  BoundedValidationDiagnosticSchema,
+  CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema,
+  CompilePreflightRiskSchema,
+  CompileRecoveryActionSchema,
+  CompileRiskLevelSchema,
+  CompileScopeContextFailureKindSchema,
+  CompileScopeContextFailureSchema,
+  CompileScopeContextSourceSchema,
+  MAX_COMPILE_RISK_LIST_ITEMS,
 } from './events.schemas.js';
 
 export { DaemonStreamSnapshotSchema, EforgeEventSchema } from './events.schemas.js';

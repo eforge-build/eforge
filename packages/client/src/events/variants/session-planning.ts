@@ -41,6 +41,12 @@ import {
   TerminalFailureEnvelopeSchema,
   TestIssueSchema,
 } from '../shared/schemas.js';
+// --- eforge:region plan-01-foundation-contracts ---
+import {
+  CompilePreflightRiskSchema,
+  CompileScopeContextFailureSchema,
+} from '../shared/compile-resilience.js';
+// --- eforge:endregion plan-01-foundation-contracts ---
 import { agentStartFields } from '../shared/agent-fields.js';
 import {
   ExtensionActionEventBaseFields,
@@ -121,6 +127,12 @@ export const planningEventVariants = [
     source: Type.String(),
     label: Type.Optional(Type.String()),
   }),
+  // --- eforge:region plan-01-foundation-contracts ---
+  Type.Object({
+    type: Type.Literal('planning:preflight'),
+    risk: CompilePreflightRiskSchema,
+  }),
+  // --- eforge:endregion plan-01-foundation-contracts ---
   Type.Object({ type: Type.Literal('planning:skip'), reason: Type.String() }),
   Type.Object({
     type: Type.Literal('planning:submission'),
@@ -129,6 +141,12 @@ export const planningEventVariants = [
     hasMigrations: Type.Boolean(),
   }),
   Type.Object({ type: Type.Literal('planning:error'), reason: Type.String() }),
+  // --- eforge:region plan-01-foundation-contracts ---
+  Type.Object({
+    type: Type.Literal('planning:scope-context:failure'),
+    failure: CompileScopeContextFailureSchema,
+  }),
+  // --- eforge:endregion plan-01-foundation-contracts ---
   Type.Object({
     type: Type.Literal('planning:clarification'),
     questions: Type.Array(ClarificationQuestionSchema),

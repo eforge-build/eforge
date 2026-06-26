@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { BuildFailureSummary } from '@eforge-build/client';
+import type { BuildFailureSummary, RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import { projectResumeEligibility } from '../resume/compiled-build.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 import { truncateMiddleText, truncateText } from './text-bounds.js';
@@ -26,13 +26,6 @@ export type RecoverySidecarContinueRepairEligibility =
       reason: string;
       checkedPath?: string;
     };
-
-export interface RecoverySidecarRecoveryOption {
-  kind: 'continue-repair';
-  action: 'continue-repair';
-  recommended: boolean;
-  reason: string;
-}
 
 const CONTINUE_REPAIR_REASON_CHARS = 1_000;
 const CONTINUE_REPAIR_DIFF_STAT_CHARS = 4_000;

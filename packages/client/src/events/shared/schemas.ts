@@ -35,6 +35,9 @@ export const AgentTerminalSubtypeSchema = Type.Union([
   Type.Literal('error_max_structured_output_retries'),
   Type.Literal('error_during_execution'),
   Type.Literal('error_pi_tool_infrastructure'),
+  // --- eforge:region plan-01-foundation-contracts ---
+  Type.Literal('error_context_window'),
+  // --- eforge:endregion plan-01-foundation-contracts ---
   Type.Literal('error_transient_transport'),
 ]);
 export const ReviewPerspectiveSchema = Type.Union([

@@ -32,6 +32,8 @@ export type {
   ReadSidecarRequest,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
@@ -433,6 +435,16 @@ export type {
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from './events.js';
 
 
@@ -445,4 +457,7 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   StackProviderSchema, StackProviderOperationKindSchema, StackProviderConflictKindSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
+  BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
+  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
 } from './events.js';
