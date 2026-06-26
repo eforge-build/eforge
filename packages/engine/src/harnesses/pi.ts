@@ -17,8 +17,8 @@ import {
   type AgentSessionEvent,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import { getModel } from '@earendil-works/pi-ai';
 import type { Model, Api } from '@earendil-works/pi-ai';
+import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
@@ -560,14 +560,14 @@ export class PiHarness implements AgentHarness {
       // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
       const authStorage = AuthStorage.create();
 
-      // Resolve model via ModelRegistry (async) with fallback to getModel then synthetic
+      // Resolve model via ModelRegistry (async) with fallback to the built-in catalog then synthetic
       const modelRegistry = ModelRegistry.create(authStorage);
       let model: Model<Api>;
       const registryModel = await modelRegistry.find(options.model.provider!, options.model.id) as Model<Api> | undefined;
       if (registryModel) {
         model = registryModel;
       } else {
-        const knownModel = getModel(options.model.provider as never, options.model.id as never) as Model<Api> | undefined;
+        const knownModel = getBuiltinModel(options.model.provider as never, options.model.id as never) as Model<Api> | undefined;
         if (knownModel) {
           model = knownModel;
         } else {

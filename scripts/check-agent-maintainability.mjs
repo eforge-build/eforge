@@ -35,6 +35,7 @@ const SKIP_DIRS = new Set([
   '.turbo',
   'out',
   'build',
+  'storybook-static',
 ]);
 
 // File extensions considered TypeScript/JavaScript implementation or test files.

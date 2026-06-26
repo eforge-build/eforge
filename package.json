@@ -46,34 +46,31 @@
     ],
     "overrides": {
       "postcss": ">=8.5.15"
-    },
-    "patchedDependencies": {
-      "vitest@4.1.7": "patches/vitest@4.1.7.patch"
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.78.0",
-    "@earendil-works/pi-ai": "^0.78.0",
-    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-agent-core": "^0.80.2",
+    "@earendil-works/pi-ai": "^0.80.2",
+    "@earendil-works/pi-coding-agent": "^0.80.2",
     "@eforge-build/client": "workspace:*",
+    "@eforge-build/console-ui": "workspace:*",
     "@eforge-build/docs-gen": "workspace:*",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
-    "@eforge-build/console-ui": "workspace:*",
     "@eforge-build/scopes": "workspace:*",
     "@eforge-build/web": "workspace:*",
     "@types/jsdom": "^28.0.3",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.0.1",
     "commander": "^15.0.0",
-    "eslint": "^10.4.1",
-    "eslint-plugin-sonarjs": "^4.0.3",
+    "eslint": "^10.5.0",
+    "eslint-plugin-sonarjs": "^4.1.0",
     "jsdom": "^29.1.1",
-    "next": "^16.2.6",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.60.0",
-    "vitest": "^4.1.7",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^4.1.9",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
