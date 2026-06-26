@@ -121,9 +121,9 @@ describe('eforge-playbooks action contracts', () => {
         kind: 'success',
         output: {
           kind: 'planning-unavailable',
-          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
+          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-workstation', range: '>=1.0.0' },
           message: expect.stringMatching(/Install\/load eforge-plan.*trust.*reload/i),
-          diagnostics: [expect.objectContaining({ capabilityName: 'eforge.plan.planning-mode-playbook', requiredVersion: '>=1.0.0' })],
+          diagnostics: [expect.objectContaining({ capabilityName: 'eforge.plan.planning-workstation', requiredVersion: '>=1.0.0' })],
           planningEntry: { seed: { profile: 'planner', sections: expect.any(Object) } },
         },
       });

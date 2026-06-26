@@ -1,5 +1,6 @@
 import { ExtensionActionInputValidationError, ExtensionActionUserError, defineExtensionAction } from '@eforge-build/extension-sdk';
-import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics, playbookToBuildSource, playbookToPlanSeed } from '@eforge-build/input';
+import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } from '@eforge-build/input';
+import { playbookToBuildSource, playbookToPlanSeed } from './compile.js';
 import { RunPlaybookInputSchema, RunPlaybookOutputSchema } from './schemas.js';
 import { invalidField, userError } from './action-errors.js';
 import { loadExact } from './storage.js';

@@ -6,7 +6,7 @@ import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/ty
 import { rawPlaybook, record, withTempProject, writePlaybook } from './helpers.js';
 
 function withCapability(registry: NativeExtensionRegistry): NativeExtensionRegistry {
-  return { ...registry, extensions: [{ name: 'eforge-plan', path: '/ext/eforge-plan', scope: 'project-local', status: 'loaded', source: 'explicit', trust: 'trusted', trustState: 'not-required', diagnostics: [], capabilities: [{ name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' }] } as any] };
+  return { ...registry, extensions: [{ name: 'eforge-plan', path: '/ext/eforge-plan', scope: 'project-local', status: 'loaded', source: 'explicit', trust: 'trusted', trustState: 'not-required', diagnostics: [], capabilities: [{ name: 'eforge.plan.planning-workstation', version: '1.0.0' }] } as any] };
 }
 
 async function run(cwd: string, input: Record<string, unknown>, opts: { capability?: boolean; enqueue?: (req: any) => Promise<any> } = {}) {

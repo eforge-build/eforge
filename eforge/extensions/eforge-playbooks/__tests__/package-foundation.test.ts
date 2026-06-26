@@ -15,7 +15,7 @@ describe('eforge-playbooks package foundation', () => {
     const eforgePkg = await json(join(repo, 'packages/eforge/package.json'));
     expect(pkg).toMatchObject({ name: '@eforge-build/eforge-playbooks', version: eforgePkg.version, license: 'Apache-2.0', type: 'module', types: './dist/index.d.ts', eforge: { extension: { name: 'eforge-playbooks', entrypoint: './dist/index.js' } } });
     expect(pkg.files).toEqual(['dist/', 'README.md', 'LICENSE']);
-    expect(pkg.dependencies).toMatchObject({ '@eforge-build/extension-sdk': 'workspace:*', '@eforge-build/input': 'workspace:*' });
+    expect(pkg.dependencies).toMatchObject({ '@eforge-build/extension-sdk': 'workspace:*', '@eforge-build/input': 'workspace:*', '@eforge-build/scopes': 'workspace:*', yaml: '^2.8.0', zod: '^4.4.3' });
     expect(await readFile(join(repo, 'pnpm-workspace.yaml'), 'utf-8')).toContain('eforge/extensions/eforge-playbooks');
     expect(await readFile(join(repo, 'scripts/lib/lockstep-version.mjs'), 'utf-8')).toContain('eforge/extensions/eforge-playbooks/package.json');
     expect((await json(join(repo, 'package.json'))).scripts['type-check:eforge-playbooks']).toContain('@eforge-build/eforge-playbooks');
@@ -26,11 +26,29 @@ describe('eforge-playbooks package foundation', () => {
     expect(tsconfig.exclude).toEqual(expect.arrayContaining(['dist', '__tests__']));
     const tsup = await readFile(join(root, 'tsup.config.ts'), 'utf-8');
     expect(tsup).toContain('dts: true'); expect(tsup).toContain('splitting: false'); expect(tsup).toContain('skipNodeModulesBundle: false'); expect(tsup).toContain('external: [/^node:/]');
+    for (const bundled of ['@eforge-build/scopes', '@eforge-build/input', 'yaml', 'zod']) expect(tsup).toContain(`'${bundled}'`);
     const forbidden = ['packages/.*/src', 'createPlaybook' + 'WorkflowAdapter', 'builtin:' + 'playbooks', 'playbook-' + 'service', '/api/' + 'playbook', 'api' + 'Playbook'].map((part) => new RegExp(part));
     for (const file of await files()) {
       const source = await readFile(file, 'utf-8');
       expect(forbidden.some((pattern) => pattern.test(source))).toBe(false);
     }
     expect(existsSync(join(root, 'LICENSE'))).toBe(true);
+  });
+  it('does not expose extension-owned domain helpers from the package entrypoint', async () => {
+    const entrypoint = await readFile(join(root, 'index.ts'), 'utf-8');
+    for (const helper of ['parsePlaybook', 'serializePlaybook', 'validatePlaybook', 'listPlaybooks', 'loadPlaybook', 'writePlaybook', 'movePlaybook', 'copyPlaybookToScope', 'playbookToBuildSource', 'playbookToPlanSeed']) {
+      expect(entrypoint).not.toMatch(new RegExp(`export\\s+.*${helper}`));
+    }
+  });
+  it('keeps input imports limited to acceptance-criteria helpers', async () => {
+    const allowed = new Set(['analyzeAcceptanceCriteria', 'analyzeAcceptanceCriteriaInBody', 'formatAcDiagnostics']);
+    for (const file of await files()) {
+      const source = await readFile(file, 'utf-8');
+      const imports = source.matchAll(/import\s+\{([^}]+)\}\s+from ['"]@eforge-build\/input['"]/g);
+      for (const match of imports) {
+        const names = match[1].split(',').map((part) => part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]).filter(Boolean);
+        expect(names.every((name) => allowed.has(name))).toBe(true);
+      }
+    }
   });
 });

@@ -2,7 +2,7 @@
 
 `eforge-playbooks` is the first-party extension that owns reusable playbook management and playbook execution handoff. It exposes playbook inventory, CRUD-style management, validation, scope moves, planning-mode handoff metadata, and autonomous build-queue enqueue through generic extension actions.
 
-The extension keeps parser, storage, validation, and compiler behavior in `@eforge-build/input`. It does not add direct daemon playbook routes, Console core sections, queue internals, or host-specific command implementations. Hosts discover and invoke the extension through normal extension action, integration-command, capability, and Console contribution metadata.
+The extension owns its playbook parser, serializer, validation, scope-aware storage, compiler, and planning-seed extraction locally. `@eforge-build/input` remains a dependency only for domain-neutral acceptance-criteria quality helpers. The extension does not add direct daemon playbook routes, Console core sections, queue internals, or host-specific command implementations. Hosts discover and invoke the extension through normal extension action, integration-command, capability, and Console contribution metadata.
 
 ## Trust model
 
@@ -56,7 +56,17 @@ The package manifest declares two stable first-party capabilities:
 - `eforge.playbooks.management` version `1.0.0` — the extension owns playbook inventory, validation, copy, save, promote, and demote actions.
 - `eforge.playbooks.run` version `1.0.0` — the extension owns playbook execution handoff for autonomous and planning-mode playbooks.
 
-The extension declares an optional dependency on provider `eforge-plan` with capability `eforge.plan.planning-mode-playbook` satisfying `>=1.0.0`. Planning-mode playbooks use that capability when available, but the extension still loads without it and returns diagnostics instead of enqueueing a build.
+The extension declares an optional dependency on provider `eforge-plan` with capability `eforge.plan.planning-workstation` satisfying `>=1.0.0`. Planning-mode playbooks use that generic planning workstation capability when available, but the extension still loads without it and returns diagnostics instead of enqueueing a build.
+
+## Extension-owned playbook domain
+
+`eforge-playbooks` is the implementation owner for playbook domain behavior:
+
+- `model.ts` defines the playbook frontmatter and body model, schemas, parsing, serialization, validation, and mode mismatch errors.
+- `storage-core.ts` resolves named-set storage locations, lists and loads playbooks, writes scoped files, and performs copy, promote, and demote moves while preserving existing shadowing behavior.
+- `compile.ts` converts autonomous playbooks to normalized build source and planning playbooks to JSON-safe planning seeds.
+
+The package entrypoint exposes the extension contribution surface, not these domain helpers as host-facing APIs. Runtime imports from `@eforge-build/input` are limited to `analyzeAcceptanceCriteria`, `analyzeAcceptanceCriteriaInBody`, and `formatAcDiagnostics`.
 
 ## Actions
 
@@ -120,7 +130,7 @@ Common action input forms:
 A playbook whose frontmatter mode is `planning` is an investigation-first handoff. `run-playbook` converts the playbook to a JSON-safe planning seed and checks:
 
 ```text
-eforge.plan.planning-mode-playbook >=1.0.0
+eforge.plan.planning-workstation >=1.0.0
 ```
 
 When the optional `eforge-plan` provider is available, the action returns `kind: "requires-agent"` with planning entry metadata for `eforge-plan:open-planning-entry`, workstation `eforge-plan:planning-workstation`, and workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
@@ -131,7 +141,7 @@ Planning seed output is JSON-safe: section maps are projected to plain objects, 
 
 ## Autonomous queue handoff
 
-A playbook whose frontmatter mode is `autonomous` compiles to normalized build source using `@eforge-build/input`. Before enqueueing, `run-playbook` runs the existing acceptance-criteria quality gate against the compiled source. Invalid criteria fail as user-visible invalid input.
+A playbook whose frontmatter mode is `autonomous` compiles to normalized build source using the extension-local compiler. Before enqueueing, `run-playbook` runs the existing domain-neutral acceptance-criteria quality gate from `@eforge-build/input` against the compiled source. Invalid criteria fail as user-visible invalid input.
 
 Autonomous handoff uses only the generic build queue API:
 
@@ -158,7 +168,7 @@ Console action bindings reference the canonical effective action IDs owned by th
 
 ## Storage model
 
-Playbook storage is resolved through `@eforge-build/input` with the daemon-provided project root and config directory:
+Playbook storage is resolved by the extension-local storage layer through `@eforge-build/scopes` named-set APIs with the daemon-provided project root and config directory:
 
 - project-local playbooks live under `.eforge/playbooks/`;
 - project-team playbooks live under `eforge/playbooks/`;
@@ -166,4 +176,4 @@ Playbook storage is resolved through `@eforge-build/input` with the daemon-provi
 
 Higher-precedence scopes shadow lower-precedence copies with the same playbook name. `show-playbook` without a scope returns the highest-precedence copy; exact-scope actions fail with a not-found user error when that scope lacks the requested playbook.
 
-The extension imports only public `@eforge-build/extension-sdk` and `@eforge-build/input` APIs for runtime behavior. It does not import the legacy playbook workflow adapter or use `builtin:playbooks`.
+The extension imports public `@eforge-build/extension-sdk` APIs, `@eforge-build/scopes` named-set helpers, and only the domain-neutral acceptance-criteria helpers from `@eforge-build/input` for runtime behavior. It does not import playbook-specific input symbols, the legacy playbook workflow adapter, or use `builtin:playbooks`.

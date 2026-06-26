@@ -70,7 +70,7 @@ Run `eforge extension show eforge-plan` to confirm the registered actions, integ
 The directory extension manifest declares two stable first-party capabilities:
 
 - `eforge.plan.planning-workstation` version `1.0.0` — the extension owns the rich planning workstation UI.
-- `eforge.plan.planning-mode-playbook` version `1.0.0` — planning-mode playbook hosts may depend on this capability before offering planning continuation.
+- `eforge.plan.planning-mode-playbook` version `1.0.0` — legacy compatibility capability; planning-mode playbook handoff should use the generic `eforge.plan.planning-workstation` capability.
 
 Planning entry is exposed through generic extension contribution discovery. Hosts can list/invoke the `eforge-plan:open-planning-entry` action or integration command, or follow the action-backed `eforge-plan:planning-workstation` deep link. All return or point at the workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
 

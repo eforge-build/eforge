@@ -1,26 +1,15 @@
 import { access, readFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
-import { resolve } from 'node:path';
-import {
-  analyzeAcceptanceCriteria,
-  copyPlaybookToScope,
-  formatAcDiagnostics,
-  listPlaybooks,
-  loadPlaybook,
-  parsePlaybook,
-  playbookFrontmatterSchema,
-  writePlaybook,
-  type Playbook,
-  type PlaybookEntry,
-  type PlaybookScope,
-} from '@eforge-build/input';
+import { analyzeAcceptanceCriteria, formatAcDiagnostics } from '@eforge-build/input';
 import type { ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { parsePlaybook, playbookFrontmatterSchema, type Playbook, type PlaybookScope } from './model.js';
+import { copyPlaybookToScope, listPlaybooks, loadPlaybook, resolvePlaybookPath, writePlaybook, type PlaybookEntry } from './storage-core.js';
 import { invalidField, notFound, userError, wrapUserError } from './action-errors.js';
 import type { SavePlaybookInput } from './schemas.js';
 import { omitUndefined } from './json-safe.js';
 
 export function playbookPath(ctx: ExtensionActionContext, scope: PlaybookScope, name: string): string {
-  return resolve(ctx.paths.scopeRoot(scope), 'playbooks', `${name}.md`);
+  return resolvePlaybookPath(scope, { cwd: ctx.cwd, configDir: ctx.paths.configDir }, name);
 }
 
 export async function exists(path: string): Promise<boolean> {

@@ -20,7 +20,7 @@ function registry(options: { planCapabilityVersion?: string; planProviderName?: 
       scope: 'project-local',
       source: 'explicit',
       strategy: 'jiti',
-      capabilities: [{ name: 'eforge.plan.planning-mode-playbook', version: options.planCapabilityVersion }],
+      capabilities: [{ name: 'eforge.plan.planning-workstation', version: options.planCapabilityVersion }],
       registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, agentTasks: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     });
   }
@@ -73,7 +73,7 @@ describe('eforge-playbooks planning contract through extension action dispatch',
         kind: 'success',
         output: {
           kind: 'requires-agent',
-          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
+          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-workstation', range: '>=1.0.0' },
           planningEntry: {
             contributionId: 'eforge-plan:open-planning-entry',
             workstationId: 'eforge-plan:planning-workstation',
@@ -98,8 +98,8 @@ describe('eforge-playbooks planning contract through extension action dispatch',
           kind: 'success',
           output: {
             kind: 'planning-unavailable',
-            requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
-            diagnostics: expect.arrayContaining([expect.objectContaining({ capabilityName: 'eforge.plan.planning-mode-playbook' })]),
+            requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-workstation', range: '>=1.0.0' },
+            diagnostics: expect.arrayContaining([expect.objectContaining({ capabilityName: 'eforge.plan.planning-workstation' })]),
             message: expect.stringMatching(/Install\/load eforge-plan|reload extensions/i),
           },
         });
@@ -117,8 +117,8 @@ describe('eforge-playbooks planning contract through extension action dispatch',
         kind: 'success',
         output: {
           kind: 'planning-unavailable',
-          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
-          diagnostics: expect.arrayContaining([expect.objectContaining({ providerName: 'eforge-plan', capabilityName: 'eforge.plan.planning-mode-playbook', requiredVersion: '>=1.0.0' })]),
+          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-workstation', range: '>=1.0.0' },
+          diagnostics: expect.arrayContaining([expect.objectContaining({ providerName: 'eforge-plan', capabilityName: 'eforge.plan.planning-workstation', requiredVersion: '>=1.0.0' })]),
         },
       });
     });

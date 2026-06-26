@@ -1,4 +1,4 @@
-import type { PlaybookPlanSeed } from '@eforge-build/input';
+import type { PlaybookPlanSeed } from './compile.js';
 
 export function omitUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map((entry) => omitUndefined(entry)) as T;

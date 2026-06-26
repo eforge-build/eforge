@@ -2,9 +2,9 @@ export const EXTENSION_NAME = 'eforge-playbooks';
 
 export const PLAYBOOK_MANAGEMENT_CAPABILITY = 'eforge.playbooks.management';
 export const PLAYBOOK_RUN_CAPABILITY = 'eforge.playbooks.run';
-export const PLANNING_MODE_CAPABILITY_PROVIDER = 'eforge-plan';
-export const PLANNING_MODE_CAPABILITY = 'eforge.plan.planning-mode-playbook';
-export const PLANNING_MODE_CAPABILITY_VERSION = '>=1.0.0';
+export const PLANNING_WORKSTATION_CAPABILITY_PROVIDER = 'eforge-plan';
+export const PLANNING_WORKSTATION_CAPABILITY = 'eforge.plan.planning-workstation';
+export const PLANNING_WORKSTATION_CAPABILITY_VERSION = '>=1.0.0';
 
 export const PLANNING_ENTRY_ACTION_ID = 'eforge-plan:open-planning-entry';
 export const PLANNING_ENTRY_COMMAND_ID = 'eforge-plan:open-planning-entry';

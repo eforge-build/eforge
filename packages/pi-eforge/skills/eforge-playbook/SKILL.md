@@ -36,7 +36,7 @@ If a playbook contribution cannot be resolved, tell the user: `eforge-playbooks 
 Every playbook has a `mode` field in its frontmatter:
 
 - **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
-- **`mode: planning`** — running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata. Continue through `eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff. The daemon does not create the session plan directly or enqueue a PRD.
+- **`mode: planning`** — running the playbook checks the `eforge.plan.planning-workstation` capability from eforge-plan and returns generic planning entry metadata. Continue through `eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff. The daemon does not create the session plan directly or enqueue a PRD.
 
 The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` resolves generic eforge-plan planning entry metadata or unavailable capability diagnostics.
 
@@ -270,7 +270,7 @@ Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write 
 
 ## Branch: Run (Step 5)
 
-Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks, first check the `eforge.plan.planning-mode-playbook` capability and continue through generic extension contribution discovery/detail/invocation into the eforge-plan workstation/deep-link entry.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks, first check the `eforge.plan.planning-workstation` capability and continue through generic extension contribution discovery/detail/invocation into the eforge-plan workstation/deep-link entry.
 
 ### 5.1: Pick a playbook
 
@@ -379,7 +379,7 @@ Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from 
 
 Planning-mode playbook continuation is owned by eforge-plan. Do not create a session plan directly and do not enqueue. Instead:
 
-1. **Check the capability through the playbook run response**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
+1. **Check the capability through the playbook run response**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-workstation` capability.
    - If the response is `{ kind: "planning-unavailable", requiredCapability, diagnostics }`, show the required capability and diagnostics verbatim. Tell the user to load, trust, and reload eforge-plan before continuing.
    - If the response is `{ kind: "requires-agent", planningEntry, requiredCapability }`, continue with the generic planning entry metadata.
 

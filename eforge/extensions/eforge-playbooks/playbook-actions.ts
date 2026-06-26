@@ -1,5 +1,6 @@
 import { defineExtensionAction, type ExtensionAction, type TObject, type TSchema } from '@eforge-build/extension-sdk';
-import { listPlaybooks, movePlaybook, validatePlaybook, writePlaybook, type PlaybookScope } from '@eforge-build/input';
+import { validatePlaybook, type PlaybookScope } from './model.js';
+import { listPlaybooks, movePlaybook, writePlaybook } from './storage-core.js';
 import {
   CopyPlaybookInputSchema,
   CopyPlaybookOutputSchema,

@@ -62,7 +62,7 @@ describe('playbook extension docs boundary', () => {
       'eforge-plan:open-planning-entry',
       'eforge-plan:planning-workstation',
       '/console/workstations/eforge-plan%3Aplanning-workstation',
-      'eforge.plan.planning-mode-playbook',
+      'eforge.plan.planning-workstation',
       '>=1.0.0',
     ]) {
       expect(playbooksGuide).toContain(planningToken);

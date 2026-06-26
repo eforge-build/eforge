@@ -5,7 +5,7 @@ Reusable build-input protocols for eforge - playbook and session-plan artifacts 
 ## Consumers
 
 - `@eforge-build/monitor` - session-plan compatibility routes backed by input session-planning helpers, plus normalization for session-plan source paths before enqueue
-- `@eforge-build/eforge-playbooks` - first-party extension-owned playbook management/run actions backed by the pure playbook helpers
+- `@eforge-build/eforge-playbooks` - domain-neutral acceptance-criteria quality helpers for first-party playbook actions
 - `@eforge-build/eforge` - in-process normalization for CLI build commands that accept session plans as input
 - Future wrapper apps that need to compile playbooks or session plans to build source independently of the daemon
 
@@ -161,7 +161,7 @@ The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match
 
 ### Playbook artifact helpers
 
-`@eforge-build/input` exposes pure playbook artifact helpers for parsing, serialization, storage, validation, autonomous build-source compilation, and planning seed extraction. It does not export playbook run orchestration or daemon compatibility surfaces. Shipped playbook behavior is owned by the first-party `@eforge-build/eforge-playbooks` extension, which uses these helpers and performs action-level orchestration, planning-mode handoff, profile handling, and generic queue enqueue outside this package.
+`@eforge-build/input` exposes pure playbook artifact helpers for parsing, serialization, storage, validation, autonomous build-source compilation, and planning seed extraction. It does not export playbook run orchestration or daemon compatibility surfaces. Shipped playbook behavior is owned by the first-party `@eforge-build/eforge-playbooks` extension, which keeps its parser, storage, compiler, and planning-seed implementation locally and uses this package only for domain-neutral acceptance-criteria quality helpers.
 
 ### Bundled session-planning workflow adapter
 

@@ -169,7 +169,7 @@ describe('playbook extension final boundary', () => {
         expect.objectContaining({
           name: 'eforge-plan',
           capabilities: expect.arrayContaining([
-            expect.objectContaining({ name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' }),
+            expect.objectContaining({ name: 'eforge.plan.planning-workstation', version: '>=1.0.0' }),
           ]),
         }),
       ]),

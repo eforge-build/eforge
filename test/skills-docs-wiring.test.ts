@@ -458,9 +458,9 @@ describe('playbook skills — generic eforge-plan planning entry contract', () =
   const piPlaybook = readRepoFile('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
   const pluginPlaybook = readRepoFile('eforge-plugin/skills/playbook/playbook.md');
 
-  it('both playbook skills name the eforge-plan planning-mode playbook capability', () => {
+  it('both playbook skills name the eforge-plan planning workstation capability', () => {
     for (const raw of [piPlaybook, pluginPlaybook]) {
-      expect(raw).toContain('eforge.plan.planning-mode-playbook');
+      expect(raw).toContain('eforge.plan.planning-workstation');
     }
   });
 

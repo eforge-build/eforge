@@ -5,7 +5,8 @@ Canonical scope names, directory helpers, named-set resolution, and layered-sing
 ## Consumers
 
 - `@eforge-build/engine` - scope directory lookup and config merge order
-- `@eforge-build/input` - playbook and session-plan path resolution
+- `@eforge-build/input` - session-plan path resolution
+- `@eforge-build/eforge-playbooks` - playbook named-set path resolution
 - Future wrapper apps that need to read or write eforge-scoped files directly
 
 ## Canonical scopes
