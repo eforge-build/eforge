@@ -1,0 +1,51 @@
+name: extract-playbook-domain-ownership-to-eforge-playbooks
+description: Extract all playbook domain behavior into eforge-playbooks and
+  remove playbook-specific ownership from core, input, host, client, monitor,
+  Console, and planning contracts.
+created: 2026-06-26
+status: draft
+mode: expedition
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+architecture:
+  status: complete
+modules:
+  playbook-domain-extraction:
+    description: Move canonical playbook model, parser, serializer, validation,
+      storage, compiler, and planning seed behavior into eforge-playbooks and
+      rewire its actions/tests.
+    depends_on: []
+    status: pending
+  input-neutrality:
+    description: Remove playbook-specific files, exports, session-plan seed helpers,
+      and docs from @eforge-build/input while preserving generic session-plan
+      behavior.
+    depends_on:
+      - playbook-domain-extraction
+    status: pending
+  planning-contract-neutralization:
+    description: Remove playbookDraft and playbook-specific planning
+      capability/contracts from client, monitor, and eforge-plan planning task
+      surfaces.
+    depends_on:
+      - playbook-domain-extraction
+    status: pending
+  host-surface-neutrality:
+    description: Remove CLI, MCP, Pi, and Claude plugin host-owned playbook
+      commands/tools/skills and rely on generic extension contribution
+      invocation.
+    depends_on:
+      - playbook-domain-extraction
+    status: pending
+  boundary-docs-validation:
+    description: Add source-wide boundary tests, enabled/disabled extension
+      coverage, Console contribution coverage, and update
+      architecture/public/generated docs.
+    depends_on:
+      - input-neutrality
+      - planning-contract-neutralization
+      - host-surface-neutrality
+    status: pending
