@@ -1,0 +1,101 @@
+name: thin-automated-test-suite
+description: Thin duplicated, low-value automated tests across client event
+  contracts, console selectors, monitor static UI serving, provenance GitHub
+  remote coverage, first-party extension package publication tests, and
+  extension package-management route tests while recording retained coverage
+  evidence.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/client type-check
+  - pnpm --filter @eforge-build/console-ui type-check
+  - pnpm --filter @eforge-build/monitor type-check
+  - pnpm --filter @eforge-build/engine type-check
+  - pnpm --filter @eforge-build/eforge-plan type-check
+  - pnpm --filter @eforge-build/eforge-playbooks type-check
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm vitest run --config vitest.main.config.ts
+    packages/client/src/__tests__/events-wire-parity.test.ts
+    packages/client/src/__tests__/events-wire-parity-invalid.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+    packages/client/src/__tests__/events-schemas-auto-build.test.ts
+    packages/client/src/__tests__/events-schemas-queue-landing-stack.test.ts
+    --silent
+  - pnpm vitest run --config packages/console-ui/vitest.config.ts
+    packages/console-ui/src/__tests__/labels.test.ts
+    packages/console-ui/src/views/system/__tests__/extension-management-selectors.test.ts
+    --silent
+  - pnpm vitest run --config vitest.main.config.ts
+    packages/monitor/src/__tests__/http-static-assets.test.ts
+    packages/monitor/src/__tests__/static-ui-serving.test.ts
+    packages/monitor/src/__tests__/server-security.test.ts --silent
+  - pnpm vitest run --config vitest.main.config.ts test/provenance.test.ts
+    --silent
+  - pnpm vitest run --config vitest.main.config.ts
+    eforge/extensions/eforge-plan/__tests__/package-foundation.test.ts
+    eforge/extensions/eforge-plan/__tests__/package-publication.test.ts
+    eforge/extensions/eforge-playbooks/__tests__/package-foundation.test.ts
+    eforge/extensions/eforge-playbooks/__tests__/package-publication.test.ts
+    eforge/extensions/eforge-playbooks/__tests__/registration.test.ts
+    eforge/extensions/eforge-playbooks/__tests__/planning-contract.test.ts
+    --silent
+  - pnpm vitest run --config vitest.main.config.ts
+    test/extension-tooling-routes-package-management.test.ts --silent
+plans:
+  - id: plan-01-thin-test-suite
+    name: Thin Automated Test Suite
+    depends_on: []
+    branch: thin-automated-test-suite/plan-01-thin-test-suite
+    build:
+      - implement
+      - validate
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - test
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Test deletion spans six independent areas and requires evidence-first
+          edits plus careful retained-coverage mapping.
+      reviewer:
+        effort: high
+        rationale: Review must verify no valuable contract, security-adjacent,
+          publication, or integration coverage was lost.
+      tester:
+        effort: high
+        rationale: Targeted validation commands cover several packages and expensive
+          package publication tests.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - test
+      - security
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a multi-area but test-only cleanup that a single planner can
+    enumerate, so excursion is appropriate rather than expedition. A plan review
+    gate helps ensure each deletion or consolidation has retained-coverage
+    evidence before build. The build runs implementation first, then the
+    registered maintainability validation provider, then a test cycle for the
+    many required targeted validation commands, followed by iterative review.
+    Review focuses on test confidence preservation and security-adjacent
+    static-serving coverage, with strict evaluation because the work removes
+    tests and must not silently drop valuable coverage.
+diff_base_ref: 4fdf4969d235fb8641b7aa8cf97ffb18d19715c5
