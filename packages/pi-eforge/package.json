@@ -57,7 +57,7 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
-    "typebox": "^1.1.38",
+    "typebox": "^1.3.0",
     "yaml": "^2.9.0"
   },
   "author": "Schaake Solutions LLC",

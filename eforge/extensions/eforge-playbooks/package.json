@@ -42,7 +42,7 @@
     "@eforge-build/input": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.0.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },
@@ -52,15 +52,24 @@
       "name": "eforge-playbooks",
       "entrypoint": "./dist/index.js",
       "capabilities": [
-        { "name": "eforge.playbooks.management", "version": "1.0.0" },
-        { "name": "eforge.playbooks.run", "version": "1.0.0" }
+        {
+          "name": "eforge.playbooks.management",
+          "version": "1.0.0"
+        },
+        {
+          "name": "eforge.playbooks.run",
+          "version": "1.0.0"
+        }
       ],
       "dependencies": {
         "optional": [
           {
             "name": "eforge-plan",
             "capabilities": [
-              { "name": "eforge.plan.planning-mode-playbook", "version": ">=1.0.0" }
+              {
+                "name": "eforge.plan.planning-mode-playbook",
+                "version": ">=1.0.0"
+              }
             ]
           }
         ]

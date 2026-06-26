@@ -31,9 +31,8 @@ interface PiAiModelLike {
   deprecated?: boolean;
 }
 
-interface PiAiModule {
-  getProviders(): readonly string[];
-  getModels(provider: string): readonly PiAiModelLike[];
+interface PiAiCatalogModule {
+  getBuiltinModels(provider: string): readonly PiAiModelLike[];
 }
 
 interface PiModelRegistryLike {
@@ -46,9 +45,9 @@ interface PiCodingAgentModule {
   ModelRegistry: { create(authStorage: unknown): PiModelRegistryLike };
 }
 
-async function loadPiAi(): Promise<PiAiModule> {
-  const mod = await import('@earendil-works/pi-ai');
-  return mod as unknown as PiAiModule;
+async function loadPiAiCatalog(): Promise<PiAiCatalogModule> {
+  const mod = await import('@earendil-works/pi-ai/providers/all');
+  return mod as unknown as PiAiCatalogModule;
 }
 
 async function loadPiModelRegistry(): Promise<PiModelRegistryLike> {
@@ -126,8 +125,8 @@ export async function listModels(
   provider?: string,
 ): Promise<ModelInfo[]> {
   if (backend === 'claude-sdk') {
-    const piAi = await loadPiAi();
-    const anthropicModels = [...piAi.getModels('anthropic')];
+    const piAi = await loadPiAiCatalog();
+    const anthropicModels = [...piAi.getBuiltinModels('anthropic')];
     const mapped = anthropicModels.map((m) => pickFields(m, { includeProvider: false }));
     return mapped.sort(compareByRelease);
   }
