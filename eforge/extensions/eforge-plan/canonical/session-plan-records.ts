@@ -41,7 +41,7 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
   const existing = getSessionPlan(store, input.session);
   const content = input.content ?? readContentIfAvailable(input.path);
   const parsed = content ? parseSessionPlanFrontmatter(content) : { frontmatter: existing?.frontmatter ?? input.frontmatter ?? {}, body: '' };
-  const fm = { ...(existing?.frontmatter ?? {}), ...parsed.frontmatter, ...(input.frontmatter ?? {}) } as JsonObject;
+  const fm = mergeSessionPlanFrontmatter(existing?.frontmatter ?? {}, parsed.frontmatter, input.frontmatter ?? {}) as JsonObject;
   const source = sourceRefs(fm, input);
   const now = canonicalNowIso();
   const artifactBodyHash = content ? canonicalSha256(content) : existing?.artifactBodyHash;
@@ -142,6 +142,16 @@ function parseSessionPlanFrontmatter(content: string): { frontmatter: JsonObject
   const raw = content.slice(4, end);
   const parsed = parseYaml(raw);
   return { frontmatter: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? JSON.parse(JSON.stringify(parsed)) as JsonObject : {}, body: content.slice(end + 5) };
+}
+
+function mergeSessionPlanFrontmatter(...entries: JsonObject[]): JsonObject {
+  const merged = Object.assign({}, ...entries) as JsonObject;
+  const eforgePlanEntries = entries
+    .map((entry) => entry.eforge_plan)
+    .filter((entry): entry is JsonObject => entry !== null && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => entry as JsonObject);
+  if (eforgePlanEntries.length > 0) merged.eforge_plan = Object.assign({}, ...eforgePlanEntries) as JsonObject;
+  return merged;
 }
 
 function sourceRefs(fm: JsonObject, input: CanonicalSessionPlanSyncInput): { itemIds: string[]; epicIds: string[]; recommendationRef?: string } {

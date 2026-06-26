@@ -36,9 +36,17 @@ Needs-input evidence labels must preserve the server wording, including `Ambiguo
 
 ## Plan detail review
 
-Flat session-plan detail renders the `## Executive Summary` first when present, then readiness diagnostics, readiness source/freshness metadata, server-projected lifecycle timestamps, open questions, and collapsed detailed sections. It does not parse Markdown/frontmatter locally to derive lifecycle timestamps. This gives reviewers a fast sign-off artifact while keeping readiness problems visible. Detailed sections start collapsed; expanding a section reveals rendered Markdown, edit controls, and annotation target-selection buttons.
+Flat session-plan detail renders the `## Executive Summary` first when present, then readiness diagnostics, readiness source/freshness metadata, server-projected lifecycle timestamps, open questions, and collapsed detailed sections. Plan rows use projected recency fields (`updatedAt`, `readyAt`, `submittedAt`, `lastBuildActivityAt`, and lifecycle rows) for relative timestamps, with exact ISO values available on the rendered `<time>` elements. The detail card shows Created, Updated, Ready, Submitted, and Last build activity metadata from projection fields only; missing or invalid values render placeholders rather than raw null/invalid text. It does not parse Markdown/frontmatter locally to derive lifecycle timestamps. This gives reviewers a fast sign-off artifact while keeping readiness problems visible. Detailed sections start collapsed; expanding a section reveals rendered Markdown, edit controls, and annotation target-selection buttons.
+
+Pending annotation composers are explicit-dismissal UI. They stay mounted while the user types, scrolls, or resizes, preserve over-limit drafts, mirror the backend 4,000-character body limit with inline feedback, disable Save while over the limit, and show backend save errors inside the composer without clearing the draft. Cancel and Escape are the intended dismissals.
+
+Confirmed plan handoff is optimistic in the workstation. The second confirmation click immediately removes the ready plan from the actionable list, clears stale ready controls, and surfaces a Planning activity status entry while `handoff-session-plan` and refresh run. Successful refresh reconciles against the server artifact list (submitted plans remain absent from active artifacts). Failures restore the plan row and keep retry/manual guidance visible with the backend or fallback error message.
 
 Fenced `mermaid` code blocks render as diagrams in workstation Markdown views. Raw SVG and resource-loading HTML remain disallowed in normal Markdown and are stripped by the sanitizer.
+
+## Roadmap read-first editing
+
+The Roadmap focus opens in Markdown read mode. Local focus content and read-only configured/discovered sources render through `SafeMarkdown`, including headings, lists, inline code, and links. Source path, editable/read-only state, stale/fresh recommendation status, conflicts, assumptions, and truncation metadata remain visible without implying a write path. Editable local focus sources show an explicit Edit action; only edit mode reveals the textarea plus Save, Cancel, and Reset controls. Dirty Cancel requires a discard confirmation, while Reset is the explicit draft-discard action. Read-only sources never render edit controls.
 
 ## Freshness labels
 

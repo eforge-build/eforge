@@ -26,11 +26,13 @@ function renderPlan(plan: Partial<PlanData>) {
     <ToastProvider>
       <PlanDetailCard
         detail={detail}
+        artifact={null}
         revision={{ busy: false, loading: false, hasRunningTurn: false } as any}
         locked={false}
         onSelectAnnotationTarget={vi.fn()}
         onApply={vi.fn()}
         onRefresh={vi.fn(async () => undefined)}
+        onHandoff={vi.fn(async () => undefined)}
         onDeleted={vi.fn(async () => undefined)}
         onClose={vi.fn()}
       />

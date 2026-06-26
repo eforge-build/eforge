@@ -12,11 +12,13 @@ interface Props {
   /** Viewport rect of the affordance that opened the composer, for anchoring. */
   anchor: DOMRect | null;
   busy: boolean;
-  onSave: (body: string) => Promise<boolean>;
+  onSave: (body: string) => Promise<{ ok: boolean; error?: string }>;
   onCancel: () => void;
 }
 
 const WIDTH = 320;
+// Mirrors backend MAX_PLAN_REVISION_ANNOTATION_BODY_LENGTH.
+const MAX_ANNOTATION_BODY_LENGTH = 4000;
 
 function targetTitle(target: PlanRevisionAnnotationTarget): string {
   return target.label?.trim() || (target.dimension ? titleCase(target.dimension) : titleCase(target.kind));
@@ -41,28 +43,21 @@ function anchoredStyle(anchor: DOMRect | null): React.CSSProperties {
  */
 export function PendingAnnotationComposer({ target, anchor, busy, onSave, onCancel }: Props) {
   const [draft, setDraft] = React.useState('');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const quote = target.quoteContext;
+  const bodyLength = draft.length;
+  const overLimit = bodyLength > MAX_ANNOTATION_BODY_LENGTH;
 
   // Reset the note when the composer is re-pointed at a different target without
   // unmounting (e.g. clicking another affordance while it is open).
-  React.useEffect(() => { setDraft(''); }, [target]);
-
-  // The popover is position:fixed against an anchor rect captured at open time.
-  // Scrolling or resizing the page would strand it from its source text, so
-  // dismiss the composer instead of letting it drift.
-  React.useEffect(() => {
-    if (!anchor) return;
-    window.addEventListener('scroll', onCancel, true);
-    window.addEventListener('resize', onCancel);
-    return () => {
-      window.removeEventListener('scroll', onCancel, true);
-      window.removeEventListener('resize', onCancel);
-    };
-  }, [anchor, onCancel]);
+  React.useEffect(() => { setDraft(''); setSaveError(null); }, [target]);
 
   const save = async () => {
-    const persisted = await onSave(draft.trim());
-    if (persisted) setDraft('');
+    if (overLimit) return;
+    setSaveError(null);
+    const result = await onSave(draft.trim());
+    if (result.ok) setDraft('');
+    else setSaveError(result.error ?? 'Annotation could not be saved. Keep the draft open and retry.');
   };
 
   return createPortal(
@@ -83,9 +78,14 @@ export function PendingAnnotationComposer({ target, anchor, busy, onSave, onCanc
         <span className="text-text-bright">{quote.exact}</span>
         {quote.suffix && <span>{quote.suffix}</span>}
       </blockquote>
-      <Textarea autoFocus aria-label="Annotation note" value={draft} disabled={busy} onChange={(event) => setDraft(event.target.value)} placeholder="Describe what should change or what needs review…" />
+      <Textarea autoFocus aria-label="Annotation note" value={draft} disabled={busy} onChange={(event) => { setDraft(event.target.value); setSaveError(null); }} placeholder="Describe what should change or what needs review…" />
+      <div className="flex items-center justify-between gap-2 text-2xs">
+        <span className={overLimit ? 'text-destructive-foreground' : 'text-muted-foreground'}>{bodyLength} / {MAX_ANNOTATION_BODY_LENGTH} characters</span>
+        {overLimit && <span className="text-destructive-foreground">Shorten before saving.</span>}
+      </div>
+      {saveError && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive-foreground">{saveError}</p>}
       <div className="flex items-center gap-2">
-        <Button size="sm" disabled={busy} onClick={() => void save()}>Save annotation</Button>
+        <Button size="sm" disabled={busy || overLimit} title={overLimit ? 'Annotation exceeds the backend body limit.' : undefined} onClick={() => void save()}>Save annotation</Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel annotation</Button>
       </div>
     </div>,

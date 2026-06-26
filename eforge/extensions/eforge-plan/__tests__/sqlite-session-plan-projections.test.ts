@@ -103,8 +103,11 @@ describe('SQLite session-plan projections', () => {
       withCanonicalTransaction(cwd, (store) => recordSessionPlanSubmitted(store, { session: 'itemless-activity', queuePrdId: 'itemless-prd', path: '.eforge/session-plans/itemless-activity.md', timestamp: '2027-01-01T00:07:00.000Z' }));
 
       const output = await showSessionPlanProjection(cwd, 'itemless-activity');
+      const listed = await listPlanningArtifactsProjection(cwd, { includeSubmitted: true });
+      const listedPlan = (listed.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'itemless-activity');
 
       expect(output).toMatchObject({ session: 'itemless-activity', lastBuildActivityAt: '2027-01-01T00:07:00.000Z' });
+      expect(listedPlan).toMatchObject({ session: 'itemless-activity', lastBuildActivityAt: '2027-01-01T00:07:00.000Z' });
     });
   });
 

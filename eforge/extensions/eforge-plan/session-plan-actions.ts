@@ -1,21 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, paginateContributionItems } from '@eforge-build/extension-sdk';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction } from '@eforge-build/extension-sdk';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
-import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
-import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
-import { listTraceSidecars } from './trace-store.js';
-import { summarizeProjectTraces } from './trace-activity.js';
-import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
+import { projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import { recordSessionPlanSubmitted, syncSessionPlanFile } from './canonical/session-plan-records.js';
-import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
+import { listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
+import { withProjectionStore } from './projections/store.js';
+import { getProjectionSessionPlan } from './sqlite/repositories/projections/session-plans.js';
 import { withCanonicalTransaction } from './canonical/store.js';
 import {
-  projectPlanningArtifacts,
-  projectSessionPlanDetail,
   projectSessionPlan,
   projectSessionPlanSetDetail,
 } from './session-plan-view-model.js';
@@ -60,29 +56,6 @@ export const listPlanningArtifacts = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx): Promise<any> {
     return toJsonSafeObject(await listPlanningArtifactsProjection(ctx.cwd, input));
-    const planning = adapter();
-    const [plans, planSets] = await Promise.all([
-      planning.flat.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
-      planning.planSets.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
-    ]);
-    const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
-    const projection = projectPlanningArtifacts({ plans, planSets, lifecycleBySession });
-    const page = paginateContributionItems(projection.artifacts, input, { defaultLimit: 50, maxLimit: 100 });
-    const base = {
-      artifacts: page.items,
-      plans: page.items.filter((artifact) => artifact.kind === 'plan'),
-      planSets: page.items.filter((artifact) => artifact.kind === 'plan-set'),
-      total: page.total,
-      limit: page.limit,
-      offset: page.offset,
-    };
-    if (input.includeBoard !== true) return toJsonSafeObject(base);
-    try {
-      const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
-      return toJsonSafeObject({ ...base, board: projectBoardOutput(board) });
-    } catch {
-      return toJsonSafeObject(base);
-    }
   },
 });
 
@@ -95,9 +68,6 @@ export const showSessionPlan = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx): Promise<any> {
     return toJsonSafeObject(await showSessionPlanProjection(ctx.cwd, input.session));
-    const loaded = await adapter().flat.load({ cwd: ctx.cwd, session: input.session });
-    const lifecycle = await buildLifecycleForPlan(ctx.cwd, loaded.plan);
-    return toJsonSafeObject(projectSessionPlanDetail({ ...loaded, lifecycle }));
   },
 });
 
@@ -238,8 +208,9 @@ export const setSessionPlanReady = defineExtensionAction({
       return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness, message: 'Session plan is not ready; status was left unchanged.' });
     }
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'ready' });
-    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness);
-    return toJsonSafeObject({ kind: 'ready', session: input.session, status: result.plan.status, readiness, plan: projectSessionPlan(result.plan) });
+    const readyAt = new Date().toISOString();
+    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness, { status: 'ready', frontmatter: { eforge_plan: { ready_at: readyAt } } });
+    return toJsonSafeObject({ kind: 'ready', session: input.session, status: result.plan.status, readyAt, readiness, plan: projectSessionPlan(result.plan) });
   },
 });
 
@@ -308,12 +279,16 @@ export const handoffSessionPlan = defineExtensionAction({
     if (loaded.plan.status !== 'ready') {
       return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan status is ${loaded.plan.status}; mark it ready before handoff.` });
     }
+    const canonicalPlan = await withProjectionStore(ctx.cwd, (store) => getProjectionSessionPlan(store, input.session), () => undefined);
+    if (canonicalPlan?.status !== undefined && canonicalPlan.status !== 'ready') {
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan canonical status is ${canonicalPlan.status}; only ready plans can be handed off.` });
+    }
     await readFile(loaded.path, 'utf-8');
     const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
     const command = `eforge build ${quoteShellArg(sourcePath)}`;
     let enqueued: Awaited<ReturnType<typeof ctx.buildQueue.enqueue>>;
     try {
-      enqueued = await ctx.buildQueue.enqueue({ source: sourcePath });
+      enqueued = await ctx.buildQueue.enqueue({ source: sourcePath, suppressSessionPlanSubmissionMark: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return toJsonSafeObject({
@@ -367,30 +342,8 @@ export const sessionPlanActions = [
   handoffSessionPlan,
 ] as const;
 
-async function syncFlatSessionPlan(cwd: string, session: string, path: string, readinessSummary?: unknown): Promise<void> {
-  await syncSessionPlanFile(cwd, session, path, readinessSummary === undefined ? {} : { readinessSummary: readinessSummary as never });
-}
-
-async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
-  const sqlEntries = await Promise.all(sessions.map(async (session) => [session, await getSessionPlanLifecycleProjection(cwd, session)] as const));
-  return new Map(sqlEntries as unknown as readonly (readonly [string, SessionPlanLifecycleProjection])[]);
-  const planning = adapter();
-  const entries = await Promise.all(sessions.map(async (session) => {
-    try {
-      const loaded = await planning.flat.load({ cwd, session });
-      return [session, await buildLifecycleForPlan(cwd, loaded.plan)] as const;
-    } catch {
-      return undefined;
-    }
-  }));
-  return new Map(entries.filter((entry): entry is readonly [string, SessionPlanLifecycleProjection] => entry !== undefined));
-}
-
-async function buildLifecycleForPlan(cwd: string, plan: Parameters<typeof projectSessionPlanSourceRefs>[0]): Promise<SessionPlanLifecycleProjection> {
-  return await getSessionPlanLifecycleProjection(cwd, plan.session) as unknown as SessionPlanLifecycleProjection;
-  const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  const traceSummaries = await summarizeProjectTraces(cwd, traces);
-  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries });
+async function syncFlatSessionPlan(cwd: string, session: string, path: string, readinessSummary?: unknown, overrides: Parameters<typeof syncSessionPlanFile>[3] = {}): Promise<void> {
+  await syncSessionPlanFile(cwd, session, path, { ...overrides, ...(readinessSummary === undefined ? {} : { readinessSummary: readinessSummary as never }) });
 }
 
 function quoteShellArg(value: string): string {

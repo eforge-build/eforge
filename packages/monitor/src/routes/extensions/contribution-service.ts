@@ -181,7 +181,9 @@ async function enqueueFromExtensionAction(context: MonitorContext, body: Enqueue
     throw err;
   }
   const result = workerTracker.spawnWorker('enqueue', prepared.args);
-  await markSessionPlanSubmittedAfterEnqueue(context, prepared.source, result.sessionId);
+  if ((body as EnqueueRequest & { suppressSessionPlanSubmissionMark?: boolean }).suppressSessionPlanSubmissionMark !== true) {
+    await markSessionPlanSubmittedAfterEnqueue(context, prepared.source, result.sessionId);
+  }
   return { sessionId: result.sessionId, pid: result.pid, autoBuild: autoBuildStateToWire({ state: context.options.daemonState, capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() } }).enabled };
 }
 

@@ -126,6 +126,23 @@ export function usePlanRevisionSession({ session, onApply, onRefresh, autoLoadEx
     const input = { target, ...(body?.trim() && { body: body.trim() }) };
     return annotationMutation('create-plan-revision-annotation', input, 'Created plan annotation.');
   }, [annotationMutation]);
+
+  const createAnnotationWithError = React.useCallback(async (target: PlanRevisionAnnotationTarget, body?: string) => {
+    const input = { target, ...(body?.trim() && { body: body.trim() }) };
+    setBusy(true);
+    try {
+      const next = await getBridge().invokeAction<PlanRevisionSessionProjection>('create-plan-revision-annotation', { session, ...input } as never);
+      const stored = storeSession(next);
+      toast.push('Created plan annotation.', 'success');
+      return { session: stored, error: null };
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      toast.push(message, 'error');
+      return { session: null, error: message };
+    } finally {
+      setBusy(false);
+    }
+  }, [session, storeSession, toast]);
   const updateAnnotation = React.useCallback((input: PlanRevisionAnnotationMutationInput) => annotationMutation('update-plan-revision-annotation', { annotationId: input.annotationId, body: input.body }, 'Updated plan annotation.'), [annotationMutation]);
   const deleteAnnotation = React.useCallback((annotationId: string) => annotationMutation('delete-plan-revision-annotation', { annotationId }, 'Deleted plan annotation.'), [annotationMutation]);
   const resolveAnnotation = React.useCallback((annotationId: string) => annotationMutation('resolve-plan-revision-annotation', { annotationId }, 'Resolved plan annotation.'), [annotationMutation]);
@@ -217,7 +234,7 @@ export function usePlanRevisionSession({ session, onApply, onRefresh, autoLoadEx
     }
   }, [revisionSession, apply]);
 
-  return { revisionSession, loading, busy, initialized, hasRunningTurn, loadExistingSession, ensureSession, reload, submit, createAnnotation, updateAnnotation, deleteAnnotation, resolveAnnotation, dismissAnnotation, submitAnnotationRevision, cancel, retry, redraft, apply };
+  return { revisionSession, loading, busy, initialized, hasRunningTurn, loadExistingSession, ensureSession, reload, submit, createAnnotation, createAnnotationWithError, updateAnnotation, deleteAnnotation, resolveAnnotation, dismissAnnotation, submitAnnotationRevision, cancel, retry, redraft, apply };
 }
 
 export type PlanRevisionSessionApi = ReturnType<typeof usePlanRevisionSession>;

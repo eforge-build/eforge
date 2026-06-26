@@ -22,14 +22,14 @@ function registry(): NativeExtensionRegistry {
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
-async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (source: string) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
+async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (request: { source: string; suppressSessionPlanSubmissionMark?: boolean }) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
   const result = await dispatchExtensionAction(registry(), {
     actionId: `eforge-plan:${actionId}`,
     input,
     requestedBy: { host: 'pi' },
     cwd,
     timeoutMs: 1000,
-    ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!(request.source) }) }),
+    ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!({ source: request.source, suppressSessionPlanSubmissionMark: request.suppressSessionPlanSubmissionMark }) }) }),
   });
   expect(result).toMatchObject({ kind: 'success' });
   if (result.kind !== 'success') throw new Error(result.message);
@@ -309,15 +309,16 @@ describe('eforge-plan session-plan extension actions', () => {
 
       const ready = await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
       const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, {
-        enqueue: async (source) => {
-          enqueuedSources.push(source);
+        enqueue: async (request) => {
+          if (request.suppressSessionPlanSubmissionMark !== true) throw new Error('test enqueue would auto-submit session-plan Markdown without suppression');
+          enqueuedSources.push(request.source);
           return { sessionId: 'build-session-1', pid: 1234, autoBuild: true };
         },
       });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'ready-plan.md'), 'utf-8');
       const listed = await dispatch(cwd, 'list-planning-artifacts', {});
 
-      expect(ready).toMatchObject({ kind: 'ready', status: 'ready' });
+      expect(ready).toMatchObject({ kind: 'ready', status: 'ready', readyAt: expect.any(String) });
       expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true, submittedAt: expect.any(String) });
       expect(enqueuedSources).toEqual(['.eforge/session-plans/ready-plan.md']);
       expect(collectUndefinedPaths(handoff)).toEqual([]);
@@ -326,6 +327,28 @@ describe('eforge-plan session-plan extension actions', () => {
       expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
       expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).not.toContain('plan:ready-plan');
       expectStoredReadiness(cwd, 'ready-plan', ready.readiness);
+      const shown = await dispatch(cwd, 'show-session-plan', { session: 'ready-plan' });
+      expect(shown.readyAt).toBe(ready.readyAt);
+    });
+  });
+
+  it('rejects repeat handoff when canonical status is already submitted', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'ready-plan', readyBody());
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, { enqueue: async () => ({ sessionId: 'build-session-1', pid: 1234, autoBuild: false }) });
+      const enqueuedSources: string[] = [];
+
+      const second = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, {
+        enqueue: async (request) => {
+          enqueuedSources.push(request.source);
+          return { sessionId: 'build-session-2', pid: 5678, autoBuild: false };
+        },
+      });
+
+      expect(second).toMatchObject({ kind: 'not-ready', session: 'ready-plan', message: expect.stringContaining('canonical status is submitted') });
+      expect(enqueuedSources).toEqual([]);
+      expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
     });
   });
 

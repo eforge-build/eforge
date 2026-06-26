@@ -27,6 +27,7 @@ const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
+const PLANS_VIEW = `${SRC}/views/plans-view.tsx`;
 const PLAN_REVISION_PANEL = `${SRC}/views/plans/plan-revision-panel.tsx`;
 const PLAN_REVISION_HOOK = `${SRC}/views/plans/use-plan-revision-session.ts`;
 const PLAN_REVISION_PATCH_SUMMARY = `${SRC}/views/plans/plan-revision-patch-summary.tsx`;
@@ -254,13 +255,17 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('requires explicit in-app confirmation before handoff', async () => {
-    const source = await readFile(PLAN_DETAIL, 'utf-8');
+    const [detailSource, viewSource] = await Promise.all([
+      readFile(PLAN_DETAIL, 'utf-8'),
+      readFile(PLANS_VIEW, 'utf-8'),
+    ]);
+    const combined = `${detailSource}\n${viewSource}`;
 
-    expect(source).toContain("'handoff-session-plan'");
+    expect(viewSource).toContain("'handoff-session-plan'");
     // window.confirm is unusable in the sandboxed (allow-modals-less) iframe, so
     // handoff gates on an in-app confirmation step instead.
-    expect(source).not.toMatch(/window\.confirm\s*\(/);
-    expect(source).toContain('confirmingHandoff');
+    expect(combined).not.toMatch(/window\.confirm\s*\(/);
+    expect(detailSource).toContain('confirmingHandoff');
   });
 
   it('renders lifecycle source and evidence panels from extension action projections only', async () => {

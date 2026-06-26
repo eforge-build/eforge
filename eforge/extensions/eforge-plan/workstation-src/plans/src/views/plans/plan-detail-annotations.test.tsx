@@ -15,7 +15,7 @@ const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSessi
 function renderDetail(invokeAction: EforgeBridge['invokeAction'], _projected: PlanRevisionSessionProjection = session, artifact: Artifact = { key: 'plan:s', kind: 'plan', session: 's', title: 'Topic' }, titles = new Map<string, string>()) {
   window.eforge = { invokeAction };
   const detail: PlanDetail & { plan: typeof plan } = { plan, readiness: { ready: false } };
-  return render(<ToastProvider><PlanDetailWorkspace detail={detail} artifact={artifact} titles={titles} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} onClose={vi.fn()} /></ToastProvider>);
+  return render(<ToastProvider><PlanDetailWorkspace detail={detail} artifact={artifact} titles={titles} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onHandoff={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} onClose={vi.fn()} /></ToastProvider>);
 }
 
 function createBridge(projected: PlanRevisionSessionProjection = { ...session, annotations: [] }) {
@@ -118,6 +118,55 @@ describe('PlanDetailCard annotations', () => {
     fireEvent.click(within(composer).getByRole('button', { name: /Cancel annotation/ }));
     await waitFor(() => expect(screen.queryByLabelText('Pending annotation composer')).toBeNull());
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('create-plan-revision-annotation');
+  });
+
+  it('keeps long pending annotation drafts mounted with inline validation and explicit dismissal', async () => {
+    const invokeAction = createBridge();
+    renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
+    expandPlanSection();
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
+    await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
+    const selectionButton = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
+    fireEvent.mouseDown(selectionButton);
+    await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
+    fireEvent.click(selectionButton);
+    const composer = await screen.findByLabelText('Pending annotation composer');
+    const note = within(composer).getByLabelText('Annotation note') as HTMLTextAreaElement;
+    const long = 'x'.repeat(4001);
+    fireEvent.change(note, { target: { value: long } });
+    expect(note.value).toBe(long);
+    expect((within(composer).getByRole('button', { name: /Save annotation/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(composer).getByText(/4001 \/ 4000 characters/)).toBeTruthy();
+    fireEvent.scroll(window);
+    fireEvent.resize(window);
+    const stillMountedComposer = screen.getByLabelText('Pending annotation composer');
+    const preservedNote = within(stillMountedComposer).getByLabelText('Annotation note') as HTMLTextAreaElement;
+    expect(preservedNote.value).toBe(long);
+    expect((within(stillMountedComposer).getByRole('button', { name: /Save annotation/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(stillMountedComposer).getByText(/4001 \/ 4000 characters/)).toBeTruthy();
+    fireEvent.keyDown(composer, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByLabelText('Pending annotation composer')).toBeNull());
+  });
+
+  it('keeps the composer draft open when backend annotation save fails', async () => {
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'create-plan-revision-annotation') throw new Error('backend body limit rejected');
+      return { ...session, annotations: [] };
+    });
+    renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
+    expandPlanSection();
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
+    await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
+    const selectionButton = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
+    fireEvent.mouseDown(selectionButton);
+    await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
+    fireEvent.click(selectionButton);
+    const composer = await screen.findByLabelText('Pending annotation composer');
+    const note = within(composer).getByLabelText('Annotation note') as HTMLTextAreaElement;
+    fireEvent.change(note, { target: { value: 'draft survives' } });
+    fireEvent.click(within(composer).getByRole('button', { name: /Save annotation/ }));
+    expect((await within(composer).findByRole('alert')).textContent).toMatch(/backend body limit rejected/);
+    expect(note.value).toBe('draft survives');
   });
 
   it('does not create a selected-text annotation for a selection outside the rendered section', async () => {

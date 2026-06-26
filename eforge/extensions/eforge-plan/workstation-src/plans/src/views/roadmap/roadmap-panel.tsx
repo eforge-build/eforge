@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { FileText, RefreshCw, Save, Undo2 } from 'lucide-react';
+import { FileText, Pencil, RefreshCw, Save, Undo2 } from 'lucide-react';
+import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,19 +32,28 @@ export interface RoadmapFocusProps {
 export function RoadmapFocus({ state, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, onSaveLocalFocus, onRefreshRecommendations }: RoadmapFocusProps) {
   const toast = useToast();
   const [draft, setDraft] = React.useState('');
+  const [editing, setEditing] = React.useState(false);
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const saved = state?.context.localSteering.content ?? '';
+  const editable = state?.context.localSteering.editable === true;
   const maxBytes = state?.context.localSteering.maxContentBytes ?? DEFAULT_LOCAL_FOCUS_MAX_BYTES;
   const localContentTruncated = state?.context.localSteering.contentTruncated === true;
   const edit = localFocusEditState({ draft, saved, maxBytes }, saving);
   const disabledReason = refreshDisabledReason({ dirty: edit.dirty, saving, refreshing, activeTask: activeRecommendationRefreshTask, status: recommendationStatus, freshness: recommendationFreshness });
   const refreshRunning = activeRefreshRunning(activeRecommendationRefreshTask);
 
-  React.useEffect(() => setDraft(saved), [saved]);
+  React.useEffect(() => { if (!editing) setDraft(saved); }, [editing, saved]);
+  React.useEffect(() => {
+    if (editable) return;
+    setEditing(false);
+    setConfirmCancel(false);
+    setDraft(saved);
+  }, [editable, saved]);
 
   async function save() {
-    if (!state || !edit.canSave || localContentTruncated) return;
+    if (!state || !editable || !edit.canSave || localContentTruncated) return;
     setSaving(true);
     try {
       const input: UpdateRoadmapStateRequest = {
@@ -51,12 +61,24 @@ export function RoadmapFocus({ state, recommendationStatus, recommendationFreshn
         ...(state.context.localSteering.sha256 ? { expectedLocalFocusSha256: state.context.localSteering.sha256 } : {}),
       };
       await onSaveLocalFocus(input);
+      setEditing(false);
+      setConfirmCancel(false);
       toast.push('Saved local focus roadmap.', 'success');
     } catch (caught) {
       toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
     } finally {
       setSaving(false);
     }
+  }
+
+  function cancelEdit() {
+    if (edit.dirty && !confirmCancel) {
+      setConfirmCancel(true);
+      return;
+    }
+    setDraft(saved);
+    setEditing(false);
+    setConfirmCancel(false);
   }
 
   async function refreshRecommendations() {
@@ -83,15 +105,40 @@ export function RoadmapFocus({ state, recommendationStatus, recommendationFreshn
           <CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> Local focus roadmap</CardTitle>
           <CardDescription>Private editable steering doc at <code>{state.storagePaths.localFocus}</code>. The recommendation engine reads this to rank your backlog.</CardDescription>
         </div>
-        <div className={`shrink-0 text-xs ${edit.overLimit ? 'text-destructive-foreground' : 'text-muted-foreground'}`}>{formatBytes(edit.bytes)} / {formatBytes(edit.maxBytes)}</div>
+        <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground">
+          <span className={edit.overLimit ? 'text-destructive-foreground' : 'text-muted-foreground'}>{formatBytes(edit.bytes)} / {formatBytes(edit.maxBytes)}</span>
+          <div className="flex flex-wrap justify-end gap-1">
+            {recommendationFreshness?.state && <Chip tone={recommendationFreshness.state === 'fresh' ? 'good' : 'warn'}>recommendations {recommendationFreshness.state}</Chip>}
+            {localContentTruncated && <Chip tone="warn">truncated</Chip>}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-3">
-        <Textarea aria-label="Local focus roadmap" value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[24rem] font-mono text-xs" />
-        {edit.overLimit && <p className="text-xs text-destructive-foreground">Local focus exceeds the configured byte limit. Shorten it before saving.</p>}
-        {localContentTruncated && <p className="text-xs text-destructive-foreground">Local focus content was truncated by the backend. Saving is disabled to avoid overwriting unsent content.</p>}
+        {editing && editable ? (
+          <>
+            <Textarea aria-label="Local focus roadmap" value={draft} onChange={(event) => { setDraft(event.target.value); setConfirmCancel(false); }} className="min-h-[24rem] font-mono text-xs" />
+            {edit.overLimit && <p className="text-xs text-destructive-foreground">Local focus exceeds the configured byte limit. Shorten it before saving.</p>}
+            {localContentTruncated && <p className="text-xs text-destructive-foreground">Local focus content was truncated by the backend. Saving is disabled to avoid overwriting unsent content.</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" disabled={!edit.canSave || localContentTruncated} onClick={() => void save()}><Save className="h-4 w-4" /> Save local focus</Button>
+              <Button size="sm" variant="outline" disabled={!edit.dirty || saving} onClick={() => { setDraft(saved); setConfirmCancel(false); }}><Undo2 className="h-4 w-4" /> Reset</Button>
+              <Button size="sm" variant={confirmCancel ? 'destructive' : 'outline'} disabled={saving} onClick={cancelEdit}>{confirmCancel ? 'Discard edits' : 'Cancel'}</Button>
+              {confirmCancel && <span className="text-xs text-muted-foreground">Click Discard edits to leave edit mode without saving.</span>}
+            </div>
+          </>
+        ) : (
+          <div className="grid gap-3">
+            <div className="rounded border border-border bg-background/40 p-3">
+              {saved.trim() ? <SafeMarkdown markdown={saved} /> : <p className="text-sm text-muted-foreground">Local focus roadmap is empty.</p>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Source: <code>{state.storagePaths.localFocus}</code></span>
+              {recommendationFreshness?.reason && <span>{recommendationFreshness.reason}</span>}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" disabled={!edit.canSave || localContentTruncated} onClick={() => void save()}><Save className="h-4 w-4" /> Save local focus</Button>
-          <Button size="sm" variant="outline" disabled={!edit.dirty || saving} onClick={() => setDraft(saved)}><Undo2 className="h-4 w-4" /> Reset</Button>
+          {!editing && editable && <Button size="sm" variant="outline" onClick={() => { setDraft(saved); setEditing(true); }}><Pencil className="h-4 w-4" /> Edit</Button>}
           <Button size="sm" variant="outline" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Refresh recommendations from saved roadmap state.'} onClick={() => void refreshRecommendations()}>
             {refreshing || refreshRunning ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Refresh recommendations from roadmap
           </Button>
@@ -190,7 +237,11 @@ function SourceRow({ source }: { source: RoadmapSourceProjection }) {
         <Meta label="error" value={source.readError} />
       </dl>
       {source.headings.length > 0 && <p className="mt-1 text-muted-foreground">Headings: {source.headings.join(' · ')}</p>}
-      {source.excerpts.length > 0 && <ul className="mt-1 list-disc pl-4 text-muted-foreground">{source.excerpts.map((excerpt, index) => <li key={index}>{excerpt}</li>)}</ul>}
+      {source.content?.trim() ? (
+        <div className="mt-2 rounded border border-border bg-card/50 p-2 text-xs">
+          <SafeMarkdown markdown={source.content} />
+        </div>
+      ) : source.excerpts.length > 0 ? <ul className="mt-1 list-disc pl-4 text-muted-foreground">{source.excerpts.map((excerpt, index) => <li key={index}>{excerpt}</li>)}</ul> : null}
     </article>
   );
 }

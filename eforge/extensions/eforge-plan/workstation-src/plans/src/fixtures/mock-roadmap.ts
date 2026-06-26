@@ -2,7 +2,7 @@ import { mockGetRecommendationsFreshResponse, mockRecommendationActionability, m
 import type { GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 
 const MAX_CONTENT_BYTES = 40_000;
-let localFocusContent = '# Local focus\n\nPrioritize workstation roadmap editing and recommendation refresh UX.\n';
+let localFocusContent = '# Local focus\n\nPrioritize workstation roadmap editing and recommendation refresh UX.\n\n- Keep the workstation read-first.\n- Link to [docs](https://example.test/docs) and mention `roadmap`.\n';
 let localFocusSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 let activeRefreshTask: PlanningAgentTaskRecord | null = null;
 
@@ -17,11 +17,11 @@ export function getMockRoadmapState(): RoadmapStateResponse {
       localSteering: localSource(now),
       sharedContextSources: [{
         kind: 'configured-shared', role: 'shared-context', id: 'shared-platform', label: 'Shared platform roadmap', path: 'docs/shared-roadmap.md', configured: true, editable: false, exists: true,
-        sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', headings: ['Shared priorities'], excerpts: ['Keep shared roadmap files read-only from the workstation.'], updatedAt: now,
+        sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', headings: ['Shared priorities'], excerpts: ['Keep shared roadmap files read-only from the workstation.'], content: '# Shared priorities\n\n- Keep shared roadmap files read-only from the workstation.\n- Preserve `source` metadata.\n', updatedAt: now,
       }],
       discoveredContextSources: [{
         kind: 'discovered-conventional', role: 'shared-context', path: 'docs/roadmap.md', configured: false, editable: false, exists: true,
-        sha256: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', headings: ['Roadmap'], excerpts: ['Discovered conventional context remains read-only.'], updatedAt: now,
+        sha256: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', headings: ['Roadmap'], excerpts: ['Discovered conventional context remains read-only.'], content: '# Roadmap\n\nDiscovered conventional context remains **read-only**.\n', updatedAt: now,
       }],
       assumptions: ['Local focus is private extension storage.'],
       conflicts: [{ code: 'configured-source-missing', message: 'Optional configured roadmap is missing.', path: 'docs/missing-roadmap.md', sourceId: 'missing' }],
