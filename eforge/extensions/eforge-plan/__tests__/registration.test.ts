@@ -208,6 +208,17 @@ describe('eforge-plan extension registration', () => {
     for (const actionId of ['search-items', 'get-item', 'get-epic', 'capture-item', 'update-item']) {
       expect(actions.find((action) => action.id === actionId)?.description).toMatch(/agent|backlog/i);
     }
+    const updateItemAction = actions.find((action) => action.id === 'update-item');
+    expect(updateItemAction?.outputProfile).toBe('agent-compact');
+    const updateItemInputSchemaJson = JSON.stringify(updateItemAction?.inputSchema);
+    for (const field of ['title', 'sections', 'sectionOperations', 'expectedBodySha256', 'expectedRecordSha256', 'expectedUpdatedAt']) expect(updateItemInputSchemaJson).toContain(field);
+    expect(updateItemInputSchemaJson).not.toMatch(/bodyMarkdown|bodyRaw|fullBody/);
+    const updateItemOutputSchemaJson = JSON.stringify(updateItemAction?.outputSchema);
+    for (const field of ['itemId', 'title', 'status', 'updatedAt', 'bodySha256', 'recordSha256', 'path', 'storage', 'changedFields', 'changedSections']) expect(updateItemOutputSchemaJson).toContain(field);
+    const getItemAction = actions.find((action) => action.id === 'get-item');
+    const getItemOutputSchemaJson = JSON.stringify(getItemAction?.outputSchema);
+    for (const field of ['bodySha256', 'recordSha256', 'storage', 'path']) expect(getItemOutputSchemaJson).toContain(field);
+    expect(getItemAction?.description).toMatch(/lock|token|update-item/i);
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const listPlanningArtifactsInput = actions.find((action) => action.id === 'list-planning-artifacts')?.inputSchema as Record<string, unknown>;
