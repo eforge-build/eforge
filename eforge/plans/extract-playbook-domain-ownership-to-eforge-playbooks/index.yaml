@@ -3,7 +3,8 @@ description: Extract all playbook domain behavior into eforge-playbooks and
   remove playbook-specific ownership from core, input, host, client, monitor,
   Console, and planning contracts.
 created: 2026-06-26
-status: draft
+status: compiled
+compiled: "2026-06-26"
 mode: expedition
 validate:
   - pnpm maintainability:check
