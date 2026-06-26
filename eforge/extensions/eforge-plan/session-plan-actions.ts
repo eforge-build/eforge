@@ -302,9 +302,7 @@ export const handoffSessionPlan = defineExtensionAction({
       });
     }
     let canonicalSyncWarning: string | undefined;
-    // --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
     const submittedAt = new Date().toISOString();
-    // --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
     try {
       const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
       withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));

@@ -41,12 +41,10 @@ function storedReadiness(cwd: string, session: string): unknown {
   try { return getSessionPlan(store, session)?.readinessSummary; } finally { store.close(); }
 }
 
-// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
 function storedStatus(cwd: string, session: string): string | undefined {
   const store = openEforgePlanStore(cwd);
   try { return getSessionPlan(store, session)?.status; } finally { store.close(); }
 }
-// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
 
 function expectStoredReadiness(cwd: string, session: string, readiness: unknown): void {
   expect(storedReadiness(cwd, session)).toEqual(JSON.parse(JSON.stringify(readiness)));

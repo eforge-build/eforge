@@ -93,7 +93,6 @@ export function replaceSessionPlanLinks(store: EforgePlanStore, input: { session
 
 export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
   const at = input.timestamp ?? canonicalNowIso();
-  // --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
   const existing = getSessionPlan(store, input.session);
   upsertSessionPlan(store, {
     session: input.session,
@@ -113,7 +112,6 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     readinessSummary: existing?.readinessSummary,
     frontmatter: existing?.frontmatter ?? {},
   });
-  // --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
   upsertQueuePrd(store, { prdId: input.queuePrdId, session: input.session, sourcePath: input.path, status: input.status ?? 'queued', submittedAt: at, updatedAt: at });
   for (const itemId of input.itemIds ?? []) recordLifecycleEvidence(store, { evidenceKey: `submitted:${input.queuePrdId}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, queuePrdId: input.queuePrdId, lifecycleState: 'submitted', reasonCode: 'submitted-session-plan', evidenceKind: 'handoff', occurredAt: at, links: jsonValue({ session: input.session, queuePrdId: input.queuePrdId, path: input.path }) });
   markCanonicalSearchDirty(store, [
@@ -168,13 +166,11 @@ function stringArray(value: unknown, single?: unknown): string[] {
   return [...new Set(values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0))];
 }
 
-// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
 function resolvedSessionPlanStatus(existingStatus: string | undefined, inputStatus: string | undefined, frontmatterStatus: string | undefined): string {
   const incomingStatus = inputStatus ?? frontmatterStatus;
   if (existingStatus === 'submitted' && (incomingStatus === undefined || incomingStatus === 'ready')) return existingStatus;
   return incomingStatus ?? existingStatus ?? 'draft';
 }
-// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;

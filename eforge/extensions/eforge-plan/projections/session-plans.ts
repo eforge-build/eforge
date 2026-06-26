@@ -26,7 +26,6 @@ function cleanObject<T extends Record<string, unknown>>(value: T): T { return Ob
 function plainSections(sections: Map<string, string> | Record<string, string> | undefined): Record<string, string> { return sections instanceof Map ? Object.fromEntries(sections) : sections ?? {}; }
 function resolveArtifactPath(cwd: string, path: string): string { return isAbsolute(path) ? path : join(cwd, path); }
 function sessionPlanReadinessFingerprint(markdown: string): string { return canonicalSha256(markdown); }
-// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
 function normalizedTimestamp(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.trim().length === 0) return undefined;
   const time = Date.parse(value);
@@ -60,7 +59,6 @@ function lifecycleTimestamps(plan: ProjectionSessionPlanRow, lifecycle: ReturnTy
     ]),
   });
 }
-// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
 async function readinessProjection(cwd: string, plan: ProjectionSessionPlanRow, absolutePath: string, body?: string) {
   const currentBody = body ?? await readFile(absolutePath, 'utf8').catch(() => '');
   const currentArtifactBodyHash = currentBody.length > 0 ? sessionPlanReadinessFingerprint(currentBody) : undefined;
