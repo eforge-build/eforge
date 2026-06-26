@@ -29,6 +29,7 @@ import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection
 import { toJsonSafeObject } from './json-safe.js';
 import { userActionError } from './action-errors.js';
 import { captureReadinessIssues, formatCaptureReadinessMessage } from './backlog-capture-guardrails.js';
+import { assertDirectActionEpicReferenceExists } from './backlog-epic-reference-validation.js';
 import { sessionPlanActions } from './session-plan-actions.js';
 import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
@@ -97,6 +98,7 @@ const captureItem = defineExtensionAction({
       throw userActionError(formatCaptureReadinessMessage(readinessIssues), { details: { issues: readinessIssues } });
     }
     const id = await resolveNewItemId(ctx.cwd, input.id, input.title);
+    assertDirectActionEpicReferenceExists(ctx.cwd, input.epic, 'capture-item');
     const now = new Date().toISOString();
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria, ''].join('\n');
     const item = captureCanonicalBacklogItem(ctx.cwd, { id, title: input.title, status: 'candidate', priority: input.priority, tags: input.tags ?? [], dependsOn: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
@@ -123,6 +125,7 @@ const updateItem = defineExtensionAction({
   id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata in canonical private SQLite storage while preserving body content.',
   inputSchema: UpdateInput, outputSchema: ActionObjectOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
   async handler(input, ctx) {
+    assertDirectActionEpicReferenceExists(ctx.cwd, input.epic, 'update-item');
     const updates: Record<string, unknown> = { updated: new Date().toISOString() };
     if (input.status !== undefined) updates.status = normalizedStatus(input.status, 'candidate');
     if (input.priority !== undefined) updates.priority = input.priority;
@@ -138,7 +141,14 @@ const updateItem = defineExtensionAction({
         captureCanonicalBacklogItem(ctx.cwd, { id: legacy.id, title: legacy.title, status: legacy.status, priority: legacy.priority, tags: legacy.tags as string[], dependsOn: legacy.dependsOn as string[], epic: legacy.epic, created: legacy.created, updated: legacy.updated, body: legacy.body });
       }
     }
-    const item = updateCanonicalBacklogItem(ctx.cwd, input.id, { status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'], priority: updates.priority as string | undefined, tags: updates.tags as string[] | undefined, dependsOn: updates.depends_on as string[] | undefined, epic: updates.epic as string | null | undefined, frontmatter: updates });
+    const item = updateCanonicalBacklogItem(ctx.cwd, input.id, {
+      status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'],
+      priority: updates.priority as string | undefined,
+      tags: updates.tags as string[] | undefined,
+      dependsOn: updates.depends_on as string[] | undefined,
+      ...(input.epic !== undefined && { epic: updates.epic as string | null }),
+      frontmatter: updates,
+    });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
     return toJsonSafeObject({ itemId: item.id, status: item.userStatus });
   },
