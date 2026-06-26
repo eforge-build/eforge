@@ -9,7 +9,7 @@ import { withProjectionStore } from './store.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 import { getProjectionSessionPlan, listProjectionSessionPlanEpics, listProjectionSessionPlanItems, listProjectionSessionPlans, type ProjectionSessionPlanRow } from '../sqlite/repositories/projections/session-plans.js';
 import { getProjectionItem, listProjectionItems } from '../sqlite/repositories/projections/items.js';
-import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionSessionItems } from '../sqlite/repositories/projections/lifecycle.js';
+import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems } from '../sqlite/repositories/projections/lifecycle.js';
 import type { EforgePlanStore } from '../sqlite/index.js';
 import { computeEffectiveLifecycle } from './lifecycle.js';
 import type { AssociatedPlanBuildLink, ListPlanningArtifactsInput } from './types.js';
@@ -26,6 +26,41 @@ function cleanObject<T extends Record<string, unknown>>(value: T): T { return Ob
 function plainSections(sections: Map<string, string> | Record<string, string> | undefined): Record<string, string> { return sections instanceof Map ? Object.fromEntries(sections) : sections ?? {}; }
 function resolveArtifactPath(cwd: string, path: string): string { return isAbsolute(path) ? path : join(cwd, path); }
 function sessionPlanReadinessFingerprint(markdown: string): string { return canonicalSha256(markdown); }
+// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
+function normalizedTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : undefined;
+}
+function nestedObject(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function timestampFromRecord(record: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = normalizedTimestamp(record[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+function planReadyAt(plan: ProjectionSessionPlanRow): string | undefined {
+  const frontmatter = nestedObject(plan.frontmatter);
+  const eforgePlan = nestedObject(frontmatter.eforge_plan);
+  return timestampFromRecord(frontmatter, ['ready_at', 'readyAt', 'status_ready_at', 'session_plan_ready_at'])
+    ?? timestampFromRecord(eforgePlan, ['ready_at', 'readyAt']);
+}
+function latestTimestamp(values: readonly unknown[]): string | undefined { return values.map(normalizedTimestamp).filter((value): value is string => value !== undefined).sort().at(-1); }
+function lifecycleTimestamps(plan: ProjectionSessionPlanRow, lifecycle: ReturnType<typeof sessionLifecycleFromStore>) {
+  const buildKinds = new Set(['queue-prd', 'build-run', 'build-session', 'landing']);
+  return cleanObject({
+    createdAt: normalizedTimestamp(plan.createdAt),
+    updatedAt: normalizedTimestamp(plan.updatedAt),
+    readyAt: planReadyAt(plan),
+    submittedAt: normalizedTimestamp(plan.submittedAt),
+    lastBuildActivityAt: latestTimestamp([
+      ...lifecycle.linkRows.filter((row) => buildKinds.has(String(row.kind)) && row.session === plan.session).map((row) => row.timestamp),
+      ...lifecycle.sessionBuildRows.map((row) => row.timestamp),
+    ]),
+  });
+}
+// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
 async function readinessProjection(cwd: string, plan: ProjectionSessionPlanRow, absolutePath: string, body?: string) {
   const currentBody = body ?? await readFile(absolutePath, 'utf8').catch(() => '');
   const currentArtifactBodyHash = currentBody.length > 0 ? sessionPlanReadinessFingerprint(currentBody) : undefined;
@@ -61,6 +96,7 @@ function lifecycleLinkRows(links: AssociatedPlanBuildLink[]) {
 }
 
 function sessionLifecycleFromStore(store: EforgePlanStore, session: string) {
+  const sessionBuildRows = listProjectionQueueBuildLinks(store).filter((row) => row.session === session);
   const items = listProjectionSessionPlanItems(store, session);
   const epics = listProjectionSessionPlanEpics(store, session);
   const sourceRefs = sourceRefsFromRows(items, epics);
@@ -80,18 +116,19 @@ function sessionLifecycleFromStore(store: EforgePlanStore, session: string) {
   const linkRows = lifecycleLinkRows(getAssociatedPlanBuildLinksForItemsFromStore(store, itemIds));
   const states = [...new Set(itemRows.map((row) => row.lifecycleState))];
   const lifecycleState = states.length === 0 ? 'none' : itemIds.length > 1 ? 'partial' : states[0];
-  return { session, sourceRefs, sourceRefRows: sourceRefRows(items, epics), lifecycleState, state: lifecycleState, itemIds, itemRows, linkRows, associatedLinks: linkRows, failureEvidence: linkRows.filter((row) => row.status === 'failed') };
+  return { session, sourceRefs, sourceRefRows: sourceRefRows(items, epics), lifecycleState, state: lifecycleState, itemIds, itemRows, linkRows, sessionBuildRows, associatedLinks: linkRows, failureEvidence: linkRows.filter((row) => row.status === 'failed') };
 }
 
 async function artifactFromPlan(cwd: string, plan: ReturnType<typeof listProjectionSessionPlans>[number], lifecycle: ReturnType<typeof sessionLifecycleFromStore>) {
   const path = plan.path ?? `.eforge/session-plans/${plan.session}.md`;
   const readinessInfo = await readinessProjection(cwd, plan, resolveArtifactPath(cwd, path));
   const readiness = readinessInfo.readiness;
-  return { kind: 'plan' as const, key: `plan:${plan.session}`, session: plan.session, title: plan.topic ?? plan.session, topic: plan.topic ?? plan.session, status: plan.status ?? 'draft', path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, coveredDimensions: readiness.coveredDimensions, skippedDimensions: readiness.skippedDimensions, readiness, readinessSource: readinessInfo.readinessSource, readinessFreshness: readinessInfo.readinessFreshness, ...(plan.eforgeSessionId ? { eforge_session: plan.eforgeSessionId } : {}), updatedAt: plan.updatedAt, createdAt: plan.createdAt, sourceRefs: lifecycle.sourceRefs, lifecycle, lifecycleState: lifecycle.lifecycleState, itemRows: lifecycle.itemRows, linkRows: lifecycle.linkRows, failureEvidence: lifecycle.failureEvidence };
+  const timestamps = lifecycleTimestamps(plan, lifecycle);
+  return { kind: 'plan' as const, key: `plan:${plan.session}`, session: plan.session, title: plan.topic ?? plan.session, topic: plan.topic ?? plan.session, status: plan.status ?? 'draft', path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, coveredDimensions: readiness.coveredDimensions, skippedDimensions: readiness.skippedDimensions, readiness, readinessSource: readinessInfo.readinessSource, readinessFreshness: readinessInfo.readinessFreshness, ...(plan.eforgeSessionId ? { eforge_session: plan.eforgeSessionId } : {}), ...timestamps, sourceRefs: lifecycle.sourceRefs, lifecycle, lifecycleState: lifecycle.lifecycleState, itemRows: lifecycle.itemRows, linkRows: lifecycle.linkRows, failureEvidence: lifecycle.failureEvidence };
 }
 function planSetArtifact(p: { planSetId: string; title?: string; status?: string; path?: string; updatedAt?: string }) { return { kind: 'plan-set' as const, key: `plan-set:${p.planSetId}`, ...p }; }
 function projectPlan(plan: ProjectionSessionPlanRow, body: string) { return { ...plan, session: plan.session, topic: plan.topic ?? plan.session, status: plan.status ?? 'draft', body }; }
-function fallbackArtifact(entry: { session: string; topic?: string; status?: string; path: string; ready?: boolean; missingDimensions?: unknown[]; coveredDimensions?: unknown[]; skippedDimensions?: unknown[]; readiness?: unknown }) { const readiness = readinessFromSummary(entry.readiness ?? { ready: entry.ready === true, missingDimensions: entry.missingDimensions ?? [], coveredDimensions: entry.coveredDimensions ?? [], skippedDimensions: entry.skippedDimensions ?? [] }); return { kind: 'plan' as const, key: `plan:${entry.session}`, session: entry.session, title: entry.topic ?? entry.session, topic: entry.topic ?? entry.session, status: entry.status ?? 'draft', path: entry.path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, coveredDimensions: readiness.coveredDimensions, skippedDimensions: readiness.skippedDimensions, readiness, readinessSource: 'markdown' as const, readinessFreshness: { state: 'missing' as const }, updatedAt: undefined, createdAt: undefined, sourceRefs: { sourceItemIds: [], sourceEpicIds: [] }, lifecycleState: 'none', itemRows: [], linkRows: [], failureEvidence: [] }; }
+function fallbackArtifact(entry: { session: string; topic?: string; status?: string; path: string; ready?: boolean; missingDimensions?: unknown[]; coveredDimensions?: unknown[]; skippedDimensions?: unknown[]; readiness?: unknown; createdAt?: string; updatedAt?: string; readyAt?: string; submittedAt?: string }) { const readiness = readinessFromSummary(entry.readiness ?? { ready: entry.ready === true, missingDimensions: entry.missingDimensions ?? [], coveredDimensions: entry.coveredDimensions ?? [], skippedDimensions: entry.skippedDimensions ?? [] }); return cleanObject({ kind: 'plan' as const, key: `plan:${entry.session}`, session: entry.session, title: entry.topic ?? entry.session, topic: entry.topic ?? entry.session, status: entry.status ?? 'draft', path: entry.path, ready: readiness.ready, missingDimensions: readiness.missingDimensions, coveredDimensions: readiness.coveredDimensions, skippedDimensions: readiness.skippedDimensions, readiness, readinessSource: 'markdown' as const, readinessFreshness: { state: 'missing' as const }, createdAt: normalizedTimestamp(entry.createdAt), updatedAt: normalizedTimestamp(entry.updatedAt), readyAt: normalizedTimestamp(entry.readyAt), submittedAt: normalizedTimestamp(entry.submittedAt), sourceRefs: { sourceItemIds: [], sourceEpicIds: [] }, lifecycleState: 'none', itemRows: [], linkRows: [], failureEvidence: [] }); }
 
 async function listFlatArtifacts(cwd: string, includeSubmitted?: boolean) {
   const planning = createSessionPlanningWorkflowAdapter();
@@ -110,8 +147,10 @@ export async function listPlanningArtifactsProjection(cwd: string, input: ListPl
   type ArtifactDescriptor =
     | { descriptorKind: 'sql-plan'; key: string; session: string; planSetId?: string; updatedAt?: string; plan: ProjectionSessionPlanRow }
     | { descriptorKind: 'artifact'; key: string; session?: string; planSetId?: string; updatedAt?: string; artifact: any };
-  const sqlPlans = await withProjectionStore(cwd, (store) => listProjectionSessionPlans(store, input.includeSubmitted), () => []);
-  const sqlSessions = new Set(sqlPlans.map((plan) => plan.session));
+  const { sqlPlans, sqlSessions } = await withProjectionStore(cwd, (store) => {
+    const plans = listProjectionSessionPlans(store, input.includeSubmitted);
+    return { sqlPlans: plans, sqlSessions: new Set(listProjectionSessionPlans(store, true).map((plan) => plan.session)) };
+  }, () => ({ sqlPlans: [] as ProjectionSessionPlanRow[], sqlSessions: new Set<string>() }));
   const flat = (await listFlatArtifacts(cwd, input.includeSubmitted)).filter((artifact) => !sqlSessions.has(artifact.session));
   const planSets = await listPlanSetArtifacts(cwd, input.includeSubmitted);
   const descriptors: ArtifactDescriptor[] = [
@@ -145,12 +184,13 @@ export async function showSessionPlanProjection(cwd: string, session: string): P
     let body = '';
     try { body = await readFile(absolutePath, 'utf8'); } catch { body = ''; }
     const readinessInfo = await readinessProjection(cwd, plan, absolutePath, body);
-    let projectedPlan: Record<string, unknown> = projectPlan(plan, body);
+    const timestamps = lifecycleTimestamps(plan, lifecycle);
+    let projectedPlan: Record<string, unknown> = { ...projectPlan(plan, body), ...timestamps };
     try {
       const loaded = await createSessionPlanningWorkflowAdapter().flat.load({ cwd, session });
-      projectedPlan = { ...loaded.plan, session: plan.session, topic: plan.topic ?? loaded.plan.topic ?? plan.session, status: plan.status ?? loaded.plan.status ?? 'draft', body: loaded.plan.body, sections: plainSections((loaded.plan as any).sections), sourceRefs: lifecycle.sourceRefs };
+      projectedPlan = { ...loaded.plan, session: plan.session, topic: plan.topic ?? loaded.plan.topic ?? plan.session, status: plan.status ?? loaded.plan.status ?? 'draft', body: loaded.plan.body, sections: plainSections((loaded.plan as any).sections), sourceRefs: lifecycle.sourceRefs, ...timestamps };
     } catch { /* Keep the SQL-shaped fallback when the Markdown adapter cannot load the file. */ }
-    return { session, path: absolutePath, relativePath: relative(cwd, absolutePath).replace(/\\/g, '/'), body, plan: projectedPlan, lifecycle, sourceRefs: lifecycle.sourceRefs, sourceRefRows: lifecycle.sourceRefRows, readiness: readinessInfo.readiness, readinessSource: readinessInfo.readinessSource, readinessFreshness: readinessInfo.readinessFreshness };
+    return { session, path: absolutePath, relativePath: relative(cwd, absolutePath).replace(/\\/g, '/'), body, plan: projectedPlan, lifecycle, sourceRefs: lifecycle.sourceRefs, sourceRefRows: lifecycle.sourceRefRows, readiness: readinessInfo.readiness, readinessSource: readinessInfo.readinessSource, readinessFreshness: readinessInfo.readinessFreshness, ...timestamps };
   }, () => undefined);
   if (sql) return sql;
   const planning = createSessionPlanningWorkflowAdapter();

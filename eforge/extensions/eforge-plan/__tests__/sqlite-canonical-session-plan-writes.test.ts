@@ -80,8 +80,23 @@ describe('canonical SQLite session-plan writes', () => {
     withCanonicalTransaction(cwd, (store) => recordSessionPlanSubmitted(store, { session: 's', queuePrdId: 'queue-1', path: '.eforge/session-plans/s.md', itemIds: ['item-a'], timestamp: '2026-01-01T00:00:00.000Z' }));
 
     const raw = db(cwd);
+    expect(raw.prepare('SELECT session, status, submitted_at, updated_at, path FROM session_plans WHERE session = ?').get('s')).toMatchObject({ session: 's', status: 'submitted', submitted_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', path: '.eforge/session-plans/s.md' });
     expect(raw.prepare('SELECT prd_id, session, source_path, status, submitted_at FROM queue_prds WHERE prd_id = ?').get('queue-1')).toMatchObject({ prd_id: 'queue-1', session: 's', source_path: '.eforge/session-plans/s.md', status: 'queued', submitted_at: '2026-01-01T00:00:00.000Z' });
     expect((raw.prepare('SELECT count(*) AS count FROM lifecycle_evidence WHERE item_ref = ? AND session = ? AND queue_prd_id = ? AND lifecycle_state = ?').get('item-a', 's', 'queue-1', 'submitted') as { count: number }).count).toBe(1);
+    raw.close();
+  });
+
+  it('preserves submitted canonical status when ready Markdown is synced after handoff', () => {
+    const cwd = tempProject();
+    const path = join(cwd, '.eforge/session-plans/s.md');
+    const content = sessionContent();
+    syncSessionPlanArtifact(cwd, { session: 's', path, content, status: 'ready' });
+    withCanonicalTransaction(cwd, (store) => recordSessionPlanSubmitted(store, { session: 's', queuePrdId: 'queue-1', path: '.eforge/session-plans/s.md', timestamp: '2026-01-01T00:00:00.000Z' }));
+
+    syncSessionPlanArtifact(cwd, { session: 's', path, content, status: 'ready' });
+
+    const raw = db(cwd);
+    expect(raw.prepare('SELECT status FROM session_plans WHERE session = ?').get('s')).toMatchObject({ status: 'submitted' });
     raw.close();
   });
 

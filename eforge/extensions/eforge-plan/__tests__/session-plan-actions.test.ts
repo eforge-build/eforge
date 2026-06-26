@@ -41,6 +41,13 @@ function storedReadiness(cwd: string, session: string): unknown {
   try { return getSessionPlan(store, session)?.readinessSummary; } finally { store.close(); }
 }
 
+// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
+function storedStatus(cwd: string, session: string): string | undefined {
+  const store = openEforgePlanStore(cwd);
+  try { return getSessionPlan(store, session)?.status; } finally { store.close(); }
+}
+// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
+
 function expectStoredReadiness(cwd: string, session: string, readiness: unknown): void {
   expect(storedReadiness(cwd, session)).toEqual(JSON.parse(JSON.stringify(readiness)));
 }
@@ -308,26 +315,48 @@ describe('eforge-plan session-plan extension actions', () => {
         },
       });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'ready-plan.md'), 'utf-8');
+      const listed = await dispatch(cwd, 'list-planning-artifacts', {});
 
       expect(ready).toMatchObject({ kind: 'ready', status: 'ready' });
-      expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true });
+      expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true, submittedAt: expect.any(String) });
       expect(enqueuedSources).toEqual(['.eforge/session-plans/ready-plan.md']);
       expect(collectUndefinedPaths(handoff)).toEqual([]);
       expect(raw).toContain('status: ready');
       expect(raw).not.toContain('status: submitted');
+      expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
+      expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).not.toContain('plan:ready-plan');
       expectStoredReadiness(cwd, 'ready-plan', ready.readiness);
+    });
+  });
+
+  it('allows deleting a submitted flat plan by updating canonical status to abandoned', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'submitted-delete', readyBody());
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'submitted-delete' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'submitted-delete' }, { enqueue: async () => ({ sessionId: 'build-session-delete', pid: 4321, autoBuild: false }) });
+
+      const deleted = await dispatch(cwd, 'delete-session-plan', { session: 'submitted-delete' });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'submitted-delete.md'), 'utf-8');
+
+      expect(deleted).toMatchObject({ kind: 'deleted', session: 'submitted-delete', status: 'abandoned' });
+      expect(raw).toContain('status: abandoned');
+      expect(storedStatus(cwd, 'submitted-delete')).toBe('abandoned');
     });
   });
 
   it('returns an enqueue-failed handoff when the build queue is unavailable', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'ready-plan', readyBody(), 'ready');
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
 
       const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' });
+      const listed = await dispatch(cwd, 'list-planning-artifacts', {});
 
       expect(handoff).toMatchObject({ kind: 'enqueue-failed', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md' });
       expect(String(handoff.message)).toContain('enqueue failed');
       expect(String(handoff.command)).toContain('.eforge/session-plans/ready-plan.md');
+      expect(storedStatus(cwd, 'ready-plan')).toBe('ready');
+      expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).toContain('plan:ready-plan');
       expect(collectUndefinedPaths(handoff)).toEqual([]);
     });
   });

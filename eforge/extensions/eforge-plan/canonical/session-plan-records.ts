@@ -50,7 +50,7 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
     session: input.session,
     path: input.path ? relative(cwd, input.path) : existing?.path,
     topic: input.topic ?? stringValue(fm.topic) ?? existing?.topic,
-    status: input.status ?? stringValue(fm.status) ?? existing?.status ?? 'draft',
+    status: resolvedSessionPlanStatus(existing?.status, input.status, stringValue(fm.status)),
     planningType: input.planningType ?? stringValue(fm.planning_type) ?? existing?.planningType,
     planningDepth: input.planningDepth ?? stringValue(fm.planning_depth) ?? existing?.planningDepth,
     profile: input.profile ?? stringValue(fm.profile) ?? existing?.profile,
@@ -93,6 +93,27 @@ export function replaceSessionPlanLinks(store: EforgePlanStore, input: { session
 
 export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
   const at = input.timestamp ?? canonicalNowIso();
+  // --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
+  const existing = getSessionPlan(store, input.session);
+  upsertSessionPlan(store, {
+    session: input.session,
+    path: input.path ?? existing?.path,
+    topic: existing?.topic,
+    status: 'submitted',
+    planningType: existing?.planningType,
+    planningDepth: existing?.planningDepth,
+    profile: existing?.profile,
+    agentProfile: existing?.agentProfile,
+    eforgeSessionId: existing?.eforgeSessionId,
+    submittedAt: at,
+    createdAt: existing?.createdAt ?? at,
+    updatedAt: at,
+    summaryText: existing?.summaryText,
+    artifactBodyHash: existing?.artifactBodyHash,
+    readinessSummary: existing?.readinessSummary,
+    frontmatter: existing?.frontmatter ?? {},
+  });
+  // --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
   upsertQueuePrd(store, { prdId: input.queuePrdId, session: input.session, sourcePath: input.path, status: input.status ?? 'queued', submittedAt: at, updatedAt: at });
   for (const itemId of input.itemIds ?? []) recordLifecycleEvidence(store, { evidenceKey: `submitted:${input.queuePrdId}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, queuePrdId: input.queuePrdId, lifecycleState: 'submitted', reasonCode: 'submitted-session-plan', evidenceKind: 'handoff', occurredAt: at, links: jsonValue({ session: input.session, queuePrdId: input.queuePrdId, path: input.path }) });
   markCanonicalSearchDirty(store, [
@@ -136,6 +157,14 @@ function stringArray(value: unknown, single?: unknown): string[] {
   const values = Array.isArray(value) ? value : single ? [single] : [];
   return [...new Set(values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0))];
 }
+
+// --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
+function resolvedSessionPlanStatus(existingStatus: string | undefined, inputStatus: string | undefined, frontmatterStatus: string | undefined): string {
+  const incomingStatus = inputStatus ?? frontmatterStatus;
+  if (existingStatus === 'submitted' && (incomingStatus === undefined || incomingStatus === 'ready')) return existingStatus;
+  return incomingStatus ?? existingStatus ?? 'draft';
+}
+// --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;

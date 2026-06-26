@@ -327,9 +327,12 @@ export const handoffSessionPlan = defineExtensionAction({
       });
     }
     let canonicalSyncWarning: string | undefined;
+    // --- eforge:region plan-01-plan-artifact-lifecycle-projection ---
+    const submittedAt = new Date().toISOString();
+    // --- eforge:endregion plan-01-plan-artifact-lifecycle-projection ---
     try {
       const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
-      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: new Date().toISOString() }));
+      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
     } catch (err) {
       canonicalSyncWarning = err instanceof Error ? err.message : String(err);
     }
@@ -341,6 +344,7 @@ export const handoffSessionPlan = defineExtensionAction({
       queueSessionId: enqueued.sessionId,
       pid: enqueued.pid,
       autoBuild: enqueued.autoBuild,
+      submittedAt,
       message: `Enqueued ${sourcePath} for build${enqueued.autoBuild ? '; auto-build is enabled.' : '.'}`,
       readiness: loaded.readiness,
       ...(canonicalSyncWarning !== undefined && { canonicalSyncWarning }),
