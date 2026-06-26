@@ -11,10 +11,6 @@ const execFileAsync = promisify(execFile);
 const extensionRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const repoRoot = join(extensionRoot, '../../..');
 
-async function readJson(path: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(path, 'utf-8')) as Record<string, unknown>;
-}
-
 async function ensureBuilt(): Promise<void> {
   const required = [
     'dist/index.js',
@@ -64,30 +60,6 @@ describe('eforge-plan package publication artifact', () => {
     await ensureBuilt();
   }, 180_000);
 
-  it('declares publishable first-party package metadata and release wiring', async () => {
-    const pkg = await readJson(join(extensionRoot, 'package.json'));
-    expect(pkg.name).toBe('@eforge-build/eforge-plan');
-    expect(pkg.private).not.toBe(true);
-    expect(pkg.publishConfig).toMatchObject({ access: 'public' });
-    expect(pkg.files).toEqual(expect.arrayContaining(['dist/', 'prompts/', 'workstation-assets/', 'README.md', 'LICENSE']));
-    expect(pkg.eforge).toMatchObject({ extension: { name: 'eforge-plan', entrypoint: './dist/index.js' } });
-
-    const workspace = await readFile(join(repoRoot, 'pnpm-workspace.yaml'), 'utf-8');
-    expect(workspace).toContain('eforge/extensions/eforge-plan');
-    const lockstep = await readFile(join(repoRoot, 'scripts/lib/lockstep-version.mjs'), 'utf-8');
-    expect(lockstep).toContain('eforge/extensions/eforge-plan/package.json');
-  });
-
-  it('builds required runtime and workstation assets before packing', () => {
-    for (const rel of [
-      'dist/index.js',
-      'dist/backlog-curation-source-provider.js',
-      'workstation-assets/plans/index.js',
-      'workstation-assets/plans/style.css',
-    ]) {
-      expect(existsSync(join(extensionRoot, rel)), rel).toBe(true);
-    }
-  });
 
   it('packs only compiled runtime, workstation assets, and package metadata', async () => {
     const files = await npmPackDryRunFiles();

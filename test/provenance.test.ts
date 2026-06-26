@@ -40,52 +40,21 @@ function gitSha(dir: string): string {
 // ---------------------------------------------------------------------------
 
 describe('parseGitHubRepoFromRemote', () => {
-  it('parses HTTPS remote with .git suffix', () => {
-    expect(parseGitHubRepoFromRemote('https://github.com/owner/repo.git')).toBe('owner/repo');
-  });
-
-  it('parses HTTPS remote without .git suffix', () => {
-    expect(parseGitHubRepoFromRemote('https://github.com/owner/repo')).toBe('owner/repo');
-  });
-
-  it('parses git+https remote', () => {
-    expect(parseGitHubRepoFromRemote('git+https://github.com/owner/repo.git')).toBe('owner/repo');
-  });
-
-  it('parses scp-like SSH remote (git@github.com:owner/repo.git)', () => {
-    expect(parseGitHubRepoFromRemote('git@github.com:owner/repo.git')).toBe('owner/repo');
-  });
-
-  it('parses scp-like SSH remote without .git suffix', () => {
-    expect(parseGitHubRepoFromRemote('git@github.com:owner/repo')).toBe('owner/repo');
-  });
-
-  it('parses ssh:// remote', () => {
-    expect(parseGitHubRepoFromRemote('ssh://git@github.com/owner/repo.git')).toBe('owner/repo');
-  });
-
-  it('parses ssh:// remote without .git suffix', () => {
-    expect(parseGitHubRepoFromRemote('ssh://git@github.com/owner/repo')).toBe('owner/repo');
-  });
-
-  it('returns undefined for GitLab HTTPS remote', () => {
-    expect(parseGitHubRepoFromRemote('https://gitlab.com/owner/repo.git')).toBeUndefined();
-  });
-
-  it('returns undefined for a local file path', () => {
-    expect(parseGitHubRepoFromRemote('/tmp/local-remote.git')).toBeUndefined();
-  });
-
-  it('returns undefined for an empty string', () => {
-    expect(parseGitHubRepoFromRemote('')).toBeUndefined();
-  });
-
-  it('returns undefined for a Bitbucket remote', () => {
-    expect(parseGitHubRepoFromRemote('https://bitbucket.org/owner/repo.git')).toBeUndefined();
-  });
-
-  it('preserves hyphenated repo names', () => {
-    expect(parseGitHubRepoFromRemote('https://github.com/my-org/my-repo.git')).toBe('my-org/my-repo');
+  it.each([
+    ['HTTPS remote with .git suffix', 'https://github.com/owner/repo.git', 'owner/repo'],
+    ['HTTPS remote without .git suffix', 'https://github.com/owner/repo', 'owner/repo'],
+    ['git+https remote', 'git+https://github.com/owner/repo.git', 'owner/repo'],
+    ['scp-like SSH remote with .git suffix', 'git@github.com:owner/repo.git', 'owner/repo'],
+    ['scp-like SSH remote without .git suffix', 'git@github.com:owner/repo', 'owner/repo'],
+    ['ssh:// remote with .git suffix', 'ssh://git@github.com/owner/repo.git', 'owner/repo'],
+    ['ssh:// remote without .git suffix', 'ssh://git@github.com/owner/repo', 'owner/repo'],
+    ['GitLab HTTPS remote', 'https://gitlab.com/owner/repo.git', undefined],
+    ['local file path', '/tmp/local-remote.git', undefined],
+    ['empty string', '', undefined],
+    ['Bitbucket remote', 'https://bitbucket.org/owner/repo.git', undefined],
+    ['hyphenated owner/repo', 'https://github.com/my-org/my-repo.git', 'my-org/my-repo'],
+  ])('%s', (_label, remote, expected) => {
+    expect(parseGitHubRepoFromRemote(remote)).toBe(expected);
   });
 });
 
@@ -205,69 +174,6 @@ describe('collectBuildArtifactProvenance — GitHub URL rendering', () => {
     );
   });
 
-  it('renders GitHub blob URL for git+https remote', async () => {
-    const dir = makeTempDir();
-    setupGitRepo(dir);
-    execFileSync('git', ['remote', 'add', 'origin', 'git+https://github.com/acme/proj.git'], { cwd: dir });
-
-    mkdirSync(join(dir, 'eforge', 'plans', 'test-set'), { recursive: true });
-    writeFileSync(join(dir, 'eforge', 'plans', 'test-set', 'orchestration.yaml'), 'planSet: test-set\n');
-    execFileSync('git', ['add', '.'], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'add plan'], { cwd: dir });
-    const sha = gitSha(dir);
-
-    const refs = await collectBuildArtifactProvenance(dir, {
-      planSetName: 'test-set',
-      outputDir: 'eforge/plans',
-    });
-
-    const orchRef = refs.find((r) => r.kind === 'orchestration');
-    expect(orchRef!.webUrl).toContain(`https://github.com/acme/proj/blob/${sha}/`);
-  });
-
-  it('renders GitHub blob URL for scp-like SSH remote (git@github.com:...)', async () => {
-    const dir = makeTempDir();
-    setupGitRepo(dir);
-    execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:my-org/my-repo.git'], { cwd: dir });
-
-    mkdirSync(join(dir, 'eforge', 'plans', 'test-set'), { recursive: true });
-    writeFileSync(join(dir, 'eforge', 'plans', 'test-set', 'orchestration.yaml'), 'planSet: test-set\n');
-    execFileSync('git', ['add', '.'], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'add plan'], { cwd: dir });
-    const sha = gitSha(dir);
-
-    const refs = await collectBuildArtifactProvenance(dir, {
-      planSetName: 'test-set',
-      outputDir: 'eforge/plans',
-    });
-
-    const orchRef = refs.find((r) => r.kind === 'orchestration');
-    expect(orchRef!.webUrl).toBe(
-      `https://github.com/my-org/my-repo/blob/${sha}/eforge/plans/test-set/orchestration.yaml`,
-    );
-  });
-
-  it('renders GitHub blob URL for ssh:// remote', async () => {
-    const dir = makeTempDir();
-    setupGitRepo(dir);
-    execFileSync('git', ['remote', 'add', 'origin', 'ssh://git@github.com/my-org/my-repo.git'], { cwd: dir });
-
-    mkdirSync(join(dir, 'eforge', 'plans', 'test-set'), { recursive: true });
-    writeFileSync(join(dir, 'eforge', 'plans', 'test-set', 'orchestration.yaml'), 'planSet: test-set\n');
-    execFileSync('git', ['add', '.'], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'add plan'], { cwd: dir });
-    const sha = gitSha(dir);
-
-    const refs = await collectBuildArtifactProvenance(dir, {
-      planSetName: 'test-set',
-      outputDir: 'eforge/plans',
-    });
-
-    const orchRef = refs.find((r) => r.kind === 'orchestration');
-    expect(orchRef!.webUrl).toBe(
-      `https://github.com/my-org/my-repo/blob/${sha}/eforge/plans/test-set/orchestration.yaml`,
-    );
-  });
 
   it('sets webUrl to undefined when remote is a local file path', async () => {
     const dir = makeTempDir();

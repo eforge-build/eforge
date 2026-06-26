@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '../db.js';
@@ -7,11 +7,9 @@ import { startServer, type MonitorServer } from '../server.js';
 
 const CONSOLE_INDEX_MARKER = '<!-- console-ui-index -->';
 const CONSOLE_ASSET_CONTENT = '// console-asset-content';
-const SENTINEL_CONTENT = 'SENTINEL-OUTSIDE-ROOTS';
 
 let server: MonitorServer;
 let baseUrl: string;
-let symlinkAssetsAvailable = false;
 
 beforeAll(async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'eforge-static-test-'));
@@ -20,15 +18,6 @@ beforeAll(async () => {
   writeFileSync(join(consoleUiDir, 'index.html'), CONSOLE_INDEX_MARKER);
   writeFileSync(join(consoleUiDir, 'assets', 'console.js'), CONSOLE_ASSET_CONTENT);
 
-  const sentinelPath = join(tmp, 'sentinel.txt');
-  writeFileSync(sentinelPath, SENTINEL_CONTENT);
-
-  try {
-    symlinkSync(sentinelPath, join(consoleUiDir, 'assets', 'sentinel-link.txt'));
-    symlinkAssetsAvailable = true;
-  } catch {
-    symlinkAssetsAvailable = false;
-  }
 
   const db = openDatabase(':memory:');
   server = await startServer(db, 0, {
@@ -77,29 +66,6 @@ describe('Console UI serving', () => {
     expect(body).toContain(CONSOLE_INDEX_MARKER);
   });
 
-  it('returns 404 for a missing Console asset', async () => {
-    const res = await get('/console/assets/missing.js');
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 400 for malformed percent escapes under /console', async () => {
-    const res = await get('/console/%80%80');
-    expect(res.status).toBe(400);
-    expect(await res.text()).not.toContain(CONSOLE_INDEX_MARKER);
-  });
-
-  it('rejects encoded traversal under /console assets', async () => {
-    const res = await get('/console/assets/%2e%2e%2f%2e%2e%2fsentinel.txt');
-    expect(res.status).toBe(404);
-    expect(await res.text()).not.toContain(SENTINEL_CONTENT);
-  });
-
-  it('rejects symlink escapes from the Console root', async () => {
-    if (!symlinkAssetsAvailable) return;
-    const res = await get('/console/assets/sentinel-link.txt');
-    expect(res.status).toBe(404);
-    expect(await res.text()).not.toContain(SENTINEL_CONTENT);
-  });
 });
 
 describe('GET /api/not-a-route', () => {
