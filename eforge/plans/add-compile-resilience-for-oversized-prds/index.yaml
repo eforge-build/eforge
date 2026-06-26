@@ -4,7 +4,8 @@ description: Add engine-owned compile resilience for oversized PRDs through
   diagnostics, context-failure classification, recovery guidance, and
   fail-closed artifact validation.
 created: 2026-06-26
-status: draft
+status: compiled
+compiled: "2026-06-26"
 mode: expedition
 validate:
   - pnpm type-check
