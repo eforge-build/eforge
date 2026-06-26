@@ -25,7 +25,7 @@
  *
  * Planning-mode playbooks are valid artifacts, but execution is owned by extension
  * actions that can hand control to an interactive planning agent (for example the
- * eforge-plan planning entry or /eforge:playbook run).
+ * eforge-plan planning entry exposed through generic contribution invocation).
  */
 import { access, readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';

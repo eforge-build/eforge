@@ -1,8 +1,7 @@
 /**
  * Pure Pi landing policy/menu helper.
  *
- * Computes branch-aware choice menus for both /eforge:build and autonomous
- * /eforge:playbook run. No side effects — callers own all UI rendering.
+ * Computes branch-aware choice menus for build landing choices. No side effects — callers own all UI rendering.
  *
  * Canonical landing action values: pr, merge, leave.
  * These are sent directly as landingAction in request bodies.

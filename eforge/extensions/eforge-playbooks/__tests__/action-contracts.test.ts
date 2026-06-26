@@ -109,6 +109,21 @@ describe('eforge-playbooks action contracts', () => {
         goal: 'Also flattened.',
       });
       expect(multipleVariants).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('exactly one save payload variant') });
+
+      const rawScopeMismatch = await dispatch(cwd, 'save-playbook', {
+        scope: 'project-local',
+        raw: rawPlaybook({ name: 'raw-scope-mismatch', scope: 'project-team' }),
+      });
+      expect(rawScopeMismatch).toMatchObject({ kind: 'invalid-input', validationErrors: [expect.objectContaining({ path: '/scope' })] });
+
+      const nestedScopeMismatch = await dispatch(cwd, 'save-playbook', {
+        scope: 'project-local',
+        playbook: {
+          frontmatter: { name: 'nested-scope-mismatch', description: 'Nested scope mismatch', scope: 'project-team', mode: 'planning' },
+          body: { goal: 'Plan it.' },
+        },
+      });
+      expect(nestedScopeMismatch).toMatchObject({ kind: 'invalid-input', validationErrors: [expect.objectContaining({ path: '/scope' })] });
     });
   });
 

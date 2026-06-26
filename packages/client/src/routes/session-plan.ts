@@ -64,7 +64,7 @@ export interface SessionPlanDataWire {
   open_questions: string[];
   profile: 'errand' | 'excursion' | 'expedition' | null;
   body: string;
-  /** Optional inherited agent runtime profile name. Set when created from a planning-mode playbook with a profile. */
+  /** Optional agent runtime profile name supplied by the producer that creates the session plan. */
   agent_profile?: string;
 }
 

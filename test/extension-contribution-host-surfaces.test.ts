@@ -30,6 +30,8 @@ describe('host contribution CLI surface', () => {
     expect(commandNames(contributions)).toContain('list');
     expect(commandNames(contributions)).toContain('show');
     expect(commandNames(contributions)).toContain('invoke');
+    expect(commandNames(program)).not.toContain('playbook');
+    expect(commandNames(program)).not.toContain('play');
   });
 
   it('uses shared client helpers and JSON object input flags without route literals', () => {
@@ -158,6 +160,8 @@ describe('host contribution MCP surface', () => {
 
     expect(contributionIndex).toBeGreaterThan(extensionToolIndex);
     expect(modelsIndex).toBeGreaterThan(contributionIndex);
+    expect(source).not.toContain('eforge_playbook');
+    expect(source).not.toContain('playbook-contributions');
   });
 });
 
@@ -207,6 +211,9 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain('registerExtensionContributionsCommand(pi, () => _latestCtx)');
     expect(source).not.toContain('pi.registerCommand("eforge:plan"');
     expect(source).not.toContain('handlePlanCommand');
+    expect(source).not.toContain('eforge_playbook');
+    expect(source).not.toContain('eforge:playbook');
+    expect(source).not.toContain('playbook-contributions');
   });
 
   it('documents the Pi tool, native command, and generic planning entry without bumping the Pi package version', () => {
@@ -268,6 +275,15 @@ describe('host contribution client exports and source discipline', () => {
 });
 
 describe('host contribution skill parity and plugin versioning', () => {
+  it('omits removed playbook host facades from docs generator skill pairs', () => {
+    const generator = readRepoFile('packages/docs-gen/src/generators/tools.ts');
+
+    expect(generator).not.toContain("plugin: 'playbook'");
+    expect(generator).not.toContain('eforge-playbook');
+    expect(generator).not.toContain('eforge_playbook');
+    expect(generator).toContain('eforge_extension_contribution');
+  });
+
   it('updates Claude and Pi extension-authoring skills with host contribution guidance', () => {
     const pluginSkill = readRepoFile('eforge-plugin/skills/extend/extend.md');
     const piSkill = readRepoFile('packages/pi-eforge/skills/eforge-extend/SKILL.md');
@@ -297,5 +313,6 @@ describe('host contribution skill parity and plugin versioning', () => {
     const baseline = 0 * 1_000_000 + 25 * 1_000 + 51;
 
     expect(actual).toBeGreaterThan(baseline);
+    expect(actual).toBeGreaterThan(0 * 1_000_000 + 25 * 1_000 + 76);
   });
 });

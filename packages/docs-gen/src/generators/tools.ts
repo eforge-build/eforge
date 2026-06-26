@@ -47,7 +47,6 @@ const SKILL_PAIRS_CONFIG = [
   { plugin: 'restart', pi: 'eforge-restart' },
   { plugin: 'status', pi: 'eforge-status' },
   { plugin: 'update', pi: 'eforge-update' },
-  { plugin: 'playbook', pi: 'eforge-playbook' },
   { plugin: 'recover', pi: 'eforge-recover' },
 ] as const;
 
@@ -274,7 +273,7 @@ export async function generateTools(opts: {
     '',
     'Both surfaces are kept in parity per `AGENTS.md`.',
     '',
-    'Playbook and session-plan host tools are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities. `eforge_playbook` is a compatibility facade over the first-party `eforge-playbooks` extension contributions, including list/show/save/validate/copy/promote/demote/run behavior. Session-plan host tools manage project-local planning artifacts separately.',
+    'Extension-provided workflows are discovered, inspected, and invoked through generic contribution APIs: `eforge_extension_contribution` for MCP/Pi hosts and `eforge extension contributions list|show|invoke` for the CLI. Hosts treat contribution IDs as opaque extension-owned identifiers; session-plan host tools manage project-local planning artifacts separately.',
     '',
     '## MCP tools (Claude Code)',
     '',

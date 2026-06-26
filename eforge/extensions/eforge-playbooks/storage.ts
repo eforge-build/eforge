@@ -38,6 +38,12 @@ export function assertRequestedPlaybookName(requestedName: string, actualName: s
   if (requestedName !== actualName) throw invalidField('/name', `Requested playbook name "${requestedName}" does not match loaded playbook name "${actualName}".`);
 }
 
+function assertPayloadScopeMatchesRequest(declaredScope: PlaybookScope | undefined, requestedScope: PlaybookScope): void {
+  if (declaredScope !== undefined && declaredScope !== requestedScope) {
+    throw invalidField('/scope', `Payload scope "${declaredScope}" does not match requested scope "${requestedScope}".`);
+  }
+}
+
 export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
   const hasFlattenedPayload = input.description !== undefined
     || input.mode !== undefined
@@ -52,7 +58,9 @@ export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
   let playbook: Playbook;
   if (input.raw !== undefined) {
     try { playbook = parsePlaybook(input.raw); } catch (err) { return wrapUserError(err, 'Invalid playbook markdown.'); }
+    assertPayloadScopeMatchesRequest(playbook.scope, input.scope);
   } else if (input.playbook !== undefined) {
+    assertPayloadScopeMatchesRequest(input.playbook.frontmatter.scope, input.scope);
     const frontmatter = { ...input.playbook.frontmatter, scope: input.playbook.frontmatter.scope ?? input.scope };
     const parsed = playbookFrontmatterSchema.safeParse(frontmatter);
     if (!parsed.success) throw userError(`Invalid playbook frontmatter: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
