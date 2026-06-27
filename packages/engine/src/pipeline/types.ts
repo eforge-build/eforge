@@ -16,6 +16,10 @@ import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
 import type { ReviewerPerspectiveRegistration, ValidationProviderRegistration } from '../extensions/types.js';
+import type { CompilePreflightRisk } from '../events.js';
+import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
+import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
+import type { CompileScopeRecoveryState } from '../compile-resilience/context-recovery.js';
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -25,6 +29,13 @@ export interface PipelineContext {
   cwd: string;
   planSetName: string;
   sourceContent: string;
+  promptSourceContent?: string;
+  compilePromptSourceBundle?: CompilePromptSourceBundle;
+  compilePreflightOptions?: CompilePreflightOptions;
+  compilePreflight?: CompilePreflightRisk;
+  compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
+  runId?: string;
+  compileScopeRecovery?: CompileScopeRecoveryState;
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

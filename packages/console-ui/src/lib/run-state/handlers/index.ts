@@ -347,6 +347,9 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
+  // Compile resilience advisory/failure events do not mutate run reducer state.
+  'planning:preflight',
+  'planning:scope-context:failure',
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Console rendering is handled outside this session reducer.
   'build:terminal-failure',

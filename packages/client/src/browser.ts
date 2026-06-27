@@ -15,6 +15,12 @@
 export {
   API_ROUTES,
   buildPath,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  RecoverySidecarRecoveryOptionSchema,
 } from './routes.js';
 export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
@@ -32,6 +38,10 @@ export type {
   ReadSidecarRequest,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarSchemaVersion,
+  RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextAction,
+  RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
@@ -433,6 +443,16 @@ export type {
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from './events.js';
 
 
@@ -445,4 +465,8 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   StackProviderSchema, StackProviderOperationKindSchema, StackProviderConflictKindSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
+  BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
+  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH, MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.js';

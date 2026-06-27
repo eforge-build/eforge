@@ -1,9 +1,19 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseWithSchema, type RecoveryVerdictSidecar } from '@eforge-build/client';
+import {
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  parseWithSchema,
+  type RecoverySidecarRecoveryOption,
+  type RecoveryVerdictSidecar,
+} from '@eforge-build/client';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
+
+const SUPPORTED_SCHEMA_VERSIONS = [3, 4] as const;
+type SupportedRecoverySidecarSchemaVersion = typeof SUPPORTED_SCHEMA_VERSIONS[number];
 
 export interface RecoverySidecarProjection {
   sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>;
@@ -102,7 +112,7 @@ export function projectBuildFailureSummary(sidecar: RecoveryVerdictSidecar): Bui
 
 function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence> {
   const obj = requireRecord(value, `Recovery sidecar JSON is invalid${suffix(prdId)}`);
-  if (obj.schemaVersion !== 3) throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected 3`);
+  const schemaVersion = validateSchemaVersion(obj.schemaVersion, prdId);
   if (obj['resume' + 'Eligibility'] !== undefined) throw new Error(`Recovery sidecar contains legacy eligibility data${suffix(prdId)}; regenerate the sidecar with continue-and-repair support`);
   const generatedAt = requireString(obj.generatedAt, 'generatedAt', prdId);
   const sidecarPrdId = requireString(obj.prdId, 'prdId', prdId);
@@ -114,7 +124,7 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
   if (boundedEvidence.identity.prdId !== sidecarPrdId) throw new Error(`Recovery sidecar boundedEvidence.identity.prdId does not match top-level prdId${suffix(prdId)}`);
   if (boundedEvidence.identity.setName !== setName) throw new Error(`Recovery sidecar boundedEvidence.identity.setName does not match top-level setName${suffix(prdId)}`);
   return {
-    schemaVersion: 3,
+    schemaVersion,
     generatedAt,
     prdId: sidecarPrdId,
     setName,
@@ -122,9 +132,14 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     report,
     boundedEvidence,
     ...(obj.continueRepairEligibility !== undefined ? { continueRepairEligibility: validateContinueRepairEligibility(obj.continueRepairEligibility, prdId) } : {}),
-    ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
+    ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, schemaVersion, prdId) } : {}),
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
+}
+
+function validateSchemaVersion(value: unknown, prdId?: string): SupportedRecoverySidecarSchemaVersion {
+  if (SUPPORTED_SCHEMA_VERSIONS.some((version) => value === version)) return value as SupportedRecoverySidecarSchemaVersion;
+  throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected ${SUPPORTED_SCHEMA_VERSIONS.join(' or ')}`);
 }
 
 function validateSidecarVerdict(value: unknown, prdId?: string): RecoveryVerdict {
@@ -274,21 +289,72 @@ function validateContinueRepairEligibility(value: unknown, prdId?: string): Reco
   };
 }
 
-function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySidecarRecoveryOption[] {
+function validateRecoveryOptions(value: unknown, schemaVersion: SupportedRecoverySidecarSchemaVersion, prdId?: string): RecoverySidecarRecoveryOption[] {
   return requireArray(value, 'recoveryOptions', prdId).map((item) => {
     const obj = requireRecord(item, `Recovery sidecar recoveryOptions item is invalid${suffix(prdId)}`);
     const kind = requireString(obj.kind, 'recoveryOptions.kind', prdId);
     const action = requireString(obj.action, 'recoveryOptions.action', prdId);
     if (kind === 'compiled-build-resume' || action === 'eforge_' + 'resume_build') throw new Error(`recoveryOptions contains a legacy repair action${suffix(prdId)}`);
-    if (kind !== 'continue-repair') throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
-    if (action !== 'continue-repair') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
-    return {
-      kind,
-      action,
-      recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
-      reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
-    };
+    if (kind === 'continue-repair') return validateContinueRepairOption(obj, action, prdId);
+    if (kind === 'compile-scope-context') {
+      if (schemaVersion !== 4) throw new Error(`recoveryOptions compile-scope-context requires schemaVersion 4${suffix(prdId)}`);
+      return validateCompileScopeContextOption(obj, action, prdId);
+    }
+    throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
   });
+}
+
+function validateContinueRepairOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
+  if (action !== 'continue-repair') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+  return {
+    kind: 'continue-repair',
+    action,
+    recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
+    reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
+  };
+}
+
+function validateCompileScopeContextOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
+  const compileAction = requireCompileRecoveryGuidanceAction(action, prdId);
+  const attempt = requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId);
+  const maxAttempts = requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId);
+  if (attempt > maxAttempts) throw new Error(`recoveryOptions.attempt cannot exceed recoveryOptions.maxAttempts${suffix(prdId)}`);
+  return {
+    kind: 'compile-scope-context',
+    action: compileAction,
+    recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
+    eligible: requireBoolean(obj.eligible, 'recoveryOptions.eligible', prdId),
+    reason: requireBoundedUtf8String(obj.reason, 'recoveryOptions.reason', RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES, prdId),
+    attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId),
+    attempt,
+    maxAttempts,
+    source: requireCompileScopeContextSource(obj.source, prdId),
+    failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
+  };
+}
+
+function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {
+  try {
+    return parseWithSchema(RecoverySidecarCompileScopeContextActionSchema, value);
+  } catch {
+    throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+  }
+}
+
+function requireCompileScopeContextSource(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['source'] {
+  try {
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.source, value);
+  } catch {
+    throw new Error(`recoveryOptions.source is invalid${suffix(prdId)}`);
+  }
+}
+
+function requireCompileScopeContextFailureKind(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['failureKind'] {
+  try {
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.failureKind, value);
+  } catch {
+    throw new Error(`recoveryOptions.failureKind is invalid${suffix(prdId)}`);
+  }
 }
 
 function validateOptionalStringRecord(value: unknown, label: string, keys: string[], prdId?: string): Record<string, string> {
@@ -334,9 +400,27 @@ function requireStringAllowEmpty(value: unknown, label: string, prdId?: string):
   return value;
 }
 
+function requireBoundedUtf8String(value: unknown, label: string, maxBytes: number, prdId?: string): string {
+  const text = requireString(value, label, prdId);
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes${suffix(prdId)}`);
+  return text;
+}
+
 function requireNumber(value: unknown, label: string, prdId?: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
+}
+
+function requirePositiveInteger(value: unknown, label: string, prdId?: string): number {
+  const numberValue = requireNumber(value, label, prdId);
+  if (!Number.isInteger(numberValue) || numberValue < 1) throw new Error(`${label} is invalid${suffix(prdId)}`);
+  return numberValue;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string, prdId?: string): number {
+  const numberValue = requireNumber(value, label, prdId);
+  if (!Number.isInteger(numberValue) || numberValue < 0) throw new Error(`${label} is invalid${suffix(prdId)}`);
+  return numberValue;
 }
 
 function requireBoolean(value: unknown, label: string, prdId?: string): boolean {

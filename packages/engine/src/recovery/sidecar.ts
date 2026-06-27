@@ -1,7 +1,7 @@
 /**
  * Writes recovery sidecar files alongside a failed PRD:
  *   <prdId>.recovery.md   — concise operator report with detailed evidence below
- *   <prdId>.recovery.json — machine-readable v3 recovery sidecar contract
+ *   <prdId>.recovery.json — machine-readable v3/v4 recovery sidecar contract
  *
  * Both files are written atomically via write-to-temp-then-rename (POSIX-safe).
  */

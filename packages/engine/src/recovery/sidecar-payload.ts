@@ -2,12 +2,15 @@ import type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarReport,
   RecoveryVerdictSidecar,
+  RecoverySidecarRecoveryOption,
+  RecoverySidecarSchemaVersion,
 } from '@eforge-build/client';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
 
 const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT = 4;
 const BULLET_LIMIT = 12;
 const BULLET_CHARS = 500;
 const ERROR_CHARS = 1_000;
@@ -31,7 +34,7 @@ export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayload
   const recoveryOptions = recoveryOptionsFor(options.continueRepairEligibility, options.recoveryOptions);
   const report = buildReport(options.summary, options.verdict, boundedEvidence, options.continueRepairEligibility, recoveryOptions);
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: schemaVersionForRecoveryOptions(recoveryOptions),
     generatedAt,
     prdId: options.prdId,
     setName: options.summary.setName,
@@ -53,7 +56,7 @@ function buildReport(
   const rootFailure = compactRootFailure(summary);
   return {
     operatorSummary: truncateText(verdict.rationale, BULLET_CHARS * 2, 'operator summary').text,
-    recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : recommendedAction(verdict),
+    recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : (recommendedCompileScopeContextOption(recoveryOptions)?.reason ?? recommendedAction(verdict)),
     ...(rootFailure ? { rootFailure } : {}),
     keyEvidence: keyEvidence(summary, evidence),
     completedWork: boundedStrings(verdict.completedWork, 'completed work'),
@@ -170,6 +173,7 @@ function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoun
   const lines: string[] = [];
   if (evidence.failingPlan.planId !== 'unknown') lines.push(`Failing plan: ${evidence.failingPlan.planId}`);
   if (summary.terminalFailure?.scope) lines.push(`Terminal failure scope: ${summary.terminalFailure.scope}${summary.terminalFailure.stage ? ` (${summary.terminalFailure.stage})` : ''}`);
+  if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure.terminalSubtype === 'error_context_window') lines.push('Compile scope/context failure evidence is present; use recoveryOptions for bounded retry/decomposition guidance.');
   if (summary.acceptanceValidation) {
     lines.push(`Acceptance validation: ${summary.acceptanceValidation.pass}/${summary.acceptanceValidation.total} pass, ${summary.acceptanceValidation.fail} fail, ${summary.acceptanceValidation.unknown} unknown`);
     if (isAllUnknownAcceptanceFailure(summary.acceptanceValidation)) {
@@ -200,8 +204,19 @@ function recoveryOptionsFor(
   }];
 }
 
+function schemaVersionForRecoveryOptions(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): RecoverySidecarSchemaVersion {
+  return recoveryOptions?.some((option) => option.kind === 'compile-scope-context') === true
+    ? SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT
+    : SCHEMA_VERSION;
+}
+
 function hasRecommendedContinueRepairOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): boolean {
   return recoveryOptions?.some((option) => option.kind === 'continue-repair' && option.action === 'continue-repair' && option.recommended) === true;
+}
+
+function recommendedCompileScopeContextOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): RecoverySidecarRecoveryOption | undefined {
+  if (hasRecommendedContinueRepairOption(recoveryOptions)) return undefined;
+  return recoveryOptions?.find((option) => option.kind === 'compile-scope-context' && option.recommended);
 }
 
 function continueRepairRecommendedAction(prdId: string): string {

@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { FailureBanner } from '@/components/common/failure-banner';
 import type { RunState } from '@/lib/run-state';
-import type { PlanInfo } from '@eforge-build/client/browser';
+import type { CompileScopeContextFailure, PlanInfo } from '@eforge-build/client/browser';
+import { compileFailureBannerModel } from '@/lib/compile-resilience-format';
 
 // PlansResponse is PlanInfo[]
 type PlansResponse = PlanInfo[];
@@ -45,6 +46,16 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
     return failures;
   }, [runState.events]);
 
+  const compileFailure = useMemo(() => {
+    for (let i = runState.events.length - 1; i >= 0; i--) {
+      const { event } = runState.events[i];
+      if (event.type === 'planning:scope-context:failure' && event.failure.recovery.attempted !== true) {
+        return compileFailureBannerModel(event.failure as CompileScopeContextFailure);
+      }
+    }
+    return null;
+  }, [runState.events]);
+
   const phaseSummary = useMemo(() => {
     for (let i = runState.events.length - 1; i >= 0; i--) {
       const { event } = runState.events[i];
@@ -73,7 +84,7 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         reviewIssuesByPerspective={runState.reviewIssuesByPerspective}
         decisions={runState.decisions}
       />
-      <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} />
+      <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} compileFailure={compileFailure} />
     </div>
   );
 }

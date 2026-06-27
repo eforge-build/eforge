@@ -10,6 +10,8 @@ import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-bui
 import { safeParseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
+import { buildRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-payload';
+import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { openDatabase } from '@eforge-build/monitor/db';
@@ -89,6 +91,29 @@ describe('writeRecoverySidecar', () => {
     expect(JSON.stringify(parsed)).not.toContain(['suggested', 'Successor', 'Prd'].join(''));
     expect(parsed.generatedAt).toBeDefined();
     expect(typeof parsed.generatedAt).toBe('string');
+  });
+
+  it('uses schemaVersion: 4 for compile-scope-context recovery options', () => {
+    const payload = buildRecoverySidecarPayload({
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict()!,
+      recoveryOptions: [{
+        kind: 'compile-scope-context',
+        action: 'bounded-decomposition',
+        recommended: true,
+        eligible: true,
+        reason: 'decompose oversized compile scope',
+        attempted: false,
+        attempt: 0,
+        maxAttempts: 1,
+        source: 'provider',
+        failureKind: 'context-window',
+      }],
+    });
+
+    expect(payload.schemaVersion).toBe(4);
+    expect(parseRecoverySidecarPayload(JSON.stringify(payload)).schemaVersion).toBe(4);
   });
 
   it('markdown includes verdict, plan table, and landed commits', async () => {
@@ -378,6 +403,92 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('eforge continue-repair');
     expect(md).toContain('Recommended operator action');
     expect(md).not.toContain(['eforge', 'resume', 'build'].join('_'));
+  });
+
+  it('read-sidecar validation accepts compile scope/context recovery guidance options', async () => {
+    const dir = makeTempDir();
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict('manual')!,
+      continueRepairEvidence: {
+        continueRepairEligibility: {
+          source: 'continueRepairEligibility',
+          eligible: false,
+          featureBranch: 'eforge/test-set',
+          reason: 'scope requires operator guidance',
+        },
+        recoveryOptions: [{
+          kind: 'compile-scope-context',
+          action: 'manual-reduce-scope',
+          recommended: true,
+          eligible: true,
+          reason: 'Reduce the PRD scope before retrying compile.',
+          source: 'provider',
+          failureKind: 'context-window',
+          attempted: false,
+          attempt: 0,
+          maxAttempts: 1,
+        }],
+      },
+    });
+
+    const parsed = parseRecoverySidecarPayload(await readFile(jsonPath, 'utf-8'), 'test-prd');
+
+    expect(parsed.recoveryOptions).toContainEqual(expect.objectContaining({
+      kind: 'compile-scope-context',
+      action: 'manual-reduce-scope',
+      recommended: true,
+    }));
+  });
+
+  it('read-sidecar validation rejects missing or malformed compile scope/context guidance fields', async () => {
+    const dir = makeTempDir();
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict('manual')!,
+      continueRepairEvidence: {
+        continueRepairEligibility: {
+          source: 'continueRepairEligibility',
+          eligible: false,
+          featureBranch: 'eforge/test-set',
+          reason: 'scope requires operator guidance',
+        },
+        recoveryOptions: [{
+          kind: 'compile-scope-context',
+          action: 'manual-reduce-scope',
+          recommended: true,
+          eligible: true,
+          reason: 'Reduce the PRD scope before retrying compile.',
+          source: 'provider',
+          failureKind: 'context-window',
+          attempted: true,
+          attempt: 1,
+          maxAttempts: 2,
+        }],
+      },
+    });
+    const sidecar = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    const invalidCases = [
+      { attempted: 'yes' },
+      { attempted: undefined },
+      { attempt: -1 },
+      { attempt: 1.5 },
+      { maxAttempts: '2' },
+      { maxAttempts: 0 },
+      { source: 'daemon' },
+      { source: undefined },
+      { failureKind: 'unknown' },
+      { failureKind: undefined },
+    ];
+
+    for (const invalidFields of invalidCases) {
+      const option = { ...sidecar.recoveryOptions[0], ...invalidFields };
+      expect(() => parseRecoverySidecarPayload(JSON.stringify({ ...sidecar, recoveryOptions: [option] }), 'test-prd')).toThrow(/recoveryOptions\./);
+    }
   });
 
   it('JSON and Markdown include ineligible continue-repair evidence without a recommended option', async () => {

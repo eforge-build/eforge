@@ -45,6 +45,16 @@ export type {
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from '@eforge-build/client';
 
 export {
@@ -58,6 +68,15 @@ export {
   BuildResumeArtifactSourceSchema,
   BuildResumeArtifactPlanSchema,
   BuildResumeArtifactsEventSchema,
+  BoundedDiagnosticOptionsSchema,
+  BoundedValidationDiagnosticSchema,
+  CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema,
+  CompilePreflightRiskSchema,
+  CompileRecoveryActionSchema,
+  CompileRiskLevelSchema,
+  CompileScopeContextFailureSchema,
+  MAX_COMPILE_RISK_LIST_ITEMS,
 } from '@eforge-build/client';
 
 // Engine-only types not part of the wire protocol:

@@ -6,6 +6,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
+import type { CompileFailureBannerModel } from '@/lib/compile-resilience-format';
 
 interface BuildFailure {
   planId: string;
@@ -15,6 +16,7 @@ interface BuildFailure {
 interface FailureBannerProps {
   failures: BuildFailure[];
   phaseSummary: string | null;
+  compileFailure?: CompileFailureBannerModel | null;
 }
 
 /** Abbreviate plan IDs like "plan-01-some-name" to "Plan 01" */
@@ -38,10 +40,10 @@ function FailureRow({ failure }: { failure: BuildFailure }) {
   );
 }
 
-export function FailureBanner({ failures, phaseSummary }: FailureBannerProps) {
+export function FailureBanner({ failures, phaseSummary, compileFailure }: FailureBannerProps) {
   const [open, setOpen] = useState(false);
 
-  if (failures.length === 0) return null;
+  if (failures.length === 0 && !compileFailure) return null;
 
   const needsCollapsible = failures.length >= COLLAPSE_THRESHOLD;
   const visibleFailures = needsCollapsible ? failures.slice(0, VISIBLE_THRESHOLD) : failures;
@@ -53,7 +55,9 @@ export function FailureBanner({ failures, phaseSummary }: FailureBannerProps) {
       <div className="flex items-center gap-2">
         <XCircle className="w-4 h-4 text-red shrink-0" />
         <span className="text-sm font-medium text-red">
-          {failures.length === 1 ? '1 plan failed' : `${failures.length} plans failed`}
+          {compileFailure && failures.length === 0
+            ? compileFailure.title
+            : failures.length === 1 ? '1 plan failed' : `${failures.length} plans failed`}
         </span>
         {phaseSummary && (
           <span className="text-xs text-text-dim ml-1">{phaseSummary}</span>
@@ -62,6 +66,12 @@ export function FailureBanner({ failures, phaseSummary }: FailureBannerProps) {
 
       {/* Failure rows */}
       <div className="flex flex-col gap-1.5 pl-6">
+        {compileFailure && (
+          <div className="text-xs text-text-bright">
+            <div className="font-medium">{compileFailure.summary}</div>
+            {compileFailure.details.map((detail) => <div key={detail} className="text-text-dim">{detail}</div>)}
+          </div>
+        )}
         {visibleFailures.map((f) => (
           <FailureRow key={f.planId} failure={f} />
         ))}

@@ -23,7 +23,15 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 ## Compile phase
 
-The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, and writes the plan set and dependency graph.
+The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
+
+## Compile preflight
+
+A typed `planning:preflight` diagnostic emitted during compile before planner-family agents run. It reports normal, elevated, or overflow-risk input size/context risk with bounded source, prompt, inventory, subsystem, representative, and recommendation details.
+
+## Compile scope/context failure
+
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures.
 
 ## Daemon
 
@@ -31,7 +39,7 @@ The long-running background process that watches the queue, runs builds, exposes
 
 ## Errand, Excursion, Expedition
 
-Workflow profiles selected by the planner. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review.
+Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible.
 
 ## Evaluator
 
@@ -67,7 +75,7 @@ A reusable Markdown workflow template for recurring work owned by the first-part
 
 ## Planner
 
-The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
+The agent stage that writes implementation plans after the pipeline-composer has sized work and chosen the initial workflow profile. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
 
 ## PRD
 
@@ -103,7 +111,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus a recommended `continue-repair` option. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 

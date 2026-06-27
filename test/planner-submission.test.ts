@@ -329,8 +329,11 @@ describe('Planner submission tool: validation error formatting', () => {
     expect(output).toContain('call the submission tool again');
     expect(output).toContain('Do NOT fall back to Write');
 
-    // Per-path breakdown — one line per zod issue.
-    expect(output).toMatch(/plans\.0\.frontmatter\.agents:/);
+    // Bounded diagnostic includes the concrete schema path without echoing raw arguments.
+    expect(output).toContain('schemaPath=plans.0.frontmatter.agents');
+    expect(output).toContain('expectedType=');
+    expect(output).toContain('receivedType=');
+    expect(output).toContain('payloadSha256=');
   });
 });
 

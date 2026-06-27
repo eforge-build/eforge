@@ -9,6 +9,7 @@ import { formatStageRegistry, validatePipeline } from '../pipeline.js';
 import { REVIEW_PERSPECTIVES, parseWithSchema } from '@eforge-build/client';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import type { ValidationProviderRegistration } from '../extensions/types.js';
+import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 
 /**
  * Options for the pipeline composer agent.
@@ -18,6 +19,10 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
   /** The PRD / source document content */
   source: string;
+  /** Prompt-safe compacted source content. Defaults to source. */
+  promptSourceContent?: string;
+  /** Prompt/live context guardrails for planner-family runs. */
+  contextGuard?: CompileContextGuardOptions;
   /** Working directory */
   cwd: string;
   /** Whether to emit verbose agent-level events */
@@ -89,6 +94,8 @@ export async function* composePipeline(
   options: PipelineComposerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { harness, source, cwd, verbose, abortController } = options;
+  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'pipeline-composer' });
+  const promptSourceContent = options.promptSourceContent ?? source;
 
   const stageRegistry = formatStageRegistry();
   const schema = getPipelineCompositionSchemaYaml();
@@ -111,7 +118,7 @@ export async function* composePipeline(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const composedAppend = [options.promptAppend, validationProviderAppend].filter(Boolean).join('\n\n') || undefined;
     let promptText = await loadPrompt('pipeline-composer', {
-      source,
+      source: promptSourceContent,
       stageRegistry,
       schema,
       validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,
@@ -130,6 +137,13 @@ export async function* composePipeline(
         + `Return valid JSON matching the schema above, correcting the specific issue noted.`;
     }
 
+    try {
+      contextGuard.assertPrompt(promptText);
+    } catch (err) {
+      abortController?.abort();
+      throw err;
+    }
+
     let resultText: string | undefined;
 
     for await (const event of harness.run(
@@ -144,6 +158,12 @@ export async function* composePipeline(
       'pipeline-composer',
       options.lane,
     )) {
+      try {
+        contextGuard.observe(event);
+      } catch (err) {
+        abortController?.abort();
+        throw err;
+      }
       if (isAlwaysYieldedAgentEvent(event) || verbose) {
         yield event;
       }

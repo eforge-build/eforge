@@ -16,9 +16,18 @@ import {
 import { safeParseWithSchema, type ValueError } from '@eforge-build/client';
 import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
 import { emitPlanningDecision } from '../decisions.js';
+import {
+  formatPlannerToolSchemaValidationError,
+  formatPlannerToolSemanticValidationError,
+} from '../compile-resilience/diagnostics.js';
+import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
+  /** Prompt-safe compacted source content. Defaults to resolved source content. */
+  promptSourceContent?: string;
+  /** Prompt/live context guardrails for planner-family runs. */
+  contextGuard?: CompileContextGuardOptions;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -36,6 +45,19 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   defaultBuild?: BuildStageSpec[];
   /** Default review profile from the pipeline composer, used as context for decision emission. */
   defaultReview?: ReviewProfileConfig;
+}
+
+function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
+  const controller = new AbortController() as AbortController & { dispose: () => void };
+  const abortChild = () => controller.abort();
+  if (parentSignal?.aborted) {
+    controller.abort();
+    controller.dispose = () => {};
+  } else {
+    parentSignal?.addEventListener('abort', abortChild, { once: true });
+    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
+  }
+  return controller;
 }
 
 /**
@@ -108,11 +130,21 @@ function createPlanSetSubmissionTool(
     handler: async (input: unknown) => {
       const parseResult = safeParseWithSchema(planSetSubmissionSchema, input);
       if (!parseResult.success) {
-        return formatSubmissionValidationError(parseResult.error.errors);
+        return formatPlannerToolSchemaValidationError({
+          toolName: 'submit_plan_set',
+          schema: planSetSubmissionSchema,
+          errors: parseResult.error.errors,
+          fullPayload: input,
+        });
       }
       const validationResult = validatePlanSetSubmission(parseResult.data);
       if (!validationResult.success) {
-        return formatSubmissionValidationError(validationResult.error.errors);
+        return formatPlannerToolSemanticValidationError({
+          toolName: 'submit_plan_set',
+          errors: validationResult.error.errors,
+          fullPayload: input,
+          expectedType: 'valid plan-set submission',
+        });
       }
       if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
@@ -136,11 +168,21 @@ function createArchitectureSubmissionTool(
     handler: async (input: unknown) => {
       const parseResult = safeParseWithSchema(architectureSubmissionSchema, input);
       if (!parseResult.success) {
-        return formatSubmissionValidationError(parseResult.error.errors);
+        return formatPlannerToolSchemaValidationError({
+          toolName: 'submit_architecture',
+          schema: architectureSubmissionSchema,
+          errors: parseResult.error.errors,
+          fullPayload: input,
+        });
       }
       const validationResult = validateArchitectureSubmission(parseResult.data);
       if (!validationResult.success) {
-        return formatSubmissionValidationError(validationResult.error.errors);
+        return formatPlannerToolSemanticValidationError({
+          toolName: 'submit_architecture',
+          errors: validationResult.error.errors,
+          fullPayload: input,
+          expectedType: 'valid architecture submission',
+        });
       }
       if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
@@ -168,6 +210,7 @@ export async function* runPlanner(
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
   const { harness } = options;
+  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
@@ -185,6 +228,7 @@ export async function* runPlanner(
 
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
+  const promptSourceContent = options.promptSourceContent ?? sourceContent;
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
@@ -224,7 +268,7 @@ ${existingPlans}`;
     }
 
     return loadPrompt('planner', {
-      source: sourceContent,
+      source: promptSourceContent,
       planSetName,
       cwd,
       outputDir: options.outputDir ?? 'eforge/plans',
@@ -274,6 +318,8 @@ ${existingPlans}`;
     iteration++;
 
     const prompt = await buildPrompt();
+    contextGuard.assertPrompt(prompt);
+    const attemptAbort = createLinkedAbortController(options.abortController?.signal);
 
     if (iteration === 1) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
@@ -283,39 +329,49 @@ ${existingPlans}`;
 
     let needsRestart = false;
 
-    for await (const event of harness.run(
-      { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
-      'planner',
-      options.lane,
-    )) {
-      if (event.type === 'agent:message') {
-        if (!skipEmitted) {
-          const skipReason = parseSkipBlock(event.content);
-          if (skipReason) {
-            skipEmitted = true;
-            yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: skipReason };
+    try {
+      for await (const event of harness.run(
+        { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        'planner',
+        options.lane,
+      )) {
+        try {
+          contextGuard.observe(event);
+        } catch (err) {
+          attemptAbort.abort();
+          throw err;
+        }
+        if (event.type === 'agent:message') {
+          if (!skipEmitted) {
+            const skipReason = parseSkipBlock(event.content);
+            if (skipReason) {
+              skipEmitted = true;
+              yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: skipReason };
+            }
+          }
+
+          const questions = parseClarificationBlocks(event.content);
+          if (questions.length > 0 && !options.auto) {
+            yield { timestamp: new Date().toISOString(), type: 'planning:clarification', questions };
+
+            if (options.onClarification) {
+              const answers = await options.onClarification(questions);
+              yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
+              allClarifications.push({ questions, answers });
+              // Restart agent with answers baked into prompt
+              needsRestart = true;
+              break;
+            }
           }
         }
 
-        const questions = parseClarificationBlocks(event.content);
-        if (questions.length > 0 && !options.auto) {
-          yield { timestamp: new Date().toISOString(), type: 'planning:clarification', questions };
-
-          if (options.onClarification) {
-            const answers = await options.onClarification(questions);
-            yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
-            allClarifications.push({ questions, answers });
-            // Restart agent with answers baked into prompt
-            needsRestart = true;
-            break;
-          }
+        // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
+        if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
+          yield event;
         }
       }
-
-      // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
-      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
-        yield event;
-      }
+    } finally {
+      attemptAbort.dispose();
     }
 
     if (!needsRestart) break;

@@ -1,7 +1,16 @@
 export { safeParseWithSchema, parseWithSchema, formatSchemaError, getSchemaYaml } from './schema-utils.js';
 export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
 
-export { API_ROUTES, buildPath } from './routes.js';
+export {
+  API_ROUTES,
+  buildPath,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  RecoverySidecarRecoveryOptionSchema,
+} from './routes.js';
 export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,
@@ -16,6 +25,10 @@ export type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarSchemaVersion,
+  RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextAction,
+  RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
@@ -475,6 +488,16 @@ export type {
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightEvent,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+  CompileScopeContextFailureEvent,
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, AgentTerminalSubtypeSchema, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
@@ -486,6 +509,10 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
   StackProviderSchema, StackProviderOperationKindSchema, StackProviderConflictKindSchema, LandingPublicationActionSchema, StackLayerStatusSchema, StackArtifactRefSchema, StackLayerWireSchema,
   TerminalFailureScopeSchema, TerminalFailureEnvelopeSchema,
   BuildResumeArtifactSourceSchema, BuildResumeArtifactPlanSchema, BuildResumeArtifactsEventSchema,
+  BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
+  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH, MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.js';
 
 export type * from './types.js';

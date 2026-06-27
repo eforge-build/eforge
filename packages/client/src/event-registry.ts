@@ -1,31 +1,14 @@
 /**
  * Event metadata registry: one entry per EforgeEvent variant.
  *
- * Each entry declares:
- *   scope   — 'daemon' (daemon-wide, streamed via /api/daemon-events) or
- *             'session' (per-session build events, not in the daemon stream)
- *   persist — whether the event is stored in the DB and replayed on reconnect
- *   summary — optional human-readable one-line description (string or function)
- *   project — optional state projection for daemon-scoped events shared by
- *             Console and other project-state consumers
- *
- * Derive DAEMON_EVENT_TYPES by filtering for daemon-scoped persist:true entries:
- *   const DAEMON_EVENT_TYPES = Object.keys(eventRegistry).filter((k) => {
- *     const meta = eventRegistry[k as EforgeEvent['type']];
- *     return meta.scope === 'daemon' && meta.persist;
- *   });
- *
- * The _Exhaustive type check at the bottom verifies every EforgeEvent['type']
- * has an entry, so adding a new event variant to the exported schema/type
- * contract forces an update here.
+ * Entries declare stream scope, persistence/replay behavior, optional summaries,
+ * and optional daemon-state projectors. The _Exhaustive type check at the bottom
+ * forces this registry to track every exported event variant.
  */
 import type { EforgeEvent, StackLayerWire } from './events.js';
 import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked, projectQueueDependencyOverridden, projectQueuePrdDispatchFailed } from './event-projections/queue.js';
 import type { RunInfo, QueueItem, AutoBuildState, FailedEnqueueInfo } from './types.js';
-// ---------------------------------------------------------------------------
-// Minimal state shape the project functions operate on.
-// Console and daemon project-state snapshots satisfy this interface structurally.
-// ---------------------------------------------------------------------------
+// Minimal state shape the project functions operate on; Console and daemon snapshots satisfy it structurally.
 export interface ProjectableState {
   /** Runs sorted by startedAt DESC; runs[0] is the most-recent session. */
   runs: RunInfo[];
@@ -59,9 +42,7 @@ export interface ProjectableState {
   stackLayers: StackLayerWire[];
   /** Durable failed-enqueue attention rows keyed by runId. */ failedEnqueues?: FailedEnqueueInfo[];
 }
-// ---------------------------------------------------------------------------
-// EventMeta: per-variant metadata shape
-// ---------------------------------------------------------------------------
+// EventMeta: per-variant metadata shape.
 export type EventScope = 'daemon' | 'session';
 export interface EventMeta<T extends EforgeEvent['type']> {
   /** Context this event belongs to. */
@@ -359,6 +340,12 @@ const eventRegistry = {
     summary: (e) => `Planning from ${e.label ?? e.source}`,
   },
 
+  'planning:preflight': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Compile preflight: ${e.risk.level}; ${e.risk.sourceBytes} source bytes; recovery ${e.risk.recommendation.action}`,
+  },
+
   'planning:skip': {
     scope: 'session',
     persist: false,
@@ -375,6 +362,12 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => `Planning error: ${e.reason}`,
+  },
+
+  'planning:scope-context:failure': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Compile scope/context failure: ${e.failure.failureKind} from ${e.failure.source}; recovery ${e.failure.recovery.action}`,
   },
 
   'planning:clarification': {

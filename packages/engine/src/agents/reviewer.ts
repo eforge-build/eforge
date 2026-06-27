@@ -15,6 +15,9 @@ const exec = promisify(execFile);
 /** Max byte length for diff context injected into reviewer prompts. */
 const DIFF_CONTEXT_MAX_BYTES = 80_000;
 
+/** Max character length for plan content injected into reviewer prompts. */
+export const REVIEW_PLAN_CONTENT_MAX_CHARS = 32_000;
+
 const GENERATED_REVIEW_ARTIFACT_PATH_PREFIXES = [
   'eforge/plans/',
   'eforge/prds/',
@@ -91,6 +94,18 @@ export async function computeReviewContext(
   return { changedFiles, changedFilesList, diffContext };
 }
 
+/** Bound plan content injected into reviewer prompts so oversized PRDs do not exceed provider context windows. */
+export function boundReviewPlanContent(planContent: string): string {
+  if (planContent.length <= REVIEW_PLAN_CONTENT_MAX_CHARS) return planContent;
+
+  const marker = `\n\n[... plan content truncated from ${planContent.length} chars to ${REVIEW_PLAN_CONTENT_MAX_CHARS} chars for reviewer context; inspect changed files for omitted details ...]\n\n`;
+  const available = Math.max(0, REVIEW_PLAN_CONTENT_MAX_CHARS - marker.length);
+  const headLength = Math.floor(available / 2);
+  const tailLength = available - headLength;
+
+  return `${planContent.slice(0, headLength)}${marker}${planContent.slice(planContent.length - tailLength)}`;
+}
+
 /**
  * Options for the reviewer agent.
  */
@@ -128,7 +143,7 @@ export async function composeReviewPrompt(
 ): Promise<{ prompt: string; changedFiles: string[] }> {
   const { changedFiles, changedFilesList, diffContext } = await computeReviewContext(cwd, baseBranch);
   const prompt = await loadPrompt('reviewer', {
-    plan_content: planContent,
+    plan_content: boundReviewPlanContent(planContent),
     base_branch: baseBranch,
     changed_files: changedFiles,
     diff_context: diffContext,

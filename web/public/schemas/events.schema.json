@@ -4553,6 +4553,225 @@
           "type": "object",
           "required": [
             "type",
+            "risk"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:preflight",
+              "type": "string"
+            },
+            "risk": {
+              "type": "object",
+              "required": [
+                "level",
+                "sourceBytes",
+                "promptSourceBytes",
+                "acceptanceCriteriaCount",
+                "score",
+                "generatedInventory",
+                "subsystemBreadth",
+                "reasons",
+                "recommendation"
+              ],
+              "properties": {
+                "level": {
+                  "anyOf": [
+                    {
+                      "const": "normal",
+                      "type": "string"
+                    },
+                    {
+                      "const": "elevated",
+                      "type": "string"
+                    },
+                    {
+                      "const": "overflow-risk",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "sourceBytes": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "promptSourceBytes": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "acceptanceCriteriaCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "score": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "generatedInventory": {
+                  "type": "object",
+                  "required": [
+                    "detected",
+                    "contentHashes",
+                    "pathReferences",
+                    "headings",
+                    "blockCount",
+                    "sidecarCount",
+                    "omittedBytes"
+                  ],
+                  "properties": {
+                    "detected": {
+                      "type": "boolean"
+                    },
+                    "contentHashes": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      }
+                    },
+                    "pathReferences": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "headings": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "blockCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sidecarCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "omittedBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                "subsystemBreadth": {
+                  "type": "object",
+                  "required": [
+                    "count",
+                    "subsystems",
+                    "evidence"
+                  ],
+                  "properties": {
+                    "count": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "subsystems": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "evidence": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "selectedProfile": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pipelineScope": {
+                  "anyOf": [
+                    {
+                      "const": "errand",
+                      "type": "string"
+                    },
+                    {
+                      "const": "excursion",
+                      "type": "string"
+                    },
+                    {
+                      "const": "expedition",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "reasons": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "recommendation": {
+                  "type": "object",
+                  "required": [
+                    "action",
+                    "eligible",
+                    "reason"
+                  ],
+                  "properties": {
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "retry-as-expedition",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bounded-decomposition",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual-reduce-scope",
+                          "type": "string"
+                        },
+                        {
+                          "const": "repair-existing-artifacts",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "eligible": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "reason"
           ],
           "properties": {
@@ -4602,6 +4821,425 @@
             },
             "reason": {
               "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "failure"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:scope-context:failure",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "failure": {
+              "type": "object",
+              "required": [
+                "source",
+                "failureKind",
+                "stage",
+                "explanation",
+                "recovery",
+                "artifacts"
+              ],
+              "properties": {
+                "source": {
+                  "anyOf": [
+                    {
+                      "const": "preflight",
+                      "type": "string"
+                    },
+                    {
+                      "const": "live-context-guard",
+                      "type": "string"
+                    },
+                    {
+                      "const": "provider",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "failureKind": {
+                  "anyOf": [
+                    {
+                      "const": "context-budget",
+                      "type": "string"
+                    },
+                    {
+                      "const": "context-window",
+                      "type": "string"
+                    },
+                    {
+                      "const": "context-length",
+                      "type": "string"
+                    },
+                    {
+                      "const": "scope-too-broad",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "stage": {
+                  "anyOf": [
+                    {
+                      "const": "pipeline-composer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "planner",
+                      "type": "string"
+                    },
+                    {
+                      "const": "module-planner",
+                      "type": "string"
+                    },
+                    {
+                      "const": "compile-expedition",
+                      "type": "string"
+                    },
+                    {
+                      "const": "compile",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "explanation": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "risk": {
+                  "type": "object",
+                  "required": [
+                    "level",
+                    "sourceBytes",
+                    "promptSourceBytes",
+                    "acceptanceCriteriaCount",
+                    "score",
+                    "generatedInventory",
+                    "subsystemBreadth",
+                    "reasons",
+                    "recommendation"
+                  ],
+                  "properties": {
+                    "level": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "elevated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overflow-risk",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "promptSourceBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "acceptanceCriteriaCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "score": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "generatedInventory": {
+                      "type": "object",
+                      "required": [
+                        "detected",
+                        "contentHashes",
+                        "pathReferences",
+                        "headings",
+                        "blockCount",
+                        "sidecarCount",
+                        "omittedBytes"
+                      ],
+                      "properties": {
+                        "detected": {
+                          "type": "boolean"
+                        },
+                        "contentHashes": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          }
+                        },
+                        "pathReferences": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "headings": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "blockCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "sidecarCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "omittedBytes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "subsystemBreadth": {
+                      "type": "object",
+                      "required": [
+                        "count",
+                        "subsystems",
+                        "evidence"
+                      ],
+                      "properties": {
+                        "count": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "subsystems": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "evidence": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "selectedProfile": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pipelineScope": {
+                      "anyOf": [
+                        {
+                          "const": "errand",
+                          "type": "string"
+                        },
+                        {
+                          "const": "excursion",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expedition",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reasons": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "recommendation": {
+                      "type": "object",
+                      "required": [
+                        "action",
+                        "eligible",
+                        "reason"
+                      ],
+                      "properties": {
+                        "action": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "retry-as-expedition",
+                              "type": "string"
+                            },
+                            {
+                              "const": "bounded-decomposition",
+                              "type": "string"
+                            },
+                            {
+                              "const": "manual-reduce-scope",
+                              "type": "string"
+                            },
+                            {
+                              "const": "repair-existing-artifacts",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "eligible": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "observed": {
+                  "type": "object",
+                  "properties": {
+                    "inputTokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "outputTokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "turns": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "promptBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                "recovery": {
+                  "type": "object",
+                  "required": [
+                    "action",
+                    "eligible",
+                    "attempted",
+                    "attempt",
+                    "maxAttempts",
+                    "reason"
+                  ],
+                  "properties": {
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "retry-as-expedition",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bounded-decomposition",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual-reduce-scope",
+                          "type": "string"
+                        },
+                        {
+                          "const": "repair-existing-artifacts",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "eligible": {
+                      "type": "boolean"
+                    },
+                    "attempted": {
+                      "type": "boolean"
+                    },
+                    "attempt": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxAttempts": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  }
+                },
+                "artifacts": {
+                  "type": "object",
+                  "required": [
+                    "orchestrationExists",
+                    "validPlanCount",
+                    "invalidPlanCount",
+                    "missingPlanFileCount",
+                    "missingPlanFiles",
+                    "invalidPlanFiles"
+                  ],
+                  "properties": {
+                    "orchestrationExists": {
+                      "type": "boolean"
+                    },
+                    "validPlanCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "invalidPlanCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "missingPlanFileCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "missingPlanFiles": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "invalidPlanFiles": {
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -6941,6 +7579,10 @@
                 },
                 {
                   "const": "error_pi_tool_infrastructure",
+                  "type": "string"
+                },
+                {
+                  "const": "error_context_window",
                   "type": "string"
                 },
                 {
@@ -9396,6 +10038,10 @@
                   "type": "string"
                 },
                 {
+                  "const": "error_context_window",
+                  "type": "string"
+                },
+                {
                   "const": "error_transient_transport",
                   "type": "string"
                 }
@@ -10276,6 +10922,10 @@
                         },
                         {
                           "const": "error_pi_tool_infrastructure",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_context_window",
                           "type": "string"
                         },
                         {
@@ -13520,6 +14170,10 @@
                     },
                     {
                       "const": "error_pi_tool_infrastructure",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_context_window",
                       "type": "string"
                     },
                     {
@@ -18946,6 +19600,225 @@
                         "type": "object",
                         "required": [
                           "type",
+                          "risk"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:preflight",
+                            "type": "string"
+                          },
+                          "risk": {
+                            "type": "object",
+                            "required": [
+                              "level",
+                              "sourceBytes",
+                              "promptSourceBytes",
+                              "acceptanceCriteriaCount",
+                              "score",
+                              "generatedInventory",
+                              "subsystemBreadth",
+                              "reasons",
+                              "recommendation"
+                            ],
+                            "properties": {
+                              "level": {
+                                "anyOf": [
+                                  {
+                                    "const": "normal",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "elevated",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overflow-risk",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "sourceBytes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "promptSourceBytes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "acceptanceCriteriaCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "score": {
+                                "minimum": 0,
+                                "type": "number"
+                              },
+                              "generatedInventory": {
+                                "type": "object",
+                                "required": [
+                                  "detected",
+                                  "contentHashes",
+                                  "pathReferences",
+                                  "headings",
+                                  "blockCount",
+                                  "sidecarCount",
+                                  "omittedBytes"
+                                ],
+                                "properties": {
+                                  "detected": {
+                                    "type": "boolean"
+                                  },
+                                  "contentHashes": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "pattern": "^[a-f0-9]{64}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "pathReferences": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "headings": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "blockCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sidecarCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "omittedBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              "subsystemBreadth": {
+                                "type": "object",
+                                "required": [
+                                  "count",
+                                  "subsystems",
+                                  "evidence"
+                                ],
+                                "properties": {
+                                  "count": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "subsystems": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "evidence": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "selectedProfile": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "pipelineScope": {
+                                "anyOf": [
+                                  {
+                                    "const": "errand",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "excursion",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expedition",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "reasons": {
+                                "maxItems": 12,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "recommendation": {
+                                "type": "object",
+                                "required": [
+                                  "action",
+                                  "eligible",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "action": {
+                                    "anyOf": [
+                                      {
+                                        "const": "none",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "retry-as-expedition",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "bounded-decomposition",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "manual-reduce-scope",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "repair-existing-artifacts",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "eligible": {
+                                    "type": "boolean"
+                                  },
+                                  "reason": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
                           "reason"
                         ],
                         "properties": {
@@ -18995,6 +19868,425 @@
                           },
                           "reason": {
                             "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "failure"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:scope-context:failure",
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "failure": {
+                            "type": "object",
+                            "required": [
+                              "source",
+                              "failureKind",
+                              "stage",
+                              "explanation",
+                              "recovery",
+                              "artifacts"
+                            ],
+                            "properties": {
+                              "source": {
+                                "anyOf": [
+                                  {
+                                    "const": "preflight",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "live-context-guard",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "provider",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "failureKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "context-budget",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "context-window",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "context-length",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "scope-too-broad",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "stage": {
+                                "anyOf": [
+                                  {
+                                    "const": "pipeline-composer",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "planner",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "module-planner",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "compile-expedition",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "compile",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "explanation": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              },
+                              "risk": {
+                                "type": "object",
+                                "required": [
+                                  "level",
+                                  "sourceBytes",
+                                  "promptSourceBytes",
+                                  "acceptanceCriteriaCount",
+                                  "score",
+                                  "generatedInventory",
+                                  "subsystemBreadth",
+                                  "reasons",
+                                  "recommendation"
+                                ],
+                                "properties": {
+                                  "level": {
+                                    "anyOf": [
+                                      {
+                                        "const": "normal",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "elevated",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "overflow-risk",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "sourceBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "promptSourceBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "acceptanceCriteriaCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "score": {
+                                    "minimum": 0,
+                                    "type": "number"
+                                  },
+                                  "generatedInventory": {
+                                    "type": "object",
+                                    "required": [
+                                      "detected",
+                                      "contentHashes",
+                                      "pathReferences",
+                                      "headings",
+                                      "blockCount",
+                                      "sidecarCount",
+                                      "omittedBytes"
+                                    ],
+                                    "properties": {
+                                      "detected": {
+                                        "type": "boolean"
+                                      },
+                                      "contentHashes": {
+                                        "maxItems": 12,
+                                        "type": "array",
+                                        "items": {
+                                          "pattern": "^[a-f0-9]{64}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "pathReferences": {
+                                        "maxItems": 12,
+                                        "type": "array",
+                                        "items": {
+                                          "maxLength": 2000,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "headings": {
+                                        "maxItems": 12,
+                                        "type": "array",
+                                        "items": {
+                                          "maxLength": 2000,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "blockCount": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "sidecarCount": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "omittedBytes": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    }
+                                  },
+                                  "subsystemBreadth": {
+                                    "type": "object",
+                                    "required": [
+                                      "count",
+                                      "subsystems",
+                                      "evidence"
+                                    ],
+                                    "properties": {
+                                      "count": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "subsystems": {
+                                        "maxItems": 12,
+                                        "type": "array",
+                                        "items": {
+                                          "maxLength": 2000,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "evidence": {
+                                        "maxItems": 12,
+                                        "type": "array",
+                                        "items": {
+                                          "maxLength": 2000,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "selectedProfile": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "pipelineScope": {
+                                    "anyOf": [
+                                      {
+                                        "const": "errand",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "excursion",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "expedition",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "reasons": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "recommendation": {
+                                    "type": "object",
+                                    "required": [
+                                      "action",
+                                      "eligible",
+                                      "reason"
+                                    ],
+                                    "properties": {
+                                      "action": {
+                                        "anyOf": [
+                                          {
+                                            "const": "none",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "retry-as-expedition",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "bounded-decomposition",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "manual-reduce-scope",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "repair-existing-artifacts",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      },
+                                      "eligible": {
+                                        "type": "boolean"
+                                      },
+                                      "reason": {
+                                        "maxLength": 2000,
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "observed": {
+                                "type": "object",
+                                "properties": {
+                                  "inputTokens": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "outputTokens": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "turns": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "promptBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              "recovery": {
+                                "type": "object",
+                                "required": [
+                                  "action",
+                                  "eligible",
+                                  "attempted",
+                                  "attempt",
+                                  "maxAttempts",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "action": {
+                                    "anyOf": [
+                                      {
+                                        "const": "none",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "retry-as-expedition",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "bounded-decomposition",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "manual-reduce-scope",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "repair-existing-artifacts",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "eligible": {
+                                    "type": "boolean"
+                                  },
+                                  "attempted": {
+                                    "type": "boolean"
+                                  },
+                                  "attempt": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "maxAttempts": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "reason": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "artifacts": {
+                                "type": "object",
+                                "required": [
+                                  "orchestrationExists",
+                                  "validPlanCount",
+                                  "invalidPlanCount",
+                                  "missingPlanFileCount",
+                                  "missingPlanFiles",
+                                  "invalidPlanFiles"
+                                ],
+                                "properties": {
+                                  "orchestrationExists": {
+                                    "type": "boolean"
+                                  },
+                                  "validPlanCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "invalidPlanCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "missingPlanFileCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "missingPlanFiles": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "invalidPlanFiles": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       },
@@ -21334,6 +22626,10 @@
                               },
                               {
                                 "const": "error_pi_tool_infrastructure",
+                                "type": "string"
+                              },
+                              {
+                                "const": "error_context_window",
                                 "type": "string"
                               },
                               {
@@ -23789,6 +25085,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "error_context_window",
+                                "type": "string"
+                              },
+                              {
                                 "const": "error_transient_transport",
                                 "type": "string"
                               }
@@ -24669,6 +25969,10 @@
                                       },
                                       {
                                         "const": "error_pi_tool_infrastructure",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "error_context_window",
                                         "type": "string"
                                       },
                                       {
@@ -27913,6 +29217,10 @@
                                   },
                                   {
                                     "const": "error_pi_tool_infrastructure",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "error_context_window",
                                     "type": "string"
                                   },
                                   {

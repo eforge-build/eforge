@@ -170,6 +170,13 @@ export function determineRecoveryRecommendation(
     return continueRepairRecommendation(summary, continueRepairEligibility);
   }
 
+  if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure?.terminalSubtype === 'error_context_window') {
+    return {
+      verdict: 'manual',
+      rationale: `Compile scope/context failure detected${summary.terminalFailure.stage ? ` at ${summary.terminalFailure.stage}` : ''}. Use the sidecar recoveryOptions for bounded retry-as-expedition, decomposition, or manual scope-reduction guidance; automated apply-recovery does not mutate queue state for compile scope/context recovery.`,
+    };
+  }
+
   const failingPlans = summary.failingPlans;
 
   // No failingPlans → cannot determine terminal subtypes → manual
@@ -316,6 +323,13 @@ function deterministicVerdict(
   } as RecoveryVerdict;
 }
 
+function isCompileScopeContextTerminalFailure(summary: BuildFailureSummary): boolean {
+  return summary.terminalFailure?.scope === 'compile' && summary.terminalFailure.terminalSubtype === 'error_context_window';
+}
+
+const COMPILE_SCOPE_CONTEXT_MANUAL_INVALIDATION_REASON =
+  'Compile scope/context recovery options are read-only guidance and do not map to apply-recovery mutations; keeping deterministic manual verdict.';
+
 /**
  * Select the final recovery verdict by combining the deterministic recommendation
  * with analyst output and recording source metadata.
@@ -355,6 +369,17 @@ export function selectFinalVerdict(options: SelectFinalVerdictOptions): Recovery
       undefined,
       errorContext !== undefined ? { recoveryError: errorContext } : undefined,
     );
+  }
+
+  if (
+    isCompileScopeContextTerminalFailure(summary) &&
+    deterministicRecommendation.verdict === 'manual' &&
+    analystVerdict !== null &&
+    analystVerdict.verdict !== 'manual'
+  ) {
+    return deterministicVerdict(deterministicRecommendation, summary, analystVerdict, {
+      verdictInvalidationReason: COMPILE_SCOPE_CONTEXT_MANUAL_INVALIDATION_REASON,
+    });
   }
 
   // Case 1: Analyst produced a verdict — validate it

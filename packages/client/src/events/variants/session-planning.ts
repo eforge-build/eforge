@@ -41,6 +41,10 @@ import {
   TerminalFailureEnvelopeSchema,
   TestIssueSchema,
 } from '../shared/schemas.js';
+import {
+  CompilePreflightRiskSchema,
+  CompileScopeContextFailureSchema,
+} from '../shared/compile-resilience.js';
 import { agentStartFields } from '../shared/agent-fields.js';
 import {
   ExtensionActionEventBaseFields,
@@ -121,6 +125,10 @@ export const planningEventVariants = [
     source: Type.String(),
     label: Type.Optional(Type.String()),
   }),
+  Type.Object({
+    type: Type.Literal('planning:preflight'),
+    risk: CompilePreflightRiskSchema,
+  }),
   Type.Object({ type: Type.Literal('planning:skip'), reason: Type.String() }),
   Type.Object({
     type: Type.Literal('planning:submission'),
@@ -129,6 +137,11 @@ export const planningEventVariants = [
     hasMigrations: Type.Boolean(),
   }),
   Type.Object({ type: Type.Literal('planning:error'), reason: Type.String() }),
+  Type.Object({
+    type: Type.Literal('planning:scope-context:failure'),
+    runId: Type.Optional(Type.String()),
+    failure: CompileScopeContextFailureSchema,
+  }),
   Type.Object({
     type: Type.Literal('planning:clarification'),
     questions: Type.Array(ClarificationQuestionSchema),

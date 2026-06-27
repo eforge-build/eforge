@@ -1,4 +1,11 @@
-import type { RecoveryVerdict } from '../events.js';
+import { FormatRegistry, Type } from '@sinclair/typebox';
+import type { Static } from '@sinclair/typebox';
+import {
+  CompileScopeContextFailureKindSchema,
+  CompileScopeContextSourceSchema,
+  type CompileScopeContextFailure,
+  type RecoveryVerdict,
+} from '../events.js';
 
 /** POST /api/recover */
 export interface RecoverRequest {
@@ -95,15 +102,19 @@ export interface RecoverySidecarBoundedEvidence {
   evidenceOmissions?: string[];
 }
 
+export type RecoverySidecarSchemaVersion = 3 | 4;
+
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
- * Current concise v3 contract: top-level identity, verdict, operator report,
+ * Concise sidecar contract: top-level identity, verdict, operator report,
  * bounded evidence, generated timestamp, optional read-only continue-and-repair
  * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
- * durable `applied` marker.
+ * durable `applied` marker. Version 4 is used when compile-scope-context
+ * recovery guidance is present; schemaVersion 3 sidecars must not contain
+ * compile-scope-context recovery options.
  */
 export interface RecoveryVerdictSidecar {
-  schemaVersion: number;
+  schemaVersion: RecoverySidecarSchemaVersion;
   generatedAt: string;
   prdId: string;
   setName: string;
@@ -173,12 +184,61 @@ export type RecoverySidecarContinueRepairEligibility =
       checkedPath?: string;
     };
 
-export interface RecoverySidecarRecoveryOption {
-  kind: 'continue-repair';
-  action: 'continue-repair';
-  recommended: boolean;
-  reason: string;
-}
+export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['retry-as-expedition', 'bounded-decomposition', 'manual-reduce-scope'] as const;
+export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES = 1_000;
+
+const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT = 'eforge-recovery-sidecar-compile-scope-context-reason-bytes';
+
+FormatRegistry.Set(
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT,
+  (value) => new TextEncoder().encode(value).length <= RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+);
+
+const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
+const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
+
+export const RecoverySidecarContinueRepairOptionSchema = Type.Object({
+  kind: Type.Literal('continue-repair'),
+  action: Type.Literal('continue-repair'),
+  recommended: Type.Boolean(),
+  reason: Type.String(),
+});
+
+export const RecoverySidecarCompileScopeContextActionSchema = Type.Union([
+  Type.Literal('retry-as-expedition'),
+  Type.Literal('bounded-decomposition'),
+  Type.Literal('manual-reduce-scope'),
+]);
+
+export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
+  kind: Type.Literal('compile-scope-context'),
+  action: RecoverySidecarCompileScopeContextActionSchema,
+  recommended: Type.Boolean(),
+  eligible: Type.Boolean(),
+  reason: Type.String({
+    minLength: 1,
+    maxLength: RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+    format: RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT,
+  }),
+  attempted: Type.Boolean(),
+  attempt: NonNegativeIntegerSchema,
+  maxAttempts: PositiveIntegerSchema,
+  source: CompileScopeContextSourceSchema,
+  failureKind: CompileScopeContextFailureKindSchema,
+});
+
+export const RecoverySidecarRecoveryOptionSchema = Type.Union([
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+]);
+
+export type RecoverySidecarContinueRepairOption = Static<typeof RecoverySidecarContinueRepairOptionSchema>;
+export type RecoverySidecarCompileScopeContextAction = typeof RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS[number];
+export type RecoverySidecarCompileScopeContextOption = Static<typeof RecoverySidecarCompileScopeContextOptionSchema> & {
+  source: CompileScopeContextFailure['source'];
+  failureKind: CompileScopeContextFailure['failureKind'];
+};
+export type RecoverySidecarRecoveryOption = Static<typeof RecoverySidecarRecoveryOptionSchema>;
 
 interface ContinueRepairEligibilityIdentity {
   prdId: string;

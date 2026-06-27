@@ -76,6 +76,10 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
+import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
+import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
+import { CompileScopeContextError } from './compile-resilience/context-guard.js';
+import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
 
 const exec = promisify(execFile);
 
@@ -325,12 +329,15 @@ export class EforgeEngine {
   }
 
   /**
-   * Plan: explore codebase, assess scope, write planning artifacts.
+   * Plan: explore codebase, assess scope, write and validate planning artifacts.
    *
    * The planner explores and assesses scope. Based on the assessment:
    * - errand/excursion: planner generates plan files + orchestration.yaml directly
    * - expedition: planner generates architecture.md + index.yaml + module list,
    *   then engine runs module planners and compiles plan files
+   *
+   * Non-skipped compiles report success only after persisted orchestration and
+   * plan files validate.
    */
   async *compile(source: string, options: Partial<CompileOptions> = {}): AsyncGenerator<EforgeEvent> {
     const runId = randomUUID();
@@ -339,6 +346,7 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Compile complete';
+    let compileCtx: PipelineContext | undefined;
 
     // Emit profile info before config warnings
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
@@ -372,6 +380,12 @@ export class EforgeEngine {
       } catch {
         sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
+      const compilePreflightOptions: CompilePreflightOptions = {
+        selectedProfile: this.configProfile.name,
+      };
+      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
+      const compilePreflight = estimateCompilePreflightRisk(compilePromptSourceBundle, compilePreflightOptions);
+      yield { timestamp: new Date().toISOString(), type: 'planning:preflight', risk: compilePreflight };
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -407,7 +421,12 @@ export class EforgeEngine {
         baseBranch,
         ...(diffBaseRef !== undefined && { diffBaseRef }),
         planSetName,
+        runId,
         sourceContent,
+        promptSourceContent: compilePromptSourceBundle.promptSource,
+        compilePromptSourceBundle,
+        compilePreflightOptions,
+        compilePreflight,
         verbose: options.verbose,
         auto: options.auto,
         abortController: options.abortController,
@@ -419,9 +438,22 @@ export class EforgeEngine {
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
         extensionValidationProviders: this.extensionRegistry.validationProviders,
       };
+      compileCtx = ctx;
 
       // Run compile pipeline
       yield* runCompilePipeline(ctx);
+
+      const artifactValidation = await validateCompileArtifacts(ctx);
+      for (const warning of artifactValidation.warnings) {
+        yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
+      }
+      if (!artifactValidation.ok) {
+        status = 'failed';
+        summary = artifactValidation.message;
+        yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: artifactValidation.message };
+        return;
+      }
+      ctx.plans = artifactValidation.plans;
 
       // If compile pipeline didn't produce plans and there's no plan-review-cycle
       // in the compile stages, commit artifacts here
@@ -439,7 +471,14 @@ export class EforgeEngine {
 
     } catch (err) {
       status = 'failed';
-      summary = (err as Error).message;
+      const contextError = compileCtx ? await toCompileScopeContextError(compileCtx, err, err instanceof CompileScopeContextError ? err.failure.stage : 'compile') : null;
+      if (contextError) {
+        summary = contextError.failure.explanation;
+        yield scopeContextFailureEvent(contextError.failure, runId);
+        yield compileScopeTerminalFailureEvent({ runId, failure: contextError.failure });
+      } else {
+        summary = (err as Error).message;
+      }
     } finally {
       tracing?.setOutput({ status, summary });
       yield {

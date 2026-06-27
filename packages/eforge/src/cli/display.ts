@@ -4,6 +4,7 @@ import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
+import { renderCompilePreflightLines, renderCompileScopeContextFailureModel } from './compile-resilience-display.js';
 
 type PlaybookListEntry = {
   name: string;
@@ -251,6 +252,28 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
     case 'planning:continuation':
       setSpinnerText('plan', `Planning - continuing (attempt ${event.attempt}/${event.maxContinuations})`);
       return true;
+    case 'planning:preflight': {
+      const lines = renderCompilePreflightLines(event.risk, { verbose });
+      for (const line of lines) console.log(chalk.yellow(`  ⚠ ${line}`));
+      return true;
+    }
+    case 'planning:scope-context:failure': {
+      const model = renderCompileScopeContextFailureModel(event.failure);
+      if (model.attempted) {
+        const spinner = spinners.get('plan');
+        if (spinner) {
+          spinner.stop();
+          spinners.delete('plan');
+        }
+        console.log(chalk.yellow(`  ⚠ ${model.headline}`));
+      } else {
+        failSpinner('plan', `Planning stopped: ${event.failure.failureKind} at ${event.failure.stage}`);
+        console.log(chalk.red(`  ✗ ${model.headline}`));
+      }
+      for (const detail of model.details) console.log(chalk.dim(`    ${detail}`));
+      if (model.attempted) startSpinner('plan', 'Retrying planning as expedition...');
+      return true;
+    }
     case 'planning:complete':
       if (event.plans.length === 0) {
         succeedSpinner('plan', 'Nothing to plan — source is fully implemented');

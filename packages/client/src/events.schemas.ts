@@ -9,6 +9,22 @@
 
 export { ORCHESTRATION_MODES, REVIEW_PERSPECTIVES } from './events/constants.js';
 export {
+  BoundedDiagnosticOptionsSchema,
+  BoundedValidationDiagnosticSchema,
+  CompileArtifactSummarySchema,
+  CompilePipelineScopeSchema,
+  CompilePreflightRiskSchema,
+  CompileRecoveryActionSchema,
+  CompileRiskLevelSchema,
+  CompileScopeContextFailureKindSchema,
+  CompileScopeContextFailureSchema,
+  CompileScopeContextSourceSchema,
+  MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH,
+  MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
+  MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
+} from './events/shared/compile-resilience.js';
+export {
   AcceptanceCriteriaConflictSchema,
   AcceptanceCriterionVerdictSchema,
   AgentTerminalSubtypeSchema,
@@ -46,6 +62,16 @@ export { DaemonStreamSnapshotSchema, SessionStreamSnapshotSchema } from './event
 export { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, isBuiltInReviewPerspective } from './events/utilities.js';
 export { parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, safeParseSessionStreamSnapshot } from './events/parse.js';
 
+export type {
+  BoundedDiagnosticOptions,
+  BoundedValidationDiagnostic,
+  CompileArtifactSummary,
+  CompilePipelineScope,
+  CompilePreflightRisk,
+  CompileRecoveryAction,
+  CompileRiskLevel,
+  CompileScopeContextFailure,
+} from './events/shared/compile-resilience.js';
 export type { BuildDecision, PlanningDecision, PlanningDecisionEvent } from './events/decisions.js';
 export type { QueueDispatchFailureStage, QueueEvent } from './events/queue-events.js';
 export type { DaemonStreamSnapshot, SessionStreamSnapshot } from './events/snapshots.js';
@@ -66,6 +92,8 @@ export type {
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
   BuildResumeIneligibleEvent,
+  CompilePreflightEvent,
+  CompileScopeContextFailureEvent,
   BuildResumeStartEvent,
   BuildResumeStateEvent,
   ClarificationQuestion,

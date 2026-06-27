@@ -106,6 +106,24 @@ If `outcome` is `failed` without a conflict, inspect the failed `providerCommand
 
 If enqueue formatting, source loading, or pre-queue validation fails before a runnable queue file exists, Console shows a durable **Enqueue failed** row in Needs attention. The row is keyed by run id and includes the source label, reason, timestamp, fallback next command, and any disabled reason. When the daemon still has enough source data, use the confirmed **Re-enqueue…** action; otherwise copy the fallback command and fix the source or validation issue first. A successful re-enqueue resolves the failed-enqueue row.
 
+## Oversized PRDs and compile scope/context failures
+
+Large or machine-generated PRDs can exhaust compile-stage prompt or provider context before any plan is built. eforge reports this through typed planning diagnostics instead of a generic manual failure.
+
+**What to look for:**
+
+- `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action.
+
+**How to interpret recovery guidance:**
+
+- `retry-as-expedition` means eforge determined the compile may fit after escalating from errand/excursion to expedition decomposition. If a retry was attempted, Console and CLI show it as recovery progress; if not attempted or terminal, treat it as guidance for the next build attempt.
+- `bounded-decomposition` means the input should be split into smaller, independently reviewable PRDs or modules before retrying.
+- `manual-reduce-scope` means a human should remove generated bulk, duplicate context, or unrelated requirements and enqueue a reduced source.
+- `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
+
+Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue the revised source.
+
 ## Recover from a failed build
 
 When a queued build fails, the scheduler pauses and the PRD is marked `failed` in the queue while desired auto-build remains enabled. Do not re-enqueue manually; use the recovery workflow instead.
@@ -132,7 +150,7 @@ The recovery flow:
    - `continue-repair` - prepare root-plan `## Recovery Guidance`, then queue the failed PRD through the compiled-artifact repair path, preserving existing queue controls and reactivating skipped descendants whose dependency chain reaches the parent
    - `abandon` - remove the failed PRD and recovery sidecars from the queue because the work should not continue
    - `manual` - make no queue changes; a human must inspect the recovery report and decide whether bounded manual replanning or a deliberately authored follow-up PRD is appropriate
-4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence.
+4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence. Other `recoveryOptions` entries, such as `compile-scope-context`, are non-mutating guidance; surface their reason/action but keep the primary action tied to the verdict or continue-and-repair eligibility.
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` / `eforge apply-recovery <prdId>` for `retry` and `abandon`. For `continue-repair`, call `eforge_continue_repair` (Pi), `mcp__eforge__eforge_continue_repair` (Claude Code), or `eforge continue-repair <prdId> [--set-name <name>] [--profile <name>]` (CLI). These commands require current root-plan `## Recovery Guidance` before queueing the continued build and return queued metadata rather than a local worker session.
 

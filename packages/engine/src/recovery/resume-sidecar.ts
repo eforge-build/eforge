@@ -1,8 +1,9 @@
 import { join } from 'node:path';
-import type { BuildFailureSummary } from '@eforge-build/client';
+import type { BuildFailureSummary, RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import { projectResumeEligibility } from '../resume/compiled-build.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 import { truncateMiddleText, truncateText } from './text-bounds.js';
+import { readCompileScopeContextRecoveryOptionFromDb } from '../compile-resilience/context-recovery.js';
 
 export type RecoverySidecarContinueRepairEligibilitySource = 'continueRepairEligibility' | 'inspection-error';
 export type RecoverySidecarContinueRepairArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
@@ -26,13 +27,6 @@ export type RecoverySidecarContinueRepairEligibility =
       reason: string;
       checkedPath?: string;
     };
-
-export interface RecoverySidecarRecoveryOption {
-  kind: 'continue-repair';
-  action: 'continue-repair';
-  recommended: boolean;
-  reason: string;
-}
 
 const CONTINUE_REPAIR_REASON_CHARS = 1_000;
 const CONTINUE_REPAIR_DIFF_STAT_CHARS = 4_000;
@@ -61,6 +55,10 @@ export interface ProjectRecoverySidecarResumeEvidenceOptions {
 export async function projectRecoverySidecarResumeEvidence(options: ProjectRecoverySidecarResumeEvidenceOptions): Promise<RecoverySidecarContinueRepairEvidence> {
   const featureBranch = options.featureBranch ?? `eforge/${options.setName}`;
   const mergeWorktreePath = join(computeWorktreeBase(options.cwd, options.setName), '__merge__');
+  const terminalFailure = options.failureSummary?.terminalFailure;
+  const compileScopeOption = terminalFailure?.scope === 'compile' && terminalFailure.terminalSubtype === 'error_context_window'
+    ? readCompileScopeContextRecoveryOptionFromDb({ dbPath: options.dbPath, setName: options.setName })
+    : undefined;
 
   try {
     const projected = await projectResumeEligibility({
@@ -90,7 +88,7 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
       };
       return {
         continueRepairEligibility,
-        ...(projected.partial === true ? {} : { recoveryOptions: [continueRepairOption('Compiled plan artifacts are eligible for continue-and-repair.')] }),
+        ...(projected.partial === true ? compileScopeOptions(compileScopeOption) : { recoveryOptions: [continueRepairOption('Compiled plan artifacts are eligible for continue-and-repair.'), ...compileScopeOptionList(compileScopeOption)] }),
       };
     }
 
@@ -102,6 +100,7 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
         reason: boundReason(projected.reason, 'continue-and-repair ineligibility reason'),
         ...(projected.checkedPath !== undefined ? { checkedPath: projected.checkedPath } : {}),
       },
+      ...compileScopeOptions(compileScopeOption),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -112,6 +111,7 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
         featureBranch,
         reason: `Continue-and-repair eligibility inspection failed: ${boundReason(message, 'continue-and-repair inspection failure')}`,
       },
+      ...compileScopeOptions(compileScopeOption),
     };
   }
 }
@@ -123,6 +123,15 @@ function continueRepairOption(reason: string): RecoverySidecarRecoveryOption {
     recommended: true,
     reason,
   };
+}
+
+function compileScopeOptionList(option: RecoverySidecarRecoveryOption | undefined): RecoverySidecarRecoveryOption[] {
+  return option ? [option] : [];
+}
+
+function compileScopeOptions(option: RecoverySidecarRecoveryOption | undefined): Pick<RecoverySidecarContinueRepairEvidence, 'recoveryOptions'> {
+  const options = compileScopeOptionList(option);
+  return options.length > 0 ? { recoveryOptions: options } : {};
 }
 
 function boundReason(reason: string, label: string): string {

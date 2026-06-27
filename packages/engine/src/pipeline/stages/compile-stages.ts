@@ -24,7 +24,7 @@ import { composePipeline, type PipelineComposerOptions } from '../../agents/pipe
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig } from '../../plan.js';
 import { runParallel, type ParallelTask } from '../../concurrency.js';
-import type { ResolvedAgentConfig, BuildStageSpec, ReviewProfileConfig } from '../../config.js';
+import type { ResolvedAgentConfig } from '../../config.js';
 
 import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
@@ -36,10 +36,18 @@ import {
   runArchitectureReviewCycleStage,
   runCohesionReviewCycleStage,
 } from './compile-review-cycles.js';
+import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
+import { compileContextGuardOptions, CompileScopeContextError } from '../../compile-resilience/context-guard.js';
+import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
+import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
 // ---------------------------------------------------------------------------
+
+function mergePromptAppend(configured: string | undefined, preflightAppend: string | undefined): string {
+  return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
+}
 
 /**
  * Run a single planner attempt (per-retry span + event processing).
@@ -65,7 +73,10 @@ async function* runPlannerAttempt(
       baseBranch: ctx.baseBranch,
       defaultBuild: ctx.pipeline.defaultBuild,
       defaultReview: ctx.pipeline.defaultReview,
+      promptSourceContent: ctx.promptSourceContent,
+      contextGuard: compileContextGuardOptions({ stage: 'planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
       ...agentConfig,
+      promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
       ...plannerTb,
       phase: 'compile',
       stage: 'planner',
@@ -129,6 +140,8 @@ async function* runPlannerAttempt(
     end();
   } catch (err) {
     error(err as Error);
+    const contextError = await toCompileScopeContextError(ctx, err, 'planner');
+    if (contextError) throw contextError;
     throw err;
   }
 }
@@ -169,12 +182,15 @@ async function* runModulePlannerAttempt(
       moduleDependsOn: mod.dependsOn,
       architectureContent,
       sourceContent: ctx.sourceContent,
+      promptSourceContent: ctx.promptSourceContent,
+      contextGuard: compileContextGuardOptions({ stage: 'module-planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
       dependencyPlanContent,
       verbose: ctx.verbose,
       onClarification: ctx.onClarification,
       abortController: ctx.abortController,
       outputDir: ctx.config.plan.outputDir,
       ...agentConfig,
+      promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
       ...modulePlannerTb,
       phase: 'compile',
       stage: 'module-planner',
@@ -207,6 +223,17 @@ async function* runModulePlannerAttempt(
     modTracker.cleanup();
     modSpan.end();
   } catch (err) {
+    if (err instanceof CompileScopeContextError) {
+      modTracker.cleanup();
+      modSpan.error(err);
+      throw err;
+    }
+    const contextError = await toCompileScopeContextError(ctx, err, 'module-planner');
+    if (contextError) {
+      modTracker.cleanup();
+      modSpan.error(contextError);
+      throw contextError;
+    }
     // Module planning failure is non-fatal - continue with other modules
     modTracker.cleanup();
     modSpan.error(err as Error);
@@ -231,10 +258,13 @@ registerCompileStage({
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
+    promptSourceContent: ctx.promptSourceContent,
+    contextGuard: compileContextGuardOptions({ stage: 'pipeline-composer', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
     ...composerConfig,
+    promptAppend: mergePromptAppend(composerConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
     phase: 'compile',
     stage: 'pipeline-composer',
     harness: composerHarness,
@@ -242,10 +272,11 @@ registerCompileStage({
     lane: 'planning',
   };
   const composerRetryPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<PipelineComposerOptions>;
-  yield* withRetry(
-    async function* (input: PipelineComposerOptions) {
-      for await (const event of composePipeline(input)) {
-        if (event.type === 'planning:pipeline') {
+  try {
+    yield* withRetry(
+      async function* (input: PipelineComposerOptions) {
+        for await (const event of composePipeline(input)) {
+          if (event.type === 'planning:pipeline') {
           // Update the context pipeline from the composer result
           ctx.pipeline = {
             scope: event.scope as 'errand' | 'excursion' | 'expedition',
@@ -254,13 +285,30 @@ registerCompileStage({
             defaultReview: event.defaultReview,
             rationale: event.rationale,
           };
+          if (ctx.compilePromptSourceBundle && ctx.compilePreflightOptions) {
+            ctx.compilePreflightOptions = { ...ctx.compilePreflightOptions, requestedPipelineScope: ctx.pipeline.scope };
+            ctx.compilePreflight = estimateCompilePreflightRisk(ctx.compilePromptSourceBundle, ctx.compilePreflightOptions);
+          }
         }
-        yield event;
-      }
-    },
-    composerRetryPolicy,
-    composerOptions,
-  );
+          yield event;
+        }
+      },
+      composerRetryPolicy,
+      composerOptions,
+    );
+  } catch (err) {
+    const contextError = await toCompileScopeContextError(ctx, err, 'pipeline-composer');
+    throw contextError ?? err;
+  }
+
+  const preflightEscalation = await buildPreflightEscalationDecision(ctx);
+  if (preflightEscalation?.retryAsExpedition) {
+    markRetryAsExpeditionStarted(ctx, preflightEscalation.failure);
+    const attempted = ctx.compileScopeRecovery?.lastFailure ?? preflightEscalation.failure;
+    yield scopeContextFailureEvent(attempted, ctx.runId);
+    applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
+    yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
+  }
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {
@@ -280,7 +328,18 @@ registerCompileStage({
     plannerOptions: {},
   };
   const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
-  yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  try {
+    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  } catch (err) {
+    const contextError = await toCompileScopeContextError(ctx, err, 'planner');
+    if (!contextError || contextError.failure.recovery.action !== 'retry-as-expedition' || !contextError.failure.recovery.eligible) throw contextError ?? err;
+    markRetryAsExpeditionStarted(ctx, contextError.failure);
+    const attempted = ctx.compileScopeRecovery?.lastFailure ?? contextError.failure;
+    yield scopeContextFailureEvent(attempted, ctx.runId);
+    applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
+    yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
+    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  }
 
   // Fail loudly if the planner produced expedition modules but compile-expedition
   // is not queued — that stage is the only source of orchestration.yaml, so a
@@ -425,7 +484,7 @@ registerCompileStage({
       run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig),
     }));
 
-    yield* runParallel(waveTasks);
+    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });
 
     // Read completed module plan files for this wave (context for later waves)
     for (const modId of waveModuleIds) {
@@ -465,8 +524,14 @@ registerCompileStage({
   // Only runs when expedition modules are detected
   if (ctx.expeditionModules.length === 0) return;
 
+  const moduleValidation = await validateExpeditionModuleInputs(ctx);
+  if (!moduleValidation.ok) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: moduleValidation.message };
+    throw new Error(moduleValidation.message);
+  }
+
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
+  await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
 
   // Write the full pipeline composition and backfill per-plan build/review from
   // defaults for any module whose planner didn't emit a <build-config> block.
@@ -474,14 +539,16 @@ registerCompileStage({
   const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
   await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch, ctx.diffBaseRef);
 
-  // Parse the injected orchestration config to derive per-plan build + review for durable storage.
-  let expeditionPlanConfigs: Array<{ id: string; build: BuildStageSpec[]; review: ReviewProfileConfig }> | undefined;
-  try {
-    const orchConfig = await parseOrchestrationConfig(orchYamlPath);
-    expeditionPlanConfigs = orchConfig.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
-  } catch {
-    // Graceful degradation: if parsing fails, omit planConfigs.
+  const artifactValidation = await validateCompileArtifacts(ctx);
+  for (const warning of artifactValidation.warnings) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
   }
+  if (!artifactValidation.ok) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: artifactValidation.message };
+    throw new Error(artifactValidation.message);
+  }
+  const plans = artifactValidation.plans;
+  const expeditionPlanConfigs = artifactValidation.orchestration?.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans, ...(expeditionPlanConfigs && { planConfigs: expeditionPlanConfigs }) };

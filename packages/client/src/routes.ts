@@ -22,6 +22,10 @@ export type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarSchemaVersion,
+  RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextAction,
+  RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
@@ -49,7 +53,15 @@ export type {
   AcceptSuccessResponse,
 } from './routes/recovery.js';
 
-export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes/recovery.js';
+export {
+  ACCEPT_SUCCESS_REASON_CATEGORIES,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  RecoverySidecarRecoveryOptionSchema,
+} from './routes/recovery.js';
 
 export type {
   SessionPlanStatusWire,

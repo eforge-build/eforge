@@ -10,6 +10,7 @@ import { ConfirmAction } from '@/components/recovery/confirm-action';
 import { SafeMarkdown } from '@/components/recovery/safe-markdown';
 import { AdvancedCascadeSection } from '@/components/recovery/advanced-cascade-section';
 import { AcceptSuccessAction, type AcceptSuccessApplyInput } from '@/components/recovery/accept-success-action';
+import { CompileScopeContextOptions } from '@/components/recovery/compile-scope-context-options';
 import { formatQueueDispatchFailure, formatQueueDispatchFailureTimestamp } from '@/lib/selectors/queue-dispatch-failure';
 import type {
   RecoveryConfidenceValue,
@@ -183,6 +184,10 @@ export function RecoveryReportPanel({
           </div>
         )}
       </section>
+
+      {reportStatus === 'loaded' && sidecar && (
+        <CompileScopeContextOptions options={sidecar.json.recoveryOptions} />
+      )}
 
       {/* Sidecar verdict action. Hidden once a durable applied marker exists so
           an already-applied verdict cannot be re-applied (the dialog also swaps

@@ -4,6 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
+import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -14,6 +15,10 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   moduleDependsOn: string[];
   architectureContent: string;
   sourceContent: string;
+  /** Prompt-safe compacted source content. Defaults to sourceContent. */
+  promptSourceContent?: string;
+  /** Prompt/live context guardrails for planner-family runs. */
+  contextGuard?: CompileContextGuardOptions;
   /** Concatenated plan content from completed dependency modules */
   dependencyPlanContent?: string;
   verbose?: boolean;
@@ -37,8 +42,10 @@ export async function* runModulePlanner(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'expedition:module:start', moduleId: options.moduleId };
 
+  const promptSourceContent = options.promptSourceContent ?? options.sourceContent;
+  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'module-planner' });
   const prompt = await loadPrompt('module-planner', {
-    source: options.sourceContent,
+    source: promptSourceContent,
     planSetName: options.planSetName,
     moduleId: options.moduleId,
     moduleDescription: options.moduleDescription,
@@ -50,11 +57,24 @@ export async function* runModulePlanner(
     validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,
   }, options.promptAppend);
 
+  try {
+    contextGuard.assertPrompt(prompt);
+  } catch (err) {
+    options.abortController?.abort();
+    throw err;
+  }
+
   for await (const event of options.harness.run(
     { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
     options.lane,
   )) {
+    try {
+      contextGuard.observe(event);
+    } catch (err) {
+      options.abortController?.abort();
+      throw err;
+    }
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose
     if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
       yield event;
