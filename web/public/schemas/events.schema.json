@@ -5140,6 +5140,91 @@
                     }
                   }
                 },
+                "guardDiagnostics": {
+                  "type": "object",
+                  "required": [
+                    "metadataSource",
+                    "outputReserveTokens",
+                    "overheadReserveTokens",
+                    "safetyMargin",
+                    "limits"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "metadataSource": {
+                      "anyOf": [
+                        {
+                          "const": "registry",
+                          "type": "string"
+                        },
+                        {
+                          "const": "builtin",
+                          "type": "string"
+                        },
+                        {
+                          "const": "synthetic",
+                          "type": "string"
+                        },
+                        {
+                          "const": "fallback",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "fallbackReason": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "contextWindow": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "outputReserveTokens": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "overheadReserveTokens": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "safetyMargin": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 1,
+                      "type": "number"
+                    },
+                    "limits": {
+                      "type": "object",
+                      "required": [
+                        "maxPromptBytes",
+                        "maxObservedInputTokens",
+                        "maxExplanationBytes"
+                      ],
+                      "properties": {
+                        "maxPromptBytes": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "maxObservedInputTokens": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "maxObservedTurns": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "maxExplanationBytes": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                },
                 "recovery": {
                   "type": "object",
                   "required": [
@@ -20184,6 +20269,91 @@
                                   "promptBytes": {
                                     "minimum": 0,
                                     "type": "integer"
+                                  }
+                                }
+                              },
+                              "guardDiagnostics": {
+                                "type": "object",
+                                "required": [
+                                  "metadataSource",
+                                  "outputReserveTokens",
+                                  "overheadReserveTokens",
+                                  "safetyMargin",
+                                  "limits"
+                                ],
+                                "properties": {
+                                  "provider": {
+                                    "type": "string"
+                                  },
+                                  "modelId": {
+                                    "type": "string"
+                                  },
+                                  "metadataSource": {
+                                    "anyOf": [
+                                      {
+                                        "const": "registry",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "builtin",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "synthetic",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "fallback",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "fallbackReason": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "contextWindow": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "outputReserveTokens": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "overheadReserveTokens": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "safetyMargin": {
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1,
+                                    "type": "number"
+                                  },
+                                  "limits": {
+                                    "type": "object",
+                                    "required": [
+                                      "maxPromptBytes",
+                                      "maxObservedInputTokens",
+                                      "maxExplanationBytes"
+                                    ],
+                                    "properties": {
+                                      "maxPromptBytes": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "maxObservedInputTokens": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "maxObservedTurns": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "maxExplanationBytes": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    }
                                   }
                                 }
                               },

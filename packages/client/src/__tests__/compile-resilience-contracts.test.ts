@@ -9,6 +9,8 @@ import {
   BoundedDiagnosticOptionsSchema,
   BoundedValidationDiagnosticSchema,
   CompileArtifactSummarySchema,
+  CompileContextGuardDiagnosticsSchema,
+  CompileContextGuardLimitsSchema,
   MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
@@ -138,6 +140,34 @@ describe('compile resilience contracts', () => {
     }).success).toBe(false);
   });
 
+  it('accepts scope/context failures with optional model-aware guard diagnostics and legacy failures without them', () => {
+    const baseFailure = {
+      source: 'live-context-guard',
+      failureKind: 'context-budget',
+      stage: 'planner',
+      explanation: 'Planner context budget exceeded.',
+      observed: { inputTokens: 200000, outputTokens: 1000, turns: 2, promptBytes: 4096 },
+      recovery: { action: 'bounded-decomposition', eligible: true, attempted: false, attempt: 0, maxAttempts: 1, reason: 'decompose' },
+      artifacts: artifactSummary(),
+    };
+    const guardDiagnostics = {
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-5',
+      metadataSource: 'registry',
+      contextWindow: 1_000_000,
+      outputReserveTokens: 64_000,
+      overheadReserveTokens: 8_192,
+      safetyMargin: 0.9,
+      limits: { maxPromptBytes: 1_500_000, maxObservedInputTokens: 835_027, maxExplanationBytes: 1_500 },
+    };
+
+    expect(Value.Check(CompileContextGuardLimitsSchema, guardDiagnostics.limits)).toBe(true);
+    expect(Value.Check(CompileContextGuardDiagnosticsSchema, guardDiagnostics)).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:scope-context:failure', timestamp, failure: { ...baseFailure, guardDiagnostics } }).success).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:scope-context:failure', timestamp, failure: baseFailure }).success).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:scope-context:failure', timestamp, failure: { ...baseFailure, guardDiagnostics: { ...guardDiagnostics, safetyMargin: 0 } } }).success).toBe(false);
+  });
+
   it('accepts context-window terminal subtypes for compile terminal failures', () => {
     expect(Value.Check(AgentTerminalSubtypeSchema, 'error_context_window')).toBe(true);
     expect(safeParseEforgeEvent({
@@ -249,6 +279,8 @@ describe('compile resilience contracts', () => {
       expect(facade.MAX_COMPILE_RISK_LIST_ITEMS).toBe(MAX_COMPILE_RISK_LIST_ITEMS);
       expect(facade.CompilePreflightRiskSchema).toBeDefined();
       expect(facade.CompileScopeContextFailureSchema).toBeDefined();
+      expect(facade.CompileContextGuardDiagnosticsSchema).toBeDefined();
+      expect(facade.CompileContextGuardLimitsSchema).toBeDefined();
       expect(facade.BoundedValidationDiagnosticSchema).toBeDefined();
     }
   });

@@ -25,7 +25,7 @@ daemon SSE
   → selectors                (src/lib/selectors/ and src/lib/run-state/selectors/)
   → views
 
-Lane-model behavior (planning vs validation vs gap-close lanes, PRD pill on the planning lane) is verified end-to-end by `multi-plan-gap-close.e2e.test.tsx` against `fixtures/multi-plan-gap-close.json`. Build detail timelines render compile-resilience diagnostics from the same event log: `planning:preflight` rows summarize compile risk, and `planning:scope-context:failure` rows show compile scope/context failure details. Run detail also derives a compile-level failure banner from those events when the compile stops before any `plan:build:failed` event exists.
+Lane-model behavior (planning vs validation vs gap-close lanes, PRD pill on the planning lane) is verified end-to-end by `multi-plan-gap-close.e2e.test.tsx` against `fixtures/multi-plan-gap-close.json`. Build detail timelines render compile-resilience diagnostics from the same event log: `planning:preflight` rows summarize compile risk, and `planning:scope-context:failure` rows show compile scope/context failure details, including optional guard diagnostics when present. Run detail also derives a compile-level failure banner from those events when the compile stops before any `plan:build:failed` event exists.
 
 daemon REST (session-plan compatibility routes)
   → API_ROUTES.sessionPlanList     GET /api/session-plan/list[?includeSubmitted=true]

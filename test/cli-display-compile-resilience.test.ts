@@ -30,6 +30,30 @@ function failure(): CompileScopeContextFailure {
   };
 }
 
+function failureWithGuardDiagnostics(): CompileScopeContextFailure {
+  return {
+    ...failure(),
+    source: 'live-context-guard',
+    failureKind: 'context-budget',
+    guardDiagnostics: {
+      provider: 'openai',
+      modelId: 'gpt-5',
+      metadataSource: 'registry',
+      fallbackReason: 'registry entry lacked token limits; used provider fallback',
+      contextWindow: 200000,
+      outputReserveTokens: 32000,
+      overheadReserveTokens: 4096,
+      safetyMargin: 0.8,
+      limits: {
+        maxPromptBytes: 500000,
+        maxObservedInputTokens: 131072,
+        maxObservedTurns: 12,
+        maxExplanationBytes: 2000,
+      },
+    },
+  };
+}
+
 describe('compile resilience CLI formatting', () => {
   it('keeps normal preflight silent unless verbose', () => {
     expect(renderCompilePreflightLines(risk('normal'))).toEqual([]);
@@ -49,10 +73,24 @@ describe('compile resilience CLI formatting', () => {
 
   it('renders scope/context failure details without raw payloads', () => {
     const model = renderCompileScopeContextFailureModel(failure());
+    const detail = model.details.join('\n');
     expect(model.headline).toContain('Compile scope/context failure');
     expect(model.headline).toContain('context-window');
-    expect(model.details.join('\n')).toContain('attempt 1/2');
-    expect(model.details.join('\n')).toContain('1 valid plan');
-    expect(model.details.join('\n')).toContain('1000 input tokens');
+    expect(detail).toContain('attempt 1/2');
+    expect(detail).toContain('1 valid plan');
+    expect(detail).toContain('1000 input tokens');
+    expect(detail).not.toContain('Model:');
+  });
+
+  it('renders optional guard diagnostics when present', () => {
+    const detail = renderCompileScopeContextFailureModel(failureWithGuardDiagnostics()).details.join('\n');
+    expect(detail).toContain('Model: openai/gpt-5');
+    expect(detail).toContain('maxObservedInputTokens=131072');
+    expect(detail).toContain('contextWindow=200000');
+    expect(detail).toContain('outputReserveTokens=32000');
+    expect(detail).toContain('overheadReserveTokens=4096');
+    expect(detail).toContain('safetyMargin=0.8');
+    expect(detail).toContain('metadataSource=registry');
+    expect(detail).toContain('registry entry lacked token limits; used provider fallback');
   });
 });

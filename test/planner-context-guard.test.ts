@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
-import type { AgentRole, EforgeEvent, CompilePreflightRisk } from '@eforge-build/engine/events';
+import type { AgentRole, EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk } from '@eforge-build/engine/events';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
@@ -31,6 +31,38 @@ describe('planner-family context guard', () => {
       expect(failure.risk?.level).toBe('elevated');
       expect(failure.recovery.action).toBe('retry-as-expedition');
       expect(Buffer.byteLength(failure.explanation, 'utf8')).toBeLessThanOrEqual(220);
+    }
+  });
+
+  it('includes model-aware guard diagnostics on live guard failures', () => {
+    const diagnostics: CompileContextGuardDiagnostics = {
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-5',
+      metadataSource: 'registry',
+      contextWindow: 1_000_000,
+      outputReserveTokens: 64_000,
+      overheadReserveTokens: 8_192,
+      safetyMargin: 0.9,
+      limits: { maxPromptBytes: 1_500_000, maxObservedInputTokens: 10, maxExplanationBytes: 1_500 },
+    };
+    const guard = createCompileContextGuard({ stage: 'planner', limits: { maxObservedInputTokens: 10 }, guardDiagnostics: diagnostics });
+    guard.assertPrompt('ok');
+
+    try {
+      guard.observe(usageEvent('planner', { input: 11, total: 11 }, false));
+      throw new Error('expected guard failure');
+    } catch (err) {
+      expect(err).toBeInstanceOf(CompileScopeContextError);
+      expect((err as CompileScopeContextError).failure.guardDiagnostics).toMatchObject({
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+        metadataSource: 'registry',
+        contextWindow: 1_000_000,
+        outputReserveTokens: 64_000,
+        overheadReserveTokens: 8_192,
+        safetyMargin: 0.9,
+        limits: expect.objectContaining({ maxObservedInputTokens: 10 }),
+      });
     }
   });
 

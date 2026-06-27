@@ -1,6 +1,6 @@
 /**
  * Pi coding agent harness — implements AgentHarness using @earendil-works/pi-coding-agent.
- * All Pi SDK imports are isolated to this file and pi-mcp-bridge.ts.
+ * All Pi SDK imports are isolated to harness modules under packages/engine/src/harnesses/.
  */
 
 import {
@@ -9,16 +9,12 @@ import {
   createReadOnlyTools,
   SessionManager,
   SettingsManager,
-  ModelRegistry,
-  AuthStorage,
   DefaultResourceLoader,
   discoverAndLoadExtensions,
   getAgentDir,
   type AgentSessionEvent,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import type { Model, Api } from '@earendil-works/pi-ai';
-import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
@@ -33,6 +29,7 @@ import { normalizeUsage, toModelUsageEntry } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
 import { expandDisallowedToolAliasesForPi } from './tool-safety.js';
+import { resolvePiRuntimeModel } from './pi-model-resolution.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -557,43 +554,10 @@ export class PiHarness implements AgentHarness {
       // harness, but we defensively default here for any path that bypasses the registry.
       const mode: 'isolated' | 'ambient' = this.piConfig?.resources ?? 'isolated';
 
-      // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
-      const authStorage = AuthStorage.create();
-
-      // Resolve model via ModelRegistry (async) with fallback to the built-in catalog then synthetic
-      const modelRegistry = ModelRegistry.create(authStorage);
-      let model: Model<Api>;
-      const registryModel = await modelRegistry.find(options.model.provider!, options.model.id) as Model<Api> | undefined;
-      if (registryModel) {
-        model = registryModel;
-      } else {
-        const knownModel = getBuiltinModel(options.model.provider as never, options.model.id as never) as Model<Api> | undefined;
-        if (knownModel) {
-          model = knownModel;
-        } else {
-          // Unknown model id for this provider — crib transport metadata (baseUrl,
-          // api, compat) from any sibling model already registered under the same
-          // provider. This is essential for aggregator providers like OpenRouter,
-          // where any model id is valid as long as the endpoint is right, so new
-          // ids work the day they ship without waiting for pi-ai's static list
-          // to catch up.
-          const sibling = (modelRegistry.getAll() as Model<Api>[]).find(
-            (m) => m.provider === options.model!.provider,
-          );
-          if (!sibling) {
-            throw new Error(
-              `Unknown model "${options.model.id}" and no models registered for provider "${options.model.provider}". ` +
-              `Register the provider in ~/.pi/agent/models.json or choose a known model.`,
-            );
-          }
-          model = {
-            ...sibling,
-            id: options.model.id,
-            name: options.model.id,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          };
-        }
-      }
+      const { authStorage, modelRegistry, model } = await resolvePiRuntimeModel({
+        provider: options.model.provider,
+        modelId: options.model.id,
+      });
 
       // Apply explicit API key override from piConfig if set
       if (this.piConfig?.apiKey) {

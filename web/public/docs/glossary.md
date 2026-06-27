@@ -31,7 +31,7 @@ A typed `planning:preflight` diagnostic emitted during compile before planner-fa
 
 ## Compile scope/context failure
 
-A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures.
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason; older events omit those fields without placeholders.
 
 ## Daemon
 

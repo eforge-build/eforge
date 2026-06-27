@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   MAX_COMPILE_RISK_LIST_ITEMS,
   type CompileArtifactSummary,
+  type CompileContextGuardDiagnostics,
   type CompilePreflightRisk,
   type CompileRecoveryAction,
   type CompileScopeContextFailure,
@@ -33,6 +34,7 @@ export interface CompileScopeContextFailureInput {
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
   risk?: CompilePreflightRisk;
+  guardDiagnostics?: CompileContextGuardDiagnostics;
 }
 
 const MAX_REASON_BYTES = RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES;
@@ -42,6 +44,7 @@ export async function toCompileScopeContextError(
   ctx: PipelineContext,
   error: unknown,
   fallbackStage: CompileScopeContextFailureInput['stage'],
+  guardDiagnostics?: CompileContextGuardDiagnostics,
 ): Promise<CompileScopeContextError | null> {
   if (error instanceof CompileScopeContextError) {
     return new CompileScopeContextError(await buildCompileScopeContextFailure(ctx, {
@@ -51,6 +54,7 @@ export async function toCompileScopeContextError(
       explanation: error.failure.explanation,
       observed: error.failure.observed,
       risk: error.failure.risk ?? ctx.compilePreflight,
+      guardDiagnostics: error.failure.guardDiagnostics ?? guardDiagnostics,
     }));
   }
   const provider = classifyProviderContextError(error) ?? (error instanceof AgentTerminalError && error.subtype === 'error_context_window'
@@ -63,6 +67,7 @@ export async function toCompileScopeContextError(
     stage: fallbackStage,
     explanation: provider.explanation,
     risk: ctx.compilePreflight,
+    guardDiagnostics,
   }));
 }
 
@@ -93,6 +98,7 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
     explanation: capUtf8(input.explanation, 1500),
     ...(input.risk ?? ctx.compilePreflight ? { risk: input.risk ?? ctx.compilePreflight } : {}),
     ...(input.observed ? { observed: input.observed } : {}),
+    ...(input.guardDiagnostics ? { guardDiagnostics: input.guardDiagnostics } : {}),
     recovery: {
       action,
       eligible: action !== 'manual-reduce-scope' && action !== 'none',
