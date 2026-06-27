@@ -15,6 +15,7 @@ export interface CanonicalBacklogItemInput {
   status?: BacklogStatus | UserStatus;
   userStatus?: UserStatus;
   priority?: string;
+  source?: string;
   tags?: string[];
   dependsOn?: string[];
   dependencies?: ItemDependencyUpsert[];
@@ -22,8 +23,15 @@ export interface CanonicalBacklogItemInput {
   epicId?: string | null;
   created?: string;
   updated?: string;
+  lastCheckedAt?: string;
+  staleAfter?: string;
+  importOrigin?: string;
+  importPath?: string;
   frontmatter?: Record<string, unknown>;
   sections?: SectionUpsert[];
+  expectedBodySha256?: string;
+  expectedRecordSha256?: string;
+  expectedUpdatedAt?: string;
 }
 
 export interface CanonicalEpicInput {
@@ -44,16 +52,24 @@ export function captureCanonicalBacklogItem(cwd: string, input: CanonicalBacklog
   return withCanonicalTransaction(cwd, (store) => upsertCanonicalBacklogItem(store, input));
 }
 
+export class CanonicalOptimisticLockError extends Error {
+  constructor(public readonly token: 'expectedBodySha256' | 'expectedRecordSha256' | 'expectedUpdatedAt') {
+    super(`${token} is stale; re-read get-item before retrying update-item.`);
+  }
+}
+
 export function updateCanonicalBacklogItem(cwd: string, id: string, updates: Partial<CanonicalBacklogItemInput>): BacklogItemRow {
   return withCanonicalTransaction(cwd, (store) => {
     const existing = getBacklogItem(store, id);
     if (!existing) throw new Error(`Backlog item not found: ${id}`);
+    assertOptimisticPreconditions(existing, updates);
     return upsertCanonicalBacklogItem(store, {
       id,
       title: updates.title ?? existing.title,
       body: updates.body ?? existing.body,
       status: updates.status ?? updates.userStatus ?? existing.userStatus,
       priority: updates.priority ?? existing.priority,
+      source: updates.source ?? existing.source,
       tags: updates.tags,
       dependsOn: updates.dependsOn,
       dependencies: updates.dependencies,
@@ -61,6 +77,10 @@ export function updateCanonicalBacklogItem(cwd: string, id: string, updates: Par
       epicId: Object.prototype.hasOwnProperty.call(updates, 'epicId') ? updates.epicId : existing.epicId,
       created: updates.created ?? existing.createdAt,
       updated: updates.updated ?? canonicalNowIso(),
+      lastCheckedAt: updates.lastCheckedAt ?? existing.lastCheckedAt,
+      staleAfter: updates.staleAfter ?? existing.staleAfter,
+      importOrigin: updates.importOrigin ?? existing.importOrigin,
+      importPath: updates.importPath ?? existing.importPath,
       frontmatter: { ...existing.frontmatter, ...updates.frontmatter },
       sections: updates.sections,
     });
@@ -73,23 +93,51 @@ export function upsertCanonicalBacklogItem(store: EforgePlanStore, input: Canoni
   const body = input.body ?? existing?.body ?? '';
   const userStatus = normalizeUserStatus(input.userStatus ?? input.status ?? existing?.userStatus ?? 'candidate');
   const priority = input.priority ?? existing?.priority;
+  const source = input.source ?? stringFrontmatter(input.frontmatter?.source) ?? existing?.source;
   const epicRef = Object.prototype.hasOwnProperty.call(input, 'epic') ? input.epic ?? undefined : existing?.epicRef;
   const epicId = Object.prototype.hasOwnProperty.call(input, 'epicId') ? input.epicId ?? undefined : existing?.epicId;
   const createdAt = input.created ?? existing?.createdAt ?? now;
   const updatedAt = input.updated ?? now;
+  const lastCheckedAt = input.lastCheckedAt ?? stringFrontmatter(input.frontmatter?.last_checked) ?? existing?.lastCheckedAt;
+  const staleAfter = input.staleAfter ?? stringFrontmatter(input.frontmatter?.stale_after) ?? existing?.staleAfter;
+  const frontmatter = toJsonObject({ ...(existing?.frontmatter ?? {}), ...(input.frontmatter ?? {}), id: input.id, status: userStatus, priority, ...(source !== undefined && { source }), tags: input.tags ?? existing?.frontmatter.tags ?? [], depends_on: input.dependsOn ?? existing?.frontmatter.depends_on ?? [], epic: epicRef, created: createdAt, updated: updatedAt, ...(lastCheckedAt !== undefined && { last_checked: lastCheckedAt }), ...(staleAfter !== undefined && { stale_after: staleAfter }) });
+  const recordShape = canonicalRecordShape({
+    id: input.id,
+    title: input.title,
+    body,
+    userStatus,
+    priority,
+    source,
+    createdAt,
+    updatedAt,
+    lastCheckedAt,
+    staleAfter,
+    epicRef,
+    epicId,
+    frontmatter,
+    tags: input.tags ?? existing?.frontmatter.tags ?? [],
+    dependsOn: input.dependsOn ?? existing?.frontmatter.depends_on ?? [],
+    importOrigin: input.importOrigin ?? existing?.importOrigin,
+    importPath: input.importPath ?? existing?.importPath,
+  });
   const row = upsertBacklogItem(store, {
     id: input.id,
     title: input.title,
     body,
     userStatus,
     priority,
+    source,
     createdAt,
     updatedAt,
+    lastCheckedAt,
+    staleAfter,
     epicRef,
     epicId,
-    frontmatter: toJsonObject({ ...(existing?.frontmatter ?? {}), ...(input.frontmatter ?? {}), id: input.id, status: userStatus, priority, tags: input.tags ?? existing?.frontmatter.tags ?? [], depends_on: input.dependsOn ?? existing?.frontmatter.depends_on ?? [], epic: epicRef, created: createdAt, updated: updatedAt }),
+    frontmatter,
     bodySha256: canonicalSha256(body),
-    recordSha256: canonicalSha256(JSON.stringify({ id: input.id, title: input.title, body, userStatus, priority, epic: epicRef })),
+    recordSha256: canonicalSha256(JSON.stringify(recordShape)),
+    importOrigin: input.importOrigin ?? existing?.importOrigin,
+    importPath: input.importPath ?? existing?.importPath,
   } satisfies BacklogItemUpsert);
   if (input.tags) replaceBacklogItemTags(store, input.id, input.tags);
   if (input.sections) replaceBacklogItemSections(store, input.id, input.sections);
@@ -155,6 +203,12 @@ export function epicRowToDomain(row: EpicRow): BacklogEpic {
   return { id: row.id, title: row.title, body: row.body, status: row.userStatus as BacklogStatus, priority: row.priority, tags: arrayOfStrings(row.frontmatter.tags), created: row.createdAt, updated: row.updatedAt, eforge_plan: objectOrUndefined(row.frontmatter.eforge_plan) };
 }
 
+function assertOptimisticPreconditions(existing: BacklogItemRow, updates: Partial<CanonicalBacklogItemInput>): void {
+  if (updates.expectedBodySha256 !== undefined && updates.expectedBodySha256 !== existing.bodySha256) throw new CanonicalOptimisticLockError('expectedBodySha256');
+  if (updates.expectedRecordSha256 !== undefined && updates.expectedRecordSha256 !== existing.recordSha256) throw new CanonicalOptimisticLockError('expectedRecordSha256');
+  if (updates.expectedUpdatedAt !== undefined && updates.expectedUpdatedAt !== existing.updatedAt) throw new CanonicalOptimisticLockError('expectedUpdatedAt');
+}
+
 function normalizeInputDependencies(store: EforgePlanStore, input: CanonicalBacklogItemInput): ItemDependencyUpsert[] {
   const dependencies: ItemDependencyUpsert[] = input.dependencies ?? (input.dependsOn ?? []).map((dependencyRef) => ({ dependencyRef }));
   return dependencies.map((dependency) => {
@@ -182,12 +236,28 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
   return JSON.parse(JSON.stringify(value, (_key, entry) => entry === undefined ? undefined : entry)) as JsonObject;
 }
 
+function canonicalRecordShape(value: Record<string, unknown>): JsonObject {
+  return sortJsonValue(toJsonObject(value)) as JsonObject;
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, entry]) => [key, sortJsonValue(entry)]));
+  }
+  return value;
+}
+
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
 function objectOrUndefined(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringFrontmatter(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 const ITEM_FRONTMATTER_ORDER = ['id', 'status', 'priority', 'source', 'created', 'updated', 'last_checked', 'stale_after', 'tags', 'depends_on', 'epic', 'eforge_plan'];

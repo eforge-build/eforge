@@ -7,6 +7,8 @@ import {
 import { getEpicDetailProjection, getItemDetailProjection, listBoardCompactProjection } from './projections/index.js';
 import { buildBoard } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
+import { readBacklogItemSnapshot } from './markdown-store.js';
+import { deriveItemSectionRows } from './canonical/item-body-sections.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
 
 // --- eforge:region compact-query-schemas ---
@@ -74,6 +76,9 @@ const GetItemOutputSchema = Type.Object({
   item: Type.Object({
     ...CompactItemSchema.properties,
     path: Type.String(),
+    bodySha256: Type.String(),
+    recordSha256: Type.String(),
+    storage: Type.Object({ kind: Type.String(), id: Type.String() }, { additionalProperties: false }),
     sections: Type.Optional(Type.Record(Type.String(), Type.String())),
     linkRows: Type.Optional(Type.Array(CompactLifecycleLinkRowSchema)),
     failureEvidence: Type.Optional(Type.Array(CompactLifecycleLinkRowSchema)),
@@ -158,7 +163,7 @@ export const backlogQueryActions = [
   defineExtensionAction({
     id: 'get-item',
     title: 'Get compact backlog item detail',
-    description: 'Read one backlog item without listing the whole board. Projection flags can omit or include the compact epic, Markdown sections, lifecycle rows, dependency/dependent summaries, and dependency id arrays on item summaries.',
+    description: 'Read one backlog item without listing the whole board. Projection flags can omit or include the compact epic, Markdown sections, lifecycle rows, dependency/dependent summaries, and dependency id arrays on item summaries. Returns bodySha256/recordSha256 lock tokens for body-safe update-item calls.',
     inputSchema: GetItemInputSchema,
     outputSchema: GetItemOutputSchema,
     outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact,
@@ -196,8 +201,53 @@ export const backlogQueryActions = [
 
 // --- eforge:region compact-query-projection ---
 async function getItemDetail(cwd: string, input: GetItemInput): Promise<any> {
-  return getItemDetailProjection(cwd, input);
+  try {
+    return await getItemDetailProjection(cwd, input);
+  } catch (error) {
+    if (!isProjectionNotFound(error, input.id)) throw error;
+    const snapshot = await readBacklogItemSnapshot(cwd, input.id);
+    if (!snapshot) throw error;
+    const sections = input.includeSections !== false ? Object.fromEntries(deriveItemSectionRows(snapshot.body).map((row) => [row.sectionName, row.content ?? ''])) : undefined;
+    const item = snapshot.record;
+    return {
+      schemaVersion: 1 as const,
+      item: {
+        id: item.id,
+        title: item.title,
+        status: item.status,
+        userStatus: item.status,
+        priority: item.priority ?? 'normal',
+        tags: item.tags ?? [],
+        lane: item.status === 'active' ? 'in-progress' : item.status === 'planned' ? 'ready' : item.status === 'shipped' ? 'done' : item.status === 'stale' || item.status === 'superseded' ? 'archive' : 'inbox',
+        reasons: [],
+        reasonCodes: ['candidate-no-evidence'],
+        ...(input.includeDependencies === false ? {} : { dependsOn: item.depends_on ?? [], unresolvedDependsOn: item.depends_on ?? [] }),
+        activeTraceReasons: [],
+        blocked: false,
+        ready: item.status === 'planned',
+        reviewDue: false,
+        closed: item.status === 'shipped' || item.status === 'stale' || item.status === 'superseded',
+        lifecycleState: 'none',
+        effectiveLifecycle: 'none',
+        planEligible: item.status !== 'shipped' && item.status !== 'stale' && item.status !== 'superseded',
+        updatedAt: item.updated,
+        path: snapshot.relativePath,
+        bodySha256: snapshot.bodySha256,
+        recordSha256: snapshot.recordSha256,
+        storage: { kind: snapshot.origin === 'private' ? 'private-markdown' : 'legacy-markdown', id: item.id },
+        ...(input.includeSections !== false ? { sections } : {}),
+        ...(input.includeLifecycleRows !== false ? { linkRows: [], failureEvidence: [] } : {}),
+        ...(input.includeBody ? { body: snapshot.body } : {}),
+      },
+      ...(input.includeDependencies !== false ? { dependencies: [] } : {}),
+      ...(input.includeDependents !== false ? { dependents: [] } : {}),
+    };
+  }
 }
+function isProjectionNotFound(error: unknown, id: string): boolean {
+  return error instanceof Error && error.message === `Backlog item "${id}" was not found.`;
+}
+
 async function getEpicDetail(cwd: string, input: GetEpicInput): Promise<any> {
   return getEpicDetailProjection(cwd, input);
 }

@@ -19,7 +19,7 @@ import {
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listCanonicalBacklogItems, listCanonicalEpics, backlogItemRowToDomain, epicRowToDomain } from './canonical/backlog-records.js';
-import { markCanonicalRecommendationsStale } from './canonical/recommendation-records.js';
+import { markCanonicalRecommendationsStale, readCanonicalRecommendations } from './canonical/recommendation-records.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import type { RoadmapContext } from './roadmap-schemas.js';
 import { listTraceSidecars } from './trace-store.js';
@@ -154,7 +154,7 @@ export async function markRecommendationsStale(cwd: string, reason: Recommendati
 export async function markRecommendationsStaleForBacklogMutation(cwd: string, actionId: string, refs: readonly string[]): Promise<RecommendationDerivedStatus | null> {
   const currentPath = resolveCurrentPath(cwd);
   const statusPath = resolveRecommendationStatusPathForCwd(cwd);
-  if (!currentRecommendationsExist(cwd, currentPath) && !existsSync(statusPath)) return null;
+  if (!currentRecommendationsExist(cwd, currentPath) && !existsSync(statusPath) && readCanonicalRecommendations(cwd) === null) return null;
 
   const suffix = refs.length > 0 ? ` for ${refs.join(', ')}` : '';
   return markRecommendationsStale(cwd, {

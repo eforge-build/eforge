@@ -286,7 +286,7 @@ describe('eforge-plan update-item body-safe action', () => {
       expect(handle.prepare('SELECT content FROM backlog_item_sections WHERE item_id = ? AND section_name = ?').get('target-item', 'Claim')).toMatchObject({ content: 'Indexed new claim.' });
       expect(handle.prepare('SELECT content FROM backlog_item_sections WHERE item_id = ? AND section_name = ?').get('target-item', 'Evidence')).toMatchObject({ content: 'Old evidence.' });
       expect((handle.prepare('SELECT count(*) AS count FROM search_index_dirty_records WHERE document_type = ? AND document_id = ?').get('backlog_item', 'target-item') as { count: number }).count).toBeGreaterThan(0);
-      expect(handle.prepare('SELECT json_extract(freshness_json, ?) AS status, json_extract(freshness_json, ?) AS reason FROM recommendation_runs WHERE is_current = 1').get('$.status', '$.reason')).toMatchObject({ status: 'stale', reason: 'update-item' });
+      expect(handle.prepare('SELECT json_extract(freshness_json, ?) AS status, json_extract(freshness_json, ?) AS reason FROM recommendation_runs WHERE is_current = 1').get('$.status', '$.reason')).toMatchObject({ status: 'stale', reason: expect.stringContaining('update-item') });
       handle.close();
     });
   });

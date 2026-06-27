@@ -10,6 +10,7 @@ import { summarizeProjectTraces } from './trace-activity.js';
 import { assertSafeBacklogId, listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
 import { captureCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
+import { deriveItemSectionRows } from './canonical/item-body-sections.js';
 import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
@@ -31,8 +32,10 @@ type Recheck = Draft['noOpRechecks'][number];
 type Patch = ItemPatch | EpicPatch;
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
+type CanonicalItemInput = Parameters<typeof captureCanonicalBacklogItem>[1];
+type CanonicalEpicInput = Parameters<typeof upsertCanonicalEpic>[1];
 
-function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCanonicalBacklogItem>[1] {
+function canonicalItemInput(entry: ProspectiveItem): CanonicalItemInput {
   const normalized = normalizeBacklogItem(entry.frontmatter, entry.body);
   const epic = normalized.epic;
   const frontmatter = { ...entry.frontmatter };
@@ -43,16 +46,18 @@ function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCa
     body: entry.body,
     status: canonicalStatus(stringValue(entry.frontmatter.status) ?? entry.snapshot.record.status),
     priority: stringValue(entry.frontmatter.priority) ?? entry.snapshot.record.priority,
+    source: stringValue(entry.frontmatter.source),
     tags: stringArray(entry.frontmatter.tags),
     dependsOn: stringArray(entry.frontmatter.depends_on),
     epic,
     created: stringValue(entry.frontmatter.created) ?? entry.snapshot.record.created,
     updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
-    frontmatter,
+    lastCheckedAt: stringValue(entry.frontmatter.last_checked), staleAfter: stringValue(entry.frontmatter.stale_after),
+    frontmatter, sections: deriveItemSectionRows(entry.body),
   };
 }
 
-function canonicalEpicInput(entry: ProspectiveEpic): Parameters<typeof upsertCanonicalEpic>[1] {
+function canonicalEpicInput(entry: ProspectiveEpic): CanonicalEpicInput {
   return {
     id: entry.snapshot.id,
     title: stringValue(entry.frontmatter.title) ?? entry.snapshot.record.title,
@@ -64,6 +69,13 @@ function canonicalEpicInput(entry: ProspectiveEpic): Parameters<typeof upsertCan
     updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
     frontmatter: entry.frontmatter,
   };
+}
+
+function precomputeCanonicalItemInputs(entries: readonly ProspectiveItem[]): CanonicalItemInput[] {
+  return entries.map((entry) => {
+    try { return canonicalItemInput(entry); }
+    catch (error) { throw validationError(entry.patchPath ?? `backlogCurationDraft.itemChanges.${entry.snapshot.id}`, error instanceof Error ? error.message : String(error)); }
+  });
 }
 
 function stringValue(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }
@@ -88,8 +100,10 @@ export async function applyBacklogCurationDraftFromTask(
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
-  for (const entry of prepared.changedItems) captureCanonicalBacklogItem(cwd, canonicalItemInput(entry));
-  for (const entry of prepared.changedEpics) upsertCanonicalEpic(cwd, canonicalEpicInput(entry));
+  const changedItemInputs = precomputeCanonicalItemInputs(prepared.changedItems);
+  const changedEpicInputs = prepared.changedEpics.map(canonicalEpicInput);
+  for (const input of changedItemInputs) captureCanonicalBacklogItem(cwd, input);
+  for (const input of changedEpicInputs) upsertCanonicalEpic(cwd, input);
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
