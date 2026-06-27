@@ -271,7 +271,7 @@ hooks:
 | Profile | `/eforge:profile` | User wants to list, inspect, or switch agent runtime profiles |
 | Profile (new) | `/eforge:profile-new` | User wants to create a new agent runtime profile (project or user scope) |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
-| Playbook | `/eforge:playbook` | User wants to create, run, or manage reusable automation playbooks |
+| Extension contributions | `mcp__eforge__eforge_extension_contribution` | User wants to discover or invoke workflows provided by loaded extensions |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |
 | Update | `/eforge:update` | User wants to check for or install eforge updates |

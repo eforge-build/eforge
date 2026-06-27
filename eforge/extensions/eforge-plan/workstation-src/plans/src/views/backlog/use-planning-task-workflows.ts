@@ -94,8 +94,7 @@ function hasOtherApplyableResultOutputs(result: PlanningTaskResult): boolean {
     (result.handoffDrafts && result.handoffDrafts.length > 0) ||
     result.sessionPlanPatch ||
     result.planRevisionTurn ||
-    result.planDrafts ||
-    result.playbookDraft,
+    result.planDrafts,
   );
 }
 

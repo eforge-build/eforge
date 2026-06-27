@@ -3,7 +3,6 @@ import {
   enableLocalMergeToTrunkInConfigYaml,
   getEffectiveLandingAction,
   shouldPromptForTrunkLanding,
-  playbookChoiceNeedsTrunkRemediation,
 } from '../packages/pi-eforge/extensions/eforge/trunk-landing.js';
 import { parse as parseYaml } from 'yaml';
 
@@ -67,57 +66,5 @@ describe('Pi eforge trunk landing policy helpers', () => {
 
     expect(parsed.maxConcurrentBuilds).toBe(2);
     expect(parsed.build.allowLocalMergeToTrunk).toBe(true);
-  });
-});
-
-describe('playbookChoiceNeedsTrunkRemediation', () => {
-  const trunkInput = {
-    currentBranch: 'main',
-    trunkBranch: 'main',
-    build: { allowLocalMergeToTrunk: false },
-    configuredLandingAction: 'merge' as const,
-  };
-
-  const nonTrunkInput = {
-    currentBranch: 'feature/x',
-    trunkBranch: 'main',
-    build: { allowLocalMergeToTrunk: false },
-    configuredLandingAction: 'merge' as const,
-  };
-
-  it('returns false for pr choice regardless of branch', () => {
-    expect(playbookChoiceNeedsTrunkRemediation('pr', trunkInput)).toBe(false);
-    expect(playbookChoiceNeedsTrunkRemediation('pr', nonTrunkInput)).toBe(false);
-  });
-
-  it('returns false for leave choice regardless of branch', () => {
-    expect(playbookChoiceNeedsTrunkRemediation('leave', trunkInput)).toBe(false);
-    expect(playbookChoiceNeedsTrunkRemediation('leave', nonTrunkInput)).toBe(false);
-  });
-
-  it('returns false for merge on a non-trunk branch', () => {
-    expect(playbookChoiceNeedsTrunkRemediation('merge', nonTrunkInput)).toBe(false);
-  });
-
-  it('returns true for merge on trunk without allowLocalMergeToTrunk', () => {
-    expect(playbookChoiceNeedsTrunkRemediation('merge', trunkInput)).toBe(true);
-  });
-
-  it('treats an explicit merge choice as overriding configured pr', () => {
-    expect(
-      playbookChoiceNeedsTrunkRemediation('merge', {
-        ...trunkInput,
-        configuredLandingAction: 'pr' as const,
-      }),
-    ).toBe(true);
-  });
-
-  it('returns false for merge on trunk when allowLocalMergeToTrunk is true', () => {
-    expect(
-      playbookChoiceNeedsTrunkRemediation('merge', {
-        ...trunkInput,
-        build: { ...trunkInput.build, allowLocalMergeToTrunk: true },
-      }),
-    ).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/ty
 import { rawPlaybook, record, withTempProject, writePlaybook } from './helpers.js';
 
 function withCapability(registry: NativeExtensionRegistry): NativeExtensionRegistry {
-  return { ...registry, extensions: [{ name: 'eforge-plan', path: '/ext/eforge-plan', scope: 'project-local', status: 'loaded', source: 'explicit', trust: 'trusted', trustState: 'not-required', diagnostics: [], capabilities: [{ name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' }] } as any] };
+  return { ...registry, extensions: [{ name: 'eforge-plan', path: '/ext/eforge-plan', scope: 'project-local', status: 'loaded', source: 'explicit', trust: 'trusted', trustState: 'not-required', diagnostics: [], capabilities: [{ name: 'eforge.plan.planning-workstation', version: '1.0.0' }] } as any] };
 }
 
 async function run(cwd: string, input: Record<string, unknown>, opts: { capability?: boolean; enqueue?: (req: any) => Promise<any> } = {}) {
@@ -41,6 +41,9 @@ describe('run-playbook action', () => {
       expect(calls[0]).not.toHaveProperty('afterQueueId');
       expect(calls[0]).not.toHaveProperty('landingAction');
       expect(calls[0]).not.toHaveProperty('landingAutoMerge');
+
+      const blankOverride = await run(cwd, { name: 'profiled', profile: '   ' });
+      expect(blankOverride.calls[0]).toMatchObject({ profile: 'frontmatter-profile' });
     });
   });
 
@@ -65,11 +68,13 @@ describe('run-playbook action', () => {
 
   it('returns planning diagnostics or planning entry without queue calls and with JSON-safe seed', async () => {
     await withTempProject(async (cwd) => {
-      await writePlaybook(cwd, 'project-local', 'plan', rawPlaybook({ name: 'plan', scope: 'project-local', mode: 'planning' }));
+      await writePlaybook(cwd, 'project-local', 'plan', rawPlaybook({ name: 'plan', scope: 'project-local', mode: 'planning', profile: 'plan-profile' }));
       const missing = await run(cwd, { name: 'plan', profile: 'override-profile' });
       expect(missing.calls).toEqual([]);
       expect(missing.result).toMatchObject({ kind: 'success', output: { kind: 'planning-unavailable', planningEntry: { seed: { profile: 'override-profile', sections: expect.any(Object) } } } });
       expect((missing.result as any).output.planningEntry.seed.sections instanceof Map).toBe(false);
+      const blankOverride = await run(cwd, { name: 'plan', profile: '   ' });
+      expect(blankOverride.result).toMatchObject({ kind: 'success', output: { planningEntry: { seed: { profile: 'plan-profile' } } } });
       const available = await run(cwd, { name: 'plan' }, { capability: true });
       expect(available.calls).toEqual([]);
       expect(available.result).toMatchObject({ kind: 'success', output: { kind: 'requires-agent', planningEntry: { actionId: 'eforge-plan:open-planning-entry', workstationId: 'eforge-plan:planning-workstation', workstationUrl: '/console/workstations/eforge-plan%3Aplanning-workstation' } } });

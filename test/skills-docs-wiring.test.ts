@@ -7,7 +7,7 @@
  * verify file content statically - no runtime behavior to test.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -451,57 +451,34 @@ describe('formatter prompt — AC quality guidance', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Actionable planning-playbook contract (plan-01-actionable-planning-playbooks)
+// Host-surface-neutrality playbook skill removal
 // ---------------------------------------------------------------------------
 
-describe('playbook skills — generic eforge-plan planning entry contract', () => {
-  const piPlaybook = readRepoFile('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
-  const pluginPlaybook = readRepoFile('eforge-plugin/skills/playbook/playbook.md');
-
-  it('both playbook skills name the eforge-plan planning-mode playbook capability', () => {
-    for (const raw of [piPlaybook, pluginPlaybook]) {
-      expect(raw).toContain('eforge.plan.planning-mode-playbook');
-    }
+describe('playbook skills — host facades removed', () => {
+  it('removes Claude and Pi playbook skill files from discoverable skill surfaces', () => {
+    expect(existsSync(resolve(process.cwd(), 'packages/pi-eforge/skills/eforge-playbook/SKILL.md'))).toBe(false);
+    expect(existsSync(resolve(process.cwd(), 'eforge-plugin/skills/playbook/playbook.md'))).toBe(false);
   });
 
-  it('both playbook skills route planning continuation through generic contribution discovery and invocation', () => {
-    expect(piPlaybook).toContain('eforge_extension_contribution');
-    expect(pluginPlaybook).toContain('mcp__eforge__eforge_extension_contribution');
-    for (const raw of [piPlaybook, pluginPlaybook]) {
-      expect(raw).toContain('eforge-plan:open-planning-entry');
-      expect(raw).toContain('eforge-plan:planning-workstation');
-      expect(raw).toContain('implementation-ready session plan');
-    }
-  });
+  it('omits the playbook skill from plugin commands and skill parity checks', () => {
+    const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { commands: string[] };
+    const parity = readRepoFile('scripts/check-skill-parity.mjs');
 
-  it('both playbook skills name the eforge-plan workstation route and avoid plan-command continuation', () => {
-    for (const raw of [piPlaybook, pluginPlaybook]) {
-      expect(raw).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
-      expect(raw).not.toContain('/eforge:plan');
-    }
-  });
-
-  it('both playbook skills document eforge-playbooks action ownership and avoid removed direct-route wording', () => {
-    const directRoute = '/api/' + 'playbook';
-    for (const raw of [piPlaybook, pluginPlaybook]) {
-      expect(raw).toContain('eforge-playbooks');
-      expect(raw).toContain('eforge-playbooks:run-playbook');
-      expect(raw).toContain('eforge-playbooks:copy-playbook');
-      expect(raw).not.toContain(directRoute);
-      expect(raw).not.toContain('create-from-' + 'playbook');
-    }
-    expect(piPlaybook).toContain('eforge_extension_contribution');
-    expect(pluginPlaybook).toContain('mcp__eforge__eforge_extension_contribution');
+    expect(plugin.commands).not.toContain('./skills/playbook/playbook.md');
+    expect(parity).not.toContain('eforge-playbook');
+    expect(parity).not.toContain('plugin: "playbook"');
   });
 });
 
 describe('docs/config.md — planning playbook prose', () => {
   const docsConfig = readRepoFile('docs/config.md');
 
-  it('documents planning playbook profile inheritance without the removed plan skill', () => {
+  it('documents planning playbook profile inheritance through generic contribution guidance', () => {
     expect(docsConfig).toContain('eforge-plan planning flow');
-    expect(docsConfig).toContain('agent_profile');
+    expect(docsConfig).toContain('eforge.plan.planning-workstation');
+    expect(docsConfig).toContain('eforge extension contributions invoke');
     expect(docsConfig).not.toContain('/eforge:plan');
+    expect(docsConfig).not.toContain('planning-mode-playbook');
   });
 });
 

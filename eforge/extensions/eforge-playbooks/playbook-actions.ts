@@ -1,5 +1,6 @@
 import { defineExtensionAction, type ExtensionAction, type TObject, type TSchema } from '@eforge-build/extension-sdk';
-import { listPlaybooks, movePlaybook, validatePlaybook, writePlaybook, type PlaybookScope } from '@eforge-build/input';
+import { validatePlaybook, type PlaybookScope } from './model.js';
+import { listPlaybooks, movePlaybook, writePlaybook } from './storage-core.js';
 import {
   CopyPlaybookInputSchema,
   CopyPlaybookOutputSchema,
@@ -47,7 +48,11 @@ export const playbookManagementActions = [
     inputSchema: ValidatePlaybookInputSchema, outputSchema: ValidatePlaybookOutputSchema, sideEffects: ['none'],
     handler(input) {
       const result = validatePlaybook(input.raw);
-      return result.ok ? { ok: true as const } : { ok: false as const, errors: result.errors };
+      if (!result.ok) return { ok: false as const, errors: result.errors };
+      if (input.scope !== undefined && input.scope !== result.playbook.scope) {
+        return { ok: false as const, errors: [`Scope mismatch: input scope "${input.scope}" does not match playbook scope "${result.playbook.scope}".`] };
+      }
+      return { ok: true as const };
     },
   }),
   defineExtensionAction({

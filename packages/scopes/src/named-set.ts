@@ -2,7 +2,7 @@
  * Named-set resolution across the three scope tiers.
  *
  * A named set is a directory of individually-named files (e.g. `profiles/`,
- * `playbooks/`) where the same name can exist in multiple tiers.  The
+ * `templates/`) where the same name can exist in multiple tiers.  The
  * highest-precedence tier wins; lower-precedence tiers with the same name are
  * recorded as shadows.
  *
@@ -84,7 +84,7 @@ async function scanDir(dir: string, extension: string | undefined): Promise<RawE
  * highest-precedence copy. Lower-precedence tiers with the same name are
  * recorded in `entry.shadows`.
  *
- * @param directory - Sub-directory name within each scope directory (e.g. `'profiles'`, `'playbooks'`).
+ * @param directory - Sub-directory name within each scope directory (e.g. `'profiles'`, `'templates'`).
  * @param opts - Scope resolver options plus optional file extension filter.
  */
 export async function resolveNamedSet(
@@ -136,7 +136,7 @@ export async function resolveNamedSet(
  * Each entry includes the artifact name, its winning scope, absolute path, and
  * shadow chain. This is a convenience wrapper around `resolveNamedSet`.
  *
- * @param directory - Sub-directory name within each scope directory (e.g. `'profiles'`, `'playbooks'`).
+ * @param directory - Sub-directory name within each scope directory (e.g. `'profiles'`, `'templates'`).
  * @param opts - Scope resolver options plus optional file extension filter.
  */
 export async function listNamedSet(

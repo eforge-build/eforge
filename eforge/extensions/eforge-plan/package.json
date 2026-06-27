@@ -65,10 +65,6 @@
         {
           "name": "eforge.plan.planning-workstation",
           "version": "1.0.0"
-        },
-        {
-          "name": "eforge.plan.planning-mode-playbook",
-          "version": "1.0.0"
         }
       ]
     }

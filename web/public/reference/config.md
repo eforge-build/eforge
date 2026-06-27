@@ -117,7 +117,7 @@ Note: `landing.pr.autoMerge` is distinct from `landing.action: merge`. The `acti
 | `always` | Enable auto-merge on every PR unless the per-run `landingAutoMerge` flag is explicitly `false`. |
 | `never` | Never enable auto-merge; skips auto-merge silently and emits a skipped event. |
 
-**Per-run override:** Individual builds and playbook runs can override the policy via the `landingAutoMerge` field in the enqueue body (CLI: `--landing-auto-merge` / `--no-landing-auto-merge`). Omitting the field defers to the `landing.pr.autoMerge` policy.
+**Per-run override:** Individual builds and extension-originated enqueue requests can override the policy via the `landingAutoMerge` field in the enqueue body (CLI: `--landing-auto-merge` / `--no-landing-auto-merge`). Omitting the field defers to the `landing.pr.autoMerge` policy.
 
 ```yaml
 landing:

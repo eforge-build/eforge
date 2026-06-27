@@ -1,17 +1,11 @@
 /**
  * @eforge-build/input — reusable input-artifact protocols for eforge.
  *
- * ## Playbooks
- *
- * Playbooks are Markdown files with YAML frontmatter encoding a reusable build
- * intent. They live in three-tier directories (project-local, project-team,
- * user) and resolve with the @eforge-build/scopes named-set infrastructure.
- *
  * ## Session Plans
  *
  * Session plans are Markdown files in `.eforge/session-plans/` that accumulate
  * decisions during a structured planning conversation. They are project-local
- * only and compile to ordinary build source for the engine queue via
+ * and compile to ordinary build source for the engine queue via
  * `sessionPlanToBuildSource` or the boundary helper `normalizeBuildSource`.
  * The bundled session-planning workflow adapter exposes the same project-local
  * boundary as domain operations without importing daemon client contracts.
@@ -22,64 +16,11 @@
  * if a source path matches `.eforge/session-plans/<name>.md`, it parses the plan
  * and converts it to ordinary build source. Other paths pass through unchanged.
  *
- * ## Playbook modes
+ * ## Extension-aware preprocessing
  *
- * Every playbook declares `mode: autonomous | planning`. Use `playbookToBuildSource`
- * for autonomous playbooks (engine queue) and `playbookToPlanSeed` + `createSessionPlanFromPlaybookSeed`
- * for planning playbooks (interactive session plan).
+ * `preprocessBuildSource` lets callers resolve extension-registered input
+ * source references and apply PRD enrichers while preserving provenance.
  */
-
-// ---------------------------------------------------------------------------
-// Playbook exports
-// ---------------------------------------------------------------------------
-
-export {
-  // Schema / types
-  playbookScopeSchema,
-  playbookFrontmatterSchema,
-
-  // Parse / serialize
-  parsePlaybook,
-  serializePlaybook,
-  validatePlaybook,
-
-  // List / load
-  listPlaybooks,
-  loadPlaybook,
-
-  // Write / move / copy
-  writePlaybook,
-  movePlaybook,
-  copyPlaybookToScope,
-
-  // Build source compilation
-  playbookToBuildSource,
-
-  // Plan seed extraction
-  playbookToPlanSeed,
-
-  // Errors
-  PlaybookNotFoundError,
-  PlaybookModeMismatchError,
-} from './playbook.js';
-
-export type {
-  PlaybookScope,
-  PlaybookFrontmatter,
-  PlaybookMode,
-  PlaybookBody,
-  Playbook,
-  PlaybookShadowEntry,
-  PlaybookEntry,
-  SessionPlanInput,
-  PlaybookPlanSeed,
-  ListPlaybooksOpts,
-  LoadPlaybookOpts,
-  WritePlaybookOpts,
-  MovePlaybookOpts,
-  CopyPlaybookToScopeOpts,
-  CopyPlaybookToScopeResult,
-} from './playbook.js';
 
 // ---------------------------------------------------------------------------
 // Session plan exports
@@ -106,7 +47,6 @@ export {
 
   // Mutation helpers
   createSessionPlan,
-  createSessionPlanFromPlaybookSeed,
   setSessionPlanSection,
   skipDimension,
   unskipDimension,
@@ -138,7 +78,6 @@ export type {
   ListSessionPlansOpts,
   ListActiveSessionPlansOpts,
   CreateSessionPlanOpts,
-  CreateSessionPlanFromPlaybookSeedOpts,
   SetSessionPlanStatusMetadata,
   SetSessionPlanDimensionsOpts,
   SessionPlanDimensionSpec,

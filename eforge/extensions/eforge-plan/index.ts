@@ -391,11 +391,11 @@ export default defineEforgeExtension((eforge) => {
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));
-  eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'open-planning-entry', label: 'Open eforge-plan planning entry', description: 'Return the eforge-plan planning workstation URL for planning-mode continuation.', inputSchema: Type.Object({}, { additionalProperties: false }), action: { actionId: 'open-planning-entry' } }));
+  eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'open-planning-entry', label: 'Open eforge-plan planning entry', description: 'Return the eforge-plan planning workstation URL for generic planning entry continuation.', inputSchema: Type.Object({}, { additionalProperties: false }), action: { actionId: 'open-planning-entry' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'render-board', label: 'Render eforge-plan board', inputSchema: BoardInput, action: { actionId: 'render-board-markdown' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-item', label: 'Promote eforge-plan item', inputSchema: PromoteInput, action: { actionId: 'promote-item' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-selection', label: 'Promote eforge-plan selection', inputSchema: PromoteSelectionInput, action: { actionId: 'promote-selection' } }));
-  eforge.registerDeepLink(defineExtensionDeepLink({ id: 'planning-workstation', label: 'Open eforge-plan planning workstation', description: 'Open the eforge-plan planning workstation for planning-mode playbook continuation.', urlTemplate: PLANNING_WORKSTATION_ROUTE, action: { actionId: 'open-planning-entry' } }));
+  eforge.registerDeepLink(defineExtensionDeepLink({ id: 'planning-workstation', label: 'Open eforge-plan planning workstation', description: 'Open the eforge-plan planning workstation for generic planning entry continuation.', urlTemplate: PLANNING_WORKSTATION_ROUTE, action: { actionId: 'open-planning-entry' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'board', label: 'Open eforge-plan board', action: { actionId: 'render-board-markdown' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote', label: 'Promote eforge-plan item', action: { actionId: 'promote-item' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote-selection', label: 'Promote eforge-plan selection', action: { actionId: 'promote-selection' } }));

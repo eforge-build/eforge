@@ -1,23 +1,29 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { createProgram } from '../packages/eforge/src/cli/index.js';
 
-function read(path: string): string {
-  return readFileSync(resolve(process.cwd(), path), 'utf8');
+function commandNames(command: { commands?: Array<{ name(): string; commands?: Array<{ name(): string }> }> } | undefined): string[] {
+  return command?.commands?.map((child) => child.name()) ?? [];
 }
 
-describe('CLI playbook compatibility commands', () => {
-  it('delegates eforge playbook run docs-sync --after q-abc to eforge-playbooks:run-playbook with afterQueueId', () => {
-    const playbook = read('packages/eforge/src/cli/playbook.ts');
-    const helper = read('packages/eforge/src/cli/playbook-contributions.ts');
+describe('CLI playbook host surface removal', () => {
+  it('does not register top-level playbook compatibility commands', () => {
+    const program = createProgram(undefined, 'test');
+    expect(commandNames(program)).not.toContain('playbook');
+    expect(commandNames(program)).not.toContain('play');
+  });
 
-    expect(playbook).toContain(".command('run <name>')");
-    expect(playbook).toContain(".command('play <name>')");
-    expect(playbook).toContain(".option('--after <queue-id>'");
-    expect(playbook).toContain('afterQueueId: options.after');
-    expect(playbook).toContain("invokeAndRender('run'");
-    expect(helper).toContain("run: 'eforge-playbooks:run-playbook'");
-    expect(helper).toMatch(/kind:\s*['"]command['"]/);
-    expect(helper).toContain("host: 'cli'");
+  it('deletes host-local playbook adapter files', () => {
+    expect(existsSync('packages/eforge/src/cli/playbook.ts')).toBe(false);
+    expect(existsSync('packages/eforge/src/cli/playbook-contributions.ts')).toBe(false);
+  });
+
+  it('keeps generic extension contribution commands available', () => {
+    const program = createProgram(undefined, 'test');
+    const extension = program.commands.find((command) => command.name() === 'extension');
+    const contributions = extension?.commands.find((command) => command.name() === 'contributions');
+
+    expect(contributions).toBeDefined();
+    expect(commandNames(contributions)).toEqual(expect.arrayContaining(['list', 'show', 'invoke']));
   });
 });

@@ -2,7 +2,7 @@
 
 `eforge-plan` is a reference extension for curating a project-local backlog and promoting selected backlog items into normal eforge build inputs. It is intentionally dogfoodable: project teams can keep lightweight planning records in the repository, render a derived kanban board, promote work into session plans, and correlate later eforge lifecycle events back to the originating backlog item.
 
-The extension does not replace session plans, playbooks, or normalized build-source preprocessing. It produces ordinary build-source Markdown and `.eforge/session-plans/<session>.md` artifacts that the existing eforge engine can consume.
+The extension does not replace session plans or normalized build-source preprocessing. It produces ordinary build-source Markdown and `.eforge/session-plans/<session>.md` artifacts that the existing eforge engine can consume.
 
 ## Trust model
 
@@ -67,12 +67,11 @@ Run `eforge extension show eforge-plan` to confirm the registered actions, integ
 
 ## Declared capabilities
 
-The directory extension manifest declares two stable first-party capabilities:
+The directory extension manifest declares one stable first-party capability:
 
-- `eforge.plan.planning-workstation` version `1.0.0` — the extension owns the rich planning workstation UI.
-- `eforge.plan.planning-mode-playbook` version `1.0.0` — planning-mode playbook hosts may depend on this capability before offering planning continuation.
+- `eforge.plan.planning-workstation` version `1.0.0` — the extension owns the rich planning workstation UI and generic planning entry continuation surface.
 
-Planning entry is exposed through generic extension contribution discovery. Hosts can list/invoke the `eforge-plan:open-planning-entry` action or integration command, or follow the action-backed `eforge-plan:planning-workstation` deep link. All return or point at the workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
+Planning entry is exposed through generic extension contribution discovery. Hosts can list or invoke the `eforge-plan:open-planning-entry` action or integration command, or follow the action-backed `eforge-plan:planning-workstation` deep link. All return or point at the workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
 
 ## Usage
 
@@ -372,7 +371,7 @@ The Console System contribution is declarative and uses only the closed renderer
 
 The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, reading recommendations, reading or updating roadmap state, refreshing recommendations, analyzing all backlog records, promoting an item or selection, preparing planner context, applying structured planner results, capturing an item, updating an item, reading store status, dry-running compaction, rebuilding or optimizing search indexes, and vacuuming the planning store. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
-Host integrations register commands and action-backed deep links for board rendering, promotion workflows, and generic planning entry. Planning-mode playbook hosts should discover or invoke the `eforge-plan:open-planning-entry` contribution, or open the `eforge-plan:planning-workstation` deep link, instead of hard-coding host-specific planning commands. Claude Code and Pi integrations reach the same eforge-plan action IDs through generic extension contribution discovery/invocation; this module does not introduce dedicated host-specific commands, skills, or MCP tools for store/search/maintenance behavior.
+Host integrations register commands and action-backed deep links for board rendering, promotion workflows, and generic planning entry. Planning hosts should discover or invoke the `eforge-plan:open-planning-entry` contribution, or open the `eforge-plan:planning-workstation` deep link, instead of hard-coding host-specific planning commands. Claude Code and Pi integrations reach the same eforge-plan action IDs through generic extension contribution discovery/invocation; this module does not introduce dedicated host-specific commands, skills, or MCP tools for store/search/maintenance behavior.
 
 The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are built from the TypeScript/React Vite app in `workstation-src/plans`, use local shadcn-style components owned by the extension, and are served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
 

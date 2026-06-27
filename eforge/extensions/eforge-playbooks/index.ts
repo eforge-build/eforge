@@ -42,9 +42,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Show playbook', content: 'Show one highest-precedence or exact-scope playbook.', action: { actionId: 'show-playbook' } },
       { rendererId: 'action-form', title: 'Save playbook', content: 'Write a raw, nested, or flattened playbook payload.', action: { actionId: 'save-playbook', inputDefaults: { overwrite: true } } },
       { rendererId: 'action-form', title: 'Validate playbook', content: 'Validate raw playbook Markdown without writing files.', action: { actionId: 'validate-playbook' } },
-      { rendererId: 'action-form', title: 'Copy playbook', content: 'Copy a playbook to another scope.', action: { actionId: 'copy-playbook' } },
-      { rendererId: 'action-form', title: 'Promote playbook', content: 'Move project-local to project-team.', action: { actionId: 'promote-playbook' } },
-      { rendererId: 'action-form', title: 'Demote playbook', content: 'Move project-team to project-local.', action: { actionId: 'demote-playbook' } },
+      { rendererId: 'action-form', title: 'Copy playbook', content: 'Copy a playbook to another scope.', action: { actionId: 'copy-playbook', inputDefaults: { overwrite: true } } },
+      { rendererId: 'action-form', title: 'Promote playbook', content: 'Move project-local to project-team.', action: { actionId: 'promote-playbook', inputDefaults: { overwrite: true } } },
+      { rendererId: 'action-form', title: 'Demote playbook', content: 'Move project-team to project-local.', action: { actionId: 'demote-playbook', inputDefaults: { overwrite: true } } },
       { rendererId: 'action-form', title: 'Run playbook', content: 'Run autonomous playbooks or return planning handoff metadata.', action: { actionId: 'run-playbook' } },
     ],
   }));

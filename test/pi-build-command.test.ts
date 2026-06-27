@@ -44,7 +44,6 @@ vi.mock('../packages/pi-eforge/extensions/eforge/ui-helpers.js', () => ({
 
 vi.mock('../packages/pi-eforge/extensions/eforge/landing-gate.js', () => ({
   promptForBuildLandingGate: vi.fn(),
-  promptForPlaybookLandingGate: vi.fn(),
   promptForLandingSelection: vi.fn(),
 }));
 

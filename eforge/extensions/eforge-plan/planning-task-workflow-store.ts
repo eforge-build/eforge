@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
-import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
+import { PlanningTaskWorkflowEntrySchema, PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
 import { getDatabase } from './sqlite/store-internal.js';
 import { openEforgePlanStore, resolveEforgePlanStorePath } from './sqlite/index.js';
 import { withCanonicalTransaction } from './canonical/store.js';
@@ -72,7 +72,7 @@ export async function readPlanningTaskWorkflowIndex(cwd: string): Promise<Planni
     return emptyIndex();
   }
   const result = safeParseWithSchema(PlanningTaskWorkflowIndexSchema, parsed);
-  return result.success ? orderIndex(result.data) : emptyIndex();
+  return result.success ? orderIndex(result.data) : readValidWorkflowIndexEntries(parsed);
 }
 
 /**
@@ -169,9 +169,24 @@ function readCanonicalWorkflowIndex(cwd: string): { index: PlanningTaskWorkflowI
 
 function entryFromCanonicalRow(row: Record<string, unknown>): PlanningTaskWorkflowEntry | undefined {
   const raw = typeof row.raw_request_json === 'string' ? JSON.parse(row.raw_request_json) as unknown : undefined;
-  const parsed = safeParseWithSchema(PlanningTaskWorkflowIndexSchema.properties.entries.items, raw);
+  const parsed = safeParseWithSchema(PlanningTaskWorkflowEntrySchema, raw);
   if (!parsed.success) return undefined;
   return { ...parsed.data, ...(typeof row.applied_at === 'string' ? { appliedAt: row.applied_at } : {}) };
+}
+
+function readValidWorkflowIndexEntries(parsed: unknown): PlanningTaskWorkflowIndex {
+  if (!isWorkflowIndexRecord(parsed)) return emptyIndex();
+  const entries = parsed.entries
+    .map((entry) => safeParseWithSchema(PlanningTaskWorkflowEntrySchema, entry))
+    .filter((entry): entry is { success: true; data: PlanningTaskWorkflowEntry } => entry.success)
+    .map((entry) => entry.data);
+  return orderIndex({ schemaVersion: 1, entries });
+}
+
+function isWorkflowIndexRecord(value: unknown): value is { schemaVersion: 1; entries: unknown[] } {
+  return typeof value === 'object' && value !== null
+    && (value as { schemaVersion?: unknown }).schemaVersion === 1
+    && Array.isArray((value as { entries?: unknown }).entries);
 }
 
 async function canonicalPlanningTaskInput(cwd: string, entry: PlanningTaskWorkflowEntry): Promise<Parameters<typeof recordCanonicalPlanningTaskWorkflowEntry>[1]> {

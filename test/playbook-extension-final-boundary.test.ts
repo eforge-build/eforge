@@ -4,17 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
 
-const contributionIds = [
-  'eforge-playbooks:list-playbooks',
-  'eforge-playbooks:show-playbook',
-  'eforge-playbooks:save-playbook',
-  'eforge-playbooks:validate-playbook',
-  'eforge-playbooks:copy-playbook',
-  'eforge-playbooks:promote-playbook',
-  'eforge-playbooks:demote-playbook',
-  'eforge-playbooks:run-playbook',
-] as const;
-
 const deletedBoundaryFiles = [
   'packages/client/src/api/playbook.ts',
   'packages/client/src/routes/playbook.ts',
@@ -112,15 +101,6 @@ function scanForForbiddenTokens(tokens: string[]): Array<{ path: string; token: 
   return failures;
 }
 
-function toolBlock(source: string, name: string, nextName?: string): string {
-  const startMatch = new RegExp(`name:\\s*['\"]${name}['\"]`).exec(source);
-  expect(startMatch?.index ?? -1, `${name} should be registered`).toBeGreaterThanOrEqual(0);
-  const start = startMatch?.index ?? 0;
-  const endMatch = nextName ? new RegExp(`name:\\s*['\"]${nextName}['\"]`).exec(source.slice(start + 1)) : null;
-  const end = endMatch ? start + 1 + endMatch.index : source.length;
-  return source.slice(start, end > start ? end : source.length);
-}
-
 describe('playbook extension final boundary', () => {
   it('keeps removed direct daemon/client/input/Console playbook ownership files absent', () => {
     for (const path of deletedBoundaryFiles) {
@@ -169,7 +149,7 @@ describe('playbook extension final boundary', () => {
         expect.objectContaining({
           name: 'eforge-plan',
           capabilities: expect.arrayContaining([
-            expect.objectContaining({ name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' }),
+            expect.objectContaining({ name: 'eforge.plan.planning-workstation', version: '>=1.0.0' }),
           ]),
         }),
       ]),
@@ -177,35 +157,42 @@ describe('playbook extension final boundary', () => {
     expect(readJson<{ scripts?: Record<string, string> }>('package.json').scripts).toHaveProperty('type-check:eforge-playbooks');
   });
 
-  it('keeps CLI, MCP, Pi, and skill playbook host surfaces delegated to generic eforge-playbooks contributions', () => {
-    const cliHelper = read('packages/eforge/src/cli/playbook-contributions.ts');
-    const piHelper = read('packages/pi-eforge/extensions/eforge/playbook-contributions.ts');
-    for (const id of contributionIds) {
-      expect(cliHelper, `CLI helper should define ${id}`).toContain(id);
-      expect(piHelper, `Pi helper should define ${id}`).toContain(id);
+  it('keeps CLI, MCP, Pi, and skill playbook host surfaces removed while generic contribution APIs remain', () => {
+    const removedHostFiles = [
+      'packages/eforge/src/cli/playbook.ts',
+      'packages/eforge/src/cli/playbook-contributions.ts',
+      'packages/pi-eforge/extensions/eforge/playbook-commands.ts',
+      'packages/pi-eforge/extensions/eforge/playbook-contributions.ts',
+      'eforge-plugin/skills/playbook/playbook.md',
+      'packages/pi-eforge/skills/eforge-playbook/SKILL.md',
+    ];
+    for (const path of removedHostFiles) {
+      expect(existsSync(resolve(repoRoot, path)), `${path} should stay deleted`).toBe(false);
     }
 
+    const cli = read('packages/eforge/src/cli/index.ts');
+    const cliContributions = read('packages/eforge/src/cli/extension-contributions.ts');
     const mcp = read('packages/eforge/src/cli/mcp-proxy.ts');
+    const mcpContributions = read('packages/eforge/src/cli/mcp-extension-contributions.ts');
     const pi = read('packages/pi-eforge/extensions/eforge/index.ts');
-    expect(toolBlock(mcp, 'eforge_playbook', 'eforge_session_plan')).toMatch(/['"]copy['"]/);
-    expect(toolBlock(pi, 'eforge_playbook', 'eforge_session_plan')).toMatch(/['"]copy['"]/);
+    const piExtensions = read('packages/pi-eforge/extensions/eforge/extension-contributions.ts');
+    const plugin = readJson<{ commands?: string[] }>('eforge-plugin/.claude-plugin/plugin.json');
 
-    const removedAction = 'create-from-' + 'playbook';
-    for (const sessionPlanTool of [toolBlock(mcp, 'eforge_session_plan'), toolBlock(pi, 'eforge_session_plan')]) {
-      expect(sessionPlanTool).not.toContain(removedAction);
-      expect(sessionPlanTool).not.toContain('playbook_name');
-    }
+    expect(cli).toContain('registerExtensionContributionCommands(extension)');
+    expect(cliContributions).toContain(".command('contributions')");
+    expect(mcp).toContain('registerExtensionContributionMcpTool(server, cwd)');
+    expect(mcpContributions).toContain('eforge_extension_contribution');
+    expect(pi).toContain('registerExtensionContributionTool(pi)');
+    expect(piExtensions).toContain('eforge_extension_contribution');
+    expect(piExtensions).toContain('eforge:extensions');
+    expect(plugin.commands ?? []).not.toContain('./skills/playbook/playbook.md');
 
-    const claudeSkill = read('eforge-plugin/skills/playbook/playbook.md');
-    const piSkill = read('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
-    for (const skill of [claudeSkill, piSkill]) {
-      expect(skill).toContain('eforge-playbooks');
-      expect(skill).toContain('eforge-playbooks:run-playbook');
-      expect(skill).toContain('eforge-playbooks:copy-playbook');
-      expect(skill).not.toContain('/api/' + 'playbook');
-      expect(skill).not.toContain(removedAction);
+    for (const source of [cli, cliContributions, mcp, mcpContributions, pi, piExtensions]) {
+      expect(source).not.toContain('eforge_playbook');
+      expect(source).not.toContain('eforge:playbook');
+      expect(source).not.toContain('PLAYBOOK_CONTRIBUTION_IDS');
+      expect(source).not.toContain('invokePlaybookContributionForHost');
+      expect(source).not.toMatch(/eforge-playbooks:[a-z-]+/);
     }
-    expect(claudeSkill).toContain('mcp__eforge__eforge_extension_contribution');
-    expect(piSkill).toContain('eforge_extension_contribution');
   });
 });

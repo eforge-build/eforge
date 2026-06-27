@@ -31,6 +31,6 @@ describe('eforge-playbooks registration', () => {
     for (const id of ACTION_IDS) expect(actionRefs).toContain(`eforge-playbooks:${id}`);
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
     expect(pkg.eforge.extension.capabilities).toEqual(expect.arrayContaining([{ name: 'eforge.playbooks.management', version: '1.0.0' }, { name: 'eforge.playbooks.run', version: '1.0.0' }]));
-    expect(pkg.eforge.extension.dependencies.optional[0]).toMatchObject({ name: 'eforge-plan', capabilities: [{ name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' }] });
+    expect(pkg.eforge.extension.dependencies.optional[0]).toMatchObject({ name: 'eforge-plan', capabilities: [{ name: 'eforge.plan.planning-workstation', version: '>=1.0.0' }] });
   });
 });

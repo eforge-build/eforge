@@ -47,10 +47,6 @@ export const planningDraftSubmissionToolSchema = Type.Object({
     title: Type.String(),
     body: Type.String(),
   }, { additionalProperties: false }), { minItems: 1 })),
-  playbookDraft: Type.Optional(Type.Object({
-    name: Type.String(),
-    body: Type.String(),
-  }, { additionalProperties: false })),
   sessionPlanPatch: Type.Optional(Type.Object({
     sections: Type.Array(Type.Object({
       dimension: Type.String(),

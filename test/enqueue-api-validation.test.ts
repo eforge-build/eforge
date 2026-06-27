@@ -7,8 +7,8 @@ import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer, type StartServerOptions, type WorkerTracker } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 
-import { setupPlaybookApiProject, postJson as post } from './playbook-api-helpers.js';
-const makeTempDir = useTempDir('eforge-playbook-api-');
+import { setupApiProject, postJson as post } from './api-route-helpers.js';
+const makeTempDir = useTempDir('eforge-enqueue-api-');
 
 let server: MonitorServer | undefined;
 
@@ -19,7 +19,7 @@ afterEach(async () => {
 
 async function init(): Promise<{ tmpDir: string; configDir: string }> {
   const tmpDir = makeTempDir();
-  const { configDir } = await setupPlaybookApiProject(tmpDir);
+  const { configDir } = await setupApiProject(tmpDir);
   return { tmpDir, configDir };
 }
 
