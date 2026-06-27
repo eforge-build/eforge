@@ -246,3 +246,20 @@ case 'planning:scope-context:failure':
   }
 }
 </build-config>
+
+## Recovery Guidance
+
+- Failed PRD: "add-compile-resilience-for-oversized-prds"
+- Root failed plan: "plan-06-surfaces-docs"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for add-compile-resilience-for-oversized-prds. artifact source: feature-branch; 10 landed commit(s); failing plan: plan-06-surfaces-docs; feature branch: eforge/add-compile-resilience-for-oversized-prds. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
+- Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair add-compile-resilience-for-oversized-prds`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair plan-06-surfaces-docs through the compiled-artifact recovery path"
+  - "Resolve or bound the review context-window failure so final evaluation can complete"
+  - "Re-run required validation commands after repair"
+- Retry/resume guidance: Continue plan-06-surfaces-docs for failed PRD add-compile-resilience-for-oversized-prds from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-06-27T04:12:45.118Z
+- Source sidecar: .eforge/queue/failed/add-compile-resilience-for-oversized-prds.recovery.json
+- Source identity: prdId=add-compile-resilience-for-oversized-prds; setName=add-compile-resilience-for-oversized-prds; featureBranch=eforge/add-compile-resilience-for-oversized-prds; baseBranch=main
