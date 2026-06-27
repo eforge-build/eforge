@@ -2,13 +2,13 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
-import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
-import { isRetryableInfrastructureSubtype } from '../retry.js';
+import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getReviewIssueSchemaYaml } from '../schemas.js';
 import { assignReviewIssueIds, normalizeReviewIssueId } from '../review-issue-traceability.js';
+import { isSalvageableLateReviewerOutputError, salvageReviewIssuesFromMalformedReviewOutput } from './reviewer-output-salvage.js';
 
 const exec = promisify(execFile);
 
@@ -529,9 +529,11 @@ export async function* runReview(
       }
     }
   } catch (err) {
-    const terminalSubtype = classifyAgentTerminalSubtype(err);
     const parseResult = parseReviewIssuesStrict(fullText);
-    if (sawAgentResult && terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype) && parseResult.valid) {
+    const salvagedIssues = parseResult.valid
+      ? parseResult.issues
+      : salvageReviewIssuesFromMalformedReviewOutput(fullText);
+    if (sawAgentResult && isSalvageableLateReviewerOutputError(err) && (parseResult.valid || salvagedIssues.length > 0)) {
       yield {
         timestamp: new Date().toISOString(),
         type: 'agent:warning',
@@ -539,9 +541,15 @@ export async function* runReview(
         agentId: reviewerAgentId ?? 'unknown-reviewer',
         agent: 'reviewer',
         code: 'reviewer-late-infrastructure-error-downgraded',
-        message: err instanceof Error ? err.message : String(err),
+        message: `${parseResult.valid ? 'Reviewer completed with parseable output' : 'Reviewer completed with salvageable non-strict output'} before a late backend error: ${err instanceof Error ? err.message : String(err)}`,
       };
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues: assignParsedReviewIssueIds(parseResult, round), ...(round !== undefined ? { round } : {}) };
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:review:complete',
+        planId,
+        issues: parseResult.valid ? assignParsedReviewIssueIds(parseResult, round) : assignReviewIssueIds(salvagedIssues, { round, lane: 'single' }),
+        ...(round !== undefined ? { round } : {}),
+      };
       return;
     }
     throw err;

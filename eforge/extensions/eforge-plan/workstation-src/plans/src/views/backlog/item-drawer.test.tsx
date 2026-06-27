@@ -34,12 +34,29 @@ describe('ItemDrawer compact detail loading', () => {
     expect(calls).toEqual([]);
     renderDrawer(bridge, mockBoard.items.find((item) => item.id === 'auto-mode')!);
 
-    expect(await screen.findByText(/Explore auto-mode draining claim/)).toBeTruthy();
+    expect((await screen.findAllByText(/Explore auto-mode draining claim/)).length).toBeGreaterThan(0);
     expect(screen.getByText('Depends on')).toBeTruthy();
     expect(screen.getByText('Trace sidecars')).toBeTruthy();
     expect(screen.getAllByText('planned').length).toBeGreaterThan(1);
     expect(screen.getByText('traceability').className).toContain('lane-blocked');
-    expect(calls).toEqual([{ actionId: 'get-item', input: { id: 'auto-mode' } }]);
+    expect(calls).toEqual([{ actionId: 'get-item', input: { id: 'auto-mode', includeBody: true } }]);
+  });
+
+  it('renders the raw item markdown body when detail includes it', async () => {
+    const bridge: EforgeBridge = {
+      async invokeAction<TOutput>(actionId: string): Promise<TOutput> {
+        if (actionId === 'get-item') return {
+          ...getMockCompactItemDetail('auto-mode'),
+          item: { ...getMockCompactItemDetail('auto-mode').item, body: '## Detail body\n\n- rendered body bullet' },
+        } as TOutput;
+        throw new Error(actionId);
+      },
+    };
+
+    renderDrawer(bridge, mockBoard.items.find((item) => item.id === 'auto-mode')!);
+
+    expect(await screen.findByRole('heading', { name: 'Detail body' })).toBeTruthy();
+    expect(screen.getByText('rendered body bullet')).toBeTruthy();
   });
 
   it('renders loading and error states', async () => {

@@ -141,7 +141,7 @@ export interface BoardItem {
   planEligibilityReasonCode?: string;
   planEligibilityReasonMessage?: string;
   planEligibilityLinks?: LifecycleLinkRow[];
-  snippets?: string[];
+  snippets?: string[]; body?: string;
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
 export interface Epic { id: string; title?: string; status?: string; priority?: string; tags?: string[]; itemCount?: number; openItemCount?: number; hasBody?: boolean; }

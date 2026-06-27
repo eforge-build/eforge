@@ -7,8 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
-import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
-import { isRetryableInfrastructureSubtype } from '../retry.js';
+import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
 import { selectInitialReviewPerspectives, shouldParallelizeReview, isBuiltInReviewPerspective, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
@@ -26,6 +25,7 @@ import {
   getReviewDiffPathspecArgs,
   mergeReviewerResultText,
 } from './reviewer.js';
+import { isSalvageableLateReviewerOutputError, salvageReviewIssuesFromMalformedReviewOutput } from './reviewer-output-salvage.js';
 import {
   getReviewIssueSchemaYaml,
   getCodeReviewIssueSchemaYaml,
@@ -44,9 +44,12 @@ import {
 const exec = promisify(execFile);
 
 // --- eforge:region reviewer-late-transport-recovery ---
-function isRetryableLateReviewerInfrastructureError(err: unknown): boolean {
-  const terminalSubtype = classifyAgentTerminalSubtype(err);
-  return terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype);
+function recoverLateReviewerIssues(fullText: string, err: unknown): ReviewIssue[] | undefined {
+  if (!isSalvageableLateReviewerOutputError(err)) return undefined;
+  const parseResult = parseReviewIssuesStrict(fullText);
+  if (parseResult.valid) return parseResult.issues;
+  const salvagedIssues = salvageReviewIssuesFromMalformedReviewOutput(fullText);
+  return salvagedIssues.length > 0 ? salvagedIssues : undefined;
 }
 // --- eforge:endregion reviewer-late-transport-recovery ---
 
@@ -387,9 +390,9 @@ export async function* runParallelReview(
 
             yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
           } catch (err) {
-            const parseResult = parseReviewIssuesStrict(fullText);
-            if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
-              const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+            const lateIssues = sawAgentResult ? recoverLateReviewerIssues(fullText, err) : undefined;
+            if (lateIssues !== undefined) {
+              const issues = assignPerspectiveReviewIssueIds(lateIssues, perspective, round);
               allIssues.push({ perspective, issues });
               yield {
                 timestamp: new Date().toISOString(),
@@ -398,7 +401,7 @@ export async function* runParallelReview(
                 agentId: reviewerAgentId ?? `unknown-reviewer-${perspective}`,
                 agent: 'reviewer',
                 code: 'reviewer-late-infrastructure-error-downgraded',
-                message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
+                message: `Reviewer perspective "${perspective}" completed with parseable or salvageable output before a late backend error: ${err instanceof Error ? err.message : String(err)}`,
               };
               yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
               return;
@@ -472,9 +475,9 @@ export async function* runParallelReview(
 
         yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
       } catch (err) {
-        const parseResult = parseReviewIssuesStrict(fullText);
-        if (sawAgentResult && isRetryableLateReviewerInfrastructureError(err) && parseResult.valid) {
-          const issues = assignPerspectiveReviewIssueIds(parseResult.issues, perspective, round);
+        const lateIssues = sawAgentResult ? recoverLateReviewerIssues(fullText, err) : undefined;
+        if (lateIssues !== undefined) {
+          const issues = assignPerspectiveReviewIssueIds(lateIssues, perspective, round);
           allIssues.push({ perspective, issues });
           yield {
             timestamp: new Date().toISOString(),
@@ -483,7 +486,7 @@ export async function* runParallelReview(
             agentId: reviewerAgentId ?? `unknown-reviewer-${perspective}`,
             agent: 'reviewer',
             code: 'reviewer-late-infrastructure-error-downgraded',
-            message: `Reviewer perspective "${perspective}" completed with parseable output before a late infrastructure error: ${err instanceof Error ? err.message : String(err)}`,
+            message: `Reviewer perspective "${perspective}" completed with parseable or salvageable output before a late backend error: ${err instanceof Error ? err.message : String(err)}`,
           };
           yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues, ...roundMetadata };
           return;

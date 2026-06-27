@@ -98,6 +98,11 @@ async function unstageEvaluationCandidateChanges(cwd: string): Promise<void> {
   }
 }
 
+function hasOnlyReviewerBackendIssues(issues: ReviewIssue[]): boolean {
+  return issues.length > 0 && issues.every(issue => issue.category === 'review-contract' &&
+    issue.file === 'reviewer-output' && /^Reviewer perspective ".+" failed:/.test(issue.description));
+}
+
 /** Per-retry builder span + event processing. Span and tracker created per-attempt. */
 async function* runBuilderAttempt(
   input: BuilderContinuationInput,
@@ -1187,6 +1192,21 @@ registerBuildStage({
       });
       terminationReason = 'no-issues';
       break;
+    }
+
+    if (reviewMetadata.perspectiveErrors.length > 0 && hasOnlyReviewerBackendIssues(ctx.reviewIssues)) {
+      yield emitBuildDecision(ctx, {
+        kind: 'cycle-terminated',
+        rationale: `Review cycle stopped after round ${round + 1}: only reviewer backend failures remained (${reviewMetadata.perspectiveErrors.join(', ')}); not spending additional fixer/evaluator rounds on non-actionable synthetic issues.`,
+        round,
+        reason: 'max-rounds',
+        issuesRemaining: ctx.reviewIssues.length,
+        lastReviewIssueCount: ctx.reviewIssues.length,
+        finalEvaluationRan: false,
+      } as unknown as Parameters<typeof emitBuildDecision>[1]);
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: 'Review cycle stopped after reviewer backend failures produced no actionable review issues.' } as EforgeEvent;
+      ctx.buildFailed = true;
+      return;
     }
 
     yield* reviewFixStageInner(ctx, { round });

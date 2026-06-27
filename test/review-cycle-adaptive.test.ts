@@ -466,6 +466,47 @@ describe('adaptive review-cycle perspective selection', () => {
     expect(round2Respawned?.dropped).toContain('api');
   });
 
+  it('fails fast instead of spending another round on backend-only perspective failures', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    class BackendOnlyFailureHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        if (agent === 'reviewer' && options.perspective === 'code') {
+          for await (const event of new StubHarness([{ error: new Error('review backend unavailable') }]).run(options, agent, planId)) {
+            yield event;
+          }
+          return;
+        }
+        if (agent === 'reviewer') {
+          for await (const event of new StubHarness([{ text: '<review-issues></review-issues>' }]).run(options, agent, planId)) {
+            yield event;
+          }
+          return;
+        }
+        throw new Error(`${agent} should not run for backend-only review failures`);
+      }
+    }
+
+    const ctx = makeContext(repo, new BackendOnlyFailureHarness([]), preImplementCommit);
+    const ctxWithRounds: BuildStageContext = {
+      ...ctx,
+      review: { ...ctx.review, perspectives: ['code', 'docs'], maxRounds: 3 },
+    };
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctxWithRounds));
+
+    expect(filterEvents(events, 'plan:build:review:parallel:start')).toHaveLength(1);
+    expect(filterEvents(events, 'plan:build:review:fix:start')).toHaveLength(0);
+    expect(filterEvents(events, 'plan:build:evaluate:start')).toHaveLength(0);
+    expect(filterEvents(events, 'plan:build:failed')[0]?.error).toContain('reviewer backend failures');
+  });
+
   it('does not terminate on no-issues when reviewer output lacks terminal XML block', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
