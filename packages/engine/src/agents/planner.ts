@@ -19,6 +19,10 @@ import { emitPlanningDecision } from '../decisions.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
+  // --- eforge:region plan-02-preflight-compaction ---
+  /** Prompt-safe compacted source content. Defaults to resolved source content. */
+  promptSourceContent?: string;
+  // --- eforge:endregion plan-02-preflight-compaction ---
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -185,6 +189,9 @@ export async function* runPlanner(
 
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
+  // --- eforge:region plan-02-preflight-compaction ---
+  const promptSourceContent = options.promptSourceContent ?? sourceContent;
+  // --- eforge:endregion plan-02-preflight-compaction ---
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
@@ -224,7 +231,7 @@ ${existingPlans}`;
     }
 
     return loadPrompt('planner', {
-      source: sourceContent,
+      source: promptSourceContent,
       planSetName,
       cwd,
       outputDir: options.outputDir ?? 'eforge/plans',

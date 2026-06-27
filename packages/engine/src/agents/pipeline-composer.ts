@@ -18,6 +18,10 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
   /** The PRD / source document content */
   source: string;
+  // --- eforge:region plan-02-preflight-compaction ---
+  /** Prompt-safe compacted source content. Defaults to source. */
+  promptSourceContent?: string;
+  // --- eforge:endregion plan-02-preflight-compaction ---
   /** Working directory */
   cwd: string;
   /** Whether to emit verbose agent-level events */
@@ -89,6 +93,9 @@ export async function* composePipeline(
   options: PipelineComposerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { harness, source, cwd, verbose, abortController } = options;
+  // --- eforge:region plan-02-preflight-compaction ---
+  const promptSourceContent = options.promptSourceContent ?? source;
+  // --- eforge:endregion plan-02-preflight-compaction ---
 
   const stageRegistry = formatStageRegistry();
   const schema = getPipelineCompositionSchemaYaml();
@@ -111,7 +118,7 @@ export async function* composePipeline(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const composedAppend = [options.promptAppend, validationProviderAppend].filter(Boolean).join('\n\n') || undefined;
     let promptText = await loadPrompt('pipeline-composer', {
-      source,
+      source: promptSourceContent,
       stageRegistry,
       schema,
       validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,

@@ -460,4 +460,5 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
   CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
   CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.js';

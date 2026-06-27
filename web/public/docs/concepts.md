@@ -23,7 +23,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A planner agent assesses complexity and selects a workflow profile, then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for composer/planner prompts while preserving the full source for artifacts and validation. A planner agent assesses complexity and selects a workflow profile, then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -58,7 +58,7 @@ The planner selects one of three profiles based on scope complexity:
 
 **Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
 
-You can suggest a profile in your build prompt, but the planner makes the final call based on what it sees in the codebase.
+You can suggest a profile in your build prompt, but the planner makes the final call based on what it sees in the codebase. Preflight risk is advisory prompt context; it does not by itself change the selected profile.
 
 ## Separation of Concerns
 

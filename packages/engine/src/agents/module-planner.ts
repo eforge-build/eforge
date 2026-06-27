@@ -14,6 +14,10 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   moduleDependsOn: string[];
   architectureContent: string;
   sourceContent: string;
+  // --- eforge:region plan-02-preflight-compaction ---
+  /** Prompt-safe compacted source content. Defaults to sourceContent. */
+  promptSourceContent?: string;
+  // --- eforge:endregion plan-02-preflight-compaction ---
   /** Concatenated plan content from completed dependency modules */
   dependencyPlanContent?: string;
   verbose?: boolean;
@@ -37,8 +41,11 @@ export async function* runModulePlanner(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'expedition:module:start', moduleId: options.moduleId };
 
+  // --- eforge:region plan-02-preflight-compaction ---
+  const promptSourceContent = options.promptSourceContent ?? options.sourceContent;
+  // --- eforge:endregion plan-02-preflight-compaction ---
   const prompt = await loadPrompt('module-planner', {
-    source: options.sourceContent,
+    source: promptSourceContent,
     planSetName: options.planSetName,
     moduleId: options.moduleId,
     moduleDescription: options.moduleDescription,

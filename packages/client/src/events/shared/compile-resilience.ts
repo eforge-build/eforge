@@ -1,10 +1,13 @@
 import { Type, type Static } from '@sinclair/typebox';
 
 export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
+export const MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH = 4096;
+export const MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH = 4096;
 
 const BoundedStringSchema = Type.String({ maxLength: 2000 });
 const BoundedStringListSchema = Type.Array(BoundedStringSchema, { maxItems: MAX_COMPILE_RISK_LIST_ITEMS });
 const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
+const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
 export const CompileRiskLevelSchema = Type.Union([
   Type.Literal('normal'),
@@ -46,7 +49,8 @@ export const CompilePreflightRiskSchema = Type.Object({
   acceptanceCriteriaCount: NonNegativeIntegerSchema,
   score: Type.Number({ minimum: 0 }),
   generatedInventory: Type.Object({
-    contentHashes: BoundedStringListSchema,
+    detected: Type.Boolean(),
+    contentHashes: Type.Array(Sha256HexSchema, { maxItems: MAX_COMPILE_RISK_LIST_ITEMS }),
     pathReferences: BoundedStringListSchema,
     headings: BoundedStringListSchema,
     blockCount: NonNegativeIntegerSchema,
@@ -115,12 +119,12 @@ export const BoundedValidationDiagnosticSchema = Type.Object({
   schemaPath: Type.String(),
   expectedType: Type.String(),
   receivedType: Type.String(),
-  excerpt: Type.String(),
+  excerpt: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH }),
   payloadBytes: NonNegativeIntegerSchema,
-  payloadSha256: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+  payloadSha256: Sha256HexSchema,
   omittedBytes: NonNegativeIntegerSchema,
   truncated: Type.Boolean(),
-  message: Type.String(),
+  message: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH }),
 });
 
 export type CompileRiskLevel = Static<typeof CompileRiskLevelSchema>;

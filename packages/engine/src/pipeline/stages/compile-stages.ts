@@ -36,6 +36,9 @@ import {
   runArchitectureReviewCycleStage,
   runCohesionReviewCycleStage,
 } from './compile-review-cycles.js';
+// --- eforge:region plan-02-preflight-compaction ---
+import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
+// --- eforge:endregion plan-02-preflight-compaction ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -65,6 +68,10 @@ async function* runPlannerAttempt(
       baseBranch: ctx.baseBranch,
       defaultBuild: ctx.pipeline.defaultBuild,
       defaultReview: ctx.pipeline.defaultReview,
+      // --- eforge:region plan-02-preflight-compaction ---
+      promptSourceContent: ctx.promptSourceContent,
+      promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
+      // --- eforge:endregion plan-02-preflight-compaction ---
       ...agentConfig,
       ...plannerTb,
       phase: 'compile',
@@ -169,6 +176,10 @@ async function* runModulePlannerAttempt(
       moduleDependsOn: mod.dependsOn,
       architectureContent,
       sourceContent: ctx.sourceContent,
+      // --- eforge:region plan-02-preflight-compaction ---
+      promptSourceContent: ctx.promptSourceContent,
+      promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
+      // --- eforge:endregion plan-02-preflight-compaction ---
       dependencyPlanContent,
       verbose: ctx.verbose,
       onClarification: ctx.onClarification,
@@ -231,6 +242,10 @@ registerCompileStage({
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
+    // --- eforge:region plan-02-preflight-compaction ---
+    promptSourceContent: ctx.promptSourceContent,
+    promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
+    // --- eforge:endregion plan-02-preflight-compaction ---
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
@@ -254,6 +269,12 @@ registerCompileStage({
             defaultReview: event.defaultReview,
             rationale: event.rationale,
           };
+          // --- eforge:region plan-02-preflight-compaction ---
+          if (ctx.compilePromptSourceBundle && ctx.compilePreflightOptions) {
+            ctx.compilePreflightOptions = { ...ctx.compilePreflightOptions, requestedPipelineScope: ctx.pipeline.scope };
+            ctx.compilePreflight = estimateCompilePreflightRisk(ctx.compilePromptSourceBundle, ctx.compilePreflightOptions);
+          }
+          // --- eforge:endregion plan-02-preflight-compaction ---
         }
         yield event;
       }

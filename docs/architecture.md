@@ -4,7 +4,7 @@ eforge is **library-first**. The engine is a pure TypeScript library that commun
 
 ## Kernel and extension boundary
 
-The engine is the build-engine kernel. It owns normalized build-spec intake, dependency-aware branch/worktree orchestration, the compile/build execution loop, conservative validation and review gates, typed failure/recovery dispatch, and baseline console observability/control events. The engine consumes normalized build source and emits typed `EforgeEvent`s; it does not own the authoring experience that produced that source.
+The engine is the build-engine kernel. It owns normalized build-spec intake, deterministic compile preflight and prompt-source compaction, dependency-aware branch/worktree orchestration, the compile/build execution loop, conservative validation and review gates, typed failure/recovery dispatch, and baseline console observability/control events. The engine consumes normalized build source and emits typed `EforgeEvent`s; it does not own the authoring experience that produced that source.
 
 Input surfaces and richer workflow UX sit outside the engine kernel. Playbooks, session plans, wrapper apps, CLI prompts, and PRD files are normalized before they reach the queue; planning workbenches, toolbelts, shell hooks, policy modules, host integrations, and native extensions can shape how work is prepared or governed without becoming engine internals. This boundary keeps the kernel reusable while letting extensions and hosts adapt eforge to different teams and workflows.
 
@@ -174,7 +174,7 @@ The CLI composes async generator middleware around the engine's event stream - t
 
 The engine uses a two-phase pipeline. Each phase is a sequence of named stages - async generators registered in a global stage registry.
 
-- **Compile stages** run once per build. The stage list is declared per-profile.
+- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected.
 - **Build stages** run once per plan. The stage list is per-plan, stored in `orchestration.yaml`.
 
 ```mermaid

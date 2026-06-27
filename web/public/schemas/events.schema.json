@@ -4564,10 +4564,10 @@
               "type": "object",
               "required": [
                 "level",
-                "sourceByteCount",
-                "promptByteCount",
-                "prdCount",
-                "planCount",
+                "sourceBytes",
+                "promptSourceBytes",
+                "acceptanceCriteriaCount",
+                "score",
                 "generatedInventory",
                 "subsystemBreadth",
                 "reasons",
@@ -4590,48 +4590,44 @@
                     }
                   ]
                 },
-                "sourceByteCount": {
+                "sourceBytes": {
                   "minimum": 0,
                   "type": "integer"
                 },
-                "promptByteCount": {
+                "promptSourceBytes": {
                   "minimum": 0,
                   "type": "integer"
                 },
-                "prdCount": {
+                "acceptanceCriteriaCount": {
                   "minimum": 0,
                   "type": "integer"
                 },
-                "planCount": {
+                "score": {
                   "minimum": 0,
-                  "type": "integer"
+                  "type": "number"
                 },
                 "generatedInventory": {
                   "type": "object",
                   "required": [
-                    "contentHashCount",
+                    "detected",
                     "contentHashes",
-                    "pathReferenceCount",
                     "pathReferences",
-                    "headingCount",
-                    "headings"
+                    "headings",
+                    "blockCount",
+                    "sidecarCount",
+                    "omittedBytes"
                   ],
                   "properties": {
-                    "contentHashCount": {
-                      "minimum": 0,
-                      "type": "integer"
+                    "detected": {
+                      "type": "boolean"
                     },
                     "contentHashes": {
                       "maxItems": 12,
                       "type": "array",
                       "items": {
-                        "maxLength": 2000,
+                        "pattern": "^[a-f0-9]{64}$",
                         "type": "string"
                       }
-                    },
-                    "pathReferenceCount": {
-                      "minimum": 0,
-                      "type": "integer"
                     },
                     "pathReferences": {
                       "maxItems": 12,
@@ -4641,10 +4637,6 @@
                         "type": "string"
                       }
                     },
-                    "headingCount": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "headings": {
                       "maxItems": 12,
                       "type": "array",
@@ -4652,19 +4644,30 @@
                         "maxLength": 2000,
                         "type": "string"
                       }
+                    },
+                    "blockCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sidecarCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "omittedBytes": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 },
                 "subsystemBreadth": {
                   "type": "object",
                   "required": [
-                    "subsystemCount",
+                    "count",
                     "subsystems",
-                    "evidenceCount",
                     "evidence"
                   ],
                   "properties": {
-                    "subsystemCount": {
+                    "count": {
                       "minimum": 0,
                       "type": "integer"
                     },
@@ -4675,10 +4678,6 @@
                         "maxLength": 2000,
                         "type": "string"
                       }
-                    },
-                    "evidenceCount": {
-                      "minimum": 0,
-                      "type": "integer"
                     },
                     "evidence": {
                       "maxItems": 12,
@@ -4729,7 +4728,7 @@
                   "required": [
                     "action",
                     "eligible",
-                    "reasons"
+                    "reason"
                   ],
                   "properties": {
                     "action": {
@@ -4759,13 +4758,9 @@
                     "eligible": {
                       "type": "boolean"
                     },
-                    "reasons": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
+                    "reason": {
+                      "maxLength": 2000,
+                      "type": "string"
                     }
                   }
                 }
@@ -4848,7 +4843,7 @@
                 "stage",
                 "explanation",
                 "recovery",
-                "artifactSummary"
+                "artifacts"
               ],
               "properties": {
                 "source": {
@@ -4919,10 +4914,10 @@
                   "type": "object",
                   "required": [
                     "level",
-                    "sourceByteCount",
-                    "promptByteCount",
-                    "prdCount",
-                    "planCount",
+                    "sourceBytes",
+                    "promptSourceBytes",
+                    "acceptanceCriteriaCount",
+                    "score",
                     "generatedInventory",
                     "subsystemBreadth",
                     "reasons",
@@ -4945,48 +4940,44 @@
                         }
                       ]
                     },
-                    "sourceByteCount": {
+                    "sourceBytes": {
                       "minimum": 0,
                       "type": "integer"
                     },
-                    "promptByteCount": {
+                    "promptSourceBytes": {
                       "minimum": 0,
                       "type": "integer"
                     },
-                    "prdCount": {
+                    "acceptanceCriteriaCount": {
                       "minimum": 0,
                       "type": "integer"
                     },
-                    "planCount": {
+                    "score": {
                       "minimum": 0,
-                      "type": "integer"
+                      "type": "number"
                     },
                     "generatedInventory": {
                       "type": "object",
                       "required": [
-                        "contentHashCount",
+                        "detected",
                         "contentHashes",
-                        "pathReferenceCount",
                         "pathReferences",
-                        "headingCount",
-                        "headings"
+                        "headings",
+                        "blockCount",
+                        "sidecarCount",
+                        "omittedBytes"
                       ],
                       "properties": {
-                        "contentHashCount": {
-                          "minimum": 0,
-                          "type": "integer"
+                        "detected": {
+                          "type": "boolean"
                         },
                         "contentHashes": {
                           "maxItems": 12,
                           "type": "array",
                           "items": {
-                            "maxLength": 2000,
+                            "pattern": "^[a-f0-9]{64}$",
                             "type": "string"
                           }
-                        },
-                        "pathReferenceCount": {
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "pathReferences": {
                           "maxItems": 12,
@@ -4996,10 +4987,6 @@
                             "type": "string"
                           }
                         },
-                        "headingCount": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
                         "headings": {
                           "maxItems": 12,
                           "type": "array",
@@ -5007,19 +4994,30 @@
                             "maxLength": 2000,
                             "type": "string"
                           }
+                        },
+                        "blockCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "sidecarCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "omittedBytes": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     },
                     "subsystemBreadth": {
                       "type": "object",
                       "required": [
-                        "subsystemCount",
+                        "count",
                         "subsystems",
-                        "evidenceCount",
                         "evidence"
                       ],
                       "properties": {
-                        "subsystemCount": {
+                        "count": {
                           "minimum": 0,
                           "type": "integer"
                         },
@@ -5030,10 +5028,6 @@
                             "maxLength": 2000,
                             "type": "string"
                           }
-                        },
-                        "evidenceCount": {
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "evidence": {
                           "maxItems": 12,
@@ -5084,7 +5078,7 @@
                       "required": [
                         "action",
                         "eligible",
-                        "reasons"
+                        "reason"
                       ],
                       "properties": {
                         "action": {
@@ -5114,43 +5108,43 @@
                         "eligible": {
                           "type": "boolean"
                         },
-                        "reasons": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
+                        "reason": {
+                          "maxLength": 2000,
+                          "type": "string"
                         }
                       }
                     }
                   }
                 },
-                "observedInputTokens": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "observedOutputTokens": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "observedTotalTokens": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "observedTurnCount": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "observedPromptBytes": {
-                  "minimum": 0,
-                  "type": "integer"
+                "observed": {
+                  "type": "object",
+                  "properties": {
+                    "inputTokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "outputTokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "turns": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "promptBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
                 },
                 "recovery": {
                   "type": "object",
                   "required": [
                     "action",
                     "eligible",
+                    "attempted",
+                    "attempt",
+                    "maxAttempts",
                     "reason"
                   ],
                   "properties": {
@@ -5198,7 +5192,7 @@
                     }
                   }
                 },
-                "artifactSummary": {
+                "artifacts": {
                   "type": "object",
                   "required": [
                     "orchestrationExists",
@@ -19614,10 +19608,10 @@
                             "type": "object",
                             "required": [
                               "level",
-                              "sourceByteCount",
-                              "promptByteCount",
-                              "prdCount",
-                              "planCount",
+                              "sourceBytes",
+                              "promptSourceBytes",
+                              "acceptanceCriteriaCount",
+                              "score",
                               "generatedInventory",
                               "subsystemBreadth",
                               "reasons",
@@ -19640,48 +19634,44 @@
                                   }
                                 ]
                               },
-                              "sourceByteCount": {
+                              "sourceBytes": {
                                 "minimum": 0,
                                 "type": "integer"
                               },
-                              "promptByteCount": {
+                              "promptSourceBytes": {
                                 "minimum": 0,
                                 "type": "integer"
                               },
-                              "prdCount": {
+                              "acceptanceCriteriaCount": {
                                 "minimum": 0,
                                 "type": "integer"
                               },
-                              "planCount": {
+                              "score": {
                                 "minimum": 0,
-                                "type": "integer"
+                                "type": "number"
                               },
                               "generatedInventory": {
                                 "type": "object",
                                 "required": [
-                                  "contentHashCount",
+                                  "detected",
                                   "contentHashes",
-                                  "pathReferenceCount",
                                   "pathReferences",
-                                  "headingCount",
-                                  "headings"
+                                  "headings",
+                                  "blockCount",
+                                  "sidecarCount",
+                                  "omittedBytes"
                                 ],
                                 "properties": {
-                                  "contentHashCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
+                                  "detected": {
+                                    "type": "boolean"
                                   },
                                   "contentHashes": {
                                     "maxItems": 12,
                                     "type": "array",
                                     "items": {
-                                      "maxLength": 2000,
+                                      "pattern": "^[a-f0-9]{64}$",
                                       "type": "string"
                                     }
-                                  },
-                                  "pathReferenceCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
                                   },
                                   "pathReferences": {
                                     "maxItems": 12,
@@ -19691,10 +19681,6 @@
                                       "type": "string"
                                     }
                                   },
-                                  "headingCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
                                   "headings": {
                                     "maxItems": 12,
                                     "type": "array",
@@ -19702,19 +19688,30 @@
                                       "maxLength": 2000,
                                       "type": "string"
                                     }
+                                  },
+                                  "blockCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sidecarCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "omittedBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
                                   }
                                 }
                               },
                               "subsystemBreadth": {
                                 "type": "object",
                                 "required": [
-                                  "subsystemCount",
+                                  "count",
                                   "subsystems",
-                                  "evidenceCount",
                                   "evidence"
                                 ],
                                 "properties": {
-                                  "subsystemCount": {
+                                  "count": {
                                     "minimum": 0,
                                     "type": "integer"
                                   },
@@ -19725,10 +19722,6 @@
                                       "maxLength": 2000,
                                       "type": "string"
                                     }
-                                  },
-                                  "evidenceCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
                                   },
                                   "evidence": {
                                     "maxItems": 12,
@@ -19779,7 +19772,7 @@
                                 "required": [
                                   "action",
                                   "eligible",
-                                  "reasons"
+                                  "reason"
                                 ],
                                 "properties": {
                                   "action": {
@@ -19809,13 +19802,9 @@
                                   "eligible": {
                                     "type": "boolean"
                                   },
-                                  "reasons": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
+                                  "reason": {
+                                    "maxLength": 2000,
+                                    "type": "string"
                                   }
                                 }
                               }
@@ -19898,7 +19887,7 @@
                               "stage",
                               "explanation",
                               "recovery",
-                              "artifactSummary"
+                              "artifacts"
                             ],
                             "properties": {
                               "source": {
@@ -19969,10 +19958,10 @@
                                 "type": "object",
                                 "required": [
                                   "level",
-                                  "sourceByteCount",
-                                  "promptByteCount",
-                                  "prdCount",
-                                  "planCount",
+                                  "sourceBytes",
+                                  "promptSourceBytes",
+                                  "acceptanceCriteriaCount",
+                                  "score",
                                   "generatedInventory",
                                   "subsystemBreadth",
                                   "reasons",
@@ -19995,48 +19984,44 @@
                                       }
                                     ]
                                   },
-                                  "sourceByteCount": {
+                                  "sourceBytes": {
                                     "minimum": 0,
                                     "type": "integer"
                                   },
-                                  "promptByteCount": {
+                                  "promptSourceBytes": {
                                     "minimum": 0,
                                     "type": "integer"
                                   },
-                                  "prdCount": {
+                                  "acceptanceCriteriaCount": {
                                     "minimum": 0,
                                     "type": "integer"
                                   },
-                                  "planCount": {
+                                  "score": {
                                     "minimum": 0,
-                                    "type": "integer"
+                                    "type": "number"
                                   },
                                   "generatedInventory": {
                                     "type": "object",
                                     "required": [
-                                      "contentHashCount",
+                                      "detected",
                                       "contentHashes",
-                                      "pathReferenceCount",
                                       "pathReferences",
-                                      "headingCount",
-                                      "headings"
+                                      "headings",
+                                      "blockCount",
+                                      "sidecarCount",
+                                      "omittedBytes"
                                     ],
                                     "properties": {
-                                      "contentHashCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
+                                      "detected": {
+                                        "type": "boolean"
                                       },
                                       "contentHashes": {
                                         "maxItems": 12,
                                         "type": "array",
                                         "items": {
-                                          "maxLength": 2000,
+                                          "pattern": "^[a-f0-9]{64}$",
                                           "type": "string"
                                         }
-                                      },
-                                      "pathReferenceCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
                                       },
                                       "pathReferences": {
                                         "maxItems": 12,
@@ -20046,10 +20031,6 @@
                                           "type": "string"
                                         }
                                       },
-                                      "headingCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
                                       "headings": {
                                         "maxItems": 12,
                                         "type": "array",
@@ -20057,19 +20038,30 @@
                                           "maxLength": 2000,
                                           "type": "string"
                                         }
+                                      },
+                                      "blockCount": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "sidecarCount": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "omittedBytes": {
+                                        "minimum": 0,
+                                        "type": "integer"
                                       }
                                     }
                                   },
                                   "subsystemBreadth": {
                                     "type": "object",
                                     "required": [
-                                      "subsystemCount",
+                                      "count",
                                       "subsystems",
-                                      "evidenceCount",
                                       "evidence"
                                     ],
                                     "properties": {
-                                      "subsystemCount": {
+                                      "count": {
                                         "minimum": 0,
                                         "type": "integer"
                                       },
@@ -20080,10 +20072,6 @@
                                           "maxLength": 2000,
                                           "type": "string"
                                         }
-                                      },
-                                      "evidenceCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
                                       },
                                       "evidence": {
                                         "maxItems": 12,
@@ -20134,7 +20122,7 @@
                                     "required": [
                                       "action",
                                       "eligible",
-                                      "reasons"
+                                      "reason"
                                     ],
                                     "properties": {
                                       "action": {
@@ -20164,43 +20152,43 @@
                                       "eligible": {
                                         "type": "boolean"
                                       },
-                                      "reasons": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
+                                      "reason": {
+                                        "maxLength": 2000,
+                                        "type": "string"
                                       }
                                     }
                                   }
                                 }
                               },
-                              "observedInputTokens": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "observedOutputTokens": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "observedTotalTokens": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "observedTurnCount": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "observedPromptBytes": {
-                                "minimum": 0,
-                                "type": "integer"
+                              "observed": {
+                                "type": "object",
+                                "properties": {
+                                  "inputTokens": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "outputTokens": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "turns": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "promptBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
                               },
                               "recovery": {
                                 "type": "object",
                                 "required": [
                                   "action",
                                   "eligible",
+                                  "attempted",
+                                  "attempt",
+                                  "maxAttempts",
                                   "reason"
                                 ],
                                 "properties": {
@@ -20248,7 +20236,7 @@
                                   }
                                 }
                               },
-                              "artifactSummary": {
+                              "artifacts": {
                                 "type": "object",
                                 "required": [
                                   "orchestrationExists",

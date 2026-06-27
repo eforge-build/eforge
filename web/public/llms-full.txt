@@ -89,11 +89,12 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
-3. **Planning** - A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
-4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
-5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
-6. **Merge** - Completed plans merge back to your branch in topological order.
-7. **Validation** - Post-merge validation runs configured commands plus any queued PRD `postMerge` commands. On failure, a validation-fixer agent attempts repairs.
+3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for planner prompts while preserving the full source for artifacts and validation.
+4. **Planning** - A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
+5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
+6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
+7. **Merge** - Completed plans merge back to your branch in topological order.
+8. **Validation** - Post-merge validation runs configured commands plus any queued PRD `postMerge` commands. On failure, a validation-fixer agent attempts repairs.
 
 ## Where to Look Next
 
@@ -136,7 +137,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A planner agent assesses complexity and selects a workflow profile, then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for composer/planner prompts while preserving the full source for artifacts and validation. A planner agent assesses complexity and selects a workflow profile, then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -171,7 +172,7 @@ The planner selects one of three profiles based on scope complexity:
 
 **Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
 
-You can suggest a profile in your build prompt, but the planner makes the final call based on what it sees in the codebase.
+You can suggest a profile in your build prompt, but the planner makes the final call based on what it sees in the codebase. Preflight risk is advisory prompt context; it does not by itself change the selected profile.
 
 ## Separation of Concerns
 

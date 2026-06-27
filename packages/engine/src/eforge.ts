@@ -76,6 +76,9 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
+// --- eforge:region plan-02-preflight-compaction ---
+import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
+// --- eforge:endregion plan-02-preflight-compaction ---
 
 const exec = promisify(execFile);
 
@@ -372,6 +375,14 @@ export class EforgeEngine {
       } catch {
         sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
+      // --- eforge:region plan-02-preflight-compaction ---
+      const compilePreflightOptions: CompilePreflightOptions = {
+        selectedProfile: this.configProfile.name,
+      };
+      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
+      const compilePreflight = estimateCompilePreflightRisk(compilePromptSourceBundle, compilePreflightOptions);
+      yield { timestamp: new Date().toISOString(), type: 'planning:preflight', risk: compilePreflight };
+      // --- eforge:endregion plan-02-preflight-compaction ---
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -408,6 +419,12 @@ export class EforgeEngine {
         ...(diffBaseRef !== undefined && { diffBaseRef }),
         planSetName,
         sourceContent,
+        // --- eforge:region plan-02-preflight-compaction ---
+        promptSourceContent: compilePromptSourceBundle.promptSource,
+        compilePromptSourceBundle,
+        compilePreflightOptions,
+        compilePreflight,
+        // --- eforge:endregion plan-02-preflight-compaction ---
         verbose: options.verbose,
         auto: options.auto,
         abortController: options.abortController,

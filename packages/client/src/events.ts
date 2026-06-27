@@ -135,6 +135,8 @@ export {
   CompileScopeContextFailureSchema,
   CompileScopeContextSourceSchema,
   MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
+  MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.schemas.js';
 
 export { DaemonStreamSnapshotSchema, EforgeEventSchema } from './events.schemas.js';

@@ -10,6 +10,8 @@ import {
   BoundedValidationDiagnosticSchema,
   CompileArtifactSummarySchema,
   MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
+  MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
   safeParseEforgeEvent,
   type CompilePreflightRisk,
 } from '../events.js';
@@ -25,7 +27,8 @@ function validRisk(): CompilePreflightRisk {
     acceptanceCriteriaCount: 3,
     score: 42,
     generatedInventory: {
-      contentHashes: ['hash:a'.repeat(8)],
+      detected: true,
+      contentHashes: ['a'.repeat(64)],
       pathReferences: ['docs/prd.md'],
       headings: ['Implementation Plan'],
       blockCount: 2,
@@ -141,6 +144,21 @@ describe('compile resilience contracts', () => {
     }).success).toBe(true);
   });
 
+  it('rejects invalid compile preflight hashes and accepts detected inventory state', () => {
+    expect(validRisk().generatedInventory.detected).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:preflight', timestamp, risk: validRisk() }).success).toBe(true);
+    expect(safeParseEforgeEvent({
+      type: 'planning:preflight',
+      timestamp,
+      risk: riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, detected: false, blockCount: 0, contentHashes: [] } })),
+    }).success).toBe(true);
+    expect(safeParseEforgeEvent({
+      type: 'planning:preflight',
+      timestamp,
+      risk: riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, contentHashes: ['not-a-sha'] } })),
+    }).success).toBe(false);
+  });
+
   it('validates bounded diagnostic options and payload hashes', () => {
     const diagnostic = {
       schemaPath: '/plans/0/body',
@@ -158,6 +176,8 @@ describe('compile resilience contracts', () => {
     expect(Value.Check(BoundedDiagnosticOptionsSchema, { maxMessageBytes: 0, maxExcerptBytes: 256 })).toBe(false);
     expect(Value.Check(BoundedValidationDiagnosticSchema, diagnostic)).toBe(true);
     expect(Value.Check(BoundedValidationDiagnosticSchema, { ...diagnostic, payloadSha256: 'ABC' })).toBe(false);
+    expect(Value.Check(BoundedValidationDiagnosticSchema, { ...diagnostic, excerpt: 'x'.repeat(MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH + 1) })).toBe(false);
+    expect(Value.Check(BoundedValidationDiagnosticSchema, { ...diagnostic, message: 'x'.repeat(MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH + 1) })).toBe(false);
   });
 
   it('type-checks recovery sidecar options for continue repair and compile guidance', () => {
