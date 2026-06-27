@@ -69,6 +69,13 @@ describe('compile context recovery', () => {
     expect(ctx.compileScopeRecovery?.attemptedSourceHashes).toEqual([]);
   });
 
+  it('does not retry-as-expedition for live guard failures when preflight did not recommend expedition', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: advisoryRisk() });
+    const failure = await buildCompileScopeContextFailure(ctx, { source: 'live-context-guard', failureKind: 'context-budget', stage: 'planner', explanation: 'single turn too large', risk: advisoryRisk() });
+    expect(failure.recovery.action).toBe('manual-reduce-scope');
+    expect(failure.recovery.eligible).toBe(false);
+  });
+
   it('increments retry-as-expedition metadata only when a retry starts and prevents second retries', async () => {
     const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
@@ -136,6 +143,21 @@ async function writeValidPlanSet(ctx: ReturnType<typeof makePipelineCtx>): Promi
     pipeline: ctx.pipeline,
     plans: [{ id: 'plan-01', name: 'Plan 01', branch: 'eforge/plan-01', build: DEFAULT_BUILD, review: DEFAULT_REVIEW }],
   }));
+}
+
+function advisoryRisk(): CompilePreflightRisk {
+  return {
+    level: 'normal',
+    sourceBytes: 10_000,
+    promptSourceBytes: 10_000,
+    acceptanceCriteriaCount: 20,
+    score: 20,
+    generatedInventory: { detected: false, contentHashes: [], pathReferences: [], headings: [], blockCount: 0, sidecarCount: 0, omittedBytes: 0 },
+    subsystemBreadth: { count: 4, subsystems: ['client', 'console', 'pi', 'plugin'], evidence: ['client', 'console', 'pi', 'plugin'] },
+    pipelineScope: 'excursion',
+    reasons: ['subsystem-breadth:wide'],
+    recommendation: { action: 'none', eligible: false, reason: 'preflight risk is normal' },
+  };
 }
 
 function retryRisk(): CompilePreflightRisk {

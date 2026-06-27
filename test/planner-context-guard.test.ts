@@ -34,11 +34,17 @@ describe('planner-family context guard', () => {
     }
   });
 
-  it('accumulates non-final usage deltas and throws when input-token budget is crossed', () => {
+  it('checks per-turn input instead of accumulating normal non-final usage deltas', () => {
     const guard = createCompileContextGuard({ stage: 'planner', limits: { maxObservedInputTokens: 10 } });
     guard.assertPrompt('ok');
     guard.observe(usageEvent('planner', { input: 6, total: 6 }, false));
-    expect(() => guard.observe(usageEvent('planner', { input: 5, total: 5 }, false))).toThrow(CompileScopeContextError);
+    expect(() => guard.observe(usageEvent('planner', { input: 5, total: 5 }, false))).not.toThrow();
+  });
+
+  it('throws when a single non-final usage event crosses the input-token budget', () => {
+    const guard = createCompileContextGuard({ stage: 'planner', limits: { maxObservedInputTokens: 10 } });
+    guard.assertPrompt('ok');
+    expect(() => guard.observe(usageEvent('planner', { input: 11, total: 11 }, false))).toThrow(CompileScopeContextError);
   });
 
   it('throws when non-final usage crosses the turn budget', () => {

@@ -205,7 +205,9 @@ export function readCompileScopeContextRecoveryOptionFromDb(input: { dbPath?: st
 function chooseRecoveryAction(ctx: PipelineContext, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): CompileRecoveryAction {
   if (artifacts.orchestrationExists && artifacts.validPlanCount > 0 && artifacts.invalidPlanCount === 0 && artifacts.missingPlanFileCount === 0) return 'repair-existing-artifacts';
   const alreadyAttempted = state.attemptedSourceHashes.includes(state.sourceHash);
-  const wantsRetry = input.stage === 'planner' && (input.risk?.recommendation.action === 'retry-as-expedition' || input.source === 'provider' || input.source === 'live-context-guard' || input.source === 'preflight');
+  const wantsRetry = input.stage === 'planner'
+    && input.risk?.recommendation.action === 'retry-as-expedition'
+    && input.risk.recommendation.eligible;
   if (ctx.pipeline.scope !== 'expedition' && wantsRetry && state.retryAsExpeditionAttempts < state.maxRetryAsExpeditionAttempts && !alreadyAttempted) return 'retry-as-expedition';
   if (ctx.pipeline.scope === 'expedition' || state.retryAsExpeditionAttempts >= state.maxRetryAsExpeditionAttempts || alreadyAttempted || input.risk?.recommendation.action === 'bounded-decomposition') return 'bounded-decomposition';
   return 'manual-reduce-scope';

@@ -58,9 +58,9 @@ export function createCompileContextGuard(options?: CompileContextGuardOptions):
       const usesInputDelta = event.usage.input > 0;
       const effectiveInput = usesInputDelta ? event.usage.input : event.usage.total;
       if (event.final) {
-        observed.inputTokens = effectiveInput;
-        observed.outputTokens = event.usage.output;
-        observed.turns = event.numTurns;
+        observed.inputTokens = Math.max(observed.inputTokens, effectiveInput);
+        observed.outputTokens = Math.max(observed.outputTokens, event.usage.output);
+        observed.turns = Math.max(observed.turns, event.numTurns);
         sawFinalUsage = true;
         return;
       }
@@ -72,18 +72,21 @@ export function createCompileContextGuard(options?: CompileContextGuardOptions):
         cumulativeFallback.turns = 0;
         sawFinalUsage = false;
       }
-      if (usesInputDelta) {
-        observed.inputTokens += effectiveInput;
-        observed.turns += event.numTurns;
-      } else {
-        observed.inputTokens += Math.max(0, effectiveInput - cumulativeFallback.inputTokens);
+      const turnInputTokens = usesInputDelta
+        ? effectiveInput
+        : Math.max(0, effectiveInput - cumulativeFallback.inputTokens);
+      const turnCount = usesInputDelta
+        ? event.numTurns
+        : Math.max(0, event.numTurns - cumulativeFallback.turns);
+      if (!usesInputDelta) {
         cumulativeFallback.inputTokens = Math.max(cumulativeFallback.inputTokens, effectiveInput);
-        observed.turns += Math.max(0, event.numTurns - cumulativeFallback.turns);
         cumulativeFallback.turns = Math.max(cumulativeFallback.turns, event.numTurns);
       }
+      observed.inputTokens = Math.max(observed.inputTokens, turnInputTokens);
+      observed.turns += turnCount;
       observed.outputTokens += event.usage.output;
-      if (observed.inputTokens > limits.maxObservedInputTokens) {
-        fail(`observed input tokens ${observed.inputTokens} exceed maxObservedInputTokens ${limits.maxObservedInputTokens}`);
+      if (turnInputTokens > limits.maxObservedInputTokens) {
+        fail(`observed per-turn input tokens ${turnInputTokens} exceed maxObservedInputTokens ${limits.maxObservedInputTokens}`);
       }
       if (limits.maxObservedTurns !== undefined && observed.turns > limits.maxObservedTurns) {
         fail(`observed turns ${observed.turns} exceed maxObservedTurns ${limits.maxObservedTurns}`);
