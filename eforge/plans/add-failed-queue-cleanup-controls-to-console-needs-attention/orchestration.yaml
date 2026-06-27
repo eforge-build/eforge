@@ -1,0 +1,57 @@
+name: add-failed-queue-cleanup-controls-to-console-needs-attention
+description: Add failed-queue cleanup controls to the Console Needs attention
+  card using existing queue cascade/remove APIs and targeted Console tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm vitest run
+    packages/console-ui/src/lib/selectors/__tests__/now-attention-cleanup.test.ts
+    packages/console-ui/src/components/now/__tests__/attention-panel.test.tsx
+    packages/console-ui/src/__tests__/now-dashboard.test.tsx
+plans:
+  - id: plan-01-console-failed-queue-cleanup
+    name: Console Failed Queue Cleanup Controls
+    depends_on: []
+    branch: add-failed-queue-cleanup-controls-to-console-needs-attention/plan-01-console-failed-queue-cleanup
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - validate
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a multi-file Console UI feature touching selectors,
+    components, hooks, dashboard wiring, and targeted tests, but it does not
+    require independent module planning, so excursion is appropriate. A plan
+    review helps keep the queue-control contract and
+    no-wire-shape/no-route-literal guardrails intact. The build runs
+    implementation, the registered maintainability validation gate,
+    generated/updated tests, test execution, and an iterative review cycle.
+    Review focuses on code correctness and test coverage with standard
+    strictness because the work is user-facing but does not touch
+    security-sensitive boundaries or daemon API contracts.
+diff_base_ref: 0b58215704be31c749a5bc9cca26c8be5f34a278
