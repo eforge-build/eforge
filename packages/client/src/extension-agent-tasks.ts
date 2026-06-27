@@ -33,7 +33,6 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
   Type.Literal('recommendations'),
   Type.Literal('handoffDrafts'),
   Type.Literal('planDrafts'),
-  Type.Literal('playbookDraft'),
   Type.Literal('sessionPlanPatch'),
   // --- eforge:region session-plan-creation-draft ---
   Type.Literal('sessionPlanCreationDraft'),
@@ -118,11 +117,6 @@ export const EforgePlanPlanningDraftInputSchema = Type.Object({
 
 export const EforgePlanPlanningPlanDraftSchema = Type.Object({
   title: Type.String(),
-  body: Type.String(),
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningPlaybookDraftSchema = Type.Object({
-  name: Type.String(),
   body: Type.String(),
 }, { additionalProperties: false });
 
@@ -264,7 +258,6 @@ const EforgePlanPlanningLegacyCreationDraftRecordResultSchema = Type.Object({
   decision: Type.Literal('ready'),
   sessionPlanCreationDraft: EforgePlanPlanningLegacySessionPlanCreationDraftSchema,
   planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-  playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
   sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
 }, { additionalProperties: false });
 
@@ -274,7 +267,6 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
     ...eforgePlanPlanningDraftResultBaseFields,
     planRevisionTurn: EforgePlanPlanningPlanRevisionTurnSchema,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   // --- eforge:endregion client-engine-task-contract ---
@@ -283,7 +275,6 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
     ...eforgePlanPlanningDraftResultBaseFields,
     backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   // --- eforge:endregion backlog-curation-draft ---
@@ -291,39 +282,28 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
     ...eforgePlanPlanningDraftResultBaseFields,
     recommendations: EforgePlanPlanningRecommendationsSchema,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     handoffDraft: EforgePlanPlanningHandoffDraftSchema,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     handoffDrafts: Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 }),
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     planDrafts: Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 }),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: EforgePlanPlanningPlaybookDraftSchema,
-    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
-  }, { additionalProperties: false }),
-  Type.Object({
-    ...eforgePlanPlanningDraftResultBaseFields,
-    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: EforgePlanPlanningSessionPlanPatchSchema,
   }, { additionalProperties: false }),
   // --- eforge:region session-plan-creation-draft ---
@@ -332,7 +312,6 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
     decision: Type.Literal('ready'),
     sessionPlanCreationDraft: EforgePlanPlanningSessionPlanCreationDraftSchema,
     planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
-    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
   }, { additionalProperties: false }),
   Type.Object({
@@ -449,7 +428,6 @@ export type ExtensionAgentTaskContributionRef = Static<typeof ExtensionAgentTask
 export type EforgePlanPlanningRequestedOutputSection = Static<typeof EforgePlanPlanningRequestedOutputSectionSchema>;
 export type EforgePlanPlanningDraftInput = Static<typeof EforgePlanPlanningDraftInputSchema>;
 export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDraftSchema>;
-export type EforgePlanPlanningPlaybookDraft = Static<typeof EforgePlanPlanningPlaybookDraftSchema>;
 export type EforgePlanPlanningSessionPlanPatch = Static<typeof EforgePlanPlanningSessionPlanPatchSchema>;
 export type EforgePlanPlanningSessionPlanCreationDraft = Static<typeof EforgePlanPlanningSessionPlanCreationDraftSchema>;
 // --- eforge:region session-plan-creation-readiness ---
@@ -492,7 +470,6 @@ export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlannin
     || candidate.handoffDraft !== undefined
     || (Array.isArray(candidate.handoffDrafts) && candidate.handoffDrafts.length > 0)
     || (Array.isArray(candidate.planDrafts) && candidate.planDrafts.length > 0)
-    || candidate.playbookDraft !== undefined
     || candidate.sessionPlanPatch !== undefined;
 }
 

@@ -49,7 +49,6 @@ The payload MUST include:
      - `backlogCurationDraft` for structured backlog curation patches the extension may validate and apply later.
      - `handoffDraft` or `handoffDrafts` for draft promotion selections the user may apply.
      - `planDrafts` for eforge plan-file draft content.
-     - `playbookDraft` for a reusable playbook draft.
      - `sessionPlanPatch` for updates to an existing session plan.
      - `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan.
      - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `topic` MUST be a concise, human-readable plan title — a short noun phrase naming the work (for example, `Annotation-driven plan revisions`). Do NOT copy the planning goal verbatim and do NOT begin it with `Draft a session plan for`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`. Optionally include `profile` (one of `errand`, `excursion`, `expedition`) and `agentProfile` (a string) when the appropriate planning profile or agent profile is known. Use `sessionPlanCreationDraft.sections[].dimension` and `skippedDimensions[].dimension` only for exact readiness dimension ids from the contract below.

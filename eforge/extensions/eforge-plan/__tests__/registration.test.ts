@@ -65,10 +65,8 @@ describe('eforge-plan extension registration', () => {
     expect(pkg.private).not.toBe(true);
     expect(pkg.publishConfig).toMatchObject({ access: 'public' });
     expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: './dist/index.js' });
-    expect(pkg.eforge?.extension?.capabilities).toEqual(expect.arrayContaining([
-      { name: 'eforge.plan.planning-workstation', version: '1.0.0' },
-      { name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' },
-    ]));
+    expect(pkg.eforge?.extension?.capabilities).toEqual([{ name: 'eforge.plan.planning-workstation', version: '1.0.0' }]);
+    expect(pkg.eforge?.extension?.capabilities?.map((entry) => entry.name)).not.toContain(['eforge.plan', 'planning-mode', 'playbook'].join('.'));
   });
 
   it('registers all eforge-plan agent task contributions', () => {

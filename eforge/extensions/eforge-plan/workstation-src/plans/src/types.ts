@@ -229,7 +229,6 @@ export interface RecommendationSummary { recommendedNextItemIds?: string[]; safe
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type PlanningTaskDecision = 'ready' | 'needs-input';
 export interface PlanningTaskPlanDraft { title: string; body: string; }
-export interface PlanningTaskPlaybookDraft { name: string; body: string; }
 export interface PlanningTaskSessionPlanSection { dimension: string; content: string; }
 export interface PlanningTaskSkippedDimension { dimension: string; reason: string; }
 export interface PlanningTaskSessionPlanPatch { sections: PlanningTaskSessionPlanSection[]; skippedDimensions?: PlanningTaskSkippedDimension[]; }
@@ -259,7 +258,6 @@ export interface PlanningTaskResult {
   handoffDraft?: PlanningTaskHandoffDraft;
   handoffDrafts?: PlanningTaskHandoffDraft[];
   planDrafts?: PlanningTaskPlanDraft[];
-  playbookDraft?: PlanningTaskPlaybookDraft;
   sessionPlanPatch?: PlanningTaskSessionPlanPatch;
   sessionPlanCreationDraft?: PlanningTaskSessionPlanCreationDraft;
   backlogCurationDraft?: BacklogCurationDraft;

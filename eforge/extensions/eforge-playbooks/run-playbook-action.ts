@@ -21,7 +21,10 @@ export const runPlaybookAction = defineExtensionAction({
     }
     const profileOverride = input.profile?.trim();
     const requestedProfile = profileOverride && profileOverride.length > 0 ? profileOverride : undefined;
-    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: requestedProfile ?? playbook.profile }));
+    if (playbook.mode === 'planning') {
+      rejectPlanningQueueOptions(input);
+      return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: requestedProfile ?? playbook.profile }));
+    }
 
     const compiled = playbookToBuildSource(playbook);
     const quality = analyzeAcceptanceCriteriaInBody(compiled.source);
@@ -45,3 +48,9 @@ export const runPlaybookAction = defineExtensionAction({
     }
   },
 });
+
+function rejectPlanningQueueOptions(input: { afterQueueId?: unknown; landingAction?: unknown; landingAutoMerge?: unknown }): void {
+  if (input.afterQueueId !== undefined) throw invalidField('/afterQueueId', 'afterQueueId is only supported for autonomous playbooks.');
+  if (input.landingAction !== undefined) throw invalidField('/landingAction', 'landingAction is only supported for autonomous playbooks.');
+  if (input.landingAutoMerge !== undefined) throw invalidField('/landingAutoMerge', 'landingAutoMerge is only supported for autonomous playbooks.');
+}

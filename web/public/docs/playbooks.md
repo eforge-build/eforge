@@ -9,7 +9,7 @@ A playbook is an optional workflow artifact around the eforge build-engine kerne
 
 ## Boundary and ownership
 
-`eforge-playbooks` owns playbook management and run behavior. The first-party extension exposes the canonical actions `eforge-playbooks:list-playbooks`, `eforge-playbooks:show-playbook`, `eforge-playbooks:save-playbook`, `eforge-playbooks:validate-playbook`, `eforge-playbooks:copy-playbook`, `eforge-playbooks:promote-playbook`, `eforge-playbooks:demote-playbook`, and `eforge-playbooks:run-playbook` through generic extension contribution/action invocation. Host commands such as `/eforge:playbook`, `eforge playbook`, MCP `eforge_playbook`, and Pi `eforge_playbook` are compatibility surfaces over those extension contributions.
+`eforge-playbooks` owns playbook management and run behavior. The first-party extension exposes the canonical actions `eforge-playbooks:list-playbooks`, `eforge-playbooks:show-playbook`, `eforge-playbooks:save-playbook`, `eforge-playbooks:validate-playbook`, `eforge-playbooks:copy-playbook`, `eforge-playbooks:promote-playbook`, `eforge-playbooks:demote-playbook`, and `eforge-playbooks:run-playbook` through generic extension contribution/action invocation. Hosts discover and invoke these contributions through their generic extension integration surfaces rather than dedicated playbook commands or tools.
 
 `eforge-playbooks` keeps the pure playbook parse, serialize, list, load, write, move, copy, validate, compile, and seed helpers locally, with named-set storage resolved through `@eforge-build/scopes` and `@eforge-build/input` used only for domain-neutral acceptance-criteria quality helpers. Autonomous playbooks enqueue through `ctx.buildQueue.enqueue(...)` via generic extension action handoff. Planning playbooks check the `eforge.plan.planning-workstation` capability from eforge-plan and return planning-entry metadata or unavailable diagnostics; they do not create session plans or enqueue PRDs directly. Console playbook management is displayed through extension contributions and workstations, not a core Console playbooks section.
 
@@ -21,11 +21,11 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 **`mode: autonomous`** - running the playbook compiles it into normalized build source and enqueues a build, like any other producer input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
 
-**`mode: planning`** - running the playbook checks the `eforge.plan.planning-workstation` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
+**`mode: planning`** - running the playbook checks the `eforge.plan.planning-workstation` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through generic extension contribution list/show/invoke or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before build submission. The daemon does not create the session plan directly or enqueue a PRD.
 
 When you invoke the `eforge-playbooks:run-playbook` extension action for a planning playbook, the extension action returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable. The required capability is provider `eforge-plan`, id `eforge.plan.planning-workstation`, range `>=1.0.0`. Available planning output includes contribution `eforge-plan:open-planning-entry`, workstation id `eforge-plan:planning-workstation`, and workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
 
-Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
+Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the planning flow can set the session plan's generic `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
 
 ## Scope tiers
 
@@ -91,39 +91,23 @@ profile: browser-ui
 
 **Validation timing:** the named profile is validated at execution time, not when the playbook is saved.
 
-**Planning playbooks:** when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Planning playbooks:** when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the flow can set the session plan's generic `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback:** omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
 ## Create a playbook
 
-```
-/eforge:playbook create
-```
-
-The skill gathers the workflow description, infers a scope (project-team, project-local, or user) from the description, asks for the mode, optionally ties it to a profile, drafts the playbook content, validates it, and saves.
-
-From the CLI, invoke the generic extension integration command:
+Draft a Markdown playbook with the required frontmatter, then invoke the generic extension contribution command:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:save-playbook --kind command --input-json '{"scope":"project-team","raw":"---\nname: docs-sync\ndescription: Keep docs current\nscope: project-team\nmode: autonomous\n---\n\n## Goal\nKeep docs current"}'
 ```
 
-The extension command validates and saves the playbook. Use `scope` values `user`, `project-team`, or `project-local`; include `profile` in the playbook frontmatter when the playbook should pin a runtime profile. Besides raw Markdown, `save-playbook` accepts the nested `{ playbook: { frontmatter, body } }` form or flattened fields such as `name`, `description`, `mode`, `profile`, `postMerge`, `goal`, `outOfScope`, `acceptanceCriteria`, and `plannerNotes`.
+The action validates and saves the playbook. Use `scope` values `user`, `project-team`, or `project-local`; include `profile` in the playbook frontmatter when the playbook should pin a runtime profile. Besides raw Markdown, `save-playbook` accepts the nested `{ playbook: { frontmatter, body } }` form or flattened fields such as `name`, `description`, `mode`, `profile`, `postMerge`, `goal`, `outOfScope`, `acceptanceCriteria`, and `plannerNotes`.
 
 ## Run a playbook
 
-```
-/eforge:playbook run
-```
-
-The skill lists available playbooks and lets you pick by number. For autonomous playbooks it first presents a landing selector, then checks for in-flight builds and lets you optionally wait for one to finish before enqueueing. The normal landing choices are **Use project default** (inherit `landing.action` from `eforge/config.yaml`, without sending an override), `pr`, `merge`, or `leave`. On a protected trunk branch, unsafe direct merge choices are omitted unless `build.allowLocalMergeToTrunk: true` is enabled; choose `pr`, `leave`, enable the config opt-in, or cancel instead. When `pr` is selected, a follow-up sub-selector lets you choose the GitHub PR auto-merge behavior for this run: **Use policy default** (defer to `landing.pr.autoMerge` in config), **Enable auto-merge**, or **Disable auto-merge**:
-
-```
-/eforge:playbook run docs-sync
-```
-
-From the CLI, invoke the generic extension integration command:
+Invoke the generic extension contribution command:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:run-playbook --kind command --input-json '{"name":"docs-sync"}'
@@ -133,11 +117,7 @@ After a successful autonomous enqueue, the extension action returns `{ kind: 'en
 
 ## List playbooks
 
-```
-/eforge:playbook list
-```
-
-From the CLI:
+Invoke the generic extension contribution command:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:list-playbooks --kind command
@@ -157,13 +137,7 @@ The action validates the source and destination, writes through the extension-ow
 
 ## Edit a playbook
 
-```
-/eforge:playbook edit
-```
-
-The skill loads the playbook and walks through each section (mode, profile, Goal, Out of scope, Acceptance criteria, Notes for the planner) one at a time, asking whether to update each.
-
-From the CLI, load and save through the generic extension integration commands:
+Load the playbook, edit its Markdown, then save it through the generic extension contribution commands:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:show-playbook --kind command --input-json '{"name":"docs-sync"}'
@@ -174,22 +148,16 @@ eforge extension contributions invoke eforge-playbooks:save-playbook --kind comm
 
 Move a project-local playbook to project-team scope so the whole team benefits:
 
-```
-/eforge:playbook promote release-prep
-```
-
-Or from the CLI:
-
 ```bash
 eforge extension contributions invoke eforge-playbooks:promote-playbook --kind command --input-json '{"name":"release-prep"}'
 eforge extension contributions invoke eforge-playbooks:demote-playbook --kind command --input-json '{"name":"release-prep"}'
 ```
 
-After promotion, the playbook moves into the committed project-team directory. The CLI stages the promoted file with `git add`; review and commit it with the rest of your change. Demotion moves it back to project-local scope, where it shadows any team version of the same name.
+After promotion, the playbook moves into the committed project-team directory; review and commit it with the rest of your change. Demotion moves it back to project-local scope, where it shadows any team version of the same name.
 
 ## Dependency on queue items
 
-For autonomous playbooks, you can schedule a playbook to run after an in-flight build completes. The skill offers this when active queue items exist. From the CLI:
+For autonomous playbooks, you can schedule a playbook to run after an in-flight build completes by passing `afterQueueId` to the generic extension contribution command:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:run-playbook --kind command --input-json '{"name":"docs-sync","afterQueueId":"<queue-id>"}'

@@ -200,7 +200,6 @@ export const mockPlanningTask: PlanningAgentTaskRecord = {
     recommendations: mockRecommendations,
     handoffDrafts: [{ selection: { itemIds: ['import-preview'], status: 'active' }, session: '2026-06-07-import-preview' }],
     planDrafts: [{ title: 'Import preview plan', body: '# Import preview plan\n\n## Scope\n\nAdd an explicit preview before import writes.' }],
-    playbookDraft: { name: 'planning-import-preview', body: '# Playbook\n\nUse this when import preview planning repeats.' },
     sessionPlanPatch: {
       sections: [
         { dimension: 'scope', content: 'Add a bounded import preview flow that shows generated changes before writing.' },

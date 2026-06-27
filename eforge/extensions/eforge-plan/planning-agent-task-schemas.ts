@@ -34,7 +34,6 @@ export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
   Type.Literal('recommendations'),
   Type.Literal('handoffDrafts'),
   Type.Literal('planDrafts'),
-  Type.Literal('playbookDraft'),
   Type.Literal('sessionPlanPatch'),
   Type.Literal('sessionPlanCreationDraft'),
 ]);
