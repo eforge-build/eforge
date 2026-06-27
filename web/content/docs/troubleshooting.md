@@ -113,7 +113,7 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 **What to look for:**
 
 - `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
-- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason.
 
 **How to interpret recovery guidance:**
 
@@ -123,6 +123,8 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 - `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
 
 Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue the revised source.
+
+When guard diagnostics are present, inspect the rendered `limits` and any `fallbackReason` before deciding how to retry. `metadataSource` can be `registry` (Pi ModelRegistry metadata), `builtin` (Pi built-in metadata), `synthetic` (provider sibling transport metadata for an unknown model), or `fallback` (conservative defaults after missing or unusable metadata). Registry, built-in, and synthetic metadata can still be incomplete or caveated; `fallbackReason` is the authoritative caveat text whenever it appears. If the reported `maxObservedInputTokens` is too low for the build source, reduce scope or choose/add a profile/model with complete context metadata before retrying.
 
 ## Recover from a failed build
 

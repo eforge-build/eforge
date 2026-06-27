@@ -27,6 +27,26 @@ const failure: CompileScopeContextFailure = {
   artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 1, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
 };
 
+const failureWithGuardDiagnostics: CompileScopeContextFailure = {
+  ...failure,
+  guardDiagnostics: {
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4',
+    metadataSource: 'fallback',
+    fallbackReason: 'model registry did not return context metadata',
+    contextWindow: 200000,
+    outputReserveTokens: 64000,
+    overheadReserveTokens: 8192,
+    safetyMargin: 0.75,
+    limits: {
+      maxPromptBytes: 500000,
+      maxObservedInputTokens: 95744,
+      maxObservedTurns: 8,
+      maxExplanationBytes: 2000,
+    },
+  },
+};
+
 describe('compile resilience console formatting', () => {
   it('formats preflight summary and detail', () => {
     expect(compilePreflightSummary(risk)).toContain('overflow-risk');
@@ -44,6 +64,19 @@ describe('compile resilience console formatting', () => {
     expect(detail).toContain('attempt 1/2');
     expect(detail).toContain('Artifacts:');
     expect(detail).toContain('8.0 KiB prompt');
+    expect(detail).not.toContain('Model:');
+  });
+
+  it('formats optional guard diagnostics', () => {
+    const detail = compileScopeContextFailureDetail(failureWithGuardDiagnostics);
+    expect(detail).toContain('Model: anthropic/claude-sonnet-4');
+    expect(detail).toContain('maxObservedInputTokens=95744');
+    expect(detail).toContain('contextWindow=200000');
+    expect(detail).toContain('outputReserveTokens=64000');
+    expect(detail).toContain('overheadReserveTokens=8192');
+    expect(detail).toContain('safetyMargin=0.75');
+    expect(detail).toContain('metadataSource=fallback');
+    expect(detail).toContain('model registry did not return context metadata');
   });
 
   it('maps recovery actions', () => {

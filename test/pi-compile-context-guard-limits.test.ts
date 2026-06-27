@@ -71,6 +71,19 @@ describe('Pi compile context guard limit derivation', () => {
     expect(result.guardDiagnostics.outputReserveTokens).toBe(20_000);
   });
 
+  it('honors stricter explicit input-token limits for Pi guard diagnostics', async () => {
+    const modelDerivedLimit = expectedLimit(300_000, 20_000);
+    const result = await derivePiCompileContextGuard({
+      model: { provider: 'custom-provider', id: 'custom-planner' },
+      limits: { maxObservedInputTokens: 50_000 },
+      modelRegistry: registry({ findModel: model({ provider: 'custom-provider', id: 'custom-planner', contextWindow: 300_000, maxTokens: 20_000 }) }),
+    });
+
+    expect(50_000).toBeLessThan(modelDerivedLimit);
+    expect(result.limits.maxObservedInputTokens).toBe(50_000);
+    expect(result.guardDiagnostics.limits.maxObservedInputTokens).toBe(50_000);
+  });
+
   it('uses the conservative output reserve when output metadata is missing', async () => {
     const result = await derivePiCompileContextGuard({
       model: { provider: 'custom-provider', id: 'custom-no-output' },
@@ -136,13 +149,15 @@ describe('Pi compile context guard limit derivation', () => {
     expect(safeParseEforgeEvent(scopeContextFailureEvent(result.guardDiagnostics)).success).toBe(true);
   });
 
-  it('bounds synthetic model fallback diagnostics', async () => {
+  it('uses conservative fallback limits for synthetic model metadata', async () => {
     const result = await derivePiCompileContextGuard({
       model: { provider: 'custom-provider', id: 'x'.repeat(MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH + 100) },
       modelRegistry: registry({ all: [model({ provider: 'custom-provider', id: 'sibling', contextWindow: 300_000 })] }),
     });
 
+    expect(result.limits.maxObservedInputTokens).toBe(DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS.maxObservedInputTokens);
     expect(result.guardDiagnostics.metadataSource).toBe('synthetic');
+    expect(result.guardDiagnostics.contextWindow).toBeUndefined();
     expect(result.guardDiagnostics.fallbackReason?.length).toBe(MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH);
   });
 

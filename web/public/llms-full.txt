@@ -90,7 +90,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
 3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation.
-4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
+4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry token limits when available, while prompt byte defaults remain static byte guards. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 7. **Merge** - Completed plans merge back to your branch in topological order.
@@ -137,7 +137,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry metadata when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -3711,7 +3711,7 @@ Console shows:
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console Needs attention strip for failed builds, compile scope/context failure banners, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
+- Console Needs attention strip for failed builds, compile scope/context failure banners with optional guard diagnostics, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
@@ -3841,7 +3841,7 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 **What to look for:**
 
 - `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
-- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason.
 
 **How to interpret recovery guidance:**
 
@@ -3851,6 +3851,8 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 - `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
 
 Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue the revised source.
+
+When guard diagnostics are present, inspect the rendered `limits` and any `fallbackReason` before deciding how to retry. `metadataSource` can be `registry` (Pi ModelRegistry metadata), `builtin` (Pi built-in metadata), `synthetic` (provider sibling transport metadata for an unknown model), or `fallback` (conservative defaults after missing or unusable metadata). Registry, built-in, and synthetic metadata can still be incomplete or caveated; `fallbackReason` is the authoritative caveat text whenever it appears. If the reported `maxObservedInputTokens` is too low for the build source, reduce scope or choose/add a profile/model with complete context metadata before retrying.
 
 ## Recover from a failed build
 
@@ -3978,7 +3980,7 @@ A typed `planning:preflight` diagnostic emitted during compile before planner-fa
 
 ## Compile scope/context failure
 
-A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures.
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason; older events omit those fields without placeholders.
 
 ## Daemon
 

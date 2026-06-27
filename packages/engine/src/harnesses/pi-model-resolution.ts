@@ -106,6 +106,13 @@ export async function derivePiCompileContextGuard(input: PiCompileContextGuardDe
     return fallbackDerivation(input, baseDiagnostics, `Pi model registry lookup failed: ${errorMessage(err)}`);
   }
 
+  if (resolution.metadataSource === 'synthetic') {
+    return fallbackDerivation(input, {
+      ...baseDiagnostics,
+      metadataSource: resolution.metadataSource,
+    }, resolution.fallbackReason ?? 'Pi model metadata is synthetic');
+  }
+
   const contextWindow = positiveInteger((resolution.model as Partial<Model<Api>>).contextWindow);
   if (contextWindow === undefined) {
     return fallbackDerivation(input, {
@@ -171,13 +178,17 @@ function fallbackDerivation(
 
 function finalLimits(limits: Partial<CompileContextGuardLimits> | undefined, maxObservedInputTokens: number): CompileContextGuardLimits {
   const maxPromptBytes = positiveInteger(limits?.maxPromptBytes);
+  const explicitMaxObservedInputTokens = positiveInteger(limits?.maxObservedInputTokens);
   const maxObservedTurns = positiveInteger(limits?.maxObservedTurns);
   const maxExplanationBytes = positiveInteger(limits?.maxExplanationBytes);
+  const finalMaxObservedInputTokens = explicitMaxObservedInputTokens === undefined
+    ? maxObservedInputTokens
+    : Math.min(explicitMaxObservedInputTokens, maxObservedInputTokens);
   const sanitized: Partial<CompileContextGuardLimits> = {
     ...(maxPromptBytes !== undefined ? { maxPromptBytes } : {}),
     ...(maxObservedTurns !== undefined ? { maxObservedTurns } : {}),
     ...(maxExplanationBytes !== undefined ? { maxExplanationBytes } : {}),
-    maxObservedInputTokens,
+    maxObservedInputTokens: finalMaxObservedInputTokens,
   };
   const resolved = resolveCompileContextGuardLimits(sanitized);
   return {

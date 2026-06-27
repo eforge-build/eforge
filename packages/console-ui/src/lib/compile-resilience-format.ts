@@ -82,6 +82,26 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
+// --- eforge:region plan-02-render-docs ---
+function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
+  const guard = failure.guardDiagnostics;
+  if (!guard) return [];
+  const lines: string[] = [];
+  if (guard.provider && guard.modelId) lines.push(`Model: ${guard.provider}/${guard.modelId}`);
+  const limitParts = [
+    `maxObservedInputTokens=${guard.limits.maxObservedInputTokens}`,
+    `metadataSource=${guard.metadataSource}`,
+  ];
+  if (guard.contextWindow !== undefined) limitParts.push(`contextWindow=${guard.contextWindow}`);
+  limitParts.push(`outputReserveTokens=${guard.outputReserveTokens}`);
+  limitParts.push(`overheadReserveTokens=${guard.overheadReserveTokens}`);
+  limitParts.push(`safetyMargin=${guard.safetyMargin}`);
+  lines.push(`Guard: ${limitParts.join(', ')}`);
+  if (guard.fallbackReason) lines.push(`Fallback: ${guard.fallbackReason}`);
+  return lines;
+}
+// --- eforge:endregion plan-02-render-docs ---
+
 export function compileScopeContextFailureSummary(failure: CompileScopeContextFailure): string {
   return `Compile scope/context failure: ${failure.failureKind} from ${failure.source} at ${failure.stage} — ${recoveryActionLabel(failure.recovery.action)}`;
 }
@@ -95,6 +115,9 @@ export function compileScopeContextFailureDetail(failure: CompileScopeContextFai
   ];
   const observed = observedSummary(failure);
   if (observed) lines.push(`Observed: ${observed}`);
+  // --- eforge:region plan-02-render-docs ---
+  lines.push(...guardDiagnosticLines(failure));
+  // --- eforge:endregion plan-02-render-docs ---
   if (failure.risk) lines.push(`Preflight: ${compilePreflightSummary(failure.risk)}`);
   return lines.join('\n');
 }
