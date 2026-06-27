@@ -1,0 +1,56 @@
+name: cap-pi-planner-output-reserve-in-compile-guard
+description: Cap Pi planner-family output reserve in compile context guard and
+  document diagnostics.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm test -- test/pi-compile-context-guard-limits.test.ts
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+plans:
+  - id: plan-01-cap-pi-planner-output-reserve
+    name: Cap Pi Planner Output Reserve
+    depends_on: []
+    branch: cap-pi-planner-output-reserve-in-compile-guard/plan-01-cap-pi-planner-output-reserve
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - validate
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused bug fix touching engine logic, tests, and
+    troubleshooting documentation, so excursion is appropriate without
+    expedition-level module planning. The build runs implementation and
+    documentation authoring together, then syncs docs and writes tests after
+    implementation. The registered validation provider is included after
+    implementation-derived changes and before review. Test-cycle is included
+    because the PRD has explicit test acceptance criteria, followed by an
+    iterative review cycle focused on code correctness and test coverage.
+diff_base_ref: cf96862263ead51b6283c099840985e2657ca2a8
