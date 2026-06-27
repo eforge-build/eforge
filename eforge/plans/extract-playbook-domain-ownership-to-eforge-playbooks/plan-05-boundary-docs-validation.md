@@ -171,13 +171,14 @@ Do not add durable source region markers. If temporary build-coordination marker
 
 - Failed PRD: "extract-playbook-domain-ownership-to-eforge-playbooks"
 - Root failed plan: "plan-05-boundary-docs-validation"
-- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for extract-playbook-domain-ownership-to-eforge-playbooks. artifact source: feature-branch; 10 landed commit(s); failing plan: plan-05-boundary-docs-validation; feature branch: eforge/extract-playbook-domain-ownership-to-eforge-playbooks. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for extract-playbook-domain-ownership-to-eforge-playbooks. artifact source: feature-branch; 11 landed commit(s); failing plan: plan-05-boundary-docs-validation; feature branch: eforge/extract-playbook-domain-ownership-to-eforge-playbooks. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
 - Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
 - Failure detail: "Review cycle exhausted 3 round(s) without a final evaluation verdict."
 - Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair extract-playbook-domain-ownership-to-eforge-playbooks`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
 - Remaining work:
-  - Review the preserved compiled artifacts and complete the remaining dependency-satisfied work.
+  - "plan-05-boundary-docs-validation: continue repair from preserved artifacts, focusing on boundary tests, documentation validation, and any unresolved reviewer-contract issues."
+  - "Rerun final validation commands: pnpm type-check, pnpm build, pnpm test, and pnpm maintainability:check."
 - Retry/resume guidance: Continue plan-05-boundary-docs-validation for failed PRD extract-playbook-domain-ownership-to-eforge-playbooks from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
-- Sidecar generated at: 2026-06-27T05:18:53.999Z
+- Sidecar generated at: 2026-06-27T12:55:54.700Z
 - Source sidecar: .eforge/queue/failed/extract-playbook-domain-ownership-to-eforge-playbooks.recovery.json
 - Source identity: prdId=extract-playbook-domain-ownership-to-eforge-playbooks; setName=extract-playbook-domain-ownership-to-eforge-playbooks; featureBranch=eforge/extract-playbook-domain-ownership-to-eforge-playbooks; baseBranch=main
