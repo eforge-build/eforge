@@ -158,6 +158,22 @@ describe('eforge-plan update-item body-safe action', () => {
     });
   });
 
+  it('allows existing rows with missing hash columns to complete get-item then update-item', async () => {
+    await withTempProject(async (cwd) => {
+      seedBodySafeItem(cwd);
+      const handle = db(cwd);
+      handle.prepare('UPDATE backlog_items SET body_sha256 = NULL, record_sha256 = NULL WHERE id = ?').run('target-item');
+      handle.close();
+
+      const before = await invoke(cwd, 'get-item', { id: 'target-item', includeBody: true });
+      const beforeItem = before.item as Record<string, unknown>;
+      expect(beforeItem).toMatchObject({ bodySha256: expect.stringMatching(/^[a-f0-9]{64}$/), recordSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+
+      const output = await invoke(cwd, 'update-item', { id: 'target-item', expectedBodySha256: beforeItem.bodySha256, sections: { claim: 'Updated after lazy hash repair.' } });
+      expect(output).toMatchObject({ itemId: 'target-item', bodySha256: expect.stringMatching(/^[a-f0-9]{64}$/), recordSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    });
+  });
+
   it('keeps metadata-only updates lock-free and preserves body bytes', async () => {
     await withTempProject(async (cwd) => {
       seedBodySafeItem(cwd);

@@ -32,8 +32,8 @@ interface ItemDrawerProps {
 /**
  * Non-modal detail drawer for a backlog card. Hosts everything the compact
  * card dropped (dependencies, notes, lifecycle evidence, unblock hints) plus
- * direct edits of status, priority, and epic membership through the
- * `update-item` action. Lanes stay derived from status, dependencies, and
+ * lock-free metadata edits of status, priority, and epic membership through
+ * the `update-item` action. Lanes stay derived from status, dependencies, and
  * trace activity, so the drawer explains when an edit will not move the card.
  */
 export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRefresh }: ItemDrawerProps) {

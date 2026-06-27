@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 const README = 'eforge/extensions/eforge-plan/README.md';
 const WORKSTATION_README = 'eforge/extensions/eforge-plan/workstation-src/plans/README.md';
+// --- eforge:region plan-02-agent-docs-and-guidance ---
+const WEB_CONTENT_DOCS = 'web/content/docs/eforge-plan.md';
+const WEB_PUBLIC_DOCS = 'web/public/docs/eforge-plan.md';
+// --- eforge:endregion plan-02-agent-docs-and-guidance ---
 
 async function docs(): Promise<{ readme: string; workstation: string }> {
   const [readme, workstation] = await Promise.all([
@@ -11,6 +15,16 @@ async function docs(): Promise<{ readme: string; workstation: string }> {
   ]);
   return { readme, workstation };
 }
+
+// --- eforge:region plan-02-agent-docs-and-guidance ---
+async function webDocs(): Promise<{ content: string; publicDocs: string }> {
+  const [content, publicDocs] = await Promise.all([
+    readFile(WEB_CONTENT_DOCS, 'utf-8'),
+    readFile(WEB_PUBLIC_DOCS, 'utf-8'),
+  ]);
+  return { content, publicDocs };
+}
+// --- eforge:endregion plan-02-agent-docs-and-guidance ---
 
 describe('plan-03 workstation docs validation contract', () => {
   it('keeps accepted-analysis baseline documentation private and distinct from recommendations', async () => {
@@ -43,6 +57,22 @@ describe('plan-03 workstation docs validation contract', () => {
     expect(combined).toMatch(/not complete git-delta coverage/);
     expect(combined).not.toMatch(/missing[^.]*baseline[^.]*are complete git-delta coverage/i);
   });
+
+  // --- eforge:region plan-02-agent-docs-and-guidance ---
+  it('summarizes body-safe update-item and Markdown mirror boundaries in public docs', async () => {
+    const { content, publicDocs } = await webDocs();
+
+    for (const document of [content, publicDocs]) {
+      expect(document).toMatch(/body-safe[\s\S]*update-item|update-item[\s\S]*body-safe/i);
+      expect(document).toMatch(/get-item[\s\S]*(bodySha256|lock token)[\s\S]*expectedBodySha256|expectedBodySha256[\s\S]*get-item/i);
+      expect(document).toMatch(/metadata-only[\s\S]*(preserve|without changing)[\s\S]*body[\s\S]*(without|no)[\s\S]*lock/i);
+      expect(document).toMatch(/sections[\s\S]*sectionOperations|sectionOperations[\s\S]*sections/);
+      expect(document).toMatch(/Markdown mirrors?[\s\S]*(compatibility|import|not.*normal mutation|not.*normal edit)/i);
+      expect(document).toMatch(/\.backlog\/items|\.eforge\/storage\/extensions\/eforge-plan\/backlog\/items/);
+    }
+  });
+  // --- eforge:endregion plan-02-agent-docs-and-guidance ---
+
 
   it('keeps workstation documentation server-authoritative for overlay and freshness display', async () => {
     const { readme, workstation } = await docs();

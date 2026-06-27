@@ -188,7 +188,7 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
   const canonicalItems = listCanonicalBacklogItems(cwd).map(backlogItemRowToDomain);
   const canonicalEpics = listCanonicalEpics(cwd).map(epicRowToDomain);
   const [legacyItems, legacyEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  return buildRecommendationSourceProjectionFromRecords(cwd, mergeDomainRecords(canonicalItems, legacyItems), mergeDomainRecords(canonicalEpics, legacyEpics));
+  return buildRecommendationSourceProjectionFromRecords(cwd, mergeDomainRecords(legacyItems, canonicalItems), mergeDomainRecords(legacyEpics, canonicalEpics));
 }
 
 async function buildRecommendationSourceProjectionFromRecords(cwd: string, allItems: readonly BacklogItem[], allEpics: readonly BacklogEpic[]): Promise<Record<string, unknown>> {

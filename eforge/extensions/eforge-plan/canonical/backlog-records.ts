@@ -203,9 +203,34 @@ export function epicRowToDomain(row: EpicRow): BacklogEpic {
   return { id: row.id, title: row.title, body: row.body, status: row.userStatus as BacklogStatus, priority: row.priority, tags: arrayOfStrings(row.frontmatter.tags), created: row.createdAt, updated: row.updatedAt, eforge_plan: objectOrUndefined(row.frontmatter.eforge_plan) };
 }
 
+export function canonicalBacklogItemLockHashes(row: { id: string; title: string; body: string; userStatus: UserStatus; priority?: string; source?: string; createdAt?: string; updatedAt?: string; lastCheckedAt?: string; staleAfter?: string; epicRef?: string; epicId?: string; frontmatter: Record<string, unknown>; bodySha256?: string; recordSha256?: string; importOrigin?: string; importPath?: string }): { bodySha256: string; recordSha256: string } {
+  const bodySha256 = row.bodySha256 ?? canonicalSha256(row.body);
+  const recordShape = canonicalRecordShape({
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    userStatus: row.userStatus,
+    priority: row.priority,
+    source: row.source,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastCheckedAt: row.lastCheckedAt,
+    staleAfter: row.staleAfter,
+    epicRef: row.epicRef,
+    epicId: row.epicId,
+    frontmatter: row.frontmatter,
+    tags: arrayOfStrings(row.frontmatter.tags),
+    dependsOn: arrayOfStrings(row.frontmatter.depends_on),
+    importOrigin: row.importOrigin,
+    importPath: row.importPath,
+  });
+  return { bodySha256, recordSha256: row.recordSha256 ?? canonicalSha256(JSON.stringify(recordShape)) };
+}
+
 function assertOptimisticPreconditions(existing: BacklogItemRow, updates: Partial<CanonicalBacklogItemInput>): void {
-  if (updates.expectedBodySha256 !== undefined && updates.expectedBodySha256 !== existing.bodySha256) throw new CanonicalOptimisticLockError('expectedBodySha256');
-  if (updates.expectedRecordSha256 !== undefined && updates.expectedRecordSha256 !== existing.recordSha256) throw new CanonicalOptimisticLockError('expectedRecordSha256');
+  const hashes = canonicalBacklogItemLockHashes(existing);
+  if (updates.expectedBodySha256 !== undefined && updates.expectedBodySha256 !== hashes.bodySha256) throw new CanonicalOptimisticLockError('expectedBodySha256');
+  if (updates.expectedRecordSha256 !== undefined && updates.expectedRecordSha256 !== hashes.recordSha256) throw new CanonicalOptimisticLockError('expectedRecordSha256');
   if (updates.expectedUpdatedAt !== undefined && updates.expectedUpdatedAt !== existing.updatedAt) throw new CanonicalOptimisticLockError('expectedUpdatedAt');
 }
 

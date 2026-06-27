@@ -26,7 +26,7 @@ export function patchItemBodySections(body: string, input: PatchItemBodySections
   assertValidTitle(input.title);
   assertNoDuplicateCanonicalSections(next);
   assertNoDuplicateCanonicalSectionReplacements(input.sections ?? {});
-  for (const operation of input.sectionOperations ?? []) assertValidOperation(operation);
+  assertNoDuplicateCanonicalSectionOperations(input.sectionOperations ?? []);
   const changedSections: string[] = [];
   for (const [heading, content] of Object.entries(input.sections ?? {})) {
     const canonical = normalizeValidSectionHeading(heading);
@@ -121,6 +121,16 @@ function assertNoDuplicateCanonicalSectionReplacements(sections: Record<string, 
   for (const heading of Object.keys(sections)) {
     const canonical = normalizeValidSectionHeading(heading);
     if (seen.has(canonical)) throw new Error(`Duplicate section replacement for ${canonical}.`);
+    seen.add(canonical);
+  }
+}
+
+function assertNoDuplicateCanonicalSectionOperations(operations: readonly ItemSectionOperation[]): void {
+  const seen = new Set<string>();
+  for (const operation of operations) {
+    assertValidOperation(operation);
+    const canonical = normalizeValidSectionHeading(operation.heading);
+    if (seen.has(canonical)) throw new Error(`Duplicate section operation for ${canonical}.`);
     seen.add(canonical);
   }
 }
