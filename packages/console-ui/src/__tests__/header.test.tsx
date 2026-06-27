@@ -72,7 +72,8 @@ describe('ConsoleShell header', () => {
     expect(screen.getByRole('img', { name: /eforge/i })).toBeDefined();
     expect(screen.getByText('my-project')).toBeDefined();
     expect(screen.getByLabelText(/connection status/i)).toBeDefined();
-    expect(screen.getByRole('switch', { name: /auto-build toggle/i })).toBeDefined();
+    expect(screen.getByRole('switch', { name: /auto-start queued builds/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /scheduler/i })).toBeNull();
     expect(screen.getByLabelText(/queue count/i)).toBeDefined();
     expect(screen.getByLabelText(/active builds count/i)).toBeDefined();
   });
@@ -107,18 +108,34 @@ describe('ConsoleShell header', () => {
     expect(onNavigate).toHaveBeenCalledWith('/console/workstations');
   });
 
-  it('disables auto-build immediately without confirmation', () => {
+  it('turns auto-start off immediately without confirmation', () => {
     const onSetAutoBuildEnabled = vi.fn();
     renderShell(vi.fn(), onSetAutoBuildEnabled);
 
-    fireEvent.click(screen.getByRole('switch', { name: /auto-build toggle/i }));
+    fireEvent.click(screen.getByRole('switch', { name: /auto-start queued builds/i }));
 
     expect(onSetAutoBuildEnabled).toHaveBeenCalledTimes(1);
     expect(onSetAutoBuildEnabled).toHaveBeenCalledWith(false);
     expect(screen.queryByText(/queued builds may start immediately/i)).toBeNull();
   });
 
-  it('asks for confirmation before enabling auto-build', () => {
+  it('shows paused auto-start as the same off switch instead of a second scheduler control', () => {
+    renderShell(vi.fn(), vi.fn(), {
+      ...stubState,
+      autoBuild: {
+        ...stubState.autoBuild,
+        mode: 'paused' as const,
+        scheduler: { alive: true, paused: true },
+      },
+    });
+
+    expect(screen.getByRole('switch', { name: /auto-start queued builds/i }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('Off')).toBeDefined();
+    expect(screen.queryByText(/scheduler paused/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /resume scheduler/i })).toBeNull();
+  });
+
+  it('asks for confirmation before turning auto-start on', () => {
     const onSetAutoBuildEnabled = vi.fn();
     renderShell(vi.fn(), onSetAutoBuildEnabled, {
       ...stubState,
@@ -130,12 +147,12 @@ describe('ConsoleShell header', () => {
       },
     });
 
-    fireEvent.click(screen.getByRole('switch', { name: /auto-build toggle/i }));
+    fireEvent.click(screen.getByRole('switch', { name: /auto-start queued builds/i }));
 
     expect(screen.getByText(/queued builds may start immediately/i)).toBeDefined();
     expect(onSetAutoBuildEnabled).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /^enable$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^turn on$/i }));
 
     expect(onSetAutoBuildEnabled).toHaveBeenCalledTimes(1);
     expect(onSetAutoBuildEnabled).toHaveBeenCalledWith(true);

@@ -23,12 +23,12 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-describe('useAutoBuild scheduler controls', () => {
+describe('useAutoBuild auto-start toggle', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('pauses the scheduler through the client route helper and updates state from the response', async () => {
+  it('turns an active scheduler off by pausing it', async () => {
     const paused = autoBuild({ mode: 'paused', scheduler: { alive: true, paused: true } });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(input).toBe(API_ROUTES.schedulerPause);
@@ -41,16 +41,16 @@ describe('useAutoBuild scheduler controls', () => {
     const { result } = renderHook(() => useAutoBuild(autoBuild(), onUpdate));
 
     act(() => {
-      result.current.pauseScheduler();
+      result.current.setEnabled(false);
     });
 
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(paused));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(result.current.schedulerToggling).toBe(false));
-    expect(result.current.schedulerError).toBeNull();
+    await waitFor(() => expect(result.current.toggling).toBe(false));
+    expect(result.current.error).toBeNull();
   });
 
-  it('resumes the scheduler through the client route helper and updates state from the response', async () => {
+  it('turns a paused scheduler on by resuming it', async () => {
     const resumed = autoBuild({ mode: 'running', scheduler: { alive: true, paused: false } });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(input).toBe(API_ROUTES.schedulerResume);
@@ -63,14 +63,35 @@ describe('useAutoBuild scheduler controls', () => {
     const { result } = renderHook(() => useAutoBuild(autoBuild({ mode: 'paused', scheduler: { alive: true, paused: true } }), onUpdate));
 
     act(() => {
-      result.current.resumeScheduler();
+      result.current.setEnabled(true);
     });
 
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(resumed));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call scheduler helpers when desired auto-build is disabled', () => {
+  it('turns on from disabled by enabling daemon auto-start', async () => {
+    const enabled = autoBuild({ mode: 'starting', desired: 'enabled' });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input).toBe(API_ROUTES.autoBuildSet);
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ enabled: true }));
+      return jsonResponse(enabled);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onUpdate = vi.fn();
+
+    const { result } = renderHook(() => useAutoBuild(autoBuild({ enabled: false, desired: 'disabled', mode: 'disabled' }), onUpdate));
+
+    act(() => {
+      result.current.setEnabled(true);
+    });
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(enabled));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when asked to turn off an already-disabled scheduler', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const onUpdate = vi.fn();
@@ -78,36 +99,39 @@ describe('useAutoBuild scheduler controls', () => {
     const { result } = renderHook(() => useAutoBuild(autoBuild({ enabled: false, desired: 'disabled', mode: 'disabled' }), onUpdate));
 
     act(() => {
-      result.current.pauseScheduler();
-      result.current.resumeScheduler();
+      result.current.setEnabled(false);
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(onUpdate).not.toHaveBeenCalled();
-    expect(result.current.schedulerToggling).toBe(false);
   });
 
-  it('records scheduler helper errors and clears them after a later success', async () => {
+  it('records scheduler errors and clears them after a later success', async () => {
     const resumed = autoBuild({ scheduler: { alive: true, paused: false } });
     const fetchMock = vi.fn(async () => jsonResponse(resumed));
     fetchMock.mockResolvedValueOnce(new Response('route unavailable', { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
     const onUpdate = vi.fn();
 
-    const { result } = renderHook(() => useAutoBuild(autoBuild(), onUpdate));
+    const { result, rerender } = renderHook(
+      ({ state }) => useAutoBuild(state, onUpdate),
+      { initialProps: { state: autoBuild() } },
+    );
 
     act(() => {
-      result.current.pauseScheduler();
+      result.current.setEnabled(false);
     });
 
-    await waitFor(() => expect(result.current.schedulerError).toContain('Scheduler request failed (503): route unavailable'));
+    await waitFor(() => expect(result.current.error).toContain('Scheduler request failed (503): route unavailable'));
     expect(onUpdate).not.toHaveBeenCalled();
 
+    rerender({ state: autoBuild({ mode: 'paused', scheduler: { alive: true, paused: true } }) });
+
     act(() => {
-      result.current.resumeScheduler();
+      result.current.setEnabled(true);
     });
 
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(resumed));
-    expect(result.current.schedulerError).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 });

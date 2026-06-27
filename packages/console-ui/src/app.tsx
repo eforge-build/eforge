@@ -43,11 +43,8 @@ export function App() {
   const { projectState, refreshQueue, refreshRuns, refreshFailedEnqueues, setDaemonAutoBuild } = useDaemonEvents();
   const {
     toggling: autoBuildToggling,
+    error: autoBuildError,
     setEnabled: onSetAutoBuildEnabled,
-    schedulerToggling,
-    schedulerError,
-    pauseScheduler,
-    resumeScheduler,
   } = useAutoBuild(projectState.autoBuild, setDaemonAutoBuild);
 
   // Derive active session IDs from live runs
@@ -151,10 +148,7 @@ export function App() {
         projectState={projectState}
         autoBuildToggling={autoBuildToggling}
         onSetAutoBuildEnabled={onSetAutoBuildEnabled}
-        schedulerToggling={schedulerToggling}
-        schedulerError={schedulerError}
-        onPauseScheduler={pauseScheduler}
-        onResumeScheduler={resumeScheduler}
+        autoBuildError={autoBuildError}
         onNavigate={handleNavigate}
       >
         {routeContent}

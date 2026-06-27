@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { Switch } from '@/components/ui/switch';
 import type { AutoBuildState } from '@eforge-build/client/browser';
+import { isAutoStartActive } from '@/lib/auto-start';
 import {
   Tooltip,
   TooltipContent,
@@ -23,16 +23,19 @@ interface AutoBuildToggleProps {
   enabled: boolean | null;
   autoBuild?: AutoBuildState | null;
   toggling: boolean;
+  error?: string | null;
   onSetEnabled: (enabled: boolean) => void;
 }
 
-export function AutoBuildToggle({ enabled, autoBuild, toggling, onSetEnabled }: AutoBuildToggleProps) {
+export function AutoBuildToggle({ enabled, autoBuild, toggling, error, onSetEnabled }: AutoBuildToggleProps) {
   const [enableDialogOpen, setEnableDialogOpen] = useState(false);
-  const disabled = enabled === null || toggling;
-  const schedulerPaused = autoBuild?.scheduler?.paused === true || autoBuild?.mode === 'paused';
+  const effectiveEnabled = isAutoStartActive(autoBuild) ?? enabled;
+  const disabled = effectiveEnabled === null || toggling;
+  const statusLabel = effectiveEnabled === null ? 'Unknown' : effectiveEnabled ? 'On' : 'Off';
 
-  function handleSwitchChange(checked: boolean) {
-    if (checked) {
+  function handleToggleClick() {
+    if (disabled) return;
+    if (effectiveEnabled !== true) {
       setEnableDialogOpen(true);
       return;
     }
@@ -46,36 +49,56 @@ export function AutoBuildToggle({ enabled, autoBuild, toggling, onSetEnabled }: 
 
   return (
     <>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="flex items-center">
-              <Switch
-                checked={enabled === true}
+      <div className="flex items-center gap-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={effectiveEnabled === true}
+                aria-label={`Auto-start queued builds ${statusLabel}`}
                 disabled={disabled}
-                onCheckedChange={handleSwitchChange}
-                aria-label="auto-build toggle"
-              />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            Auto-build:{' '}
-            {enabled === null ? 'unknown' : enabled ? (schedulerPaused ? 'on (scheduler paused)' : 'on') : 'off'}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+                onClick={handleToggleClick}
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/30 px-2 py-1 text-xs text-foreground shadow-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span>Auto-start queued builds</span>
+                <span className="rounded-full bg-background px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {toggling ? 'Updating…' : statusLabel}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={effectiveEnabled === true
+                    ? 'relative inline-flex h-5 w-9 items-center rounded-full border border-primary bg-primary transition-colors'
+                    : 'relative inline-flex h-5 w-9 items-center rounded-full border border-border bg-muted transition-colors'}
+                >
+                  <span
+                    className={effectiveEnabled === true
+                      ? 'inline-block h-4 w-4 translate-x-4 rounded-full bg-primary-foreground shadow transition-transform'
+                      : 'inline-block h-4 w-4 translate-x-0.5 rounded-full bg-background shadow transition-transform'}
+                  />
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              When on, queued builds start automatically. Turn off to stop launching new queued builds; running builds continue.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
+      </div>
 
       <AlertDialog open={enableDialogOpen} onOpenChange={setEnableDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Enable auto-build?</AlertDialogTitle>
+            <AlertDialogTitle>Turn on auto-start?</AlertDialogTitle>
             <AlertDialogDescription>
-              Queued builds may start immediately if auto-build is enabled.
+              Queued builds may start immediately when this is turned on.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmEnable}>Enable</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirmEnable}>Turn on</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
