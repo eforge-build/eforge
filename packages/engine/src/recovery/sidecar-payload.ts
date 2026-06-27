@@ -54,7 +54,7 @@ function buildReport(
   const rootFailure = compactRootFailure(summary);
   return {
     operatorSummary: truncateText(verdict.rationale, BULLET_CHARS * 2, 'operator summary').text,
-    recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : recommendedAction(verdict),
+    recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : (recommendedCompileScopeContextOption(recoveryOptions)?.reason ?? recommendedAction(verdict)),
     ...(rootFailure ? { rootFailure } : {}),
     keyEvidence: keyEvidence(summary, evidence),
     completedWork: boundedStrings(verdict.completedWork, 'completed work'),
@@ -171,6 +171,9 @@ function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoun
   const lines: string[] = [];
   if (evidence.failingPlan.planId !== 'unknown') lines.push(`Failing plan: ${evidence.failingPlan.planId}`);
   if (summary.terminalFailure?.scope) lines.push(`Terminal failure scope: ${summary.terminalFailure.scope}${summary.terminalFailure.stage ? ` (${summary.terminalFailure.stage})` : ''}`);
+  // --- eforge:region plan-04-context-recovery ---
+  if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure.terminalSubtype === 'error_context_window') lines.push('Compile scope/context failure evidence is present; use recoveryOptions for bounded retry/decomposition guidance.');
+  // --- eforge:endregion plan-04-context-recovery ---
   if (summary.acceptanceValidation) {
     lines.push(`Acceptance validation: ${summary.acceptanceValidation.pass}/${summary.acceptanceValidation.total} pass, ${summary.acceptanceValidation.fail} fail, ${summary.acceptanceValidation.unknown} unknown`);
     if (isAllUnknownAcceptanceFailure(summary.acceptanceValidation)) {
@@ -204,6 +207,13 @@ function recoveryOptionsFor(
 function hasRecommendedContinueRepairOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): boolean {
   return recoveryOptions?.some((option) => option.kind === 'continue-repair' && option.action === 'continue-repair' && option.recommended) === true;
 }
+
+// --- eforge:region plan-04-context-recovery ---
+function recommendedCompileScopeContextOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): RecoverySidecarRecoveryOption | undefined {
+  if (hasRecommendedContinueRepairOption(recoveryOptions)) return undefined;
+  return recoveryOptions?.find((option) => option.kind === 'compile-scope-context' && option.recommended);
+}
+// --- eforge:endregion plan-04-context-recovery ---
 
 function continueRepairRecommendedAction(prdId: string): string {
   return `Continue and repair build (Continue build): run \`eforge continue-repair ${prdId}\`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD.`;

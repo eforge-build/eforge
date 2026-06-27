@@ -1,0 +1,270 @@
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+import type { EforgeEvent, CompileArtifactSummary, CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure } from '../events.js';
+import type { RecoverySidecarRecoveryOption } from '@eforge-build/client';
+import type { PipelineContext } from '../pipeline/types.js';
+import { parseOrchestrationConfig, parsePlanFile } from '../plan.js';
+import { estimateCompilePreflightRisk } from './preflight.js';
+import { AgentTerminalError } from '../harness.js';
+import { CompileScopeContextError } from './context-guard.js';
+import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
+export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
+
+export interface CompileScopeRecoveryState {
+  sourceHash: string;
+  retryAsExpeditionAttempts: number;
+  maxRetryAsExpeditionAttempts: number;
+  attemptedSourceHashes: string[];
+  lastFailure?: CompileScopeContextFailure;
+}
+
+export interface CompileScopeContextFailureInput {
+  source: 'preflight' | 'live-context-guard' | 'provider';
+  failureKind: 'context-budget' | 'context-window' | 'context-length' | 'scope-too-broad';
+  stage: 'pipeline-composer' | 'planner' | 'module-planner' | 'compile-expedition' | 'compile';
+  explanation: string;
+  observed?: CompileScopeContextFailure['observed'];
+  risk?: CompilePreflightRisk;
+}
+
+const MAX_REASON_BYTES = 1000;
+const MAX_ARTIFACT_FILE_NAME_BYTES = 2000;
+const EXPEDITION_COMPILE = ['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
+
+export async function toCompileScopeContextError(
+  ctx: PipelineContext,
+  error: unknown,
+  fallbackStage: CompileScopeContextFailureInput['stage'],
+): Promise<CompileScopeContextError | null> {
+  if (error instanceof CompileScopeContextError) {
+    return new CompileScopeContextError(await buildCompileScopeContextFailure(ctx, {
+      source: error.failure.source,
+      failureKind: error.failure.failureKind,
+      stage: error.failure.stage ?? fallbackStage,
+      explanation: error.failure.explanation,
+      observed: error.failure.observed,
+      risk: error.failure.risk ?? ctx.compilePreflight,
+    }));
+  }
+  const provider = classifyProviderContextError(error) ?? (error instanceof AgentTerminalError && error.subtype === 'error_context_window'
+    ? { failureKind: 'context-window' as const, explanation: boundProviderContextExplanation(error.message) }
+    : null);
+  if (!provider) return null;
+  return new CompileScopeContextError(await buildCompileScopeContextFailure(ctx, {
+    source: 'provider',
+    failureKind: provider.failureKind,
+    stage: fallbackStage,
+    explanation: provider.explanation,
+    risk: ctx.compilePreflight,
+  }));
+}
+
+export async function buildPreflightEscalationDecision(
+  ctx: PipelineContext,
+): Promise<{ failure: CompileScopeContextFailure; retryAsExpedition: boolean } | null> {
+  const risk = ctx.compilePreflight;
+  if (!risk || risk.recommendation.action !== 'retry-as-expedition' || !risk.recommendation.eligible) return null;
+  if (ctx.pipeline.scope === 'expedition') return null;
+  const failure = await buildCompileScopeContextFailure(ctx, {
+    source: 'preflight',
+    failureKind: 'scope-too-broad',
+    stage: 'planner',
+    explanation: risk.recommendation.reason,
+    risk,
+  });
+  return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
+}
+
+export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
+  const state = ensureCompileScopeRecoveryState(ctx);
+  const artifacts = await summarizeCompileArtifactsForRecovery(ctx);
+  const action = chooseRecoveryAction(ctx, input, state, artifacts);
+  const failure: CompileScopeContextFailure = {
+    source: input.source,
+    failureKind: input.failureKind,
+    stage: input.stage,
+    explanation: capUtf8(input.explanation, 1500),
+    ...(input.risk ?? ctx.compilePreflight ? { risk: input.risk ?? ctx.compilePreflight } : {}),
+    ...(input.observed ? { observed: input.observed } : {}),
+    recovery: {
+      action,
+      eligible: action !== 'manual-reduce-scope' && action !== 'none',
+      attempted: false,
+      attempt: state.retryAsExpeditionAttempts,
+      maxAttempts: state.maxRetryAsExpeditionAttempts,
+      reason: capUtf8(recoveryReason(action, input, state, artifacts), MAX_REASON_BYTES),
+    },
+    artifacts,
+  };
+  state.lastFailure = failure;
+  return failure;
+}
+
+export function markRetryAsExpeditionStarted(ctx: PipelineContext, failure: CompileScopeContextFailure): void {
+  const state = ensureCompileScopeRecoveryState(ctx);
+  if (!state.attemptedSourceHashes.includes(state.sourceHash)) {
+    state.retryAsExpeditionAttempts += 1;
+    state.attemptedSourceHashes.push(state.sourceHash);
+  }
+  const updated: CompileScopeContextFailure = {
+    ...failure,
+    recovery: {
+      ...failure.recovery,
+      attempted: true,
+      attempt: Math.max(1, state.retryAsExpeditionAttempts),
+      maxAttempts: state.maxRetryAsExpeditionAttempts,
+    },
+  };
+  state.lastFailure = updated;
+}
+
+export function applyRetryAsExpeditionPipeline(ctx: PipelineContext, reason: string): void {
+  ctx.pipeline = {
+    ...ctx.pipeline,
+    scope: 'expedition',
+    compile: [...EXPEDITION_COMPILE],
+    rationale: capUtf8(`${ctx.pipeline.rationale}\n\nCompile context recovery escalated this run to expedition scope: ${reason}`, 2000),
+  };
+  if (ctx.compilePromptSourceBundle && ctx.compilePreflightOptions) {
+    ctx.compilePreflightOptions = { ...ctx.compilePreflightOptions, requestedPipelineScope: 'expedition' };
+    ctx.compilePreflight = estimateCompilePreflightRisk(ctx.compilePromptSourceBundle, ctx.compilePreflightOptions);
+  }
+}
+
+export function scopeContextFailureEvent(failure: CompileScopeContextFailure, runId?: string): EforgeEvent {
+  return { timestamp: new Date().toISOString(), type: 'planning:scope-context:failure', ...(runId !== undefined ? { runId } : {}), failure };
+}
+
+export function compileScopeTerminalFailureEvent(input: { runId: string; failure: CompileScopeContextFailure }): EforgeEvent {
+  return {
+    timestamp: new Date().toISOString(),
+    type: 'build:terminal-failure',
+    runId: input.runId,
+    failure: {
+      scope: 'compile',
+      stage: input.failure.stage,
+      message: input.failure.explanation,
+      authoritative: true,
+      terminalSubtype: 'error_context_window',
+    },
+  };
+}
+
+export async function summarizeCompileArtifactsForRecovery(ctx: PipelineContext): Promise<CompileArtifactSummary> {
+  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
+  const orchPath = join(planDir, 'orchestration.yaml');
+  if (!existsSync(orchPath)) return emptyArtifactSummary(false);
+  let validPlanCount = 0;
+  let invalidPlanCount = 0;
+  let missingPlanFileCount = 0;
+  const missingPlanFiles: string[] = [];
+  const invalidPlanFiles: string[] = [];
+  try {
+    const orch = await parseOrchestrationConfig(orchPath);
+    for (const plan of orch.plans) {
+      const file = join(planDir, `${plan.id}.md`);
+      if (!existsSync(file)) {
+        missingPlanFileCount++;
+        missingPlanFiles.push(boundedArtifactFileName(`${plan.id}.md`));
+        continue;
+      }
+      try {
+        await parsePlanFile(file, ctx.config.agents?.tiers);
+        validPlanCount++;
+      } catch {
+        invalidPlanCount++;
+        invalidPlanFiles.push(boundedArtifactFileName(`${plan.id}.md`));
+      }
+    }
+  } catch {
+    invalidPlanCount++;
+    invalidPlanFiles.push('orchestration.yaml');
+  }
+  return {
+    orchestrationExists: true,
+    validPlanCount,
+    invalidPlanCount,
+    missingPlanFileCount,
+    missingPlanFiles: missingPlanFiles.slice(0, 12),
+    invalidPlanFiles: invalidPlanFiles.slice(0, 12),
+  };
+}
+
+export function compileScopeContextRecoveryOption(failure: CompileScopeContextFailure): RecoverySidecarRecoveryOption | undefined {
+  if (failure.recovery.action === 'none' || failure.recovery.action === 'repair-existing-artifacts') return undefined;
+  return {
+    kind: 'compile-scope-context',
+    action: failure.recovery.action,
+    recommended: true,
+    eligible: failure.recovery.eligible,
+    reason: failure.recovery.reason,
+    attempted: failure.recovery.attempted,
+    attempt: failure.recovery.attempt,
+    maxAttempts: failure.recovery.maxAttempts,
+    source: failure.source,
+    failureKind: failure.failureKind,
+  };
+}
+
+export function readCompileScopeContextRecoveryOptionFromDb(input: { dbPath?: string; runId?: string; setName?: string }): RecoverySidecarRecoveryOption | undefined {
+  if (!input.dbPath) return undefined;
+  try {
+    const db = new DatabaseSync(input.dbPath, { readOnly: true });
+    try {
+      const row = input.runId
+        ? db.prepare(`SELECT data FROM events WHERE run_id = ? AND type = 'planning:scope-context:failure' ORDER BY id DESC LIMIT 1`).get(input.runId)
+        : db.prepare(`SELECT e.data FROM events e JOIN runs r ON r.id = e.run_id WHERE r.plan_set = ? AND e.type = 'planning:scope-context:failure' ORDER BY e.id DESC LIMIT 1`).get(input.setName ?? '');
+      const data = typeof (row as { data?: unknown } | undefined)?.data === 'string' ? JSON.parse((row as { data: string }).data) as { failure?: CompileScopeContextFailure } : undefined;
+      return data?.failure ? compileScopeContextRecoveryOption(data.failure) : undefined;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+function chooseRecoveryAction(ctx: PipelineContext, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): CompileRecoveryAction {
+  if (artifacts.orchestrationExists && artifacts.validPlanCount > 0 && artifacts.invalidPlanCount === 0 && artifacts.missingPlanFileCount === 0) return 'repair-existing-artifacts';
+  const alreadyAttempted = state.attemptedSourceHashes.includes(state.sourceHash);
+  const wantsRetry = input.stage === 'planner' && (input.risk?.recommendation.action === 'retry-as-expedition' || input.source === 'provider' || input.source === 'live-context-guard' || input.source === 'preflight');
+  if (ctx.pipeline.scope !== 'expedition' && wantsRetry && state.retryAsExpeditionAttempts < state.maxRetryAsExpeditionAttempts && !alreadyAttempted) return 'retry-as-expedition';
+  if (ctx.pipeline.scope === 'expedition' || state.retryAsExpeditionAttempts >= state.maxRetryAsExpeditionAttempts || alreadyAttempted || input.risk?.recommendation.action === 'bounded-decomposition') return 'bounded-decomposition';
+  return 'manual-reduce-scope';
+}
+
+function recoveryReason(action: CompileRecoveryAction, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): string {
+  if (action === 'repair-existing-artifacts') return `Valid compile artifacts exist (${artifacts.validPlanCount} plan file(s)); prefer continue/repair over retrying compile.`;
+  if (action === 'retry-as-expedition') return `Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`;
+  if (action === 'bounded-decomposition') return `Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); decompose the source into bounded follow-up PRDs.`;
+  if (action === 'manual-reduce-scope') return 'Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.';
+  return input.explanation;
+}
+
+function ensureCompileScopeRecoveryState(ctx: PipelineContext): CompileScopeRecoveryState {
+  const existing = ctx.compileScopeRecovery;
+  const sourceHash = createHash('sha256').update(ctx.sourceContent).digest('hex');
+  if (existing && existing.sourceHash === sourceHash) return existing;
+  const created: CompileScopeRecoveryState = { sourceHash, retryAsExpeditionAttempts: 0, maxRetryAsExpeditionAttempts: 1, attemptedSourceHashes: [] };
+  ctx.compileScopeRecovery = created;
+  return created;
+}
+
+function emptyArtifactSummary(orchestrationExists: boolean): CompileArtifactSummary {
+  return { orchestrationExists, validPlanCount: 0, invalidPlanCount: 0, missingPlanFileCount: 0, missingPlanFiles: [], invalidPlanFiles: [] };
+}
+
+function boundedArtifactFileName(fileName: string): string {
+  return capUtf8(fileName, MAX_ARTIFACT_FILE_NAME_BYTES);
+}
+
+function capUtf8(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+  const ellipsis = '…';
+  let end = Math.max(0, maxBytes - Buffer.byteLength(ellipsis, 'utf8'));
+  while (Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes - Buffer.byteLength(ellipsis, 'utf8')) end--;
+  return `${text.slice(0, end)}${ellipsis}`;
+}

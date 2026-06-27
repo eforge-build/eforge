@@ -2,6 +2,7 @@ import type { EforgeEvent, AgentRole } from './events.js';
 import type { ModelRef } from './config.js';
 import type { TObject } from '@sinclair/typebox';
 import { isTransientTransportError } from '@eforge-build/client';
+import { classifyProviderContextError } from './compile-resilience/provider-context.js';
 
 export type ToolPreset = 'coding' | 'read-only' | 'none';
 
@@ -299,11 +300,14 @@ export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype
     // retry policies can run (Claude SDK result errors can wrap the socket-close
     // detail inside an AgentTerminalError with a generic subtype).
     if (isTransientTransportError(err.message)) return 'error_transient_transport';
+    if (isPiToolInfrastructureError(err.message)) return 'error_pi_tool_infrastructure';
+    if (classifyProviderContextError(err)) return 'error_context_window';
     return err.subtype;
   }
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : undefined;
   if (message && isTransientTransportError(message)) return 'error_transient_transport';
   if (message && isPiToolInfrastructureError(message)) return 'error_pi_tool_infrastructure';
+  if (classifyProviderContextError(err)) return 'error_context_window';
   return undefined;
 }
 

@@ -31,7 +31,7 @@ The long-running background process that watches the queue, runs builds, exposes
 
 ## Errand, Excursion, Expedition
 
-Workflow profiles selected by the planner. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review.
+Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible.
 
 ## Evaluator
 
@@ -67,7 +67,7 @@ A reusable Markdown workflow template for recurring work owned by the first-part
 
 ## Planner
 
-The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
+The agent stage that writes implementation plans after the pipeline-composer has sized work and chosen the initial workflow profile. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
 
 ## PRD
 

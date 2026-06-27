@@ -23,6 +23,9 @@ import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../comp
 // --- eforge:region plan-03-planner-guardrails ---
 import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
 // --- eforge:endregion plan-03-planner-guardrails ---
+// --- eforge:region plan-04-context-recovery ---
+import type { CompileScopeRecoveryState } from '../compile-resilience/context-recovery.js';
+// --- eforge:endregion plan-04-context-recovery ---
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -41,6 +44,10 @@ export interface PipelineContext {
   // --- eforge:region plan-03-planner-guardrails ---
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
   // --- eforge:endregion plan-03-planner-guardrails ---
+  // --- eforge:region plan-04-context-recovery ---
+  runId?: string;
+  compileScopeRecovery?: CompileScopeRecoveryState;
+  // --- eforge:endregion plan-04-context-recovery ---
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

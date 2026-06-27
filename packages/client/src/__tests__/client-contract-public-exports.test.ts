@@ -150,10 +150,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('feature-gates the daemon API version for extension agent task activity logs', () => {
-    expect(client.DAEMON_API_VERSION).toBe(77);
-    expect(browser.DAEMON_API_VERSION).toBe(77);
+  it('feature-gates the daemon API version for compile-scope-context recovery options', () => {
+    expect(client.DAEMON_API_VERSION).toBe(78);
+    expect(browser.DAEMON_API_VERSION).toBe(78);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('case 2 bump: first-party clients gate on extension agent task metadata activityLog entries');
+    expect(source).toContain('v78: recoveryOptions include compile-scope-context guidance variants');
   });
 });

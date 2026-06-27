@@ -1,7 +1,15 @@
 export { safeParseWithSchema, parseWithSchema, formatSchemaError, getSchemaYaml } from './schema-utils.js';
 export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
 
-export { API_ROUTES, buildPath } from './routes.js';
+export {
+  API_ROUTES,
+  buildPath,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  RecoverySidecarRecoveryOptionSchema,
+} from './routes.js';
 export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,
@@ -17,6 +25,7 @@ export type {
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
   RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextAction,
   RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,

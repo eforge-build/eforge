@@ -24,6 +24,7 @@ export type {
   RecoverySidecarContinueRepairEligibility,
   // --- eforge:region plan-01-foundation-contracts ---
   RecoverySidecarContinueRepairOption,
+  RecoverySidecarCompileScopeContextAction,
   RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
   // --- eforge:endregion plan-01-foundation-contracts ---
@@ -53,7 +54,14 @@ export type {
   AcceptSuccessResponse,
 } from './routes/recovery.js';
 
-export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes/recovery.js';
+export {
+  ACCEPT_SUCCESS_REASON_CATEGORIES,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  RecoverySidecarRecoveryOptionSchema,
+} from './routes/recovery.js';
 
 export type {
   SessionPlanStatusWire,

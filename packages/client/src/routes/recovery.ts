@@ -1,7 +1,10 @@
-import type {
-  CompileRecoveryAction,
-  CompileScopeContextFailure,
-  RecoveryVerdict,
+import { Type } from '@sinclair/typebox';
+import type { Static } from '@sinclair/typebox';
+import {
+  CompileScopeContextFailureKindSchema,
+  CompileScopeContextSourceSchema,
+  type CompileScopeContextFailure,
+  type RecoveryVerdict,
 } from '../events.js';
 
 /** POST /api/recover */
@@ -178,29 +181,49 @@ export type RecoverySidecarContinueRepairEligibility =
     };
 
 // --- eforge:region plan-01-foundation-contracts ---
-export interface RecoverySidecarContinueRepairOption {
-  kind: 'continue-repair';
-  action: 'continue-repair';
-  recommended: boolean;
-  reason: string;
-}
+export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['retry-as-expedition', 'bounded-decomposition', 'manual-reduce-scope'] as const;
 
-export interface RecoverySidecarCompileScopeContextOption {
-  kind: 'compile-scope-context';
-  action: Exclude<CompileRecoveryAction, 'none'>;
-  recommended: boolean;
-  eligible: boolean;
-  reason: string;
-  attempted?: boolean;
-  attempt?: number;
-  maxAttempts?: number;
-  source?: CompileScopeContextFailure['source'];
-  failureKind?: CompileScopeContextFailure['failureKind'];
-}
+const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
+const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
 
-export type RecoverySidecarRecoveryOption =
-  | RecoverySidecarContinueRepairOption
-  | RecoverySidecarCompileScopeContextOption;
+export const RecoverySidecarContinueRepairOptionSchema = Type.Object({
+  kind: Type.Literal('continue-repair'),
+  action: Type.Literal('continue-repair'),
+  recommended: Type.Boolean(),
+  reason: Type.String(),
+});
+
+export const RecoverySidecarCompileScopeContextActionSchema = Type.Union([
+  Type.Literal('retry-as-expedition'),
+  Type.Literal('bounded-decomposition'),
+  Type.Literal('manual-reduce-scope'),
+]);
+
+export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
+  kind: Type.Literal('compile-scope-context'),
+  action: RecoverySidecarCompileScopeContextActionSchema,
+  recommended: Type.Boolean(),
+  eligible: Type.Boolean(),
+  reason: Type.String(),
+  attempted: Type.Boolean(),
+  attempt: NonNegativeIntegerSchema,
+  maxAttempts: PositiveIntegerSchema,
+  source: CompileScopeContextSourceSchema,
+  failureKind: CompileScopeContextFailureKindSchema,
+});
+
+export const RecoverySidecarRecoveryOptionSchema = Type.Union([
+  RecoverySidecarContinueRepairOptionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
+]);
+
+export type RecoverySidecarContinueRepairOption = Static<typeof RecoverySidecarContinueRepairOptionSchema>;
+export type RecoverySidecarCompileScopeContextAction = typeof RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS[number];
+export type RecoverySidecarCompileScopeContextOption = Static<typeof RecoverySidecarCompileScopeContextOptionSchema> & {
+  source: CompileScopeContextFailure['source'];
+  failureKind: CompileScopeContextFailure['failureKind'];
+};
+export type RecoverySidecarRecoveryOption = Static<typeof RecoverySidecarRecoveryOptionSchema>;
 // --- eforge:endregion plan-01-foundation-contracts ---
 
 interface ContinueRepairEligibilityIdentity {

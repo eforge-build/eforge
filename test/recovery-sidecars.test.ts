@@ -403,6 +403,9 @@ describe('writeRecoverySidecar', () => {
           reason: 'Reduce the PRD scope before retrying compile.',
           source: 'provider',
           failureKind: 'context-window',
+          attempted: false,
+          attempt: 0,
+          maxAttempts: 1,
         }],
       },
     });
@@ -416,7 +419,7 @@ describe('writeRecoverySidecar', () => {
     }));
   });
 
-  it('read-sidecar validation rejects malformed optional compile scope/context guidance fields', async () => {
+  it('read-sidecar validation rejects missing or malformed compile scope/context guidance fields', async () => {
     const dir = makeTempDir();
     const { jsonPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
@@ -447,11 +450,15 @@ describe('writeRecoverySidecar', () => {
     const sidecar = JSON.parse(await readFile(jsonPath, 'utf-8'));
     const invalidCases = [
       { attempted: 'yes' },
-      { attempt: 0 },
+      { attempted: undefined },
+      { attempt: -1 },
       { attempt: 1.5 },
       { maxAttempts: '2' },
+      { maxAttempts: 0 },
       { source: 'daemon' },
+      { source: undefined },
       { failureKind: 'unknown' },
+      { failureKind: undefined },
     ];
 
     for (const invalidFields of invalidCases) {

@@ -114,7 +114,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     action: CompileRecoveryActionSchema,
     eligible: Type.Boolean(),
     attempted: Type.Boolean(),
-    attempt: Type.Integer({ minimum: 1 }),
+    attempt: Type.Integer({ minimum: 0 }),
     maxAttempts: Type.Integer({ minimum: 1 }),
     reason: BoundedStringSchema,
   }),

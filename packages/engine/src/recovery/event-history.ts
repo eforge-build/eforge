@@ -36,13 +36,13 @@ function selectRunForEventHistory(db: DatabaseSync, setName: string, runId?: str
     `SELECT r.id, r.command, r.started_at AS startedAt
      FROM runs r
      WHERE r.plan_set = ?
-       AND r.command IN ('build', 'resume', 'continue-repair')
+       AND r.command IN ('build', 'resume', 'continue-repair', 'compile')
        AND r.status = 'failed'
        AND EXISTS (
          SELECT 1
          FROM events e
          WHERE e.run_id = r.id
-           AND e.type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete', 'build:terminal-failure', 'acceptance_validation:complete', 'prd_validation:complete')
+           AND e.type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete', 'build:terminal-failure', 'planning:scope-context:failure', 'acceptance_validation:complete', 'prd_validation:complete')
        )
      ORDER BY r.started_at DESC, r.id DESC
      LIMIT 1`,

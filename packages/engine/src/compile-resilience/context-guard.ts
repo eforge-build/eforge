@@ -140,7 +140,7 @@ function buildFailure(input: {
       action: input.risk?.recommendation.action ?? 'none',
       eligible: input.risk?.recommendation.eligible ?? false,
       attempted: false,
-      attempt: 1,
+      attempt: 0,
       maxAttempts: 1,
       reason: capUtf8(input.risk?.recommendation.reason ?? input.reason, 1_000),
     },

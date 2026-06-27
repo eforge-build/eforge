@@ -223,7 +223,7 @@ Build stages support parallel groups - arrays in the stage list run concurrently
 
 ## Workflow Profiles
 
-Profiles control which compile stages run. The `pipeline-composer` agent classifies input complexity and selects a profile, or the user can specify one explicitly.
+Profiles control which compile stages run. The `pipeline-composer` agent classifies input complexity and selects the initial profile, or the user can specify one explicitly. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when preflight or planner-stage evidence shows that is the bounded recovery path.
 
 **Errand** - Small, self-contained changes. Compile: `[planner]`. The planner generates a single simple plan or skips if nothing to do.
 

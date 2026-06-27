@@ -144,6 +144,7 @@ export const planningEventVariants = [
   // --- eforge:region plan-01-foundation-contracts ---
   Type.Object({
     type: Type.Literal('planning:scope-context:failure'),
+    runId: Type.Optional(Type.String()),
     failure: CompileScopeContextFailureSchema,
   }),
   // --- eforge:endregion plan-01-foundation-contracts ---

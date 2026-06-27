@@ -53,6 +53,19 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   defaultReview?: ReviewProfileConfig;
 }
 
+function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
+  const controller = new AbortController() as AbortController & { dispose: () => void };
+  const abortChild = () => controller.abort();
+  if (parentSignal?.aborted) {
+    controller.abort();
+    controller.dispose = () => {};
+  } else {
+    parentSignal?.addEventListener('abort', abortChild, { once: true });
+    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
+  }
+  return controller;
+}
+
 /**
  * Format accumulated clarification Q&A into a prompt section for retry.
  * Returns empty string when there are no prior clarifications.
@@ -316,12 +329,8 @@ ${existingPlans}`;
 
     const prompt = await buildPrompt();
     // --- eforge:region plan-03-planner-guardrails ---
-    try {
-      contextGuard.assertPrompt(prompt);
-    } catch (err) {
-      options.abortController?.abort();
-      throw err;
-    }
+    contextGuard.assertPrompt(prompt);
+    const attemptAbort = createLinkedAbortController(options.abortController?.signal);
     // --- eforge:endregion plan-03-planner-guardrails ---
 
     if (iteration === 1) {
@@ -332,47 +341,51 @@ ${existingPlans}`;
 
     let needsRestart = false;
 
-    for await (const event of harness.run(
-      { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
-      'planner',
-      options.lane,
-    )) {
-      // --- eforge:region plan-03-planner-guardrails ---
-      try {
-        contextGuard.observe(event);
-      } catch (err) {
-        options.abortController?.abort();
-        throw err;
-      }
-      // --- eforge:endregion plan-03-planner-guardrails ---
-      if (event.type === 'agent:message') {
-        if (!skipEmitted) {
-          const skipReason = parseSkipBlock(event.content);
-          if (skipReason) {
-            skipEmitted = true;
-            yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: skipReason };
+    try {
+      for await (const event of harness.run(
+        { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        'planner',
+        options.lane,
+      )) {
+        // --- eforge:region plan-03-planner-guardrails ---
+        try {
+          contextGuard.observe(event);
+        } catch (err) {
+          attemptAbort.abort();
+          throw err;
+        }
+        // --- eforge:endregion plan-03-planner-guardrails ---
+        if (event.type === 'agent:message') {
+          if (!skipEmitted) {
+            const skipReason = parseSkipBlock(event.content);
+            if (skipReason) {
+              skipEmitted = true;
+              yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: skipReason };
+            }
+          }
+
+          const questions = parseClarificationBlocks(event.content);
+          if (questions.length > 0 && !options.auto) {
+            yield { timestamp: new Date().toISOString(), type: 'planning:clarification', questions };
+
+            if (options.onClarification) {
+              const answers = await options.onClarification(questions);
+              yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
+              allClarifications.push({ questions, answers });
+              // Restart agent with answers baked into prompt
+              needsRestart = true;
+              break;
+            }
           }
         }
 
-        const questions = parseClarificationBlocks(event.content);
-        if (questions.length > 0 && !options.auto) {
-          yield { timestamp: new Date().toISOString(), type: 'planning:clarification', questions };
-
-          if (options.onClarification) {
-            const answers = await options.onClarification(questions);
-            yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
-            allClarifications.push({ questions, answers });
-            // Restart agent with answers baked into prompt
-            needsRestart = true;
-            break;
-          }
+        // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
+        if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
+          yield event;
         }
       }
-
-      // Always yield agent:result + tool events (for tracing); gate streaming text on verbose
-      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
-        yield event;
-      }
+    } finally {
+      attemptAbort.dispose();
     }
 
     if (!needsRestart) break;

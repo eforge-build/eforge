@@ -93,6 +93,7 @@ export interface AuthoritativeTerminalEvent {
   message: string;
   planId?: string;
   sourceEventType?: string;
+  stage?: string;
   sourceEventId?: number;
   sourceEventTimestamp?: string;
   landing?: { status: string; action?: string; reason?: string };
@@ -122,6 +123,7 @@ export function findAuthoritativeTerminalEvent(
   const message = typeof failure.message === 'string' ? failure.message : '';
   const planId = typeof failure.planId === 'string' ? failure.planId : undefined;
   const sourceEventType = typeof failure.sourceEventType === 'string' ? failure.sourceEventType : undefined;
+  const stage = typeof failure.stage === 'string' ? failure.stage : undefined;
   const sourceEventId = Number.isInteger(failure.sourceEventId) ? failure.sourceEventId as number : undefined;
   const sourceEventTimestamp = typeof failure.sourceEventTimestamp === 'string' ? failure.sourceEventTimestamp : undefined;
   const landingRaw = failure.landing && typeof failure.landing === 'object' ? failure.landing as Record<string, unknown> : undefined;
@@ -133,6 +135,7 @@ export function findAuthoritativeTerminalEvent(
     id: row.id, timestamp: row.timestamp, scope, message,
     ...(planId !== undefined ? { planId } : {}),
     ...(sourceEventType !== undefined ? { sourceEventType } : {}),
+    ...(stage !== undefined ? { stage } : {}),
     ...(sourceEventId !== undefined ? { sourceEventId } : {}),
     ...(sourceEventTimestamp !== undefined ? { sourceEventTimestamp } : {}),
     ...(landing !== undefined ? { landing } : {}),
@@ -469,6 +472,7 @@ export function buildAuthoritativeFragment(
       authoritative: true,
       ...(terminal.planId ? { planId: terminal.planId } : {}),
       ...(terminal.terminalSubtype !== undefined ? { terminalSubtype: terminal.terminalSubtype } : {}),
+      ...(terminal.stage !== undefined ? { stage: terminal.stage } : {}),
       ...(terminal.sourceEventType ? { sourceEventType: terminal.sourceEventType } : {}),
       ...(terminal.sourceEventId !== undefined ? { sourceEventId: terminal.sourceEventId } : {}),
       ...(terminal.sourceEventTimestamp ? { sourceEventTimestamp: terminal.sourceEventTimestamp } : {}),

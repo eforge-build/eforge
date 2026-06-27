@@ -42,6 +42,9 @@ import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from
 // --- eforge:region plan-03-planner-guardrails ---
 import { compileContextGuardOptions, CompileScopeContextError } from '../../compile-resilience/context-guard.js';
 // --- eforge:endregion plan-03-planner-guardrails ---
+// --- eforge:region plan-04-context-recovery ---
+import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
+// --- eforge:endregion plan-04-context-recovery ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -148,6 +151,10 @@ async function* runPlannerAttempt(
     end();
   } catch (err) {
     error(err as Error);
+    // --- eforge:region plan-04-context-recovery ---
+    const contextError = await toCompileScopeContextError(ctx, err, 'planner');
+    if (contextError) throw contextError;
+    // --- eforge:endregion plan-04-context-recovery ---
     throw err;
   }
 }
@@ -242,6 +249,14 @@ async function* runModulePlannerAttempt(
       throw err;
     }
     // --- eforge:endregion plan-03-planner-guardrails ---
+    // --- eforge:region plan-04-context-recovery ---
+    const contextError = await toCompileScopeContextError(ctx, err, 'module-planner');
+    if (contextError) {
+      modTracker.cleanup();
+      modSpan.error(contextError);
+      throw contextError;
+    }
+    // --- eforge:endregion plan-04-context-recovery ---
     // Module planning failure is non-fatal - continue with other modules
     modTracker.cleanup();
     modSpan.error(err as Error);
@@ -286,10 +301,11 @@ registerCompileStage({
     lane: 'planning',
   };
   const composerRetryPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<PipelineComposerOptions>;
-  yield* withRetry(
-    async function* (input: PipelineComposerOptions) {
-      for await (const event of composePipeline(input)) {
-        if (event.type === 'planning:pipeline') {
+  try {
+    yield* withRetry(
+      async function* (input: PipelineComposerOptions) {
+        for await (const event of composePipeline(input)) {
+          if (event.type === 'planning:pipeline') {
           // Update the context pipeline from the composer result
           ctx.pipeline = {
             scope: event.scope as 'errand' | 'excursion' | 'expedition',
@@ -305,12 +321,27 @@ registerCompileStage({
           }
           // --- eforge:endregion plan-02-preflight-compaction ---
         }
-        yield event;
-      }
-    },
-    composerRetryPolicy,
-    composerOptions,
-  );
+          yield event;
+        }
+      },
+      composerRetryPolicy,
+      composerOptions,
+    );
+  } catch (err) {
+    const contextError = await toCompileScopeContextError(ctx, err, 'pipeline-composer');
+    throw contextError ?? err;
+  }
+
+  // --- eforge:region plan-04-context-recovery ---
+  const preflightEscalation = await buildPreflightEscalationDecision(ctx);
+  if (preflightEscalation?.retryAsExpedition) {
+    markRetryAsExpeditionStarted(ctx, preflightEscalation.failure);
+    const attempted = ctx.compileScopeRecovery?.lastFailure ?? preflightEscalation.failure;
+    yield scopeContextFailureEvent(attempted, ctx.runId);
+    applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
+    yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
+  }
+  // --- eforge:endregion plan-04-context-recovery ---
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {
@@ -330,7 +361,20 @@ registerCompileStage({
     plannerOptions: {},
   };
   const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
-  yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  // --- eforge:region plan-04-context-recovery ---
+  try {
+    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  } catch (err) {
+    const contextError = await toCompileScopeContextError(ctx, err, 'planner');
+    if (!contextError || contextError.failure.recovery.action !== 'retry-as-expedition' || !contextError.failure.recovery.eligible) throw contextError ?? err;
+    markRetryAsExpeditionStarted(ctx, contextError.failure);
+    const attempted = ctx.compileScopeRecovery?.lastFailure ?? contextError.failure;
+    yield scopeContextFailureEvent(attempted, ctx.runId);
+    applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
+    yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
+    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+  }
+  // --- eforge:endregion plan-04-context-recovery ---
 
   // Fail loudly if the planner produced expedition modules but compile-expedition
   // is not queued — that stage is the only source of orchestration.yaml, so a

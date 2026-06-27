@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  CompileRecoveryActionSchema,
-  CompileScopeContextFailureSchema,
+  RecoverySidecarCompileScopeContextActionSchema,
+  RecoverySidecarCompileScopeContextOptionSchema,
   parseWithSchema,
   type RecoverySidecarRecoveryOption,
   type RecoveryVerdictSidecar,
@@ -310,27 +310,25 @@ function validateCompileScopeContextOption(obj: Record<string, unknown>, action:
     recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
     eligible: requireBoolean(obj.eligible, 'recoveryOptions.eligible', prdId),
     reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
-    ...(hasOwn(obj, 'attempted') ? { attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId) } : {}),
-    ...(hasOwn(obj, 'attempt') ? { attempt: requirePositiveInteger(obj.attempt, 'recoveryOptions.attempt', prdId) } : {}),
-    ...(hasOwn(obj, 'maxAttempts') ? { maxAttempts: requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId) } : {}),
-    ...(hasOwn(obj, 'source') ? { source: requireCompileScopeContextSource(obj.source, prdId) } : {}),
-    ...(hasOwn(obj, 'failureKind') ? { failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId) } : {}),
+    attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId),
+    attempt: requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId),
+    maxAttempts: requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId),
+    source: requireCompileScopeContextSource(obj.source, prdId),
+    failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
   };
 }
 
 function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {
   try {
-    const action = parseWithSchema(CompileRecoveryActionSchema, value);
-    if (action !== 'none') return action as Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'];
+    return parseWithSchema(RecoverySidecarCompileScopeContextActionSchema, value);
   } catch {
-    // Use the sidecar-specific error below for compatibility with existing callers.
+    throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
   }
-  throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
 }
 
 function requireCompileScopeContextSource(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['source'] {
   try {
-    return parseWithSchema(CompileScopeContextFailureSchema.properties.source, value);
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.source, value);
   } catch {
     throw new Error(`recoveryOptions.source is invalid${suffix(prdId)}`);
   }
@@ -338,7 +336,7 @@ function requireCompileScopeContextSource(value: unknown, prdId?: string): Extra
 
 function requireCompileScopeContextFailureKind(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['failureKind'] {
   try {
-    return parseWithSchema(CompileScopeContextFailureSchema.properties.failureKind, value);
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.failureKind, value);
   } catch {
     throw new Error(`recoveryOptions.failureKind is invalid${suffix(prdId)}`);
   }
@@ -398,13 +396,15 @@ function requirePositiveInteger(value: unknown, label: string, prdId?: string): 
   return numberValue;
 }
 
+function requireNonNegativeInteger(value: unknown, label: string, prdId?: string): number {
+  const numberValue = requireNumber(value, label, prdId);
+  if (!Number.isInteger(numberValue) || numberValue < 0) throw new Error(`${label} is invalid${suffix(prdId)}`);
+  return numberValue;
+}
+
 function requireBoolean(value: unknown, label: string, prdId?: string): boolean {
   if (typeof value !== 'boolean') throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
-}
-
-function hasOwn(obj: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
 function suffix(prdId?: string): string {
