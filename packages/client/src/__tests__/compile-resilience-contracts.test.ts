@@ -15,7 +15,11 @@ import {
   safeParseEforgeEvent,
   type CompilePreflightRisk,
 } from '../events.js';
-import type { RecoverySidecarRecoveryOption } from '../routes.js';
+import {
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  RecoverySidecarCompileScopeContextOptionSchema,
+  type RecoverySidecarRecoveryOption,
+} from '../routes.js';
 
 const timestamp = '2026-06-26T10:00:00.000Z';
 
@@ -120,6 +124,11 @@ describe('compile resilience contracts', () => {
     expect(safeParseEforgeEvent({
       type: 'planning:scope-context:failure',
       timestamp,
+      failure: { ...failure, recovery: { ...failure.recovery, attempt: 3, maxAttempts: 2 } },
+    }).success).toBe(false);
+    expect(safeParseEforgeEvent({
+      type: 'planning:scope-context:failure',
+      timestamp,
       failure: { ...failure, observed: { inputTokens: 250000 } },
     }).success).toBe(true);
     expect(safeParseEforgeEvent({
@@ -198,6 +207,8 @@ describe('compile resilience contracts', () => {
     ];
 
     expect(options).toHaveLength(2);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, options[1])).toBe(true);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...options[1], reason: 'é'.repeat(RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES) })).toBe(false);
   });
 
   it('bounds artifact summary representative plan-file arrays while preserving count fields', () => {

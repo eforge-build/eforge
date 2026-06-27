@@ -18,6 +18,44 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict['verdict']): str
   }
 }
 
+// --- eforge:region plan-06-surfaces-docs ---
+function compileRecoveryActionLabel(action: string): string {
+  switch (action) {
+    case 'retry-as-expedition': return 'retry as expedition';
+    case 'bounded-decomposition': return 'bounded decomposition';
+    case 'manual-reduce-scope': return 'manual scope reduction';
+    default: return action;
+  }
+}
+
+function renderCompileScopeContextSection(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>): string[] {
+  const options = payload.recoveryOptions?.filter((option) => option.kind === 'compile-scope-context') ?? [];
+  if (options.length === 0) return [];
+
+  const lines = [
+    '## Compile scope/context recovery guidance',
+    '',
+    'These options are read-only compile guidance. They do not map to an `apply-recovery` mutation; use existing recovery verdict actions, continue-and-repair when artifacts are valid, or manual scope reduction/decomposition.',
+    '',
+  ];
+  for (const option of options) {
+    lines.push(
+      `### ${compileRecoveryActionLabel(option.action)}${option.recommended ? ' (recommended)' : ''}`,
+      '',
+      `**Action:** ${option.action}`,
+      `**Eligible:** ${option.eligible ? 'yes' : 'no'}`,
+      `**Attempted:** ${option.attempted ? 'yes' : 'no'}`,
+      `**Attempt:** ${option.attempt}/${option.maxAttempts}`,
+      `**Source:** ${option.source}`,
+      `**Failure Kind:** ${option.failureKind}`,
+      `**Reason:** ${escapeTableCell(option.reason)}`,
+      '',
+    );
+  }
+  return lines;
+}
+// --- eforge:endregion plan-06-surfaces-docs ---
+
 function renderContinueRepairSection(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>): string[] {
   const eligibility = payload.continueRepairEligibility;
   if (eligibility === undefined) return [];
@@ -83,6 +121,9 @@ export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar & 
     report.recommendedAction,
     '',
     ...renderContinueRepairSection(payload),
+    // --- eforge:region plan-06-surfaces-docs ---
+    ...renderCompileScopeContextSection(payload),
+    // --- eforge:endregion plan-06-surfaces-docs ---
     '## Key Evidence',
     '',
     ...bulletLines(report.keyEvidence),

@@ -325,6 +325,13 @@ function deterministicVerdict(
   } as RecoveryVerdict;
 }
 
+function isCompileScopeContextTerminalFailure(summary: BuildFailureSummary): boolean {
+  return summary.terminalFailure?.scope === 'compile' && summary.terminalFailure.terminalSubtype === 'error_context_window';
+}
+
+const COMPILE_SCOPE_CONTEXT_MANUAL_INVALIDATION_REASON =
+  'Compile scope/context recovery options are read-only guidance and do not map to apply-recovery mutations; keeping deterministic manual verdict.';
+
 /**
  * Select the final recovery verdict by combining the deterministic recommendation
  * with analyst output and recording source metadata.
@@ -364,6 +371,17 @@ export function selectFinalVerdict(options: SelectFinalVerdictOptions): Recovery
       undefined,
       errorContext !== undefined ? { recoveryError: errorContext } : undefined,
     );
+  }
+
+  if (
+    isCompileScopeContextTerminalFailure(summary) &&
+    deterministicRecommendation.verdict === 'manual' &&
+    analystVerdict !== null &&
+    analystVerdict.verdict !== 'manual'
+  ) {
+    return deterministicVerdict(deterministicRecommendation, summary, analystVerdict, {
+      verdictInvalidationReason: COMPILE_SCOPE_CONTEXT_MANUAL_INVALIDATION_REASON,
+    });
   }
 
   // Case 1: Analyst produced a verdict — validate it

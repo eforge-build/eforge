@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
-import type { EforgeEvent } from '@eforge-build/client';
+import { initDisplay, renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
+import type { CompilePreflightRisk, CompileScopeContextFailure, EforgeEvent } from '@eforge-build/client';
 
 function captureConsoleLogs(run: () => void): string[] {
   const lines: string[] = [];
@@ -21,7 +21,30 @@ function stripAnsi(value: string): string {
 
 afterEach(() => {
   stopAllSpinners();
+  initDisplay();
 });
+
+const compileRisk: CompilePreflightRisk = {
+  level: 'overflow-risk',
+  sourceBytes: 4096,
+  promptSourceBytes: 2048,
+  acceptanceCriteriaCount: 9,
+  score: 90,
+  generatedInventory: { detected: true, contentHashes: ['c'.repeat(64)], pathReferences: ['generated.json'], headings: ['Generated'], blockCount: 1, sidecarCount: 1, omittedBytes: 100 },
+  subsystemBreadth: { count: 4, subsystems: ['engine', 'client'], evidence: ['packages/engine'] },
+  reasons: ['generated-inventory:detected'],
+  recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split generated scope into smaller PRDs.' },
+};
+
+const scopeFailure: CompileScopeContextFailure = {
+  source: 'provider',
+  failureKind: 'context-window',
+  stage: 'planner',
+  explanation: 'Provider context window exceeded.',
+  observed: { promptBytes: 8192, inputTokens: 1234, turns: 3 },
+  recovery: { action: 'manual-reduce-scope', eligible: true, attempted: false, attempt: 1, maxAttempts: 2, reason: 'Reduce scope before retrying.' },
+  artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 2, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
+};
 
 describe('renderEvent', () => {
   it('renders phase start details through the top-level dispatcher', () => {
@@ -87,6 +110,57 @@ describe('renderEvent', () => {
       '✗ Acceptance validation failed: 1 passed, 1 failed, 1 unknown',
       '  Waiver: OAuth deferred',
     ]);
+  });
+
+  it('keeps normal planning preflight events silent in non-verbose mode', () => {
+    const lines = captureConsoleLogs(() => {
+      renderEvent({
+        type: 'planning:preflight',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        risk: { ...compileRisk, level: 'normal', recommendation: { action: 'none', eligible: false, reason: 'normal risk' } },
+      });
+    });
+
+    expect(lines).toEqual([]);
+  });
+
+  it('renders overflow planning preflight guidance through the top-level dispatcher', () => {
+    const lines = captureConsoleLogs(() => {
+      renderEvent({ type: 'planning:preflight', timestamp: '2025-01-01T00:00:00.000Z', risk: compileRisk });
+    });
+
+    expect(lines.join('\n')).toContain('Compile preflight');
+    expect(lines.join('\n')).toContain('overflow-risk');
+    expect(lines.join('\n')).toContain('4.0 KiB source');
+    expect(lines.join('\n')).toContain('2.0 KiB prompt');
+    expect(lines.join('\n')).toContain('9 AC');
+    expect(lines.join('\n')).toContain('bounded decomposition');
+  });
+
+  it('renders terminal compile scope/context failures through the top-level dispatcher', () => {
+    const lines = captureConsoleLogs(() => {
+      renderEvent({ type: 'planning:scope-context:failure', timestamp: '2025-01-01T00:00:00.000Z', failure: scopeFailure });
+    });
+
+    expect(lines.join('\n')).toContain('Compile scope/context failure');
+    expect(lines.join('\n')).toContain('context-window');
+    expect(lines.join('\n')).toContain('provider');
+    expect(lines.join('\n')).toContain('planner');
+    expect(lines.join('\n')).toContain('manual scope reduction');
+    expect(lines.join('\n')).toContain('attempt 1/2');
+  });
+
+  it('renders attempted retry-as-expedition guidance without generic planning failure copy', () => {
+    const lines = captureConsoleLogs(() => {
+      renderEvent({
+        type: 'planning:scope-context:failure',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        failure: { ...scopeFailure, recovery: { ...scopeFailure.recovery, action: 'retry-as-expedition', attempted: true } },
+      });
+    });
+
+    expect(lines.join('\n')).toContain('Compile context guard: retrying as expedition');
+    expect(lines.join('\n')).not.toContain('Planning failed:');
   });
 
   it('falls back to the client event summary for unhandled event domains', () => {

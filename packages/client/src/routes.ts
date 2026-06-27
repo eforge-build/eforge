@@ -22,6 +22,7 @@ export type {
   RecoverySidecarBoundedEvidence,
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
+  RecoverySidecarSchemaVersion,
   // --- eforge:region plan-01-foundation-contracts ---
   RecoverySidecarContinueRepairOption,
   RecoverySidecarCompileScopeContextAction,
@@ -57,6 +58,7 @@ export type {
 export {
   ACCEPT_SUCCESS_REASON_CATEGORIES,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
   RecoverySidecarContinueRepairOptionSchema,
   RecoverySidecarCompileScopeContextActionSchema,
   RecoverySidecarCompileScopeContextOptionSchema,

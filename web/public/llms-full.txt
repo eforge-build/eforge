@@ -3738,7 +3738,7 @@ Console shows:
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console Needs attention strip for failed builds, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
+- Console Needs attention strip for failed builds, compile scope/context failure banners, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
@@ -3861,6 +3861,24 @@ If `outcome` is `failed` without a conflict, inspect the failed `providerCommand
 
 If enqueue formatting, source loading, or pre-queue validation fails before a runnable queue file exists, Console shows a durable **Enqueue failed** row in Needs attention. The row is keyed by run id and includes the source label, reason, timestamp, fallback next command, and any disabled reason. When the daemon still has enough source data, use the confirmed **Re-enqueue…** action; otherwise copy the fallback command and fix the source or validation issue first. A successful re-enqueue resolves the failed-enqueue row.
 
+## Oversized PRDs and compile scope/context failures
+
+Large or machine-generated PRDs can exhaust compile-stage prompt or provider context before any plan is built. eforge reports this through typed planning diagnostics instead of a generic manual failure.
+
+**What to look for:**
+
+- `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action.
+
+**How to interpret recovery guidance:**
+
+- `retry-as-expedition` means eforge determined the compile may fit after escalating from errand/excursion to expedition decomposition. If a retry was attempted, Console and CLI show it as recovery progress; if not attempted or terminal, treat it as guidance for the next build attempt.
+- `bounded-decomposition` means the input should be split into smaller, independently reviewable PRDs or modules before retrying.
+- `manual-reduce-scope` means a human should remove generated bulk, duplicate context, or unrelated requirements and enqueue a reduced source.
+- `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
+
+Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue the revised source.
+
 ## Recover from a failed build
 
 When a queued build fails, the scheduler pauses and the PRD is marked `failed` in the queue while desired auto-build remains enabled. Do not re-enqueue manually; use the recovery workflow instead.
@@ -3981,6 +3999,14 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
 
+## Compile preflight
+
+A typed `planning:preflight` diagnostic emitted during compile before planner-family agents run. It reports normal, elevated, or overflow-risk input size/context risk with bounded source, prompt, inventory, subsystem, representative, and recommendation details.
+
+## Compile scope/context failure
+
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures.
+
 ## Daemon
 
 The long-running background process that watches the queue, runs builds, exposes the HTTP API, and streams live events to the monitor and integrations.
@@ -4059,7 +4085,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 

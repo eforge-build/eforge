@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import type { PlanInfo } from '@eforge-build/client/browser';
+import type { EforgeEvent, PlanInfo } from '@eforge-build/client/browser';
 import { createInitialRunState } from '@/lib/run-state';
 import { PipelineSection } from '../pipeline-section';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
@@ -29,7 +29,29 @@ function makePlan(overrides: Partial<PlanInfo>): PlanInfo {
   };
 }
 
+const scopeFailureEvent = {
+  type: 'planning:scope-context:failure',
+  timestamp: '2026-01-01T00:00:00Z',
+  failure: {
+    source: 'provider',
+    failureKind: 'context-window',
+    stage: 'planner',
+    explanation: 'Provider context exceeded.',
+    recovery: { action: 'manual-reduce-scope', eligible: true, attempted: false, attempt: 0, maxAttempts: 1, reason: 'Reduce scope.' },
+    artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 0, missingPlanFileCount: 0, missingPlanFiles: [], invalidPlanFiles: [] },
+  },
+} as unknown as EforgeEvent;
+
 describe('PipelineSection', () => {
+  it('renders a compile failure banner without plan failures', () => {
+    const runState = createInitialRunState();
+    runState.events.push({ eventId: '1', event: scopeFailureEvent });
+    render(<PipelineSection runState={runState} plans={null} />);
+
+    expect(document.body.textContent).toContain('Compile scope/context failure');
+    expect(document.body.textContent).toContain('context-window from provider at planner');
+  });
+
   it('passes only execution plan artifacts to the pipeline lanes', () => {
     render(
       <PipelineSection

@@ -3,6 +3,7 @@ import type {
   RecoverySidecarReport,
   RecoveryVerdictSidecar,
   RecoverySidecarRecoveryOption,
+  RecoverySidecarSchemaVersion,
 } from '@eforge-build/client';
 import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
@@ -205,7 +206,7 @@ function recoveryOptionsFor(
   }];
 }
 
-function schemaVersionForRecoveryOptions(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): number {
+function schemaVersionForRecoveryOptions(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): RecoverySidecarSchemaVersion {
   return recoveryOptions?.some((option) => option.kind === 'compile-scope-context') === true
     ? SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT
     : SCHEMA_VERSION;

@@ -803,6 +803,40 @@ describe('selectFinalVerdict — analyst verdict invalidated', () => {
     expect(['retry', 'manual']).toContain(finalVerdict.verdict);
   });
 
+  it('forces deterministic manual for compile scope/context when analyst returns a mutating verdict', () => {
+    const summary: BuildFailureSummary = {
+      prdId: 'compile-prd',
+      setName: 'compile-set',
+      featureBranch: 'eforge/compile-set',
+      baseBranch: 'main',
+      plans: [],
+      failingPlan: { planId: 'compile' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: '2026-05-26T06:15:10.000Z',
+      terminalFailure: { scope: 'compile', terminalSubtype: 'error_context_window', stage: 'planner' },
+    };
+    const deterministicRecommendation = determineRecoveryRecommendation(summary);
+
+    const finalVerdict = selectFinalVerdict({
+      deterministicRecommendation,
+      analystVerdict: {
+        verdict: 'retry',
+        confidence: 'medium',
+        rationale: 'Compile context failure at planner; retry the PRD.',
+        completedWork: [],
+        remainingWork: [],
+        risks: [],
+      },
+      summary,
+    });
+
+    expect(finalVerdict.verdict).toBe('manual');
+    expect((finalVerdict as Record<string, unknown>).verdictInvalidationReason).toMatch(/read-only guidance/);
+    expect((finalVerdict as Record<string, unknown>).recommendationSource).toBe('deterministic');
+  });
+
   it('records verdictInvalidationReason when analyst returns the removed split verdict', () => {
     const summary = makeMultiFailSummary();
     const deterministicRecommendation = determineRecoveryRecommendation(summary);

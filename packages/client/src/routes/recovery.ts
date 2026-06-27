@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox';
+import { FormatRegistry, Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 import {
   CompileScopeContextFailureKindSchema,
@@ -102,15 +102,18 @@ export interface RecoverySidecarBoundedEvidence {
   evidenceOmissions?: string[];
 }
 
+export type RecoverySidecarSchemaVersion = 3 | 4;
+
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
- * Current concise v3 contract: top-level identity, verdict, operator report,
+ * Concise sidecar contract: top-level identity, verdict, operator report,
  * bounded evidence, generated timestamp, optional read-only continue-and-repair
  * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
- * durable `applied` marker.
+ * durable `applied` marker. Version 4 is used when compile-scope-context
+ * recovery guidance is present; otherwise version 3 is used.
  */
 export interface RecoveryVerdictSidecar {
-  schemaVersion: number;
+  schemaVersion: RecoverySidecarSchemaVersion;
   generatedAt: string;
   prdId: string;
   setName: string;
@@ -182,6 +185,14 @@ export type RecoverySidecarContinueRepairEligibility =
 
 // --- eforge:region plan-01-foundation-contracts ---
 export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['retry-as-expedition', 'bounded-decomposition', 'manual-reduce-scope'] as const;
+export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES = 1_000;
+
+const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT = 'eforge-recovery-sidecar-compile-scope-context-reason-bytes';
+
+FormatRegistry.Set(
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT,
+  (value) => new TextEncoder().encode(value).length <= RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+);
 
 const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
 const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
@@ -204,7 +215,11 @@ export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
   action: RecoverySidecarCompileScopeContextActionSchema,
   recommended: Type.Boolean(),
   eligible: Type.Boolean(),
-  reason: Type.String(),
+  reason: Type.String({
+    minLength: 1,
+    maxLength: RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+    format: RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT,
+  }),
   attempted: Type.Boolean(),
   attempt: NonNegativeIntegerSchema,
   maxAttempts: PositiveIntegerSchema,

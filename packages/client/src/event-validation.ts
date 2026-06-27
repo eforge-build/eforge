@@ -84,6 +84,10 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     return validationError('/attempt', 'recovery attempt cannot exceed maxAttempts');
   }
 
+  if (event.type === 'planning:scope-context:failure' && event.failure.recovery.attempt > event.failure.recovery.maxAttempts) {
+    return validationError('/failure/recovery/attempt', 'recovery attempt cannot exceed maxAttempts');
+  }
+
   if (event.type === 'stack:landing:conflict:recovery:failed' && event.abortSucceeded && !event.abortAttempted) {
     return validationError('/abortSucceeded', 'abortSucceeded=true requires abortAttempted=true');
   }

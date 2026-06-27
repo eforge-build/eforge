@@ -68,6 +68,29 @@ function applyFixture(verdict: ApplyRecoveryResponse['verdict']): ApplyRecoveryR
   return { verdict };
 }
 
+function compileScopeGuidanceSidecarFixture(): ReadSidecarResponse {
+  const base = sidecarFixture('manual', 'low');
+  return {
+    ...base,
+    json: {
+      ...base.json,
+      schemaVersion: 4,
+      recoveryOptions: [{
+        kind: 'compile-scope-context',
+        action: 'bounded-decomposition',
+        recommended: true,
+        eligible: true,
+        reason: 'Decompose the oversized PRD before retrying.',
+        attempted: false,
+        attempt: 0,
+        maxAttempts: 1,
+        source: 'provider',
+        failureKind: 'context-window',
+      }],
+    },
+  } as unknown as ReadSidecarResponse;
+}
+
 function appliedSidecarFixture(): ReadSidecarResponse {
   return {
     ...sidecarFixture('continue-repair', 'high'),
@@ -355,6 +378,17 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     renderDialog();
 
     expect(await screen.findByText('Manual review / manual replanning required.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Retry from scratch' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue and repair build' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Archive failed PRD' })).toBeNull();
+  });
+
+  it('renders compile scope guidance as read-only for manual sidecars', async () => {
+    vi.mocked(fetchRecoverySidecar).mockResolvedValue(compileScopeGuidanceSidecarFixture());
+    renderDialog();
+
+    expect(await screen.findByText('Compile scope/context guidance')).toBeDefined();
+    expect(screen.getByText(/do not map to apply-recovery/i)).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Retry from scratch' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Continue and repair build' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Archive failed PRD' })).toBeNull();

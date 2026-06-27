@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
   RecoverySidecarCompileScopeContextActionSchema,
   RecoverySidecarCompileScopeContextOptionSchema,
   parseWithSchema,
@@ -312,15 +313,18 @@ function validateContinueRepairOption(obj: Record<string, unknown>, action: stri
 
 function validateCompileScopeContextOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
   const compileAction = requireCompileRecoveryGuidanceAction(action, prdId);
+  const attempt = requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId);
+  const maxAttempts = requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId);
+  if (attempt > maxAttempts) throw new Error(`recoveryOptions.attempt cannot exceed recoveryOptions.maxAttempts${suffix(prdId)}`);
   return {
     kind: 'compile-scope-context',
     action: compileAction,
     recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
     eligible: requireBoolean(obj.eligible, 'recoveryOptions.eligible', prdId),
-    reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
+    reason: requireBoundedUtf8String(obj.reason, 'recoveryOptions.reason', RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES, prdId),
     attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId),
-    attempt: requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId),
-    maxAttempts: requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId),
+    attempt,
+    maxAttempts,
     source: requireCompileScopeContextSource(obj.source, prdId),
     failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
   };
@@ -391,6 +395,12 @@ function requireString(value: unknown, label: string, prdId?: string): string {
 function requireStringAllowEmpty(value: unknown, label: string, prdId?: string): string {
   if (typeof value !== 'string') throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
+}
+
+function requireBoundedUtf8String(value: unknown, label: string, maxBytes: number, prdId?: string): string {
+  const text = requireString(value, label, prdId);
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes${suffix(prdId)}`);
+  return text;
 }
 
 function requireNumber(value: unknown, label: string, prdId?: string): number {

@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest';
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect } from 'vitest';
+import { createElement } from 'react';
+import type { EforgeEvent } from '@eforge-build/client/browser';
+import { PlanPreviewProvider } from '@/components/preview';
+import { EventCard } from '../event-card';
 import {
   getVerdictChipClass,
   getConfidenceClass,
@@ -58,6 +64,48 @@ function acceptanceValidationDetail(
 
 // Mirror of EventCard's recoveryCompleteEvent narrowing — extracted as a pure
 // function for testability.
+const hash = 'd'.repeat(64);
+
+const preflightEvent = {
+  type: 'planning:preflight',
+  timestamp: '2026-01-01T00:00:00.000Z',
+  risk: {
+    level: 'overflow-risk',
+    sourceBytes: 4096,
+    promptSourceBytes: 2048,
+    acceptanceCriteriaCount: 8,
+    score: 90,
+    generatedInventory: { detected: true, contentHashes: [hash], pathReferences: ['generated.json'], headings: ['Generated Inventory'], blockCount: 2, sidecarCount: 1, omittedBytes: 42 },
+    subsystemBreadth: { count: 2, subsystems: ['cli', 'console'], evidence: ['rendering surfaces'] },
+    reasons: ['generated-inventory:detected'],
+    recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split oversized generated scope.' },
+  },
+} as unknown as EforgeEvent;
+
+const scopeFailureEvent = {
+  type: 'planning:scope-context:failure',
+  timestamp: '2026-01-01T00:00:01.000Z',
+  failure: {
+    source: 'provider',
+    failureKind: 'context-window',
+    stage: 'planner',
+    explanation: 'Provider context window exceeded.',
+    observed: { promptBytes: 8192, inputTokens: 1234, turns: 3 },
+    recovery: { action: 'manual-reduce-scope', eligible: true, attempted: false, attempt: 1, maxAttempts: 2, reason: 'Reduce scope before retrying.' },
+    artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 2, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
+  },
+} as unknown as EforgeEvent;
+
+function renderEventCard(event: EforgeEvent) {
+  return render(createElement(
+    PlanPreviewProvider,
+    null,
+    createElement(EventCard, { event, startTime: null, showVerbose: false }),
+  ));
+}
+
+afterEach(cleanup);
+
 type RecoveryCompleteEventShape = {
   type: 'recovery:complete';
   prdId: string;
@@ -71,6 +119,33 @@ function getRecoveryVerdictProps(
   const e = event as unknown as RecoveryCompleteEventShape;
   return e.verdict;
 }
+
+describe('EventCard compile resilience rendering branches', () => {
+  it('renders planning:preflight summary and expandable bounded detail', () => {
+    renderEventCard(preflightEvent);
+
+    expect(screen.getByText('planning:preflight')).toBeTruthy();
+    expect(screen.getByText(/Compile preflight: overflow-risk/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.getByText(/Generated inventory:/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(hash))).toBeTruthy();
+    expect(screen.getByText(/Subsystem evidence: rendering surfaces/)).toBeTruthy();
+    expect(screen.getByText(/Split oversized generated scope/)).toBeTruthy();
+  });
+
+  it('renders planning:scope-context:failure with failed styling and detail', () => {
+    renderEventCard(scopeFailureEvent);
+
+    const typeLabel = screen.getByText('planning:scope-context:failure');
+    expect(typeLabel.className).toContain('text-red');
+    expect(screen.getByText(/Compile scope\/context failure: context-window from provider at planner/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.getByText(/Provider context window exceeded/)).toBeTruthy();
+    expect(screen.getByText(/attempt 1\/2/)).toBeTruthy();
+    expect(screen.getByText(/Artifacts:/)).toBeTruthy();
+    expect(screen.getByText(/8.0 KiB prompt/)).toBeTruthy();
+  });
+});
 
 describe('EventCard recovery:complete rendering branch', () => {
   it('returns non-null chip props for a recovery:complete event', () => {

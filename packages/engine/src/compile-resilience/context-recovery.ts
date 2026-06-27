@@ -9,7 +9,7 @@ import {
   type CompileScopeContextFailure,
   type EforgeEvent,
 } from '../events.js';
-import type { RecoverySidecarRecoveryOption } from '@eforge-build/client';
+import { RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES, type RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import type { PipelineContext } from '../pipeline/types.js';
 import { estimateCompilePreflightRisk } from './preflight.js';
 import { AgentTerminalError } from '../harness.js';
@@ -27,15 +27,15 @@ export interface CompileScopeRecoveryState {
 }
 
 export interface CompileScopeContextFailureInput {
-  source: 'preflight' | 'live-context-guard' | 'provider';
-  failureKind: 'context-budget' | 'context-window' | 'context-length' | 'scope-too-broad';
-  stage: 'pipeline-composer' | 'planner' | 'module-planner' | 'compile-expedition' | 'compile';
+  source: CompileScopeContextFailure['source'];
+  failureKind: CompileScopeContextFailure['failureKind'];
+  stage: CompileScopeContextFailure['stage'];
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
   risk?: CompilePreflightRisk;
 }
 
-const MAX_REASON_BYTES = 1000;
+const MAX_REASON_BYTES = RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES;
 const EXPEDITION_COMPILE = ['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
 
 export async function toCompileScopeContextError(

@@ -25,6 +25,14 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
 
+## Compile preflight
+
+A typed `planning:preflight` diagnostic emitted during compile before planner-family agents run. It reports normal, elevated, or overflow-risk input size/context risk with bounded source, prompt, inventory, subsystem, representative, and recommendation details.
+
+## Compile scope/context failure
+
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures.
+
 ## Daemon
 
 The long-running background process that watches the queue, runs builds, exposes the HTTP API, and streams live events to the monitor and integrations.
@@ -103,7 +111,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 
