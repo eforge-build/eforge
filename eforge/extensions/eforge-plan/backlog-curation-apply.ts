@@ -10,6 +10,7 @@ import { summarizeProjectTraces } from './trace-activity.js';
 import { assertSafeBacklogId, listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
 import { captureCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
+import { deriveItemSectionRows } from './canonical/item-body-sections.js';
 import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
@@ -31,8 +32,9 @@ type Recheck = Draft['noOpRechecks'][number];
 type Patch = ItemPatch | EpicPatch;
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
-
-function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCanonicalBacklogItem>[1] {
+type CanonicalItemInput = Parameters<typeof captureCanonicalBacklogItem>[1];
+type CanonicalEpicInput = Parameters<typeof upsertCanonicalEpic>[1];
+function canonicalItemInput(entry: ProspectiveItem): CanonicalItemInput {
   const normalized = normalizeBacklogItem(entry.frontmatter, entry.body);
   const epic = normalized.epic;
   const frontmatter = { ...entry.frontmatter };
@@ -43,16 +45,17 @@ function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCa
     body: entry.body,
     status: canonicalStatus(stringValue(entry.frontmatter.status) ?? entry.snapshot.record.status),
     priority: stringValue(entry.frontmatter.priority) ?? entry.snapshot.record.priority,
+    source: stringValue(entry.frontmatter.source),
     tags: stringArray(entry.frontmatter.tags),
     dependsOn: stringArray(entry.frontmatter.depends_on),
     epic,
     created: stringValue(entry.frontmatter.created) ?? entry.snapshot.record.created,
     updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
-    frontmatter,
+    lastCheckedAt: stringValue(entry.frontmatter.last_checked), staleAfter: stringValue(entry.frontmatter.stale_after),
+    frontmatter, sections: deriveItemSectionRows(entry.body),
   };
 }
-
-function canonicalEpicInput(entry: ProspectiveEpic): Parameters<typeof upsertCanonicalEpic>[1] {
+function canonicalEpicInput(entry: ProspectiveEpic): CanonicalEpicInput {
   return {
     id: entry.snapshot.id,
     title: stringValue(entry.frontmatter.title) ?? entry.snapshot.record.title,
@@ -65,7 +68,12 @@ function canonicalEpicInput(entry: ProspectiveEpic): Parameters<typeof upsertCan
     frontmatter: entry.frontmatter,
   };
 }
-
+function precomputeCanonicalItemInputs(entries: readonly ProspectiveItem[]): CanonicalItemInput[] {
+  return entries.map((entry) => {
+    try { return canonicalItemInput(entry); }
+    catch (error) { throw validationError(entry.patchPath ?? `backlogCurationDraft.itemChanges.${entry.snapshot.id}`, error instanceof Error ? error.message : String(error)); }
+  });
+}
 function stringValue(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []; }
 function canonicalStatus(value: string | undefined): BacklogItem['status'] { return isBacklogStatus(value) ? value : 'candidate'; }
@@ -88,8 +96,10 @@ export async function applyBacklogCurationDraftFromTask(
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
-  for (const entry of prepared.changedItems) captureCanonicalBacklogItem(cwd, canonicalItemInput(entry));
-  for (const entry of prepared.changedEpics) upsertCanonicalEpic(cwd, canonicalEpicInput(entry));
+  const changedItemInputs = precomputeCanonicalItemInputs(prepared.changedItems);
+  const changedEpicInputs = prepared.changedEpics.map(canonicalEpicInput);
+  for (const input of changedItemInputs) captureCanonicalBacklogItem(cwd, input);
+  for (const input of changedEpicInputs) upsertCanonicalEpic(cwd, input);
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
@@ -178,14 +188,12 @@ export async function validateBacklogCurationPlanningDraftResult(cwd: string, re
   }
 }
 // --- eforge:endregion apply-entrypoint ---
-
 // --- eforge:region validation-helpers ---
 function parseDraft(value: unknown) {
   const result = safeParseWithSchema(EforgePlanPlanningBacklogCurationDraftSchema, value);
   if (result.success) return result.data;
   throw new ExtensionActionInputValidationError('Invalid backlog curation draft.', result.error.errors.map((error) => ({ path: fieldPath('backlogCurationDraft', error.path), message: error.message })));
 }
-
 const BacklogCurationGeneratedRecommendationGroupSchema = Type.Object({
   ref: Type.String(),
   title: Type.Optional(Type.String()),
@@ -195,7 +203,6 @@ const BacklogCurationGeneratedRecommendationGroupSchema = Type.Object({
   rationale: Type.Optional(Type.String()),
   recommendedProfile: Type.Optional(RecommendationProfileSchema),
 }, { additionalProperties: false });
-
 const BacklogCurationGeneratedRecommendationModelSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   updatedAt: Type.Optional(Type.String()),
@@ -206,13 +213,11 @@ const BacklogCurationGeneratedRecommendationModelSchema = Type.Object({
   blockedChains: Type.Array(RecommendationBlockedChainSchema),
   rationaleAndAssumptions: Type.Array(Type.String()),
 }, { additionalProperties: false });
-
 function parseGeneratedRecommendations(value: unknown): BacklogRecommendationModel {
   const result = safeParseWithSchema(BacklogCurationGeneratedRecommendationModelSchema, value);
   if (result.success) return result.data as BacklogRecommendationModel;
   throw validationError('result.recommendations', result.error.errors.map((error) => `${fieldPath('result.recommendations', error.path)}: ${error.message}`).join('; '));
 }
-
 // --- eforge:region recommendation-validation ---
 interface PreparedBacklogCurationApply {
   draft: Draft;
@@ -225,7 +230,6 @@ interface PreparedBacklogCurationApply {
   recommendationProjection: BacklogCurationRecommendationProjection;
   prospectiveRecommendationSourceFingerprint: string;
 }
-
 async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined, options: { skipGeneratedRecommendationErrors?: boolean } = {}): Promise<PreparedBacklogCurationApply> {
   assertCompletedPlanningDraftTask(task);
   if (entry === undefined || !isBacklogCurationWorkflowEntry(entry)) {
@@ -234,7 +238,6 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const rawResult = task.result as Record<string, unknown> | undefined;
   const draft = parseDraft(rawResult?.backlogCurationDraft);
   if (entry.sourceFingerprint !== undefined && draft.sourceFingerprint !== entry.sourceFingerprint) throw validationError('backlogCurationDraft.sourceFingerprint', 'Curation draft source fingerprint does not match the workflow entry.');
-
   const [itemSnapshots, epicSnapshots, sourceMetadata] = await Promise.all([listBacklogItemSnapshots(cwd), listBacklogEpicSnapshots(cwd), readBacklogCurationSourcePreviewMetadata(cwd, draft.sourceFingerprint)]);
   const openItemSnapshots = itemSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status));
   const openEpicSnapshots = epicSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status));
@@ -242,7 +245,6 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const epics = new Map(openEpicSnapshots.map((snapshot) => [snapshot.id, snapshot]));
   const prospectiveItems = new Map<string, ProspectiveItem>(openItemSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
   const prospectiveEpics = new Map<string, ProspectiveEpic>(openEpicSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
-
   validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint);
   validateFullImplementationAuditPatchMetadata(draft, sourceMetadata?.fullImplementationAudit);
   const effectiveRechecks = draft.noOpRechecks

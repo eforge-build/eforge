@@ -44,6 +44,47 @@ describe('eforge-plan README planner contract', () => {
     }
   });
 
+  it('documents body-safe direct agent backlog updates', async () => {
+    const readme = await readFile(README, 'utf-8');
+    const workflow = sectionBetween(readme, '## Direct agent backlog workflow', '## Storage model');
+    const updateRow = actionRow(readme, 'update-item');
+    const storage = sectionBetween(readme, '## Storage model', '## Promotion flow');
+
+    for (const required of ['get-item', 'bodySha256', 'expectedBodySha256', 'sections', 'sectionOperations', 'changedSections']) {
+      expect(workflow).toContain(required);
+    }
+    expect(workflow).toMatch(/get-item[\s\S]*bodySha256[\s\S]*expectedBodySha256[\s\S]*update-item/);
+    expect(workflow).toMatch(/expectedBodySha256[\s\S]*(primary lock token|lock token)/i);
+    expect(workflow).toMatch(/stale (lock|token|hash|precondition|mismatch)[\s\S]*fresh `get-item`|fresh `get-item`[\s\S]*stale (lock|token|hash|precondition|mismatch)/i);
+    expect(workflow).toMatch(/metadata-only updates?[\s\S]*(preserve|without changing)[\s\S]*body[\s\S]*(do not require|without)[\s\S]*lock/i);
+    expect(workflow).toMatch(/(title|body|section)[\s\S]*(require|send)[\s\S]*expectedBodySha256/i);
+    expect(workflow).toMatch(/Claim[\s\S]*Evidence[\s\S]*Acceptance Criteria[\s\S]*Recheck[\s\S]*Notes/);
+    expect(workflow).toMatch(/priority[\s\S]*free-form[\s\S]*non-empty[\s\S]*single-line/i);
+    expect(workflow).toMatch(/Claim[\s\S]*sections/i);
+    expect(workflow).toMatch(/unknown section[\s\S]*sectionOperations|sectionOperations[\s\S]*unknown section/i);
+    expect(workflow).toContain('{ "action": "append", "heading": "Rollout Notes"');
+    expect(workflow).not.toContain('{ "op": "append", "heading": "Rollout Notes"');
+    for (const field of ['itemId', 'title', 'status', 'updatedAt', 'bodySha256', 'recordSha256', 'path', 'storage', 'changedFields', 'changedSections']) {
+      expect(workflow).toContain(field);
+    }
+    expect(workflow).toMatch(/direct Markdown edits?[\s\S]*(manual recovery|explicit manual recovery)/i);
+    expect(workflow).toMatch(/\.backlog\/items\/<id>\.md[\s\S]*(legacy|import|mirror)|legacy[\s\S]*\.backlog\/items\/<id>\.md/i);
+    expect(workflow).toMatch(/\.eforge\/storage\/extensions\/eforge-plan\/backlog\/items\/<id>\.md[\s\S]*(legacy|import|mirror|compatibility)/i);
+
+    expect(updateRow).toMatch(/title/i);
+    expect(updateRow).toMatch(/canonical sections/i);
+    expect(updateRow).toMatch(/additional sections/i);
+    expect(updateRow).toMatch(/metadata/i);
+    expect(updateRow).toMatch(/private storage/);
+
+    expect(storage).toMatch(/successful updates?[\s\S]*canonical SQLite/i);
+    expect(storage).toMatch(/recompute[\s\S]*section rows/i);
+    expect(storage).toMatch(/Markdown mirrors?/i);
+    expect(storage).toMatch(/search documents? dirty/i);
+    expect(storage).toMatch(/recommendation metadata stale|recommendations? stale/i);
+  });
+
+
   it('documents private recommendations, promotion sources, planner boundaries, and non-goals', async () => {
     const readme = await readFile(README, 'utf-8');
 

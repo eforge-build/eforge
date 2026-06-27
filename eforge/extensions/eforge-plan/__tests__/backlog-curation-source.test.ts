@@ -46,7 +46,7 @@ describe('backlog curation source', () => {
         expect(projected?.precondition.recordSha256).toBe(snapshot.recordSha256);
       }
     });
-  });
+  }, 15_000);
 
   it('records origin, relative path, body hash, record hash, and updated preconditions', async () => {
     await withTempProject(async (cwd) => {

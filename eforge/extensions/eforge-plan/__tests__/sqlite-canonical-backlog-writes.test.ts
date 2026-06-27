@@ -52,8 +52,41 @@ describe('canonical SQLite backlog writes', () => {
     expect((db.prepare('SELECT count(*) AS count FROM backlog_item_tags WHERE item_id = ? AND tag = ?').get('item-1', 'a') as { count: number }).count).toBe(0);
     expect((db.prepare('SELECT count(*) AS count FROM item_dependencies WHERE item_id = ? AND dependency_ref = ?').get('item-1', 'dep-2') as { count: number }).count).toBe(1);
     expect((db.prepare('SELECT count(*) AS count FROM backlog_item_sections WHERE item_id = ? AND section_name = ?').get('item-1', 'Acceptance') as { count: number }).count).toBe(1);
+    expect(db.prepare('SELECT content FROM backlog_item_sections WHERE item_id = ? AND section_name = ?').get('item-1', 'Acceptance')).toMatchObject({ content: 'ship it' });
     expect((db.prepare('SELECT count(*) AS count FROM search_index_dirty_records WHERE document_type = ? AND document_id = ?').get('backlog_item', 'item-1') as { count: number }).count).toBe(1);
     expect(existsSync(join(cwd, '.eforge/backlog/item-1.md'))).toBe(false);
+    db.close();
+  });
+
+  it('replaces item section rows atomically when body-affecting canonical updates provide final sections', () => {
+    const cwd = tempProject();
+    const initial = captureCanonicalBacklogItem(cwd, {
+      id: 'body-item',
+      title: 'Body Item',
+      body: '# Body Item\n\n## Claim\n\nOld claim.\n\n## Evidence\n\nOld evidence.\n',
+      sections: [
+        { sectionName: 'Claim', content: 'Old claim.' },
+        { sectionName: 'Evidence', content: 'Old evidence.' },
+      ],
+    });
+
+    const updated = updateCanonicalBacklogItem(cwd, 'body-item', {
+      title: 'Updated Body Item',
+      body: '# Updated Body Item\n\n## Claim\n\nNew claim.\n\n## Notes\n\nNew notes.\n',
+      sections: [
+        { sectionName: 'Claim', content: 'New claim.' },
+        { sectionName: 'Notes', content: 'New notes.' },
+      ],
+      expectedBodySha256: initial.bodySha256,
+    });
+
+    const db = raw(cwd);
+    expect(updated).toMatchObject({ title: 'Updated Body Item', bodySha256: expect.not.stringMatching(initial.bodySha256) });
+    expect(db.prepare('SELECT title, body_sha256 FROM backlog_items WHERE id = ?').get('body-item')).toMatchObject({ title: 'Updated Body Item', body_sha256: updated.bodySha256 });
+    expect(db.prepare('SELECT section_name, content FROM backlog_item_sections WHERE item_id = ? ORDER BY section_name').all('body-item')).toEqual([
+      { section_name: 'Claim', content: 'New claim.' },
+      { section_name: 'Notes', content: 'New notes.' },
+    ]);
     db.close();
   });
 

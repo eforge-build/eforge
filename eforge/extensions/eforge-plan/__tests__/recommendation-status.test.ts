@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import eforgePlanExtension from '../index.js';
+import { captureCanonicalBacklogItem, upsertCanonicalEpic } from '../canonical/backlog-records.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
 import { updateRoadmapState } from '../roadmap-context.js';
@@ -187,6 +188,22 @@ describe('recommendation freshness status', () => {
 
       const status = expectStatus((await getRecommendations(cwd)).status);
       expect(status.reasons).toHaveLength(RECOMMENDATION_STALE_REASON_LIMIT);
+    });
+  });
+
+  it('uses canonical backlog rows over legacy Markdown mirrors for recommendation source projection', async () => {
+    await withTempProject(async (cwd) => {
+      upsertCanonicalEpic(cwd, { id: 'epic-one', title: 'Canonical Epic', status: 'planned', body: '# Canonical Epic\n\nCanonical epic body.' });
+      captureCanonicalBacklogItem(cwd, { id: 'item-one', title: 'Canonical Item', status: 'planned', body: '# Canonical Item\n\n## Claim\n\nCanonical claim.\n', epic: 'epic-one' });
+      await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Legacy Epic\n\nLegacy epic body.\n' });
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Legacy Item\n\n## Claim\n\nLegacy mirror claim.\n' });
+
+      const projection = await buildRecommendationSourceProjection(cwd);
+      expect(projection).toMatchObject({
+        items: [expect.objectContaining({ id: 'item-one', title: 'Canonical Item' })],
+        epics: [expect.objectContaining({ id: 'epic-one', title: 'Canonical Epic' })],
+      });
+      expect(JSON.stringify(projection)).not.toContain('Legacy mirror claim');
     });
   });
 

@@ -31,7 +31,7 @@ async function invoke(cwd: string, actionId: string, input: Record<string, unkno
 }
 
 describe('eforge-plan compact backlog query actions', () => {
-  it('reads one item detail without board-wide payloads', async () => {
+  it('reads one item detail without board-wide payloads while exposing safe update tokens', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
       const trace = createTraceSidecar('child', 'epic-one');
@@ -42,7 +42,18 @@ describe('eforge-plan compact backlog query actions', () => {
       const output = await invoke(cwd, 'get-item', { id: 'child' });
 
       expect(output.schemaVersion).toBe(1);
-      expect(output.item).toMatchObject({ id: 'child', title: 'Child Item', lane: 'blocked', dependsOn: ['dep'], unresolvedDependsOn: ['dep'] });
+      expect(output.item).toMatchObject({
+        id: 'child',
+        title: 'Child Item',
+        lane: 'blocked',
+        dependsOn: ['dep'],
+        unresolvedDependsOn: ['dep'],
+        updatedAt: expect.any(String),
+        bodySha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        recordSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        path: expect.stringContaining('child.md'),
+        storage: { kind: 'canonical-sqlite', id: 'child' },
+      });
       expect(output.epic).toMatchObject({ id: 'epic-one', itemCount: 5, openItemCount: 2 });
       expect(output.dependencies).toEqual([expect.objectContaining({ id: 'dep', title: 'Dependency Item' })]);
       expect(output.dependents).toEqual([]);
