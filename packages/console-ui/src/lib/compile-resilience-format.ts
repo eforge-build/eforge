@@ -82,7 +82,6 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-// --- eforge:region plan-02-render-docs ---
 function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   const guard = failure.guardDiagnostics;
   if (!guard) return [];
@@ -100,7 +99,6 @@ function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   if (guard.fallbackReason) lines.push(`Fallback: ${guard.fallbackReason}`);
   return lines;
 }
-// --- eforge:endregion plan-02-render-docs ---
 
 export function compileScopeContextFailureSummary(failure: CompileScopeContextFailure): string {
   return `Compile scope/context failure: ${failure.failureKind} from ${failure.source} at ${failure.stage} — ${recoveryActionLabel(failure.recovery.action)}`;
@@ -115,9 +113,7 @@ export function compileScopeContextFailureDetail(failure: CompileScopeContextFai
   ];
   const observed = observedSummary(failure);
   if (observed) lines.push(`Observed: ${observed}`);
-  // --- eforge:region plan-02-render-docs ---
   lines.push(...guardDiagnosticLines(failure));
-  // --- eforge:endregion plan-02-render-docs ---
   if (failure.risk) lines.push(`Preflight: ${compilePreflightSummary(failure.risk)}`);
   return lines.join('\n');
 }

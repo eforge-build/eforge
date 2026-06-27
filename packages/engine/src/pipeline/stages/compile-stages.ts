@@ -50,7 +50,6 @@ function mergePromptAppend(configured: string | undefined, preflightAppend: stri
   return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
 }
 
-// --- eforge:region plan-01-engine-contract ---
 async function resolveModelAwareCompileContextGuardOptions(
   ctx: PipelineContext,
   stage: CompileContextGuardOptions['stage'],
@@ -70,7 +69,6 @@ async function resolveModelAwareCompileContextGuardOptions(
     guardDiagnostics: derived.guardDiagnostics,
   });
 }
-// --- eforge:endregion plan-01-engine-contract ---
 
 /**
  * Run a single planner attempt (per-retry span + event processing).

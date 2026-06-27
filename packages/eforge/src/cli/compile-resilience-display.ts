@@ -71,7 +71,6 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-// --- eforge:region plan-02-render-docs ---
 function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   const guard = failure.guardDiagnostics;
   if (!guard) return [];
@@ -89,7 +88,6 @@ function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   if (guard.fallbackReason) lines.push(`Fallback: ${guard.fallbackReason}`);
   return lines;
 }
-// --- eforge:endregion plan-02-render-docs ---
 
 export function renderCompileScopeContextFailureModel(failure: CompileScopeContextFailure): CompileScopeContextFailureRenderModel {
   const action = recoveryActionLabel(failure.recovery.action);
@@ -104,9 +102,7 @@ export function renderCompileScopeContextFailureModel(failure: CompileScopeConte
   ];
   const observed = observedSummary(failure);
   if (observed) details.push(`Observed: ${observed}`);
-  // --- eforge:region plan-02-render-docs ---
   details.push(...guardDiagnosticLines(failure));
-  // --- eforge:endregion plan-02-render-docs ---
   if (failure.explanation) details.push(`Explanation: ${failure.explanation}`);
   if (failure.recovery.reason) details.push(`Reason: ${failure.recovery.reason}`);
   return { attempted, headline, details };
