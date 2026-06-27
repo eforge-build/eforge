@@ -117,7 +117,13 @@ After a successful autonomous enqueue, the extension action returns `{ kind: 'en
 
 ## List playbooks
 
-Invoke the generic extension contribution command:
+Discover playbook contributions through the generic extension contribution list command:
+
+```bash
+eforge extension contributions list --extension-name eforge-playbooks
+```
+
+Then invoke the list contribution when you need the playbook inventory:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:list-playbooks --kind command

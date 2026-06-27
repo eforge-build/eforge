@@ -57,8 +57,7 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // layers.json state file (intentional: engine-owned runtime state, not wire protocol)
   'packages/engine/src/stacking/state.ts',
 
-  // input — playbook + session-plan schemas (out of scope for plan-03)
-  'packages/input/src/playbook.ts',
+  // input — session-plan schemas (out of scope for plan-03)
   'packages/input/src/session-plan.ts',
   // input — read-only session plan-set manifest schema (uses zod/v4 like the
   // sibling session-plan / playbook input modules per plan-01 design)

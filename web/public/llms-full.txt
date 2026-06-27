@@ -3198,7 +3198,13 @@ After a successful autonomous enqueue, the extension action returns `{ kind: 'en
 
 ## List playbooks
 
-Invoke the generic extension contribution command:
+Discover playbook contributions through the generic extension contribution list command:
+
+```bash
+eforge extension contributions list --extension-name eforge-playbooks
+```
+
+Then invoke the list contribution when you need the playbook inventory:
 
 ```bash
 eforge extension contributions invoke eforge-playbooks:list-playbooks --kind command
@@ -5322,6 +5328,10 @@ eforge exposes its capabilities through two integration surfaces:
 Both surfaces are kept in parity per `AGENTS.md`.
 
 Extension-provided workflows are discovered, inspected, and invoked through generic contribution APIs: `eforge_extension_contribution` for MCP/Pi hosts and `eforge extension contributions list|show|invoke` for the CLI. Hosts treat contribution IDs as opaque extension-owned identifiers; session-plan host tools manage project-local planning artifacts separately.
+
+## Playbook and session-plan host tools
+
+Playbook and session-plan host tools are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities. Playbook behavior is extension-owned and reached through generic contribution APIs; session-plan tools manage project-local planning artifacts for compatibility.
 
 ## MCP tools (Claude Code)
 
