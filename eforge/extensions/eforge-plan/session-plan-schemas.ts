@@ -45,11 +45,19 @@ export const SessionPlanReadinessDetailSchema = Type.Object({
   skippedDimensions: Type.Array(Type.String()),
   acDiagnostics: Type.Optional(Type.Array(AcDiagnosticSchema)),
 }, JsonObjectAdditionalProperties);
+const LifecycleTimestampFields = {
+  createdAt: Type.Optional(Type.String()),
+  updatedAt: Type.Optional(Type.String()),
+  readyAt: Type.Optional(Type.String()),
+  submittedAt: Type.Optional(Type.String()),
+  lastBuildActivityAt: Type.Optional(Type.String()),
+} as const;
 export const SessionPlanProjectionSchema = Type.Object({
   session: Type.String(),
   topic: Type.String(),
   status: Type.String(),
   body: Type.String(),
+  ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const SessionPlanDetailOutputSchema = Type.Object({
   plan: SessionPlanProjectionSchema,
@@ -57,6 +65,7 @@ export const SessionPlanDetailOutputSchema = Type.Object({
   path: Type.String(),
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycle: Type.Optional(SessionPlanLifecycleProjectionSchema),
+  ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const PlanningArtifactSchema = Type.Object({
   kind: Type.Union([Type.Literal('plan'), Type.Literal('plan-set')]),
@@ -66,6 +75,7 @@ export const PlanningArtifactSchema = Type.Object({
   itemRows: Type.Optional(Type.Array(ItemLifecycleProjectionSchema)),
   linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
   failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
+  ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 const PlanningArtifactPageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
 
@@ -197,7 +207,7 @@ export const HandoffSessionPlanOutputSchema = Type.Union([
   }, JsonObjectAdditionalProperties),
   Type.Object({
     kind: Type.Literal('enqueued'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
-    queueSessionId: Type.String(), pid: Type.Number(), autoBuild: Type.Boolean(), message: Type.String(),
+    queueSessionId: Type.String(), pid: Type.Number(), autoBuild: Type.Boolean(), message: Type.String(), submittedAt: Type.String(),
     readiness: SessionPlanReadinessDetailSchema,
   }, JsonObjectAdditionalProperties),
   Type.Object({

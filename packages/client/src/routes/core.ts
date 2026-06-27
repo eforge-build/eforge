@@ -26,6 +26,8 @@ export interface EnqueueRequest {
    * detection performed during enqueue.
    */
   afterQueueId?: string;
+  /** Internal extension handoff escape hatch: skip legacy Markdown session-plan status mutation after enqueue. */
+  suppressSessionPlanSubmissionMark?: boolean;
 }
 
 /** POST /api/auto-build */

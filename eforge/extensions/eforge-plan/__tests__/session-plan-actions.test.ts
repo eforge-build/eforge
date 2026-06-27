@@ -22,14 +22,14 @@ function registry(): NativeExtensionRegistry {
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
-async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (source: string) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
+async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (request: { source: string; suppressSessionPlanSubmissionMark?: boolean }) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
   const result = await dispatchExtensionAction(registry(), {
     actionId: `eforge-plan:${actionId}`,
     input,
     requestedBy: { host: 'pi' },
     cwd,
     timeoutMs: 1000,
-    ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!(request.source) }) }),
+    ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!({ source: request.source, suppressSessionPlanSubmissionMark: request.suppressSessionPlanSubmissionMark }) }) }),
   });
   expect(result).toMatchObject({ kind: 'success' });
   if (result.kind !== 'success') throw new Error(result.message);
@@ -39,6 +39,11 @@ async function dispatch(cwd: string, actionId: string, input: Record<string, unk
 function storedReadiness(cwd: string, session: string): unknown {
   const store = openEforgePlanStore(cwd);
   try { return getSessionPlan(store, session)?.readinessSummary; } finally { store.close(); }
+}
+
+function storedStatus(cwd: string, session: string): string | undefined {
+  const store = openEforgePlanStore(cwd);
+  try { return getSessionPlan(store, session)?.status; } finally { store.close(); }
 }
 
 function expectStoredReadiness(cwd: string, session: string, readiness: unknown): void {
@@ -302,32 +307,77 @@ describe('eforge-plan session-plan extension actions', () => {
 
       const ready = await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
       const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, {
-        enqueue: async (source) => {
-          enqueuedSources.push(source);
+        enqueue: async (request) => {
+          if (request.suppressSessionPlanSubmissionMark !== true) throw new Error('test enqueue would auto-submit session-plan Markdown without suppression');
+          enqueuedSources.push(request.source);
           return { sessionId: 'build-session-1', pid: 1234, autoBuild: true };
         },
       });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'ready-plan.md'), 'utf-8');
+      const listed = await dispatch(cwd, 'list-planning-artifacts', {});
 
-      expect(ready).toMatchObject({ kind: 'ready', status: 'ready' });
-      expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true });
+      expect(ready).toMatchObject({ kind: 'ready', status: 'ready', readyAt: expect.any(String) });
+      expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true, submittedAt: expect.any(String) });
       expect(enqueuedSources).toEqual(['.eforge/session-plans/ready-plan.md']);
       expect(collectUndefinedPaths(handoff)).toEqual([]);
       expect(raw).toContain('status: ready');
       expect(raw).not.toContain('status: submitted');
+      expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
+      expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).not.toContain('plan:ready-plan');
       expectStoredReadiness(cwd, 'ready-plan', ready.readiness);
+      const shown = await dispatch(cwd, 'show-session-plan', { session: 'ready-plan' });
+      expect(shown.readyAt).toBe(ready.readyAt);
+    });
+  });
+
+  it('rejects repeat handoff when canonical status is already submitted', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'ready-plan', readyBody());
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, { enqueue: async () => ({ sessionId: 'build-session-1', pid: 1234, autoBuild: false }) });
+      const enqueuedSources: string[] = [];
+
+      const second = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, {
+        enqueue: async (request) => {
+          enqueuedSources.push(request.source);
+          return { sessionId: 'build-session-2', pid: 5678, autoBuild: false };
+        },
+      });
+
+      expect(second).toMatchObject({ kind: 'not-ready', session: 'ready-plan', message: expect.stringContaining('canonical status is submitted') });
+      expect(enqueuedSources).toEqual([]);
+      expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
+    });
+  });
+
+  it('allows deleting a submitted flat plan by updating canonical status to abandoned', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'submitted-delete', readyBody());
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'submitted-delete' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'submitted-delete' }, { enqueue: async () => ({ sessionId: 'build-session-delete', pid: 4321, autoBuild: false }) });
+
+      const deleted = await dispatch(cwd, 'delete-session-plan', { session: 'submitted-delete' });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'submitted-delete.md'), 'utf-8');
+
+      expect(deleted).toMatchObject({ kind: 'deleted', session: 'submitted-delete', status: 'abandoned' });
+      expect(raw).toContain('status: abandoned');
+      expect(storedStatus(cwd, 'submitted-delete')).toBe('abandoned');
     });
   });
 
   it('returns an enqueue-failed handoff when the build queue is unavailable', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'ready-plan', readyBody(), 'ready');
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
 
       const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' });
+      const listed = await dispatch(cwd, 'list-planning-artifacts', {});
 
       expect(handoff).toMatchObject({ kind: 'enqueue-failed', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md' });
       expect(String(handoff.message)).toContain('enqueue failed');
       expect(String(handoff.command)).toContain('.eforge/session-plans/ready-plan.md');
+      expect(storedStatus(cwd, 'ready-plan')).toBe('ready');
+      expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).toContain('plan:ready-plan');
       expect(collectUndefinedPaths(handoff)).toEqual([]);
     });
   });

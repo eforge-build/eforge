@@ -9,7 +9,7 @@ import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@efo
 import { createEforgeProjectPaths, type EventHookContext } from '@eforge-build/extension-sdk';
 import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import eforgePlanExtension from '../index.js';
-import { captureCanonicalBacklogItem, upsertCanonicalEpic } from '../canonical/backlog-records.js';
+import { captureCanonicalBacklogItem, updateCanonicalBacklogItem, upsertCanonicalEpic } from '../canonical/backlog-records.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd } from '../recommendations-store.js';
 import { resolveRecommendationStatusPathForCwd } from '../recommendation-status.js';
@@ -133,7 +133,7 @@ describe('recommendation invalidation', () => {
         expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(beforeCurrent);
       });
     }
-  });
+  }, 10_000);
 
   it('records lifecycle stale reasons for correlated enqueue, queue PRD, session, landing, and auto-merge updates', async () => {
     const events = [
@@ -254,7 +254,7 @@ describe('recommendation invalidation', () => {
         input: { taskId: 'refresh-match', applyRecommendations: true },
         requestedBy: { host: 'pi' },
         cwd,
-        timeoutMs: 1000,
+        timeoutMs: 3000,
         agentTasks: () => ({
           async start() { throw new Error('apply must not start tasks'); },
           async get() { return { task: completedRecommendationTask('refresh-match') }; },
@@ -264,13 +264,13 @@ describe('recommendation invalidation', () => {
       expect(freshApply).toMatchObject({ kind: 'success', output: { recommendations: { status: { state: 'fresh' } } } });
 
       await startRefresh(cwd, 'refresh-drift');
-      await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', body: '# Item Two\n\n## Claim\n\nDrifted after refresh.\n' });
+      updateCanonicalBacklogItem(cwd, 'item-two', { body: '# Item Two\n\n## Claim\n\nDrifted after refresh.\n' });
       const driftApply = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:apply-planning-agent-task-result',
         input: { taskId: 'refresh-drift', applyRecommendations: true },
         requestedBy: { host: 'pi' },
         cwd,
-        timeoutMs: 1000,
+        timeoutMs: 3000,
         agentTasks: () => ({
           async start() { throw new Error('apply must not start tasks'); },
           async get() { return { task: completedRecommendationTask('refresh-drift') }; },

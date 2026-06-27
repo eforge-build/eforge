@@ -41,7 +41,7 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
   const existing = getSessionPlan(store, input.session);
   const content = input.content ?? readContentIfAvailable(input.path);
   const parsed = content ? parseSessionPlanFrontmatter(content) : { frontmatter: existing?.frontmatter ?? input.frontmatter ?? {}, body: '' };
-  const fm = { ...(existing?.frontmatter ?? {}), ...parsed.frontmatter, ...(input.frontmatter ?? {}) } as JsonObject;
+  const fm = mergeSessionPlanFrontmatter(existing?.frontmatter ?? {}, parsed.frontmatter, input.frontmatter ?? {}) as JsonObject;
   const source = sourceRefs(fm, input);
   const now = canonicalNowIso();
   const artifactBodyHash = content ? canonicalSha256(content) : existing?.artifactBodyHash;
@@ -50,7 +50,7 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
     session: input.session,
     path: input.path ? relative(cwd, input.path) : existing?.path,
     topic: input.topic ?? stringValue(fm.topic) ?? existing?.topic,
-    status: input.status ?? stringValue(fm.status) ?? existing?.status ?? 'draft',
+    status: resolvedSessionPlanStatus(existing?.status, input.status, stringValue(fm.status)),
     planningType: input.planningType ?? stringValue(fm.planning_type) ?? existing?.planningType,
     planningDepth: input.planningDepth ?? stringValue(fm.planning_depth) ?? existing?.planningDepth,
     profile: input.profile ?? stringValue(fm.profile) ?? existing?.profile,
@@ -93,6 +93,25 @@ export function replaceSessionPlanLinks(store: EforgePlanStore, input: { session
 
 export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
   const at = input.timestamp ?? canonicalNowIso();
+  const existing = getSessionPlan(store, input.session);
+  upsertSessionPlan(store, {
+    session: input.session,
+    path: input.path ?? existing?.path,
+    topic: existing?.topic,
+    status: 'submitted',
+    planningType: existing?.planningType,
+    planningDepth: existing?.planningDepth,
+    profile: existing?.profile,
+    agentProfile: existing?.agentProfile,
+    eforgeSessionId: existing?.eforgeSessionId,
+    submittedAt: at,
+    createdAt: existing?.createdAt ?? at,
+    updatedAt: at,
+    summaryText: existing?.summaryText,
+    artifactBodyHash: existing?.artifactBodyHash,
+    readinessSummary: existing?.readinessSummary,
+    frontmatter: existing?.frontmatter ?? {},
+  });
   upsertQueuePrd(store, { prdId: input.queuePrdId, session: input.session, sourcePath: input.path, status: input.status ?? 'queued', submittedAt: at, updatedAt: at });
   for (const itemId of input.itemIds ?? []) recordLifecycleEvidence(store, { evidenceKey: `submitted:${input.queuePrdId}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, queuePrdId: input.queuePrdId, lifecycleState: 'submitted', reasonCode: 'submitted-session-plan', evidenceKind: 'handoff', occurredAt: at, links: jsonValue({ session: input.session, queuePrdId: input.queuePrdId, path: input.path }) });
   markCanonicalSearchDirty(store, [
@@ -123,6 +142,16 @@ function parseSessionPlanFrontmatter(content: string): { frontmatter: JsonObject
   return { frontmatter: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? JSON.parse(JSON.stringify(parsed)) as JsonObject : {}, body: content.slice(end + 5) };
 }
 
+function mergeSessionPlanFrontmatter(...entries: JsonObject[]): JsonObject {
+  const merged = Object.assign({}, ...entries) as JsonObject;
+  const eforgePlanEntries = entries
+    .map((entry) => entry.eforge_plan)
+    .filter((entry): entry is JsonObject => entry !== null && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => entry as JsonObject);
+  if (eforgePlanEntries.length > 0) merged.eforge_plan = Object.assign({}, ...eforgePlanEntries) as JsonObject;
+  return merged;
+}
+
 function sourceRefs(fm: JsonObject, input: CanonicalSessionPlanSyncInput): { itemIds: string[]; epicIds: string[]; recommendationRef?: string } {
   const eforgePlan = fm.eforge_plan && typeof fm.eforge_plan === 'object' && !Array.isArray(fm.eforge_plan) ? fm.eforge_plan as Record<string, unknown> : {};
   return {
@@ -135,6 +164,12 @@ function sourceRefs(fm: JsonObject, input: CanonicalSessionPlanSyncInput): { ite
 function stringArray(value: unknown, single?: unknown): string[] {
   const values = Array.isArray(value) ? value : single ? [single] : [];
   return [...new Set(values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0))];
+}
+
+function resolvedSessionPlanStatus(existingStatus: string | undefined, inputStatus: string | undefined, frontmatterStatus: string | undefined): string {
+  const incomingStatus = inputStatus ?? frontmatterStatus;
+  if (existingStatus === 'submitted' && (incomingStatus === undefined || incomingStatus === 'ready')) return existingStatus;
+  return incomingStatus ?? existingStatus ?? 'draft';
 }
 
 function stringValue(value: unknown): string | undefined {

@@ -44,9 +44,9 @@ export function seedRetentionMaintenanceStore(cwd: string): void {
   const db = new DatabaseSync(resolveEforgePlanStorePath(cwd));
   try {
     db.exec('PRAGMA foreign_keys = ON');
-    db.prepare("INSERT INTO epics (id,title,body,user_status,updated_at) VALUES (?,?,?,?,?)").run('epic-keep', 'Epic Keep', 'epic body', 'candidate', NEW);
-    db.prepare("INSERT INTO backlog_items (id,title,body,user_status,updated_at,epic_id,epic_ref) VALUES (?,?,?,?,?,?,?)").run('item-keep', 'Item Keep', 'item body searchable', 'candidate', NEW, 'epic-keep', 'epic-keep');
-    db.prepare("INSERT INTO backlog_items (id,title,body,user_status,updated_at,epic_id,epic_ref) VALUES (?,?,?,?,?,?,?)").run('item-current', 'Item Current', 'current body', 'active', NEW, 'epic-keep', 'epic-keep');
+    db.prepare("INSERT INTO epics (id,title,body,user_status,updated_at,body_sha256,record_sha256) VALUES (?,?,?,?,?,?,?)").run('epic-keep', 'Epic Keep', 'epic body', 'candidate', NEW, 'epic-body-sha', 'epic-record-sha');
+    db.prepare("INSERT INTO backlog_items (id,title,body,user_status,updated_at,epic_id,epic_ref,body_sha256,record_sha256) VALUES (?,?,?,?,?,?,?,?,?)").run('item-keep', 'Item Keep', 'item body searchable', 'candidate', NEW, 'epic-keep', 'epic-keep', 'item-keep-body-sha', 'item-keep-record-sha');
+    db.prepare("INSERT INTO backlog_items (id,title,body,user_status,updated_at,epic_id,epic_ref,body_sha256,record_sha256) VALUES (?,?,?,?,?,?,?,?,?)").run('item-current', 'Item Current', 'current body', 'active', NEW, 'epic-keep', 'epic-keep', 'item-current-body-sha', 'item-current-record-sha');
     db.prepare("INSERT INTO item_dependencies (item_id,dependency_ref,dependency_kind,dependency_status) VALUES (?,?,?,?)").run('item-keep', 'external-dep', 'depends-on', 'external');
     db.prepare("INSERT INTO session_plans (session,path,topic,status,updated_at,summary_text) VALUES (?,?,?,?,?,?)")
       .run('session-keep', '.eforge/session-plans/session-keep.md', 'Session Keep', 'ready', NEW, 'Session summary');

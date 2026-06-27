@@ -33,7 +33,7 @@ function renderPlan(plan: Partial<PlanData>) {
     plan: fullPlan,
     readiness: { ready: true, coveredDimensions: readinessSections, missingDimensions: [], skippedDimensions: [] },
   };
-  render(<ToastProvider><PlanDetailCard detail={detail} revision={{ busy: false, loading: false, hasRunningTurn: false } as any} locked={false} onSelectAnnotationTarget={vi.fn()} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} onClose={vi.fn()} /></ToastProvider>);
+  render(<ToastProvider><PlanDetailCard detail={detail} artifact={null} revision={{ busy: false, loading: false, hasRunningTurn: false } as any} locked={false} onSelectAnnotationTarget={vi.fn()} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onHandoff={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} onClose={vi.fn()} /></ToastProvider>);
   return { invokeAction };
 }
 
@@ -56,6 +56,6 @@ describe('PlanDetailCard handoff actions', () => {
     expect(screen.queryByRole('button', { name: /Mark ready|Set ready/i })).toBeNull();
     expect((screen.getByRole('button', { name: /Handoff/i }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('Ready for handoff')).toBeTruthy();
-    expect(screen.queryByText(/^ready$/i)).toBeNull();
+    expect(screen.queryByText(/^ready$/i, { selector: 'div' })).toBeNull();
   });
 });

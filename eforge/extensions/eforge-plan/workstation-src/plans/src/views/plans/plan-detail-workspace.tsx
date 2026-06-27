@@ -15,11 +15,12 @@ interface PlanDetailWorkspaceProps {
   titles: Map<string, string>;
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
+  onHandoff: (session: string) => Promise<void>;
   onDeleted: () => Promise<void>;
   onClose: () => void;
 }
 
-export function PlanDetailWorkspace({ detail, artifact, titles, onApply, onRefresh, onDeleted, onClose }: PlanDetailWorkspaceProps) {
+export function PlanDetailWorkspace({ detail, artifact, titles, onApply, onRefresh, onHandoff, onDeleted, onClose }: PlanDetailWorkspaceProps) {
   const plan = detail.plan;
   const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh, autoLoadExisting: true });
   const [pending, setPending] = React.useState<PendingAnnotation | null>(null);
@@ -33,16 +34,16 @@ export function PlanDetailWorkspace({ detail, artifact, titles, onApply, onRefre
   }, []);
 
   const savePendingAnnotation = React.useCallback(async (body: string) => {
-    if (!pending || revision.hasRunningTurn) return false;
-    const result = await revision.createAnnotation(pending.target, body.trim());
-    if (result) setPending(null);
-    return Boolean(result);
+    if (!pending || revision.hasRunningTurn) return { ok: false, error: 'A revision is already running. Try again after it finishes.' };
+    const result = await revision.createAnnotationWithError(pending.target, body.trim());
+    if (result.session) setPending(null);
+    return { ok: Boolean(result.session), error: result.error ?? undefined };
   }, [pending, revision]);
 
   return (
     <>
       <section className="min-w-0">
-        <PlanDetailCard detail={detail} revision={revision} locked={revision.hasRunningTurn} onSelectAnnotationTarget={selectTarget} onApply={onApply} onRefresh={onRefresh} onDeleted={onDeleted} onClose={onClose} />
+        <PlanDetailCard detail={detail} artifact={artifact} revision={revision} locked={revision.hasRunningTurn} onSelectAnnotationTarget={selectTarget} onApply={onApply} onRefresh={onRefresh} onHandoff={onHandoff} onDeleted={onDeleted} onClose={onClose} />
       </section>
       <aside className="grid min-w-0 content-start gap-3 lg:sticky lg:top-[5.5rem]">
         <PlanReviewRail artifact={artifact} titles={titles} plan={plan} revision={revision} />

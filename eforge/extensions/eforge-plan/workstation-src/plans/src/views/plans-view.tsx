@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { ClipboardList, GitMerge, Plus } from 'lucide-react';
+import { AlertTriangle, ClipboardList, GitMerge, Plus } from 'lucide-react';
 import { getBridge } from '@/bridge';
+import { Timestamp } from '@/components/timestamp';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,7 @@ import { useRouter } from '@/router';
 import type { Tone } from '@/lib/tone';
 import type { Artifact, Detail, DraftPlanUnit, DraftPlanUnitListItem, DraftUnitAdvisory, DraftUnitResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
+import { selectPlanRecencyTimestamp } from '@/lib/plan-timestamps';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
 import { PlanDetailWorkspace } from './plans/plan-detail-workspace';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
@@ -21,6 +23,9 @@ import { DraftUnitDetailCard } from './plans/draft-unit-detail';
 import { DraftMergePanel } from './plans/draft-merge-panel';
 
 const bridge = getBridge();
+
+type HandoffStatus = 'pending' | 'failed';
+interface OptimisticHandoffState { id: string; session: string; title: string; status: HandoffStatus; message: string; }
 
 interface PlansViewProps {
   artifacts: Artifact[];
@@ -66,6 +71,22 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
   const staleDraft = selectedDraftId !== null && selectedDraftListItem === null;
   const [detail, setDetail] = React.useState<Detail>(null);
   const [creating, setCreating] = React.useState(false);
+  const [handoffs, setHandoffs] = React.useState<Record<string, OptimisticHandoffState>>({});
+  const pendingHandoffSessions = React.useMemo(() => new Set(Object.values(handoffs).filter((entry) => entry.status === 'pending').map((entry) => entry.session)), [handoffs]);
+  const visibleArtifacts = React.useMemo(() => artifacts.filter((artifact) => !artifact.session || !pendingHandoffSessions.has(artifact.session)), [artifacts, pendingHandoffSessions]);
+
+  React.useEffect(() => {
+    setHandoffs((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [id, entry] of Object.entries(current)) {
+        if (entry.status !== 'pending') continue;
+        const artifact = artifacts.find((candidate) => candidate.session === entry.session);
+        if (!artifact || artifact.status === 'submitted') { delete next[id]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+  }, [artifacts]);
 
   React.useEffect(() => {
     if (selectedDraftId === null || selectedDraftListItem === null) { setSelectedDraftDetail(null); return; }
@@ -108,6 +129,38 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
   }, []);
 
   const selectedArtifact = artifacts.find((entry) => entry.key === selectedKey) ?? null;
+
+  const handoffPlan = React.useCallback(async (session: string) => {
+    const artifact = artifacts.find((entry) => entry.session === session) ?? selectedArtifact;
+    const id = artifact?.key ?? `plan:${session}`;
+    const title = artifact ? artifactTitle(artifact) : planDisplayTitle(undefined, session);
+    setHandoffs((current) => ({ ...current, [id]: { id, session, title, status: 'pending', message: 'Handoff is enqueueing in the background…' } }));
+    if (selectedKey === id) {
+      setDetail(null);
+      selectPlan('');
+    }
+    let result: { kind?: string; command?: string; message?: string };
+    try {
+      result = await bridge.invokeAction<{ kind?: string; command?: string; message?: string }>('handoff-session-plan', { session });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setHandoffs((current) => ({ ...current, [id]: { id, session, title, status: 'failed', message: `${message || 'Handoff failed.'} Retry from the restored plan row or enqueue the session plan manually.` } }));
+      toast.push(message, 'error');
+      try { await onRefresh(); } catch (refreshError) { toast.push(refreshError instanceof Error ? refreshError.message : String(refreshError), 'error'); }
+      return;
+    }
+    const failed = result.kind === 'not-ready' || result.kind === 'enqueue-failed';
+    if (failed) {
+      const message = result.message ?? result.command ?? 'Handoff failed. The plan remains ready; retry handoff or enqueue it manually.';
+      setHandoffs((current) => ({ ...current, [id]: { id, session, title, status: 'failed', message } }));
+      toast.push(message, 'error');
+      try { await onRefresh(); } catch (refreshError) { toast.push(refreshError instanceof Error ? refreshError.message : String(refreshError), 'error'); }
+      return;
+    }
+    toast.push(result.message ?? result.command ?? 'Handoff prepared.', 'success');
+    try { await onRefresh(); } catch (refreshError) { toast.push(refreshError instanceof Error ? refreshError.message : String(refreshError), 'error'); }
+
+  }, [artifacts, onRefresh, selectPlan, selectedArtifact, selectedKey, toast]);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)_20rem] lg:items-start">
@@ -162,9 +215,9 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                 <span className="mt-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Plans</span>
               </>
             )}
-            {artifacts.length === 0
+            {visibleArtifacts.length === 0
               ? <EmptyState>No planning artifacts found.</EmptyState>
-              : artifacts.map((artifact) => (
+              : visibleArtifacts.map((artifact) => (
                 <button
                   key={artifact.key}
                   onClick={() => selectPlan(artifact.key)}
@@ -174,14 +227,16 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                     <span className="font-medium text-text-bright">{artifactTitle(artifact)}</span>
                     <Badge variant={artifact.ready ? 'default' : 'outline'}>{artifact.status ?? 'unknown'}</Badge>
                   </div>
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <p className="text-xs text-muted-foreground">{artifact.kind === 'plan-set' ? `${artifact.childCount ?? 0} child plans` : artifact.session}</p>
                     <ArtifactBuildChip artifact={artifact} />
+                    <span className="text-2xs text-muted-foreground"><Timestamp value={selectPlanRecencyTimestamp(artifact)} prefix="Updated" /></span>
                   </div>
                 </button>
               ))}
           </CardContent>
         </Card>
+        <HandoffActivityCard handoffs={Object.values(handoffs)} />
       </aside>
 
       {isPlanDetail(detail) && detail.plan && !merging && !selectedDraft && !staleDraft ? (
@@ -191,6 +246,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
           titles={titles}
           onApply={applyResult}
           onRefresh={onRefresh}
+          onHandoff={handoffPlan}
           onDeleted={async () => {
             setDetail(null);
             selectPlan('');
@@ -237,6 +293,31 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
         </section>
       )}
     </div>
+  );
+}
+
+function HandoffActivityCard({ handoffs }: { handoffs: OptimisticHandoffState[] }) {
+  if (handoffs.length === 0) return null;
+  return (
+    <Card aria-label="Planning activity handoff status">
+      <CardHeader>
+        <CardTitle className="text-sm">Planning activity</CardTitle>
+        <CardDescription>Recent plan handoff status.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2 text-xs">
+        {handoffs.map((entry) => (
+          <div key={entry.id} className={`rounded border p-2 ${entry.status === 'failed' ? 'border-destructive/40 bg-destructive/10' : 'border-primary/30 bg-primary/10'}`}>
+            <div className="flex items-center gap-2 font-medium text-text-bright">
+              {entry.status === 'failed' && <AlertTriangle className="h-3.5 w-3.5 text-destructive-foreground" />}
+              <span>{entry.title}</span>
+              <ToneChip tone={entry.status === 'failed' ? 'danger' : 'progress'}>{entry.status === 'failed' ? 'handoff failed' : 'handoff pending'}</ToneChip>
+            </div>
+            <p className="mt-1 text-muted-foreground">{entry.message}</p>
+            {entry.status === 'failed' && <p className="mt-1 text-muted-foreground">The plan row is restored. Retry Handoff after checking the message above, or enqueue the session plan manually.</p>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

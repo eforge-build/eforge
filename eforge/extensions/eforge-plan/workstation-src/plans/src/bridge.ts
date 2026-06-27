@@ -41,11 +41,29 @@ import type { EforgeBridge, JsonObject, PlanData } from '@/types';
 declare global { interface Window { eforge?: EforgeBridge; } }
 
 const liveDaemonUrl = import.meta.env.VITE_EFORGE_DAEMON_URL as string | undefined;
+const mockSubmittedSessions = new Set<string>();
 
 export function getBridge(): EforgeBridge {
   if (window.eforge?.invokeAction) return window.eforge;
   if (import.meta.env.DEV && liveDaemonUrl) return createLiveBridge();
   return createMockBridge();
+}
+
+function withMockArtifactTimestamps<T extends { session?: string; status?: string; ready?: boolean; lifecycleLinks?: Array<{ timestamp?: string; completedAt?: string; startedAt?: string }>; landingRefs?: Array<{ landedAt?: string }> }>(artifact: T): T & { createdAt: string; updatedAt: string; readyAt?: string; submittedAt?: string; lastBuildActivityAt?: string } {
+  const createdAt = '2026-06-07T00:00:00.000Z';
+  const readyAt = artifact.ready ? '2026-06-07T00:20:00.000Z' : undefined;
+  const submittedAt = artifact.status === 'submitted' ? '2026-06-07T00:25:00.000Z' : undefined;
+  const lastBuildActivityAt = artifact.landingRefs?.[0]?.landedAt ?? artifact.lifecycleLinks?.flatMap((row) => [row.completedAt, row.startedAt, row.timestamp]).find(Boolean);
+  return { ...artifact, createdAt, updatedAt: lastBuildActivityAt ?? readyAt ?? '2026-06-07T00:10:00.000Z', ...(readyAt ? { readyAt } : {}), ...(submittedAt ? { submittedAt } : {}), ...(lastBuildActivityAt ? { lastBuildActivityAt } : {}) };
+}
+
+function withMockDetailTimestamps<TOutput>(detail: TOutput): TOutput {
+  if (!detail || typeof detail !== 'object' || !('plan' in detail)) return detail;
+  const record = detail as TOutput & { plan?: PlanData & { createdAt?: string; updatedAt?: string; readyAt?: string; submittedAt?: string; lastBuildActivityAt?: string } };
+  if (!record.plan) return detail;
+  const artifact = withMockArtifactTimestamps({ session: record.plan.session, status: record.plan.status, ready: record.plan.ready, lifecycleLinks: record.plan.lifecycleLinks, landingRefs: record.plan.landingRefs });
+  record.plan = { ...record.plan, createdAt: artifact.createdAt, updatedAt: artifact.updatedAt, readyAt: artifact.readyAt, submittedAt: mockSubmittedSessions.has(record.plan.session) ? new Date().toISOString() : artifact.submittedAt, lastBuildActivityAt: artifact.lastBuildActivityAt };
+  return record;
 }
 
 function createLiveBridge(): EforgeBridge {
@@ -92,7 +110,9 @@ function createMockBridge(): EforgeBridge {
       await new Promise((resolve) => setTimeout(resolve, 120));
       switch (actionId) {
         case 'list-planning-artifacts': {
-          const artifacts = getMockArtifacts();
+          const artifacts = getMockArtifacts()
+            .filter((artifact) => !artifact.session || !mockSubmittedSessions.has(artifact.session))
+            .map(withMockArtifactTimestamps);
           const limit = typeof input.limit === 'number' && Number.isInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, 100) : 50;
           const offset = typeof input.offset === 'number' && Number.isInteger(input.offset) && input.offset >= 0 ? input.offset : 0;
           const page = artifacts.slice(offset, offset + limit);
@@ -113,7 +133,7 @@ function createMockBridge(): EforgeBridge {
         case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'get-recommendations': return getMockRecommendationsWithRoadmapRefresh() as TOutput;
         case 'analyze-all-backlog': return analyzeMockBacklog(input) as TOutput;
-        case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
+        case 'show-session-plan': return withMockDetailTimestamps(mockDetail(`plan:${String(input.session ?? '')}`)) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;
         case 'prepare-planner-context': return { items: mockBoard.items, epics: mockBoard.epics, recommendations: { model: mockRecommendations } } as TOutput;
@@ -154,7 +174,11 @@ function createMockBridge(): EforgeBridge {
         case 'select-session-plan-dimensions': return { ...mockMutationResult(String(input.session ?? '')), required_dimensions: ['scope', 'acceptance-criteria'], optional_dimensions: [] } as TOutput;
         case 'update-session-plan-metadata': return mockMutationResult(String(input.session ?? ''), { profile: (input.profile as PlanData['profile']) ?? null, agent_profile: (input.agentProfile as string) ?? null, open_questions: (input.openQuestions as string[]) ?? [] }) as TOutput;
         case 'delete-session-plan': return { kind: 'deleted', session: String(input.session ?? ''), status: 'abandoned', message: `Deleted ${String(input.session ?? 'mock')} from active plans by marking it abandoned.` } as TOutput;
-        case 'handoff-session-plan': return { kind: 'enqueued', message: `Enqueued .eforge/session-plans/${String(input.session ?? 'mock')}.md for build.`, queueSessionId: 'mock-build-session', pid: 1234, autoBuild: true } as TOutput;
+        case 'handoff-session-plan': {
+          const session = String(input.session ?? 'mock');
+          mockSubmittedSessions.add(session);
+          return { kind: 'enqueued', message: `Enqueued .eforge/session-plans/${session}.md for build.`, queueSessionId: 'mock-build-session', pid: 1234, autoBuild: true, submittedAt: new Date().toISOString() } as TOutput;
+        }
         case 'list-draft-units': return listMockDraftUnits(input) as TOutput;
         case 'get-draft-unit': return getMockDraftUnit(input) as TOutput;
         case 'fork-recommendation-to-draft-unit': return forkMockDraftUnit(input) as TOutput;

@@ -25,6 +25,11 @@ function renderFocus(overrides: Partial<React.ComponentProps<typeof RoadmapFocus
   return { ...render(<ToastProvider><RoadmapFocus {...props} /></ToastProvider>), props };
 }
 
+function enterRoadmapEdit() {
+  fireEvent.click(screen.getByRole('button', { name: /Edit/i }));
+  return screen.getByLabelText('Local focus roadmap') as HTMLTextAreaElement;
+}
+
 function renderRail(overrides: Partial<React.ComponentProps<typeof RoadmapContextRail>> = {}) {
   const state = getMockRoadmapState();
   const props: React.ComponentProps<typeof RoadmapContextRail> = {
@@ -103,6 +108,19 @@ describe('RoadmapContextRail', () => {
     expect(screen.getAllByText('read-only').length).toBeGreaterThan(0);
   });
 
+  it('renders read-only source Markdown without edit controls', () => {
+    renderRail();
+
+    expect(screen.getByRole('heading', { name: 'Shared priorities' })).toBeTruthy();
+    expect(screen.getByText('source', { selector: 'code' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Roadmap' })).toBeTruthy();
+    expect(screen.getByText('read-only', { selector: 'strong' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Edit/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Save/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cancel$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reset/i })).toBeNull();
+  });
+
   it('disables reload while loading and invokes it otherwise', () => {
     const onReloadRoadmap = vi.fn(async () => undefined);
     renderRail({ onReloadRoadmap });
@@ -112,17 +130,72 @@ describe('RoadmapContextRail', () => {
 });
 
 describe('RoadmapFocus', () => {
-  it('saves local focus content with the current expected hash and no sharedSources key', async () => {
+  it('renders local focus Markdown read mode by default and hides edit controls', () => {
     const state = getMockRoadmapState();
-    const onSaveLocalFocus = vi.fn(async (input: UpdateRoadmapStateRequest): Promise<RoadmapStateResponse> => ({ ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, content: input.localFocusContent ?? '' } } }));
-    renderFocus({ state, onSaveLocalFocus });
+    renderFocus({ state });
+    expect(screen.getByRole('heading', { name: 'Local focus' })).toBeTruthy();
+    expect(screen.getByRole('list')).toBeTruthy();
+    expect(screen.getByText('roadmap', { selector: 'code' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'docs' }).getAttribute('href')).toBe('https://example.test/docs');
+    expect(screen.queryByLabelText('Local focus roadmap')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Save local focus/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cancel$/i })).toBeNull();
+  });
 
-    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: '# Local focus\n\nChanged.\n' } });
+  it('requires explicit discard before dirty cancel leaves edit mode', () => {
+    renderFocus();
+    const textarea = enterRoadmapEdit();
+    fireEvent.change(textarea, { target: { value: 'dirty' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    expect(screen.getByLabelText('Local focus roadmap')).toBeTruthy();
+    expect((screen.getByLabelText('Local focus roadmap') as HTMLTextAreaElement).value).toBe('dirty');
+    fireEvent.click(screen.getByRole('button', { name: /Discard edits/i }));
+    expect(screen.queryByLabelText('Local focus roadmap')).toBeNull();
+    expect(screen.queryByText('dirty')).toBeNull();
+  });
+
+  it('hides edit controls for read-only local focus projections', () => {
+    const state = getMockRoadmapState();
+    state.context.localSteering = { ...state.context.localSteering, editable: false };
+    renderFocus({ state });
+    expect(screen.queryByRole('button', { name: /Edit/i })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Local focus' })).toBeTruthy();
+  });
+
+  it('saves local focus content with the current expected hash and no sharedSources key', async () => {
+    const initialState = getMockRoadmapState();
+    const onSaveLocalFocus = vi.fn(async (input: UpdateRoadmapStateRequest): Promise<RoadmapStateResponse> => ({ ...initialState, context: { ...initialState.context, localSteering: { ...initialState.context.localSteering, content: input.localFocusContent ?? '' } } }));
+    function StatefulFocus() {
+      const [state, setState] = React.useState(initialState);
+      return <RoadmapFocus state={state} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={async (input) => { const next = await onSaveLocalFocus(input); setState(next); return next; }} onRefreshRecommendations={vi.fn(async () => mockRefresh())} />;
+    }
+    render(<ToastProvider><StatefulFocus /></ToastProvider>);
+
+    fireEvent.change(enterRoadmapEdit(), { target: { value: '# Local focus\n\nChanged.\n' } });
     fireEvent.click(screen.getByRole('button', { name: /Save local focus/i }));
 
     await waitFor(() => expect(onSaveLocalFocus).toHaveBeenCalledTimes(1));
-    expect(onSaveLocalFocus.mock.calls[0]![0]).toMatchObject({ localFocusContent: '# Local focus\n\nChanged.\n', expectedLocalFocusSha256: state.context.localSteering.sha256 });
+    expect(onSaveLocalFocus.mock.calls[0]![0]).toMatchObject({ localFocusContent: '# Local focus\n\nChanged.\n', expectedLocalFocusSha256: initialState.context.localSteering.sha256 });
     expect(onSaveLocalFocus.mock.calls[0]![0]).not.toHaveProperty('sharedSources');
+    await waitFor(() => expect(screen.queryByLabelText('Local focus roadmap')).toBeNull());
+    expect(screen.queryByRole('button', { name: /Save local focus/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cancel$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reset/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /Edit/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Local focus' })).toBeTruthy();
+    expect(screen.getByText(/Changed\./i)).toBeTruthy();
+  });
+
+  it('exits edit mode when the local focus projection becomes read-only', async () => {
+    const state = getMockRoadmapState();
+    const { rerender } = render(<ToastProvider><RoadmapFocus state={state} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={vi.fn()} onRefreshRecommendations={vi.fn()} /></ToastProvider>);
+    fireEvent.change(enterRoadmapEdit(), { target: { value: 'dirty' } });
+    const readonlyState = { ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, editable: false } } };
+    rerender(<ToastProvider><RoadmapFocus state={readonlyState} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={vi.fn()} onRefreshRecommendations={vi.fn()} /></ToastProvider>);
+
+    await waitFor(() => expect(screen.queryByLabelText('Local focus roadmap')).toBeNull());
+    expect(screen.queryByRole('button', { name: /Save local focus/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Edit/i })).toBeNull();
   });
 
   it('disables save for over-limit local focus content and displays byte feedback', () => {
@@ -130,7 +203,7 @@ describe('RoadmapFocus', () => {
     state.context.localSteering = { ...state.context.localSteering, maxContentBytes: 3 };
     renderFocus({ state });
 
-    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'abcd' } });
+    fireEvent.change(enterRoadmapEdit(), { target: { value: 'abcd' } });
 
     expect((screen.getByRole('button', { name: /Save local focus/i }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/4 bytes \/ 3 bytes/i)).toBeTruthy();
@@ -142,7 +215,7 @@ describe('RoadmapFocus', () => {
     const onSaveLocalFocus = vi.fn(async () => state);
     renderFocus({ state, onSaveLocalFocus });
 
-    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'dirty truncated content' } });
+    fireEvent.change(enterRoadmapEdit(), { target: { value: 'dirty truncated content' } });
 
     expect((screen.getByRole('button', { name: /Save local focus/i }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Saving is disabled to avoid overwriting unsent content/i)).toBeTruthy();
@@ -152,7 +225,7 @@ describe('RoadmapFocus', () => {
   it('resets the draft to saved content and disables save', () => {
     const state = getMockRoadmapState();
     renderFocus({ state });
-    const textarea = screen.getByLabelText('Local focus roadmap') as HTMLTextAreaElement;
+    const textarea = enterRoadmapEdit();
 
     fireEvent.change(textarea, { target: { value: 'dirty' } });
     expect((screen.getByRole('button', { name: /Save local focus/i }) as HTMLButtonElement).disabled).toBe(false);
@@ -168,7 +241,7 @@ describe('RoadmapFocus', () => {
     const onSaveLocalFocus = vi.fn(async (input: UpdateRoadmapStateRequest) => ({ ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, content: input.localFocusContent ?? '' } } }));
     const { rerender } = render(<ToastProvider><RoadmapFocus state={state} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={onSaveLocalFocus} onRefreshRecommendations={onRefreshRecommendations} /></ToastProvider>);
 
-    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'dirty' } });
+    fireEvent.change(enterRoadmapEdit(), { target: { value: 'dirty' } });
     expect((screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }));
     expect(onRefreshRecommendations).not.toHaveBeenCalled();
@@ -187,7 +260,7 @@ describe('RoadmapFocus', () => {
     const onRefreshRecommendations = vi.fn(async () => mockRefresh());
     renderFocus({ state, onSaveLocalFocus, onRefreshRecommendations });
 
-    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: '# Local focus\n\nSaving.\n' } });
+    fireEvent.change(enterRoadmapEdit(), { target: { value: '# Local focus\n\nSaving.\n' } });
     fireEvent.click(screen.getByRole('button', { name: /Save local focus/i }));
 
     await waitFor(() => expect(onSaveLocalFocus).toHaveBeenCalledTimes(1));

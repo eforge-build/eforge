@@ -2,12 +2,14 @@ import * as React from 'react';
 import { ArrowRight, CheckCircle2, Trash2, X } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
+import { Timestamp } from '@/components/timestamp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { useToast } from '@/components/toast';
-import type { PlanData, PlanDetail, PlanRevisionAnnotationTarget, Readiness } from '@/types';
+import type { Artifact, PlanData, PlanDetail, PlanRevisionAnnotationTarget, Readiness } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
+import { planLifecycleTimestamps } from '@/lib/plan-timestamps';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { OpenQuestionsPanel } from './open-questions-panel';
@@ -23,11 +25,13 @@ interface MutationResult { plan?: PlanData; readiness?: Readiness }
 
 interface PlanDetailCardProps {
   detail: PlanDetail & { plan: PlanData };
+  artifact: Artifact | null;
   revision: PlanRevisionSessionApi;
   locked: boolean;
   onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget, anchor?: DOMRect | null) => void;
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
+  onHandoff: (session: string) => Promise<void>;
   onDeleted: () => Promise<void>;
   /** Deselect this plan and return to the empty detail state. */
   onClose: () => void;
@@ -35,7 +39,7 @@ interface PlanDetailCardProps {
 
 /** Structured flat session-plan detail: header actions, readiness checklist,
  *  editable metadata, and rendered dimension sections. */
-export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTarget, onApply, onRefresh, onDeleted, onClose }: PlanDetailCardProps) {
+export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnnotationTarget, onApply, onRefresh, onHandoff, onDeleted, onClose }: PlanDetailCardProps) {
   const toast = useToast();
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
@@ -76,6 +80,7 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
   const statusReady = plan.status === 'ready';
   const canMarkReady = readinessPasses && !statusReady;
   const canHandoff = readinessPasses && statusReady;
+  const lifecycleTimestamps = planLifecycleTimestamps(detail, artifact);
 
   React.useEffect(() => {
     if (!canHandoff) setConfirmingHandoff(false);
@@ -85,14 +90,7 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
     if (!canHandoff) return;
     if (!confirmingHandoff) { setConfirmingHandoff(true); setConfirmingDelete(false); return; }
     setConfirmingHandoff(false);
-    try {
-      const result = await bridge.invokeAction<{ kind?: string; command?: string; message?: string }>('handoff-session-plan', { session: plan.session });
-      const failed = result.kind === 'not-ready' || result.kind === 'enqueue-failed';
-      toast.push(result.message ?? result.command ?? 'Handoff prepared.', failed ? 'error' : 'success');
-      await onRefresh();
-    } catch (caught) {
-      toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
-    }
+    await onHandoff(plan.session);
   };
 
   const deletePlan = async () => {
@@ -153,6 +151,8 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
           <span className={`ml-auto text-xs font-semibold ${canHandoff ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
+        <PlanLifecycleMetadata timestamps={lifecycleTimestamps} />
+
         {executiveSummary !== undefined && (
           <AnnotatablePlanSection
             plan={plan}
@@ -188,6 +188,26 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
         </CollapsiblePanel>
       </CardContent>
     </Card>
+  );
+}
+
+function PlanLifecycleMetadata({ timestamps }: { timestamps: Record<'createdAt' | 'updatedAt' | 'readyAt' | 'submittedAt' | 'lastBuildActivityAt', string | null> }) {
+  const rows = [
+    ['Created', timestamps.createdAt],
+    ['Updated', timestamps.updatedAt],
+    ['Ready', timestamps.readyAt],
+    ['Submitted', timestamps.submittedAt],
+    ['Last build activity', timestamps.lastBuildActivityAt],
+  ] as const;
+  return (
+    <dl className="grid gap-1 rounded border border-border bg-background/40 p-2 text-xs sm:grid-cols-2">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-center justify-between gap-2">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="font-medium text-text-bright"><Timestamp value={value} /></dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

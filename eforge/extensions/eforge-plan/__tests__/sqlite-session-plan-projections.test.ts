@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
-import { syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
+import { recordCanonicalLifecycleEvent } from '../canonical/lifecycle-records.js';
+import { recordSessionPlanSubmitted, syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
 import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from '../projections/index.js';
+import { withCanonicalTransaction } from '../canonical/store.js';
 import { openEforgePlanStore } from '../sqlite/index.js';
 import { seedProjectionBacklog, withTempProjectionProject, writeSessionPlan } from './sqlite-projection-fixtures.js';
 
@@ -37,11 +39,12 @@ describe('SQLite session-plan projections', () => {
     await withTempProjectionProject(async (cwd) => {
       seedProjectionBacklog(cwd);
       const path = writeSessionPlan(cwd, 'plan-body', ['candidate', 'running'], { recommendationRef: 'lane:body' });
-      writeFileSync(path, '---\nsession: plan-body\nstatus: ready\n---\n# Artifact Body\n\nThis text must come from Markdown.\n');
+      writeFileSync(path, '---\nsession: plan-body\nstatus: ready\neforge_plan:\n  ready_at: 2026-01-01T00:02:00.000Z\n---\n# Artifact Body\n\nThis text must come from Markdown.\n');
+      syncSessionPlanArtifact(cwd, { session: 'plan-body', path, content: '---\nsession: plan-body\nstatus: ready\neforge_plan:\n  ready_at: 2026-01-01T00:02:00.000Z\n---\n# Artifact Body\n\nThis text must come from Markdown.\n', status: 'ready', sourceItemIds: ['candidate', 'running'], sourceRecommendationRef: 'lane:body', provenance: 'selected-item', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:03:00.000Z', submittedAt: '2026-01-01T00:04:00.000Z' });
 
       const output = await showSessionPlanProjection(cwd, 'plan-body');
 
-      expect(output).toMatchObject({ session: 'plan-body', path: expect.stringContaining('.eforge/session-plans/plan-body.md') });
+      expect(output).toMatchObject({ session: 'plan-body', path: expect.stringContaining('.eforge/session-plans/plan-body.md'), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:03:00.000Z', readyAt: '2026-01-01T00:02:00.000Z', submittedAt: '2026-01-01T00:04:00.000Z', plan: expect.objectContaining({ createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:03:00.000Z', readyAt: '2026-01-01T00:02:00.000Z', submittedAt: '2026-01-01T00:04:00.000Z' }) });
       expect(output.body).toContain('This text must come from Markdown.');
       expect(output.sourceRefs).toMatchObject({ sourceItemIds: ['candidate', 'running'], sourceEpicIds: [], recommendationRef: 'lane:body' });
       expect(output.sourceRefRows).toEqual(expect.arrayContaining([
@@ -50,6 +53,76 @@ describe('SQLite session-plan projections', () => {
       ]));
       expect(output.lifecycle).toMatchObject({ session: 'plan-body', itemIds: ['candidate', 'running'], state: 'partial' });
       expect(output.lifecycle.associatedLinks).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'build-run', runId: 'run-1' })]));
+      expect(output).not.toHaveProperty('lastBuildActivityAt');
+    });
+  });
+
+  it('projects lifecycle timestamps on list artifacts and omits missing timestamp fields', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const dir = join(cwd, '.eforge/session-plans');
+      mkdirSync(dir, { recursive: true });
+      const timestampedPath = join(dir, 'timestamped.md');
+      const timestampedContent = '---\nsession: timestamped\nstatus: submitted\neforge_plan:\n  ready_at: 2026-01-01T00:01:00.000Z\n---\n# Timestamped\n';
+      writeFileSync(timestampedPath, timestampedContent);
+      syncSessionPlanArtifact(cwd, { session: 'timestamped', path: timestampedPath, content: timestampedContent, status: 'submitted', sourceItemIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:02:00.000Z', submittedAt: '2026-01-01T00:03:00.000Z' });
+      const missingPath = join(dir, 'missing-timestamps.md');
+      const missingContent = '---\nsession: missing-timestamps\nstatus: planning\nready_at: not-a-date\n---\n# Missing\n';
+      writeFileSync(missingPath, missingContent);
+      syncSessionPlanArtifact(cwd, { session: 'missing-timestamps', path: missingPath, content: missingContent, status: 'planning', sourceItemIds: [] });
+      const submittedNoReadyPath = join(dir, 'submitted-no-ready.md');
+      const submittedNoReadyContent = '---\nsession: submitted-no-ready\nstatus: submitted\n---\n# Submitted No Ready\n';
+      writeFileSync(submittedNoReadyPath, submittedNoReadyContent);
+      syncSessionPlanArtifact(cwd, { session: 'submitted-no-ready', path: submittedNoReadyPath, content: submittedNoReadyContent, status: 'submitted', sourceItemIds: [], updatedAt: '2026-01-01T00:05:00.000Z', submittedAt: '2026-01-01T00:06:00.000Z' });
+
+      const output = await listPlanningArtifactsProjection(cwd, { limit: 100, includeSubmitted: true });
+      const timestamped = (output.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'timestamped');
+      const missing = (output.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'missing-timestamps');
+      const submittedNoReady = (output.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'submitted-no-ready');
+
+      expect(timestamped).toMatchObject({ createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:02:00.000Z', readyAt: '2026-01-01T00:01:00.000Z', submittedAt: '2026-01-01T00:03:00.000Z' });
+      expect(submittedNoReady).toMatchObject({ updatedAt: '2026-01-01T00:05:00.000Z', submittedAt: '2026-01-01T00:06:00.000Z' });
+      expect(submittedNoReady).not.toHaveProperty('readyAt');
+      expect(missing).toBeDefined();
+      const missingJson = JSON.stringify(missing);
+      expect(missingJson).not.toContain('null');
+      expect(missingJson).not.toContain('undefined');
+      expect(missingJson).not.toContain('Invalid Date');
+      expect(missing).not.toHaveProperty('readyAt');
+      expect(missing).not.toHaveProperty('submittedAt');
+    });
+  });
+
+  it('derives last build activity from session-scoped queue rows for itemless plans', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const dir = join(cwd, '.eforge/session-plans');
+      mkdirSync(dir, { recursive: true });
+      const path = join(dir, 'itemless-activity.md');
+      const content = '---\nsession: itemless-activity\nstatus: ready\n---\n# Itemless Activity\n';
+      writeFileSync(path, content);
+      syncSessionPlanArtifact(cwd, { session: 'itemless-activity', path, content, status: 'ready', sourceItemIds: [] });
+      withCanonicalTransaction(cwd, (store) => recordSessionPlanSubmitted(store, { session: 'itemless-activity', queuePrdId: 'itemless-prd', path: '.eforge/session-plans/itemless-activity.md', timestamp: '2027-01-01T00:07:00.000Z' }));
+
+      const output = await showSessionPlanProjection(cwd, 'itemless-activity');
+      const listed = await listPlanningArtifactsProjection(cwd, { includeSubmitted: true });
+      const listedPlan = (listed.plans as Array<Record<string, unknown>>).find((plan) => plan.session === 'itemless-activity');
+
+      expect(output).toMatchObject({ session: 'itemless-activity', lastBuildActivityAt: '2027-01-01T00:07:00.000Z' });
+      expect(listedPlan).toMatchObject({ session: 'itemless-activity', lastBuildActivityAt: '2027-01-01T00:07:00.000Z' });
+    });
+  });
+
+  it('does not derive last build activity from another session plan sharing the same item', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      writeSessionPlan(cwd, 'shared-a', ['candidate']);
+      writeSessionPlan(cwd, 'shared-b', ['candidate']);
+      recordCanonicalLifecycleEvent(cwd, { eventKey: 'shared-b-run', type: 'session:start', session: 'shared-b', sessionId: 'build-shared-b', runId: 'run-shared-b', timestamp: '2027-01-01T00:08:00.000Z' }, ['candidate']);
+
+      const first = await showSessionPlanProjection(cwd, 'shared-a');
+      const second = await showSessionPlanProjection(cwd, 'shared-b');
+
+      expect(first).not.toHaveProperty('lastBuildActivityAt');
+      expect(second).toMatchObject({ lastBuildActivityAt: '2027-01-01T00:08:00.000Z' });
     });
   });
 

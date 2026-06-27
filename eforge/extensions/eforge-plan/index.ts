@@ -19,11 +19,14 @@ import { backlogQueryActions } from './backlog-query-actions.js';
 import { searchActions } from './search/index.js';
 import {
   readBacklogEpic,
+  assertSafeBacklogId,
   readBacklogItem,
+  readBacklogItemSnapshot,
   resolveBacklogEpicRelativePath,
   resolveBacklogItemRelativePath,
 } from './markdown-store.js';
-import { captureCanonicalBacklogItem, readCanonicalBacklogItem, readCanonicalEpic, updateCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
+import { captureCanonicalBacklogItem, CanonicalOptimisticLockError, readCanonicalBacklogItem, readCanonicalEpic, updateCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
+import { deriveItemSectionRows, patchItemBodySections } from './canonical/item-body-sections.js';
 import { applyLifecycleEvent } from './lifecycle.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
@@ -49,10 +52,25 @@ const CaptureInput = Type.Object({
   dependsOn: Type.Optional(Type.Array(Type.String())), acceptanceCriteria: Type.String(),
 });
 const EpicInput = Type.Object({ id: Type.Optional(Type.String()), title: Type.String(), body: Type.Optional(Type.String()), status: Type.Optional(Type.String()), priority: Type.Optional(Type.String()), tags: Type.Optional(Type.Array(Type.String())) });
+const SectionOperationInput = Type.Object({ heading: Type.String(), action: Type.Union([Type.Literal('replace'), Type.Literal('append')]), content: Type.String() }, { additionalProperties: false });
 const UpdateInput = Type.Object({
-  id: Type.String(), status: Type.Optional(Type.String()), priority: Type.Optional(Type.String()), tags: Type.Optional(Type.Array(Type.String())),
+  id: Type.String(), title: Type.Optional(Type.String()), status: Type.Optional(Type.String()), priority: Type.Optional(Type.String()), tags: Type.Optional(Type.Array(Type.String())),
   evidenceNotes: Type.Optional(Type.String()), recheckNotes: Type.Optional(Type.String()), dependsOn: Type.Optional(Type.Array(Type.String())), epic: Type.Optional(Type.String()),
-});
+  sections: Type.Optional(Type.Record(Type.String(), Type.String())), sectionOperations: Type.Optional(Type.Array(SectionOperationInput)),
+  expectedBodySha256: Type.Optional(Type.String()), expectedRecordSha256: Type.Optional(Type.String()), expectedUpdatedAt: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+const UpdateOutput = Type.Object({
+  itemId: Type.String(),
+  title: Type.String(),
+  status: Type.String(),
+  updatedAt: Type.Optional(Type.String()),
+  path: Type.String(),
+  storage: Type.Object({ kind: Type.Literal('canonical-sqlite'), id: Type.String() }, { additionalProperties: false }),
+  bodySha256: Type.String(),
+  recordSha256: Type.String(),
+  changedFields: Type.Array(Type.String()),
+  changedSections: Type.Array(Type.String()),
+}, { additionalProperties: false });
 const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('planned')])), session: Type.Optional(Type.String()), profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])) });
 const PromoteSelectionInput = PromotionSelectionInputSchema;
 const PromoteSelectionOutput = PromotionSelectionOutputSchema;
@@ -122,11 +140,28 @@ const upsertEpic = defineExtensionAction({
 });
 
 const updateItem = defineExtensionAction({
-  id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata in canonical private SQLite storage while preserving body content.',
-  inputSchema: UpdateInput, outputSchema: ActionObjectOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
+  id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata, title, and structured body sections in canonical private SQLite storage. Body-affecting updates require a lock token from get-item.',
+  inputSchema: UpdateInput, outputSchema: UpdateOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
   async handler(input, ctx) {
-    assertDirectActionEpicReferenceExists(ctx.cwd, input.epic, 'update-item');
-    const updates: Record<string, unknown> = { updated: new Date().toISOString() };
+    await validateUpdateInput(ctx.cwd, input);
+    const bodyAffecting = isBodyAffectingUpdate(input);
+    if (bodyAffecting && input.expectedBodySha256 === undefined && input.expectedRecordSha256 === undefined && input.expectedUpdatedAt === undefined) {
+      throw userActionError('Body-affecting update-item requests require expectedBodySha256, expectedRecordSha256, or expectedUpdatedAt from get-item. Re-read get-item before retrying.', { path: 'expectedBodySha256', details: { id: input.id } });
+    }
+    const existingBeforeMigration = readCanonicalBacklogItem(ctx.cwd, input.id);
+    const legacySnapshot = existingBeforeMigration === undefined ? await readBacklogItemSnapshot(ctx.cwd, input.id) : undefined;
+    if (existingBeforeMigration === undefined && !legacySnapshot) throw userActionError(`Backlog item not found: ${input.id}`, { path: 'id', details: { id: input.id } });
+    validateLegacyLockTokens(input.id, legacySnapshot, bodyAffecting ? input : undefined);
+    let patched: { body: string; changedSections: string[] };
+    try {
+      const body = existingBeforeMigration?.body ?? legacySnapshot!.body;
+      patched = bodyAffecting ? patchItemBodySections(body, { title: input.title, sections: input.sections, sectionOperations: input.sectionOperations }) : { body, changedSections: [] };
+    } catch (error) {
+      throw userActionError(error instanceof Error ? error.message : String(error), { path: 'sectionOperations', details: { id: input.id } });
+    }
+    const migration = ensureCanonicalItemForUpdate(ctx.cwd, input.id, legacySnapshot, bodyAffecting ? input : undefined);
+    const now = new Date().toISOString();
+    const updates: Record<string, unknown> = { updated: now };
     if (input.status !== undefined) updates.status = normalizedStatus(input.status, 'candidate');
     if (input.priority !== undefined) updates.priority = input.priority;
     if (input.tags !== undefined) updates.tags = input.tags;
@@ -135,22 +170,29 @@ const updateItem = defineExtensionAction({
     if (input.epic !== undefined) updates.epic = input.epic.length > 0 ? input.epic : null;
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
-    if (readCanonicalBacklogItem(ctx.cwd, input.id) === undefined) {
-      const legacy = await readBacklogItem(ctx.cwd, input.id);
-      if (legacy !== null) {
-        captureCanonicalBacklogItem(ctx.cwd, { id: legacy.id, title: legacy.title, status: legacy.status, priority: legacy.priority, tags: legacy.tags as string[], dependsOn: legacy.dependsOn as string[], epic: legacy.epic, created: legacy.created, updated: legacy.updated, body: legacy.body });
-      }
+    const changedFields = updateChangedFields(input);
+    try {
+      const item = updateCanonicalBacklogItem(ctx.cwd, input.id, {
+        ...(input.title !== undefined && { title: input.title }),
+        ...(bodyAffecting && { body: patched.body, sections: deriveItemSectionRows(patched.body) }),
+        status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'],
+        priority: updates.priority as string | undefined,
+        tags: updates.tags as string[] | undefined,
+        dependsOn: updates.depends_on as string[] | undefined,
+        ...(input.epic !== undefined && { epic: updates.epic as string | null }),
+        updated: now,
+        expectedBodySha256: input.expectedBodySha256,
+        expectedRecordSha256: migration.acceptedLegacyRecordSha256 ? undefined : input.expectedRecordSha256,
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        frontmatter: updates,
+      });
+      await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
+      if (item.bodySha256 === undefined || item.recordSha256 === undefined) throw new Error(`Canonical lock tokens missing for backlog item: ${item.id}`);
+      return toJsonSafeObject({ itemId: item.id, title: item.title, status: item.userStatus, updatedAt: item.updatedAt, path: resolveBacklogItemRelativePath(ctx.cwd, item.id), storage: { kind: 'canonical-sqlite', id: item.id }, bodySha256: item.bodySha256, recordSha256: item.recordSha256, changedFields, changedSections: patched.changedSections });
+    } catch (error) {
+      if (error instanceof CanonicalOptimisticLockError) throw userActionError(`${error.token} is stale; re-read get-item before retrying update-item.`, { path: error.token, details: { id: input.id, token: error.token } });
+      throw error;
     }
-    const item = updateCanonicalBacklogItem(ctx.cwd, input.id, {
-      status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'],
-      priority: updates.priority as string | undefined,
-      tags: updates.tags as string[] | undefined,
-      dependsOn: updates.depends_on as string[] | undefined,
-      ...(input.epic !== undefined && { epic: updates.epic as string | null }),
-      frontmatter: updates,
-    });
-    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.userStatus });
   },
 });
 
@@ -361,6 +403,79 @@ export default defineEforgeExtension((eforge) => {
     eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event, { mutateLegacyTraces: false }); });
   }
 });
+
+type UpdateItemInputValue = typeof UpdateInput extends { static: infer T } ? T : any;
+
+async function validateUpdateInput(cwd: string, input: UpdateItemInputValue): Promise<void> {
+  try { assertSafeBacklogId(input.id); } catch (error) { throw userActionError(error instanceof Error ? error.message : String(error), { path: 'id', details: { id: input.id } }); }
+  if (input.status !== undefined) {
+    try { normalizedStatus(input.status, 'candidate'); } catch (error) { throw userActionError(error instanceof Error ? error.message : String(error), { path: 'status', details: { id: input.id } }); }
+  }
+  if (input.title !== undefined && (input.title.trim().length === 0 || input.title.includes('\n') || input.title.includes('\r'))) throw userActionError('Title must be a non-empty single-line backlog title.', { path: 'title', details: { id: input.id } });
+  if (input.priority !== undefined && (input.priority.trim().length === 0 || input.priority.includes('\n') || input.priority.includes('\r'))) throw userActionError('Priority must be a non-empty single-line backlog label.', { path: 'priority', details: { id: input.id } });
+  validateLockTokenFormat(input);
+  if (input.dependsOn !== undefined) await validateDependsOn(cwd, input.id, input.dependsOn);
+  assertDirectActionEpicReferenceExists(cwd, input.epic, 'update-item');
+}
+
+function validateLockTokenFormat(input: UpdateItemInputValue): void {
+  if (input.expectedBodySha256 !== undefined && !/^[a-f0-9]{64}$/u.test(input.expectedBodySha256)) throw userActionError('expectedBodySha256 must be a 64-character lowercase hex SHA-256 value.', { path: 'expectedBodySha256', details: { id: input.id, token: 'expectedBodySha256' } });
+  if (input.expectedRecordSha256 !== undefined && !/^[a-f0-9]{64}$/u.test(input.expectedRecordSha256)) throw userActionError('expectedRecordSha256 must be a 64-character lowercase hex SHA-256 value.', { path: 'expectedRecordSha256', details: { id: input.id, token: 'expectedRecordSha256' } });
+  if (input.expectedUpdatedAt !== undefined && !isIsoTimestamp(input.expectedUpdatedAt)) throw userActionError('expectedUpdatedAt must be a non-empty ISO timestamp string.', { path: 'expectedUpdatedAt', details: { id: input.id, token: 'expectedUpdatedAt' } });
+}
+
+function isIsoTimestamp(value: string): boolean {
+  return value.trim().length > 0 && !Number.isNaN(Date.parse(value)) && /^\d{4}-\d{2}-\d{2}T/u.test(value);
+}
+
+function validateLegacyLockTokens(id: string, snapshot: Awaited<ReturnType<typeof readBacklogItemSnapshot>> | null | undefined, lockInput?: Pick<UpdateItemInputValue, 'expectedBodySha256' | 'expectedRecordSha256' | 'expectedUpdatedAt'>): void {
+  if (!snapshot) return;
+  if (lockInput?.expectedBodySha256 !== undefined && lockInput.expectedBodySha256 !== snapshot.bodySha256) throw userActionError('expectedBodySha256 is stale; re-read get-item before retrying update-item.', { path: 'expectedBodySha256', details: { id, token: 'expectedBodySha256' } });
+  if (lockInput?.expectedRecordSha256 !== undefined && lockInput.expectedRecordSha256 !== snapshot.recordSha256) throw userActionError('expectedRecordSha256 is stale; re-read get-item before retrying update-item.', { path: 'expectedRecordSha256', details: { id, token: 'expectedRecordSha256' } });
+  if (lockInput?.expectedUpdatedAt !== undefined && lockInput.expectedUpdatedAt !== snapshot.updated) throw userActionError('expectedUpdatedAt is stale; re-read get-item before retrying update-item.', { path: 'expectedUpdatedAt', details: { id, token: 'expectedUpdatedAt' } });
+}
+
+async function validateDependsOn(cwd: string, itemId: string, dependsOn: readonly string[]): Promise<void> {
+  const seen = new Set<string>();
+  for (const dependencyRef of dependsOn) {
+    try { assertSafeBacklogId(dependencyRef); } catch (error) { throw userActionError(error instanceof Error ? error.message : String(error), { path: 'dependsOn', details: { id: itemId, dependencyRef } }); }
+    if (dependencyRef === itemId) throw userActionError('dependsOn must not reference the updated item itself.', { path: 'dependsOn', details: { id: itemId, dependencyRef } });
+    if (seen.has(dependencyRef)) throw userActionError(`Duplicate dependency reference "${dependencyRef}".`, { path: 'dependsOn', details: { id: itemId, dependencyRef } });
+    seen.add(dependencyRef);
+    if (readCanonicalBacklogItem(cwd, dependencyRef) === undefined && await readBacklogItem(cwd, dependencyRef) === null) throw userActionError(`Dependency reference "${dependencyRef}" does not resolve to a visible backlog item.`, { path: 'dependsOn', details: { id: itemId, dependencyRef } });
+  }
+}
+
+function ensureCanonicalItemForUpdate(cwd: string, id: string, snapshot: Awaited<ReturnType<typeof readBacklogItemSnapshot>> | null | undefined, lockInput?: Pick<UpdateItemInputValue, 'expectedBodySha256' | 'expectedRecordSha256' | 'expectedUpdatedAt'>): { acceptedLegacyRecordSha256: boolean } {
+  if (readCanonicalBacklogItem(cwd, id) !== undefined || !snapshot) return { acceptedLegacyRecordSha256: false };
+  const record = snapshot.record;
+  captureCanonicalBacklogItem(cwd, {
+    id: record.id,
+    title: record.title,
+    status: record.status,
+    priority: record.priority,
+    source: typeof snapshot.frontmatter.source === 'string' ? snapshot.frontmatter.source : undefined,
+    tags: record.tags as string[],
+    dependsOn: record.depends_on as string[],
+    epic: record.epic,
+    created: record.created,
+    updated: record.updated,
+    lastCheckedAt: typeof snapshot.frontmatter.last_checked === 'string' ? snapshot.frontmatter.last_checked : undefined,
+    staleAfter: typeof snapshot.frontmatter.stale_after === 'string' ? snapshot.frontmatter.stale_after : undefined,
+    body: snapshot.body,
+    frontmatter: snapshot.frontmatter,
+    sections: deriveItemSectionRows(snapshot.body),
+  });
+  return { acceptedLegacyRecordSha256: lockInput?.expectedRecordSha256 !== undefined };
+}
+
+function isBodyAffectingUpdate(input: UpdateItemInputValue): boolean {
+  return Object.prototype.hasOwnProperty.call(input, 'title') || Object.prototype.hasOwnProperty.call(input, 'sections') || Object.prototype.hasOwnProperty.call(input, 'sectionOperations');
+}
+
+function updateChangedFields(input: UpdateItemInputValue): string[] {
+  return ['title', 'status', 'priority', 'tags', 'dependsOn', 'epic', 'evidenceNotes', 'recheckNotes'].filter((field) => Object.prototype.hasOwnProperty.call(input, field));
+}
 
 function normalizedStatus(value: string | undefined, fallback: 'candidate') {
   if (value === undefined) return fallback;

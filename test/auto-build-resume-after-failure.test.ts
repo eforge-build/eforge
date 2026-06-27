@@ -235,6 +235,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
 describe('scheduler pause/resume — queue:mutation ignored while suspended', () => {
   it('mutation events are processed but launches are gated until resume', async () => {
     const { cwd, queueDir, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv(2);
+    spawnPrdChild.mockImplementation(async () => new Promise(() => {}));
 
     // Start with empty queue
     const scheduler = makeScheduler([]);

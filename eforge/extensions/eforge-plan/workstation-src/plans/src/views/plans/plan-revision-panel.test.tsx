@@ -30,7 +30,7 @@ function revisionDetails(rail = reviewRail()) {
 function renderDetail(invokeAction: EforgeBridge['invokeAction'], onApply = vi.fn(), onRefresh = vi.fn(async () => undefined), detailInput = detail()) {
   const onDeleted = vi.fn(async () => undefined);
   window.eforge = { invokeAction };
-  return { ...render(<ToastProvider><PlanDetailWorkspace detail={detailInput} artifact={{ key: 'plan:s', kind: 'plan', session: 's', title: 'Topic' }} titles={new Map()} onApply={onApply} onRefresh={onRefresh} onDeleted={onDeleted} onClose={vi.fn()} /></ToastProvider>), onApply, onRefresh, onDeleted };
+  return { ...render(<ToastProvider><PlanDetailWorkspace detail={detailInput} artifact={{ key: 'plan:s', kind: 'plan', session: 's', title: 'Topic' }} titles={new Map()} onApply={onApply} onRefresh={onRefresh} onHandoff={vi.fn(async () => undefined)} onDeleted={onDeleted} onClose={vi.fn()} /></ToastProvider>), onApply, onRefresh, onDeleted };
 }
 
 function runningTurn(): PlanRevisionSessionProjection['turns'][number] {

@@ -70,6 +70,7 @@ function WorkspaceStory() {
           titles={titles}
           onApply={onApply}
           onRefresh={async () => undefined}
+          onHandoff={async () => undefined}
           onDeleted={async () => undefined}
           onClose={() => undefined}
         />
