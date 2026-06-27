@@ -33,20 +33,21 @@ describe('compile context recovery engine integration', () => {
     expect(events.at(-1)).toMatchObject({ type: 'phase:end', result: { status: 'failed' } });
   });
 
-  it('caps planner-stage retry-as-expedition after one retry and emits bounded decomposition guidance', async () => {
+  it('caps retry-as-expedition after one preflight escalation and emits bounded decomposition guidance', async () => {
     const harness = new StubHarness([
       { resultText: composer('excursion') },
       { error: new AgentTerminalError('error_during_execution', 'context window exceeded before submission') },
       { error: new AgentTerminalError('error_during_execution', 'context window exceeded after retry') },
     ]);
     const engine = await EforgeEngine.create({ cwd: await setupProject(), agentRuntimes: harness });
-    const events = await collect(engine.compile('# Retry cap\n\nTouch packages/engine packages/client packages/monitor packages/console-ui.', { name: `compile-context-retry-${Date.now()}` }));
+    const overflowSource = `# Retry cap\n\nTouch packages/engine packages/client packages/monitor packages/console-ui.\n\n${'large scope evidence\n'.repeat(5_000)}`;
+    const events = await collect(engine.compile(overflowSource, { name: `compile-context-retry-${Date.now()}` }));
     const plannerPromptCount = harness.calls.filter((_call, index) => index > 0).length;
     const failures = events.filter((event): event is Extract<EforgeEvent, { type: 'planning:scope-context:failure' }> => event.type === 'planning:scope-context:failure');
     const attempted = failures.find((event) => event.failure.recovery.attempted);
     const terminal = failures.at(-1);
 
-    expect(plannerPromptCount).toBe(2);
+    expect(plannerPromptCount).toBe(1);
     expect(attempted).toMatchObject({ failure: { recovery: { action: 'retry-as-expedition', attempted: true } } });
     expect(terminal?.failure.recovery.action).toMatch(/bounded-decomposition|manual-reduce-scope/);
     expect(terminal?.failure.recovery.attempt).toBeGreaterThanOrEqual(terminal?.failure.recovery.maxAttempts ?? 1);
