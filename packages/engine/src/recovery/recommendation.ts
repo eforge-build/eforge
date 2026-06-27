@@ -170,14 +170,12 @@ export function determineRecoveryRecommendation(
     return continueRepairRecommendation(summary, continueRepairEligibility);
   }
 
-  // --- eforge:region plan-04-context-recovery ---
   if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure?.terminalSubtype === 'error_context_window') {
     return {
       verdict: 'manual',
       rationale: `Compile scope/context failure detected${summary.terminalFailure.stage ? ` at ${summary.terminalFailure.stage}` : ''}. Use the sidecar recoveryOptions for bounded retry-as-expedition, decomposition, or manual scope-reduction guidance; automated apply-recovery does not mutate queue state for compile scope/context recovery.`,
     };
   }
-  // --- eforge:endregion plan-04-context-recovery ---
 
   const failingPlans = summary.failingPlans;
 

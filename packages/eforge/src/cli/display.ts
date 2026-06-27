@@ -4,9 +4,7 @@ import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
-// --- eforge:region plan-06-surfaces-docs ---
 import { renderCompilePreflightLines, renderCompileScopeContextFailureModel } from './compile-resilience-display.js';
-// --- eforge:endregion plan-06-surfaces-docs ---
 
 type PlaybookListEntry = {
   name: string;
@@ -254,7 +252,6 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
     case 'planning:continuation':
       setSpinnerText('plan', `Planning - continuing (attempt ${event.attempt}/${event.maxContinuations})`);
       return true;
-    // --- eforge:region plan-06-surfaces-docs ---
     case 'planning:preflight': {
       const lines = renderCompilePreflightLines(event.risk, { verbose });
       for (const line of lines) console.log(chalk.yellow(`  ⚠ ${line}`));
@@ -277,7 +274,6 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
       if (model.attempted) startSpinner('plan', 'Retrying planning as expedition...');
       return true;
     }
-    // --- eforge:endregion plan-06-surfaces-docs ---
     case 'planning:complete':
       if (event.plans.length === 0) {
         succeedSpinner('plan', 'Nothing to plan — source is fully implemented');

@@ -16,16 +16,10 @@ import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
 import type { ReviewerPerspectiveRegistration, ValidationProviderRegistration } from '../extensions/types.js';
-// --- eforge:region plan-02-preflight-compaction ---
 import type { CompilePreflightRisk } from '../events.js';
 import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
-// --- eforge:endregion plan-02-preflight-compaction ---
-// --- eforge:region plan-03-planner-guardrails ---
 import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
-// --- eforge:endregion plan-03-planner-guardrails ---
-// --- eforge:region plan-04-context-recovery ---
 import type { CompileScopeRecoveryState } from '../compile-resilience/context-recovery.js';
-// --- eforge:endregion plan-04-context-recovery ---
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -35,19 +29,13 @@ export interface PipelineContext {
   cwd: string;
   planSetName: string;
   sourceContent: string;
-  // --- eforge:region plan-02-preflight-compaction ---
   promptSourceContent?: string;
   compilePromptSourceBundle?: CompilePromptSourceBundle;
   compilePreflightOptions?: CompilePreflightOptions;
   compilePreflight?: CompilePreflightRisk;
-  // --- eforge:endregion plan-02-preflight-compaction ---
-  // --- eforge:region plan-03-planner-guardrails ---
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
-  // --- eforge:endregion plan-03-planner-guardrails ---
-  // --- eforge:region plan-04-context-recovery ---
   runId?: string;
   compileScopeRecovery?: CompileScopeRecoveryState;
-  // --- eforge:endregion plan-04-context-recovery ---
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

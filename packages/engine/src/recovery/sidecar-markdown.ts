@@ -18,7 +18,6 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict['verdict']): str
   }
 }
 
-// --- eforge:region plan-06-surfaces-docs ---
 function compileRecoveryActionLabel(action: string): string {
   switch (action) {
     case 'retry-as-expedition': return 'retry as expedition';
@@ -54,7 +53,6 @@ function renderCompileScopeContextSection(payload: RecoveryVerdictSidecar & Part
   }
   return lines;
 }
-// --- eforge:endregion plan-06-surfaces-docs ---
 
 function renderContinueRepairSection(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>): string[] {
   const eligibility = payload.continueRepairEligibility;
@@ -121,9 +119,7 @@ export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar & 
     report.recommendedAction,
     '',
     ...renderContinueRepairSection(payload),
-    // --- eforge:region plan-06-surfaces-docs ---
     ...renderCompileScopeContextSection(payload),
-    // --- eforge:endregion plan-06-surfaces-docs ---
     '## Key Evidence',
     '',
     ...bulletLines(report.keyEvidence),

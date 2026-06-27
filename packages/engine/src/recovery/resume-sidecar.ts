@@ -3,9 +3,7 @@ import type { BuildFailureSummary, RecoverySidecarRecoveryOption } from '@eforge
 import { projectResumeEligibility } from '../resume/compiled-build.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 import { truncateMiddleText, truncateText } from './text-bounds.js';
-// --- eforge:region plan-04-context-recovery ---
 import { readCompileScopeContextRecoveryOptionFromDb } from '../compile-resilience/context-recovery.js';
-// --- eforge:endregion plan-04-context-recovery ---
 
 export type RecoverySidecarContinueRepairEligibilitySource = 'continueRepairEligibility' | 'inspection-error';
 export type RecoverySidecarContinueRepairArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
@@ -57,12 +55,10 @@ export interface ProjectRecoverySidecarResumeEvidenceOptions {
 export async function projectRecoverySidecarResumeEvidence(options: ProjectRecoverySidecarResumeEvidenceOptions): Promise<RecoverySidecarContinueRepairEvidence> {
   const featureBranch = options.featureBranch ?? `eforge/${options.setName}`;
   const mergeWorktreePath = join(computeWorktreeBase(options.cwd, options.setName), '__merge__');
-  // --- eforge:region plan-04-context-recovery ---
   const terminalFailure = options.failureSummary?.terminalFailure;
   const compileScopeOption = terminalFailure?.scope === 'compile' && terminalFailure.terminalSubtype === 'error_context_window'
     ? readCompileScopeContextRecoveryOptionFromDb({ dbPath: options.dbPath, setName: options.setName })
     : undefined;
-  // --- eforge:endregion plan-04-context-recovery ---
 
   try {
     const projected = await projectResumeEligibility({
@@ -129,7 +125,6 @@ function continueRepairOption(reason: string): RecoverySidecarRecoveryOption {
   };
 }
 
-// --- eforge:region plan-04-context-recovery ---
 function compileScopeOptionList(option: RecoverySidecarRecoveryOption | undefined): RecoverySidecarRecoveryOption[] {
   return option ? [option] : [];
 }
@@ -138,7 +133,6 @@ function compileScopeOptions(option: RecoverySidecarRecoveryOption | undefined):
   const options = compileScopeOptionList(option);
   return options.length > 0 ? { recoveryOptions: options } : {};
 }
-// --- eforge:endregion plan-04-context-recovery ---
 
 function boundReason(reason: string, label: string): string {
   const bounded = truncateText(reason.trim() || 'Continue-and-repair eligibility inspection did not provide a reason.', CONTINUE_REPAIR_REASON_CHARS, label);

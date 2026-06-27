@@ -6,9 +6,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
-// --- eforge:region plan-06-surfaces-docs ---
 import type { CompileFailureBannerModel } from '@/lib/compile-resilience-format';
-// --- eforge:endregion plan-06-surfaces-docs ---
 
 interface BuildFailure {
   planId: string;
@@ -18,9 +16,7 @@ interface BuildFailure {
 interface FailureBannerProps {
   failures: BuildFailure[];
   phaseSummary: string | null;
-  // --- eforge:region plan-06-surfaces-docs ---
   compileFailure?: CompileFailureBannerModel | null;
-  // --- eforge:endregion plan-06-surfaces-docs ---
 }
 
 /** Abbreviate plan IDs like "plan-01-some-name" to "Plan 01" */
@@ -70,14 +66,12 @@ export function FailureBanner({ failures, phaseSummary, compileFailure }: Failur
 
       {/* Failure rows */}
       <div className="flex flex-col gap-1.5 pl-6">
-        {/* --- eforge:region plan-06-surfaces-docs --- */}
         {compileFailure && (
           <div className="text-xs text-text-bright">
             <div className="font-medium">{compileFailure.summary}</div>
             {compileFailure.details.map((detail) => <div key={detail} className="text-text-dim">{detail}</div>)}
           </div>
         )}
-        {/* --- eforge:endregion plan-06-surfaces-docs --- */}
         {visibleFailures.map((f) => (
           <FailureRow key={f.planId} failure={f} />
         ))}

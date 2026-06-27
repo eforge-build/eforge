@@ -23,12 +23,10 @@ export type {
   RecoverySidecarContinueRepairEligibilitySource,
   RecoverySidecarContinueRepairEligibility,
   RecoverySidecarSchemaVersion,
-  // --- eforge:region plan-01-foundation-contracts ---
   RecoverySidecarContinueRepairOption,
   RecoverySidecarCompileScopeContextAction,
   RecoverySidecarCompileScopeContextOption,
   RecoverySidecarRecoveryOption,
-  // --- eforge:endregion plan-01-foundation-contracts ---
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
   ReadSidecarResponse,

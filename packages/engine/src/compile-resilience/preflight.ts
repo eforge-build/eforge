@@ -9,7 +9,6 @@ import {
 
 import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
 
-// --- eforge:region plan-02-preflight-compaction ---
 export const DEFAULT_MAX_PROMPT_SOURCE_BYTES = 80_000;
 export const MODERATE_SOURCE_BYTES = 40_000;
 export const LARGE_SOURCE_BYTES = 120_000;
@@ -187,7 +186,6 @@ export function formatCompilePreflightPromptAppend(input: {
   lines.push('', 'Use the compacted source summaries as references. Do not ask for omitted generated inventory unless explicitly needed.');
   return lines.join('\n').slice(0, 4096);
 }
-// --- eforge:endregion plan-02-preflight-compaction ---
 
 interface Block {
   start: number;

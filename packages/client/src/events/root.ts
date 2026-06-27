@@ -109,7 +109,6 @@ export type BuildResumeArtifactSource = Static<typeof BuildResumeArtifactSourceS
 export type BuildResumeArtifactPlan = Static<typeof BuildResumeArtifactPlanSchema>;
 export type BuildResumeArtifactsEvent = Extract<EforgeEvent, { type: 'build:resume:artifacts' }>;
 export type BuildResumeCompleteEvent = Extract<EforgeEvent, { type: 'build:resume:complete' }>;
-// --- eforge:region plan-01-foundation-contracts ---
 export type CompileRiskLevel = Static<typeof CompileRiskLevelSchema>;
 export type CompileRecoveryAction = Static<typeof CompileRecoveryActionSchema>;
 export type CompilePipelineScope = Static<typeof CompilePipelineScopeSchema>;
@@ -120,7 +119,6 @@ export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSch
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;
 export type CompilePreflightEvent = Extract<EforgeEvent, { type: 'planning:preflight' }>;
 export type CompileScopeContextFailureEvent = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>;
-// --- eforge:endregion plan-01-foundation-contracts ---
 export type AutoBuildDesired = Static<typeof AutoBuildDesiredSchema>;
 export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
 export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;

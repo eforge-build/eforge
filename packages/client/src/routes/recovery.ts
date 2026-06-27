@@ -184,7 +184,6 @@ export type RecoverySidecarContinueRepairEligibility =
       checkedPath?: string;
     };
 
-// --- eforge:region plan-01-foundation-contracts ---
 export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['retry-as-expedition', 'bounded-decomposition', 'manual-reduce-scope'] as const;
 export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES = 1_000;
 
@@ -240,7 +239,6 @@ export type RecoverySidecarCompileScopeContextOption = Static<typeof RecoverySid
   failureKind: CompileScopeContextFailure['failureKind'];
 };
 export type RecoverySidecarRecoveryOption = Static<typeof RecoverySidecarRecoveryOptionSchema>;
-// --- eforge:endregion plan-01-foundation-contracts ---
 
 interface ContinueRepairEligibilityIdentity {
   prdId: string;

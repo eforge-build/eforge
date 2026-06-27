@@ -4,9 +4,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
-// --- eforge:region plan-03-planner-guardrails ---
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
-// --- eforge:endregion plan-03-planner-guardrails ---
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -17,14 +15,10 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   moduleDependsOn: string[];
   architectureContent: string;
   sourceContent: string;
-  // --- eforge:region plan-02-preflight-compaction ---
   /** Prompt-safe compacted source content. Defaults to sourceContent. */
   promptSourceContent?: string;
-  // --- eforge:endregion plan-02-preflight-compaction ---
-  // --- eforge:region plan-03-planner-guardrails ---
   /** Prompt/live context guardrails for planner-family runs. */
   contextGuard?: CompileContextGuardOptions;
-  // --- eforge:endregion plan-03-planner-guardrails ---
   /** Concatenated plan content from completed dependency modules */
   dependencyPlanContent?: string;
   verbose?: boolean;
@@ -48,12 +42,8 @@ export async function* runModulePlanner(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'expedition:module:start', moduleId: options.moduleId };
 
-  // --- eforge:region plan-02-preflight-compaction ---
   const promptSourceContent = options.promptSourceContent ?? options.sourceContent;
-  // --- eforge:endregion plan-02-preflight-compaction ---
-  // --- eforge:region plan-03-planner-guardrails ---
   const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'module-planner' });
-  // --- eforge:endregion plan-03-planner-guardrails ---
   const prompt = await loadPrompt('module-planner', {
     source: promptSourceContent,
     planSetName: options.planSetName,
@@ -67,28 +57,24 @@ export async function* runModulePlanner(
     validPerspectives: `${REVIEW_PERSPECTIVES.join(', ')} (built-in defaults; custom extension keys are also accepted as lowercase slugs such as "accessibility" or "performance-review", but generated plans should use built-ins unless a project explicitly configures extension keys)`,
   }, options.promptAppend);
 
-  // --- eforge:region plan-03-planner-guardrails ---
   try {
     contextGuard.assertPrompt(prompt);
   } catch (err) {
     options.abortController?.abort();
     throw err;
   }
-  // --- eforge:endregion plan-03-planner-guardrails ---
 
   for await (const event of options.harness.run(
     { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
     options.lane,
   )) {
-    // --- eforge:region plan-03-planner-guardrails ---
     try {
       contextGuard.observe(event);
     } catch (err) {
       options.abortController?.abort();
       throw err;
     }
-    // --- eforge:endregion plan-03-planner-guardrails ---
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose
     if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
       yield event;

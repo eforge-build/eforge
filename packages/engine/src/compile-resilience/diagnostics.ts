@@ -9,7 +9,6 @@ import {
   type ValueError,
 } from '@eforge-build/client';
 
-// --- eforge:region plan-03-planner-guardrails ---
 export const DEFAULT_BOUNDED_DIAGNOSTIC_OPTIONS: BoundedDiagnosticOptions = {
   maxMessageBytes: MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
   maxExcerptBytes: Math.min(512, MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH),
@@ -275,4 +274,3 @@ function byteLength(text: string): number {
 function unescapePointer(part: string): string {
   return part.replace(/~1/g, '/').replace(/~0/g, '~');
 }
-// --- eforge:endregion plan-03-planner-guardrails ---

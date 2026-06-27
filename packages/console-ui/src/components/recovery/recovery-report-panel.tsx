@@ -10,9 +10,7 @@ import { ConfirmAction } from '@/components/recovery/confirm-action';
 import { SafeMarkdown } from '@/components/recovery/safe-markdown';
 import { AdvancedCascadeSection } from '@/components/recovery/advanced-cascade-section';
 import { AcceptSuccessAction, type AcceptSuccessApplyInput } from '@/components/recovery/accept-success-action';
-// --- eforge:region plan-06-surfaces-docs ---
 import { CompileScopeContextOptions } from '@/components/recovery/compile-scope-context-options';
-// --- eforge:endregion plan-06-surfaces-docs ---
 import { formatQueueDispatchFailure, formatQueueDispatchFailureTimestamp } from '@/lib/selectors/queue-dispatch-failure';
 import type {
   RecoveryConfidenceValue,
@@ -187,11 +185,9 @@ export function RecoveryReportPanel({
         )}
       </section>
 
-      {/* --- eforge:region plan-06-surfaces-docs --- */}
       {reportStatus === 'loaded' && sidecar && (
         <CompileScopeContextOptions options={sidecar.json.recoveryOptions} />
       )}
-      {/* --- eforge:endregion plan-06-surfaces-docs --- */}
 
       {/* Sidecar verdict action. Hidden once a durable applied marker exists so
           an already-applied verdict cannot be re-applied (the dialog also swaps

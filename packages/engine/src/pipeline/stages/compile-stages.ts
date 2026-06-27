@@ -36,18 +36,10 @@ import {
   runArchitectureReviewCycleStage,
   runCohesionReviewCycleStage,
 } from './compile-review-cycles.js';
-// --- eforge:region plan-02-preflight-compaction ---
 import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
-// --- eforge:endregion plan-02-preflight-compaction ---
-// --- eforge:region plan-03-planner-guardrails ---
 import { compileContextGuardOptions, CompileScopeContextError } from '../../compile-resilience/context-guard.js';
-// --- eforge:endregion plan-03-planner-guardrails ---
-// --- eforge:region plan-04-context-recovery ---
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
-// --- eforge:endregion plan-04-context-recovery ---
-// --- eforge:region plan-05-artifact-validation ---
 import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
-// --- eforge:endregion plan-05-artifact-validation ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -81,16 +73,10 @@ async function* runPlannerAttempt(
       baseBranch: ctx.baseBranch,
       defaultBuild: ctx.pipeline.defaultBuild,
       defaultReview: ctx.pipeline.defaultReview,
-      // --- eforge:region plan-02-preflight-compaction ---
       promptSourceContent: ctx.promptSourceContent,
-      // --- eforge:endregion plan-02-preflight-compaction ---
-      // --- eforge:region plan-03-planner-guardrails ---
       contextGuard: compileContextGuardOptions({ stage: 'planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
-      // --- eforge:endregion plan-03-planner-guardrails ---
       ...agentConfig,
-      // --- eforge:region plan-02-preflight-compaction ---
       promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
-      // --- eforge:endregion plan-02-preflight-compaction ---
       ...plannerTb,
       phase: 'compile',
       stage: 'planner',
@@ -154,10 +140,8 @@ async function* runPlannerAttempt(
     end();
   } catch (err) {
     error(err as Error);
-    // --- eforge:region plan-04-context-recovery ---
     const contextError = await toCompileScopeContextError(ctx, err, 'planner');
     if (contextError) throw contextError;
-    // --- eforge:endregion plan-04-context-recovery ---
     throw err;
   }
 }
@@ -198,21 +182,15 @@ async function* runModulePlannerAttempt(
       moduleDependsOn: mod.dependsOn,
       architectureContent,
       sourceContent: ctx.sourceContent,
-      // --- eforge:region plan-02-preflight-compaction ---
       promptSourceContent: ctx.promptSourceContent,
-      // --- eforge:endregion plan-02-preflight-compaction ---
-      // --- eforge:region plan-03-planner-guardrails ---
       contextGuard: compileContextGuardOptions({ stage: 'module-planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
-      // --- eforge:endregion plan-03-planner-guardrails ---
       dependencyPlanContent,
       verbose: ctx.verbose,
       onClarification: ctx.onClarification,
       abortController: ctx.abortController,
       outputDir: ctx.config.plan.outputDir,
       ...agentConfig,
-      // --- eforge:region plan-02-preflight-compaction ---
       promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
-      // --- eforge:endregion plan-02-preflight-compaction ---
       ...modulePlannerTb,
       phase: 'compile',
       stage: 'module-planner',
@@ -245,21 +223,17 @@ async function* runModulePlannerAttempt(
     modTracker.cleanup();
     modSpan.end();
   } catch (err) {
-    // --- eforge:region plan-03-planner-guardrails ---
     if (err instanceof CompileScopeContextError) {
       modTracker.cleanup();
       modSpan.error(err);
       throw err;
     }
-    // --- eforge:endregion plan-03-planner-guardrails ---
-    // --- eforge:region plan-04-context-recovery ---
     const contextError = await toCompileScopeContextError(ctx, err, 'module-planner');
     if (contextError) {
       modTracker.cleanup();
       modSpan.error(contextError);
       throw contextError;
     }
-    // --- eforge:endregion plan-04-context-recovery ---
     // Module planning failure is non-fatal - continue with other modules
     modTracker.cleanup();
     modSpan.error(err as Error);
@@ -284,19 +258,13 @@ registerCompileStage({
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
-    // --- eforge:region plan-02-preflight-compaction ---
     promptSourceContent: ctx.promptSourceContent,
-    // --- eforge:endregion plan-02-preflight-compaction ---
-    // --- eforge:region plan-03-planner-guardrails ---
     contextGuard: compileContextGuardOptions({ stage: 'pipeline-composer', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
-    // --- eforge:endregion plan-03-planner-guardrails ---
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
     ...composerConfig,
-    // --- eforge:region plan-02-preflight-compaction ---
     promptAppend: mergePromptAppend(composerConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
-    // --- eforge:endregion plan-02-preflight-compaction ---
     phase: 'compile',
     stage: 'pipeline-composer',
     harness: composerHarness,
@@ -317,12 +285,10 @@ registerCompileStage({
             defaultReview: event.defaultReview,
             rationale: event.rationale,
           };
-          // --- eforge:region plan-02-preflight-compaction ---
           if (ctx.compilePromptSourceBundle && ctx.compilePreflightOptions) {
             ctx.compilePreflightOptions = { ...ctx.compilePreflightOptions, requestedPipelineScope: ctx.pipeline.scope };
             ctx.compilePreflight = estimateCompilePreflightRisk(ctx.compilePromptSourceBundle, ctx.compilePreflightOptions);
           }
-          // --- eforge:endregion plan-02-preflight-compaction ---
         }
           yield event;
         }
@@ -335,7 +301,6 @@ registerCompileStage({
     throw contextError ?? err;
   }
 
-  // --- eforge:region plan-04-context-recovery ---
   const preflightEscalation = await buildPreflightEscalationDecision(ctx);
   if (preflightEscalation?.retryAsExpedition) {
     markRetryAsExpeditionStarted(ctx, preflightEscalation.failure);
@@ -344,7 +309,6 @@ registerCompileStage({
     applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
     yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
   }
-  // --- eforge:endregion plan-04-context-recovery ---
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {
@@ -364,7 +328,6 @@ registerCompileStage({
     plannerOptions: {},
   };
   const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
-  // --- eforge:region plan-04-context-recovery ---
   try {
     yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
   } catch (err) {
@@ -377,7 +340,6 @@ registerCompileStage({
     yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
     yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
   }
-  // --- eforge:endregion plan-04-context-recovery ---
 
   // Fail loudly if the planner produced expedition modules but compile-expedition
   // is not queued — that stage is the only source of orchestration.yaml, so a
@@ -562,13 +524,11 @@ registerCompileStage({
   // Only runs when expedition modules are detected
   if (ctx.expeditionModules.length === 0) return;
 
-  // --- eforge:region plan-05-artifact-validation ---
   const moduleValidation = await validateExpeditionModuleInputs(ctx);
   if (!moduleValidation.ok) {
     yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: moduleValidation.message };
     throw new Error(moduleValidation.message);
   }
-  // --- eforge:endregion plan-05-artifact-validation ---
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
   await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
@@ -579,7 +539,6 @@ registerCompileStage({
   const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
   await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch, ctx.diffBaseRef);
 
-  // --- eforge:region plan-05-artifact-validation ---
   const artifactValidation = await validateCompileArtifacts(ctx);
   for (const warning of artifactValidation.warnings) {
     yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
@@ -590,7 +549,6 @@ registerCompileStage({
   }
   const plans = artifactValidation.plans;
   const expeditionPlanConfigs = artifactValidation.orchestration?.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
-  // --- eforge:endregion plan-05-artifact-validation ---
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans, ...(expeditionPlanConfigs && { planConfigs: expeditionPlanConfigs }) };

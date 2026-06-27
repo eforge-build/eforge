@@ -76,16 +76,10 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
-// --- eforge:region plan-02-preflight-compaction ---
 import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
-// --- eforge:endregion plan-02-preflight-compaction ---
-// --- eforge:region plan-04-context-recovery ---
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
 import { CompileScopeContextError } from './compile-resilience/context-guard.js';
-// --- eforge:endregion plan-04-context-recovery ---
-// --- eforge:region plan-05-artifact-validation ---
 import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
-// --- eforge:endregion plan-05-artifact-validation ---
 
 const exec = promisify(execFile);
 
@@ -352,9 +346,7 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Compile complete';
-    // --- eforge:region plan-04-context-recovery ---
     let compileCtx: PipelineContext | undefined;
-    // --- eforge:endregion plan-04-context-recovery ---
 
     // Emit profile info before config warnings
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
@@ -388,14 +380,12 @@ export class EforgeEngine {
       } catch {
         sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
-      // --- eforge:region plan-02-preflight-compaction ---
       const compilePreflightOptions: CompilePreflightOptions = {
         selectedProfile: this.configProfile.name,
       };
       const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
       const compilePreflight = estimateCompilePreflightRisk(compilePromptSourceBundle, compilePreflightOptions);
       yield { timestamp: new Date().toISOString(), type: 'planning:preflight', risk: compilePreflight };
-      // --- eforge:endregion plan-02-preflight-compaction ---
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -433,12 +423,10 @@ export class EforgeEngine {
         planSetName,
         runId,
         sourceContent,
-        // --- eforge:region plan-02-preflight-compaction ---
         promptSourceContent: compilePromptSourceBundle.promptSource,
         compilePromptSourceBundle,
         compilePreflightOptions,
         compilePreflight,
-        // --- eforge:endregion plan-02-preflight-compaction ---
         verbose: options.verbose,
         auto: options.auto,
         abortController: options.abortController,
@@ -450,14 +438,11 @@ export class EforgeEngine {
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
         extensionValidationProviders: this.extensionRegistry.validationProviders,
       };
-      // --- eforge:region plan-04-context-recovery ---
       compileCtx = ctx;
-      // --- eforge:endregion plan-04-context-recovery ---
 
       // Run compile pipeline
       yield* runCompilePipeline(ctx);
 
-      // --- eforge:region plan-05-artifact-validation ---
       const artifactValidation = await validateCompileArtifacts(ctx);
       for (const warning of artifactValidation.warnings) {
         yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
@@ -469,7 +454,6 @@ export class EforgeEngine {
         return;
       }
       ctx.plans = artifactValidation.plans;
-      // --- eforge:endregion plan-05-artifact-validation ---
 
       // If compile pipeline didn't produce plans and there's no plan-review-cycle
       // in the compile stages, commit artifacts here
@@ -487,7 +471,6 @@ export class EforgeEngine {
 
     } catch (err) {
       status = 'failed';
-      // --- eforge:region plan-04-context-recovery ---
       const contextError = compileCtx ? await toCompileScopeContextError(compileCtx, err, err instanceof CompileScopeContextError ? err.failure.stage : 'compile') : null;
       if (contextError) {
         summary = contextError.failure.explanation;
@@ -496,7 +479,6 @@ export class EforgeEngine {
       } else {
         summary = (err as Error).message;
       }
-      // --- eforge:endregion plan-04-context-recovery ---
     } finally {
       tracing?.setOutput({ status, summary });
       yield {

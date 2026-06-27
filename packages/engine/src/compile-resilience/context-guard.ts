@@ -1,6 +1,5 @@
 import type { EforgeEvent, CompilePreflightRisk, CompileScopeContextFailure } from '../events.js';
 
-// --- eforge:region plan-03-planner-guardrails ---
 export interface CompileContextGuardLimits {
   maxPromptBytes: number;
   maxObservedInputTokens: number;
@@ -162,4 +161,3 @@ function capUtf8(text: string, maxBytes: number): string {
   while (Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes - Buffer.byteLength('…', 'utf8')) end--;
   return `${text.slice(0, end)}…`;
 }
-// --- eforge:endregion plan-03-planner-guardrails ---

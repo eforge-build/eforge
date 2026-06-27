@@ -16,24 +16,18 @@ import {
 import { safeParseWithSchema, type ValueError } from '@eforge-build/client';
 import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
 import { emitPlanningDecision } from '../decisions.js';
-// --- eforge:region plan-03-planner-guardrails ---
 import {
   formatPlannerToolSchemaValidationError,
   formatPlannerToolSemanticValidationError,
 } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
-// --- eforge:endregion plan-03-planner-guardrails ---
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
-  // --- eforge:region plan-02-preflight-compaction ---
   /** Prompt-safe compacted source content. Defaults to resolved source content. */
   promptSourceContent?: string;
-  // --- eforge:endregion plan-02-preflight-compaction ---
-  // --- eforge:region plan-03-planner-guardrails ---
   /** Prompt/live context guardrails for planner-family runs. */
   contextGuard?: CompileContextGuardOptions;
-  // --- eforge:endregion plan-03-planner-guardrails ---
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -216,9 +210,7 @@ export async function* runPlanner(
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
   const { harness } = options;
-  // --- eforge:region plan-03-planner-guardrails ---
   const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
-  // --- eforge:endregion plan-03-planner-guardrails ---
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
@@ -236,9 +228,7 @@ export async function* runPlanner(
 
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
-  // --- eforge:region plan-02-preflight-compaction ---
   const promptSourceContent = options.promptSourceContent ?? sourceContent;
-  // --- eforge:endregion plan-02-preflight-compaction ---
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
@@ -328,10 +318,8 @@ ${existingPlans}`;
     iteration++;
 
     const prompt = await buildPrompt();
-    // --- eforge:region plan-03-planner-guardrails ---
     contextGuard.assertPrompt(prompt);
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
-    // --- eforge:endregion plan-03-planner-guardrails ---
 
     if (iteration === 1) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
@@ -347,14 +335,12 @@ ${existingPlans}`;
         'planner',
         options.lane,
       )) {
-        // --- eforge:region plan-03-planner-guardrails ---
         try {
           contextGuard.observe(event);
         } catch (err) {
           attemptAbort.abort();
           throw err;
         }
-        // --- eforge:endregion plan-03-planner-guardrails ---
         if (event.type === 'agent:message') {
           if (!skipEmitted) {
             const skipReason = parseSkipBlock(event.content);
