@@ -21,6 +21,7 @@ describe('eforge-playbooks CRUD actions', () => {
       await expect(dispatch(cwd, 'show-playbook', { name: 'demo' })).resolves.toMatchObject({ kind: 'success', output: { source: { source: 'project-local' } } });
       await expect(dispatch(cwd, 'show-playbook', { name: 'demo', scope: 'project-team' })).resolves.toMatchObject({ kind: 'success', output: { source: { source: 'project-team' } } });
       await expect(dispatch(cwd, 'validate-playbook', { raw: rawPlaybook({ name: 'valid', scope: 'project-local' }) })).resolves.toMatchObject({ kind: 'success', output: { ok: true } });
+      await expect(dispatch(cwd, 'validate-playbook', { scope: 'project-team', raw: rawPlaybook({ name: 'valid', scope: 'project-local' }) })).resolves.toMatchObject({ kind: 'success', output: { ok: false, errors: [expect.stringContaining('Scope mismatch')] } });
       await expect(dispatch(cwd, 'validate-playbook', { raw: 'nope' })).resolves.toMatchObject({ kind: 'success', output: { ok: false } });
       const saved = await dispatch(cwd, 'save-playbook', { scope: 'project-local', raw: rawPlaybook({ name: 'saved', scope: 'project-local' }), overwrite: false });
       expect(saved).toMatchObject({ kind: 'success', output: { path: expect.stringContaining('saved.md') } });

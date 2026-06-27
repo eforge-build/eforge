@@ -1,26 +1,15 @@
 import { access, readFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
-import { resolve } from 'node:path';
-import {
-  analyzeAcceptanceCriteria,
-  copyPlaybookToScope,
-  formatAcDiagnostics,
-  listPlaybooks,
-  loadPlaybook,
-  parsePlaybook,
-  playbookFrontmatterSchema,
-  writePlaybook,
-  type Playbook,
-  type PlaybookEntry,
-  type PlaybookScope,
-} from '@eforge-build/input';
+import { analyzeAcceptanceCriteria, formatAcDiagnostics } from '@eforge-build/input';
 import type { ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { parsePlaybook, playbookFrontmatterSchema, type Playbook, type PlaybookScope } from './model.js';
+import { copyPlaybookToScope, listPlaybooks, loadPlaybook, resolvePlaybookPath, writePlaybook, type PlaybookEntry } from './storage-core.js';
 import { invalidField, notFound, userError, wrapUserError } from './action-errors.js';
 import type { SavePlaybookInput } from './schemas.js';
 import { omitUndefined } from './json-safe.js';
 
 export function playbookPath(ctx: ExtensionActionContext, scope: PlaybookScope, name: string): string {
-  return resolve(ctx.paths.scopeRoot(scope), 'playbooks', `${name}.md`);
+  return resolvePlaybookPath(scope, { cwd: ctx.cwd, configDir: ctx.paths.configDir }, name);
 }
 
 export async function exists(path: string): Promise<boolean> {
@@ -37,8 +26,11 @@ export async function loadExact(ctx: ExtensionActionContext, name: string, scope
   const path = playbookPath(ctx, scope, name);
   if (!await exists(path)) throw notFound(name);
   const raw = await readFile(path, 'utf-8');
-  try { return { playbook: parsePlaybook(raw), source: { source: scope, path }, shadows: [] }; }
-  catch (err) { return wrapUserError(err, `Playbook "${name}" at ${path} is invalid.`); }
+  try {
+    const playbook = parsePlaybook(raw);
+    assertRequestedPlaybookName(name, playbook.name);
+    return { playbook, source: { source: scope, path }, shadows: [] };
+  } catch (err) { return wrapUserError(err, `Playbook "${name}" at ${path} is invalid.`); }
 }
 
 export function projectEntry(entry: PlaybookEntry, includeShadowed: boolean): PlaybookEntry {
@@ -47,6 +39,16 @@ export function projectEntry(entry: PlaybookEntry, includeShadowed: boolean): Pl
 
 export function assertRequestedPlaybookName(requestedName: string, actualName: string): void {
   if (requestedName !== actualName) throw invalidField('/name', `Requested playbook name "${requestedName}" does not match loaded playbook name "${actualName}".`);
+}
+
+function assertPayloadScopeMatchesRequest(declaredScope: PlaybookScope | undefined, requestedScope: PlaybookScope): void {
+  if (declaredScope !== undefined && declaredScope !== requestedScope) {
+    throw invalidField('/scope', `Payload scope "${declaredScope}" does not match requested scope "${requestedScope}".`);
+  }
+}
+
+function assertRequiredBodyFields(playbook: Pick<Playbook, 'goal'>): void {
+  if (playbook.goal.trim().length === 0) throw userError('Playbook body requires a non-empty goal.', '/playbook/body/goal');
 }
 
 export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
@@ -63,7 +65,9 @@ export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
   let playbook: Playbook;
   if (input.raw !== undefined) {
     try { playbook = parsePlaybook(input.raw); } catch (err) { return wrapUserError(err, 'Invalid playbook markdown.'); }
+    assertPayloadScopeMatchesRequest(playbook.scope, input.scope);
   } else if (input.playbook !== undefined) {
+    assertPayloadScopeMatchesRequest(input.playbook.frontmatter.scope, input.scope);
     const frontmatter = { ...input.playbook.frontmatter, scope: input.playbook.frontmatter.scope ?? input.scope };
     const parsed = playbookFrontmatterSchema.safeParse(frontmatter);
     if (!parsed.success) throw userError(`Invalid playbook frontmatter: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
@@ -83,6 +87,7 @@ export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
     if (!parsed.success) throw userError(`Invalid playbook frontmatter: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
   }
   if (input.name !== undefined && input.name !== playbook.name) throw invalidField('/name', `Top-level name "${input.name}" does not match playbook name "${playbook.name}".`);
+  assertRequiredBodyFields(playbook);
   return { ...playbook, scope: input.scope };
 }
 

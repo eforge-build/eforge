@@ -13,7 +13,7 @@
  * ## Primitives
  *
  * - **Named-set resolution** (`resolveNamedSet`, `listNamedSet`): for artifact
- *   directories like `profiles/` and `playbooks/` where the same name can exist
+ *   directories like `profiles/` and `templates/` where the same name can exist
  *   in multiple tiers. The highest-precedence tier wins; lower tiers are recorded
  *   as shadows.
  *

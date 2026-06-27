@@ -1,6 +1,7 @@
 import { createContributionPaginationInputFields, Type, type Static } from '@eforge-build/extension-sdk';
 import {
   EforgePlanPlanningRequestedOutputSectionSchema,
+  EforgeSessionPlanIdSchema,
   ExtensionAgentTaskCancelResponseSchema,
   ExtensionAgentTaskGetResponseSchema,
   ExtensionAgentTaskIdSchema,
@@ -34,7 +35,6 @@ export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
   Type.Literal('recommendations'),
   Type.Literal('handoffDrafts'),
   Type.Literal('planDrafts'),
-  Type.Literal('playbookDraft'),
   Type.Literal('sessionPlanPatch'),
   Type.Literal('sessionPlanCreationDraft'),
 ]);
@@ -61,7 +61,7 @@ export const StartPlanningAgentTaskInputSchema = Type.Object({
   recommendationRef: Type.Optional(Type.String()),
   sourceRecommendationRef: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
-  session: Type.Optional(Type.String()),
+  session: Type.Optional(EforgeSessionPlanIdSchema),
   planningType: Type.Optional(Type.Union(PlanningTypeLiteralSchemas)),
   planningDepth: Type.Optional(Type.Union(PlanningDepthLiteralSchemas)),
   requestedOutputSections: Type.Optional(Type.Array(StartPlanningAgentRequestedOutputSectionSchema, { minItems: 1 })),
@@ -73,14 +73,14 @@ export const PreviewBacklogCurationTaskOutputSchema = BacklogCurationPreviewDeta
 export const CancelPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema, reason: Type.Optional(Type.String()) }, { additionalProperties: false });
 
 export const ApplyPlanningAgentTaskHandoffSelectionSchema = Type.Object({ index: Type.Optional(Type.Integer({ minimum: 0 })), selection: Type.Optional(PromotionSelectionInputSchema), session: Type.Optional(Type.String()), title: Type.Optional(Type.String()), profile: Type.Optional(PlanningProfileSchema) }, { additionalProperties: false });
-export const ApplyPlanningAgentTaskSessionPlanDraftSchema = Type.Object({ session: Type.String(), sections: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) }, { additionalProperties: false });
+export const ApplyPlanningAgentTaskSessionPlanDraftSchema = Type.Object({ session: EforgeSessionPlanIdSchema, sections: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) }, { additionalProperties: false });
 
 // Explicit creation-draft apply selection. The generated draft carries the
 // session, topic, planning type/depth, and sections; these optional fields let
 // the caller retarget the session and supply profile/agentProfile/openQuestions
 // metadata that the draft does not include.
 export const ApplyPlanningAgentTaskCreationDraftSelectionSchema = Type.Object({
-  session: Type.Optional(Type.String()),
+  session: Type.Optional(EforgeSessionPlanIdSchema),
   profile: Type.Optional(Type.Union([PlanningProfileSchema, Type.Null()])),
   agentProfile: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   openQuestions: Type.Optional(Type.Array(Type.String())),

@@ -149,10 +149,10 @@ describe('docs kernel boundary', () => {
         expect(contents).not.toContain('playbook`, `sessionPlan`');
       }
       if (path.endsWith('tools.ts')) {
-        expect(contents).toMatch(/Playbook and session-plan host tools/i);
-        expect(contents).toContain('eforge-playbooks');
-        expect(contents).toMatch(/optional workflow compatibility|host surfaces/i);
-        expect(contents).toContain('not kernel-owned planning capabilities');
+        expect(contents).toContain('Extension-provided workflows are discovered, inspected, and invoked through generic contribution APIs');
+        expect(contents).toContain('Hosts treat contribution IDs as opaque extension-owned identifiers');
+        expect(contents).toContain('session-plan host tools manage project-local planning artifacts separately');
+        expect(contents).not.toContain('eforge_playbook');
         expect(contents).not.toContain('create-from-playbook');
       }
     }

@@ -257,7 +257,7 @@ export function countOutputSections(result: EforgePlanPlanningDraftResult): numb
   // --- eforge:region client-engine-task-contract ---
   const planRevisionTurn = taskResult.planRevisionTurn ? 1 : 0;
   // --- eforge:endregion client-engine-task-contract ---
-  return (taskResult.recommendations ? 1 : 0) + backlogCurationDraft + planRevisionTurn + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft;
+  return (taskResult.recommendations ? 1 : 0) + backlogCurationDraft + planRevisionTurn + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft;
 }
 
 type DeferredSourceProviderSpec = NonNullable<LegacyExtensionAgentTaskStartRequest['input']['sourceProvider']>;

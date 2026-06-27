@@ -750,11 +750,10 @@ describe('planning agent task actions', () => {
     });
   });
   it('keeps non-heavy planning task list results and omits verbose completed payloads', async () => {
-    const cases: Array<{ name: string; task: ExtensionAgentTaskRecord; requestedOutputSections: Array<'sessionPlanCreationDraft' | 'planDrafts' | 'playbookDraft'>; resultKey?: string; omitted: boolean }> = [
+    const cases: Array<{ name: string; task: ExtensionAgentTaskRecord; requestedOutputSections: Array<'sessionPlanCreationDraft' | 'planDrafts'>; resultKey?: string; omitted: boolean }> = [
       { name: 'ready sessionPlanCreationDraft', task: creationDraftTask('task-creation-compact'), requestedOutputSections: ['sessionPlanCreationDraft'], resultKey: 'sessionPlanCreationDraft', omitted: false },
       { name: 'needs-input clarification', task: needsInputTask('task-needs-input-compact'), requestedOutputSections: ['sessionPlanCreationDraft'], resultKey: 'clarificationQuestions', omitted: false },
       { name: 'planDrafts', task: completedTask({ taskId: 'task-plan-drafts-compact', result: { summary: 'Drafted a plan.', assumptionsOpenQuestions: [], planDrafts: [{ title: 'Implement the feature', body: '# Plan\n\nDo the work.' }] } }), requestedOutputSections: ['planDrafts'], omitted: true },
-      { name: 'playbookDraft', task: completedTask({ taskId: 'task-playbook-compact', result: { summary: 'Drafted a playbook.', assumptionsOpenQuestions: [], playbookDraft: { name: 'planning-playbook', body: '# Playbook\n\nUse it.' } } }), requestedOutputSections: ['playbookDraft'], omitted: true },
     ];
     for (const testCase of cases) {
       await withTempProject(async (cwd) => {

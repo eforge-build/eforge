@@ -66,9 +66,9 @@ describe('normalizeBuildSource — non-session-plan paths', () => {
     expect(result.content).toBe(content);
   });
 
-  it('passes through a file in eforge/playbooks (not session-plans)', () => {
-    const sourcePath = '/project/eforge/playbooks/my-playbook.md';
-    const content = '---\nname: my-playbook\n---\n\n## Goal\n\nDo something.\n';
+  it('passes through a neutral artifact outside session-plans', () => {
+    const sourcePath = '/project/.eforge/input-artifacts/my-artifact.md';
+    const content = '---\nname: my-artifact\n---\n\n## Goal\n\nDo something.\n';
 
     const result = normalizeBuildSource({ sourcePath, content });
 

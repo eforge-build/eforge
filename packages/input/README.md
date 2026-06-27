@@ -1,42 +1,29 @@
 # @eforge-build/input
 
-Reusable build-input protocols for eforge - playbook and session-plan artifacts that compile to ordinary build source.
+Reusable domain-neutral input protocols for eforge: session plans, session-plan sets, build-source normalization, extension-aware preprocessing, and acceptance-criteria quality helpers.
 
 ## Consumers
 
 - `@eforge-build/monitor` - session-plan compatibility routes backed by input session-planning helpers, plus normalization for session-plan source paths before enqueue
-- `@eforge-build/eforge-playbooks` - first-party extension-owned playbook management/run actions backed by the pure playbook helpers
 - `@eforge-build/eforge` - in-process normalization for CLI build commands that accept session plans as input
-- Future wrapper apps that need to compile playbooks or session plans to build source independently of the daemon
+- `@eforge-build/eforge-playbooks` - first-party playbook extension code that may reuse domain-neutral acceptance-criteria quality helpers
+- Future wrapper apps and extensions that need to normalize session plans or use shared input-artifact helpers independently of the daemon
 
 ## Dependencies
 
-- Depends on `@eforge-build/scopes` for scope directory lookup and named-set resolution
 - Depends on `@eforge-build/extension-sdk` for project-local session-plan/plan-set path resolution and scoped `ctx.paths` helpers in extension input contexts
 - Does **NOT** depend on `@eforge-build/engine`
+- Does **NOT** own playbook parser, storage, compiler, or planning-seed behavior
 
 The engine consumes normalized PRD/build source; it has no knowledge of where that source originated. This keeps the engine input-agnostic.
 
 ## What's included
 
-### Playbooks
-
-Playbooks are Markdown files with YAML frontmatter encoding a reusable build intent. They resolve across all three scope tiers via `@eforge-build/scopes` named-set resolution.
-
-- `parsePlaybook(content)` - parse a playbook Markdown file
-- `serializePlaybook(playbook)` - serialize a playbook to Markdown
-- `validatePlaybook(playbook)` - validate playbook structure
-- `listPlaybooks(opts)` - list all playbooks across scope tiers with shadow annotations
-- `loadPlaybook(name, opts)` - load the highest-precedence playbook by name
-- `writePlaybook(playbook, opts)` - write a playbook to a scope directory
-- `movePlaybook(name, opts)` - move a playbook between scope tiers
-- `copyPlaybookToScope(name, opts)` - copy a playbook to a target scope
-- `playbookToBuildSource(playbook)` - compile an autonomous playbook to ordinary build source for the engine queue
-- `playbookToPlanSeed(playbook)` - extract static plan-seed data (Goal, Out of scope, Acceptance criteria, Notes) from a planning playbook. Used as a static template/scratch helper by extension-owned planning workflows. This is not the planning-playbook Run path — planning playbook runs check the eforge-plan planning capability and return generic planning entry metadata for the eforge-plan workstation, which performs active codebase investigation before creating a session plan.
-
 ### Session plans
 
-Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured eforge-plan planning entry/workstation flow. They are project-local only and compile to ordinary build source. Plans created from ready AI creation drafts may include a leading `## Executive Summary` section before readiness dimensions.
+Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured planning entry/workstation flow. They are project-local only and compile to ordinary build source. Plans created from ready AI creation drafts may include a leading `## Executive Summary` section before readiness dimensions.
+
+Session-plan frontmatter may include `agent_profile` as generic producer metadata. The field is not tied to any specific artifact domain; producers can use it to carry a selected agent runtime profile through normalization and enqueue flows.
 
 #### Lifecycle
 
@@ -92,7 +79,7 @@ All mutation helpers return a new `SessionPlan` value; they do not write to disk
 
 Session plan sets are **read-only** sibling artifacts that group related plans under a directory:
 
-```
+```text
 .eforge/session-plans/<plan-set-id>/
   plan-set.yaml          # canonical manifest (source of membership)
   umbrella.md            # optional umbrella anchor markdown
@@ -153,15 +140,21 @@ externalRefs: []
 
 This is a read-only protocol. It does **not** create, add, update, or delete plan sets; does **not** enqueue children or hand off plan sets to the build pipeline; and does **not** change `normalizeBuildSource` matching. Nested `.eforge/session-plans/<set>/<child>.md` paths pass through `normalizeBuildSource` unchanged.
 
-### Boundary normalization
+### Build-source normalization
 
 - `normalizeBuildSource(input)` - single chokepoint for session-plan handling: if a source path matches `**/.eforge/session-plans/*.md`, parses the plan and converts it to ordinary build source; other paths pass through unchanged
 
-The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match this pattern are returned unchanged.
+The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match this pattern are returned unchanged. Session-plan `agent_profile` metadata is trimmed and returned in normalized output when present.
 
-### Playbook artifact helpers
+### Extension-aware preprocessing
 
-`@eforge-build/input` exposes pure playbook artifact helpers for parsing, serialization, storage, validation, autonomous build-source compilation, and planning seed extraction. It does not export playbook run orchestration or daemon compatibility surfaces. Shipped playbook behavior is owned by the first-party `@eforge-build/eforge-playbooks` extension, which uses these helpers and performs action-level orchestration, planning-mode handoff, profile handling, and generic queue enqueue outside this package.
+This package provides generic input-preprocessing contracts and the built-in session-planning workflow adapter used by shipped eforge surfaces. Extension-owned artifact domains can compose these helpers without moving their domain parser, storage, compiler, or planning-seed behavior into `@eforge-build/input`.
+
+Playbook domain helpers live in `eforge/extensions/eforge-playbooks`, not this package.
+
+### Acceptance-criteria quality helpers
+
+Domain-neutral acceptance-criteria helpers are available for producers that need shared quality checks before handing ordinary build source to the engine. These helpers are not tied to playbooks or any other artifact domain.
 
 ### Bundled session-planning workflow adapter
 
@@ -186,12 +179,15 @@ The build engine still receives only normalized build source and has no dependen
 
 ## Boundary
 
-This package compiles input artifacts (playbooks, session plans) to ordinary build source. The engine consumes that source and has no dependency on `@eforge-build/input`. See [docs/architecture.md](../../docs/architecture.md) for the full package dependency diagram.
+This package normalizes domain-neutral input artifacts to ordinary build source. The engine consumes that source and has no dependency on `@eforge-build/input`. See [docs/architecture.md](../../docs/architecture.md) for the full package dependency diagram.
+
+Playbook parser, storage, compiler, and planning-seed behavior are owned by the first-party `eforge/extensions/eforge-playbooks` extension.
 
 ## Out of scope
 
 - No daemon HTTP client - use `@eforge-build/client` for daemon-backed flows
 - No engine queue knowledge - this package normalizes input before the engine sees it
+- No playbook parser, storage, compiler, or planning-seed helpers
 - No new CRUD or tool API surface - wire-protocol additions belong in `@eforge-build/client`
 - No conversational planning logic - eforge-plan contribution/workstation surfaces own structured planning conversations
 

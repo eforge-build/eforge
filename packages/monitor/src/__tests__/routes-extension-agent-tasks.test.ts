@@ -262,6 +262,30 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('fails a task whose submitted result carries a removed draft field', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-removed-field-'));
+    const removedField = ['play', 'book', 'Draft'].join('');
+    const malformedResult = {
+      summary: 'Submitted removed output.',
+      assumptionsOpenQuestions: [],
+      [removedField]: { name: 'Draft', body: 'Body.' },
+    };
+    const harness = new SubmitHarness(malformedResult);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startAgentTaskServer(cwd, db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Plan generically', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
+      const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
+      expect(failed.status).toBe('failed');
+      expect(failed.result).toBeUndefined();
+      expect(failed.errorMessage).toMatch(/schema|Expected|Union/i);
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('writes a running record before queueing the harness call', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-service-'));
     await installPlanningExtension(cwd);

@@ -93,5 +93,5 @@ When a profile name is resolved, the profile file is looked up local-first, then
 |-------|----------------|
 | `/eforge:profile-new` | User wants to create a new named profile |
 | `/eforge:config` | User wants to view or edit `eforge/config.yaml` (the team default fallback) |
-| `/eforge:playbook` | User wants to create, run, or manage reusable automation playbooks |
+| `mcp__eforge__eforge_extension_contribution` | User wants to discover or invoke workflows provided by loaded extensions |
 | `/eforge:status` | User wants to check current build status |

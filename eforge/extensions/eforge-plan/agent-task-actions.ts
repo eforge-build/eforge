@@ -196,8 +196,7 @@ function shouldOmitTaskResultFromList(result: unknown): boolean {
   const record = result as Record<string, unknown>;
   return record.backlogCurationDraft !== undefined
     || record.recommendations !== undefined
-    || record.planDrafts !== undefined
-    || record.playbookDraft !== undefined;
+    || record.planDrafts !== undefined;
 }
 export const removePlanningAgentTaskAction = defineExtensionAction({
   id: 'remove-planning-agent-task',

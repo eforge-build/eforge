@@ -1,5 +1,5 @@
 /**
- * Shared Pi landing-gate helper for eforge_build and /eforge:playbook run.
+ * Shared Pi landing-gate helper for eforge build landing selection.
  *
  * Canonical landing action values: pr, merge, leave.
  * These are sent directly as landingAction in request bodies.
@@ -9,11 +9,7 @@
  *
  * Build mode (command path, no explicit override): always shows the full
  * landing selector with "Use project default" so the user can choose explicitly.
- *
- * Playbook mode: always shows the full landing selector with "Use project
- * default" before enqueueing. If the user selects `merge` on an unsafe trunk,
- * falls through to the same trunk remediation choices.
- */
+ * */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
@@ -126,8 +122,7 @@ async function applyConfigUpdate(
  * project-level config). Returns `{ landingAction }` for explicit selections.
  * Returns `{ cancelled: true }` when the user cancels.
  *
- * Exported for direct use where neither the build nor playbook gate-specific
- * wrapper logic is needed.
+ * Exported for direct use where direct build gate wrapper logic is not needed.
  */
 export async function promptForLandingSelection(
   pi: ExtensionAPI,
@@ -301,26 +296,4 @@ export async function promptForBuildLandingGate(
   }
 
   return { landingAction: choice as LandingAction };
-}
-
-// ---------------------------------------------------------------------------
-// Playbook mode
-// ---------------------------------------------------------------------------
-
-/**
- * Playbook landing gate.
- *
- * Always shows the full landing selector with "Use project default".
- * Delegates to `promptForLandingSelection` for consistent policy rendering.
- *
- * Returns `{}` for "Use project default" (daemon inherits project config).
- * Returns `{ landingAction }` for explicit selections.
- * Returns `{ cancelled: true }` when the user cancels.
- */
-export async function promptForPlaybookLandingGate(
-  pi: ExtensionAPI,
-  ctx: UIContext,
-  signal?: AbortSignal,
-): Promise<LandingGateResult> {
-  return promptForLandingSelection(pi, ctx, signal);
 }

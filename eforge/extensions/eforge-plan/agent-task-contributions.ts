@@ -78,7 +78,7 @@ function planningContribution(id: string, title: string, description: string): P
 }
 
 export const eforgePlanPlanningAgentTasks = [
-  planningContribution(PLANNING_DRAFT_TASK_ID, 'Draft eforge-plan planning content', 'Draft recommendation, handoff, plan, playbook, patch, or creation content for eforge-plan.'),
+  planningContribution(PLANNING_DRAFT_TASK_ID, 'Draft eforge-plan planning content', 'Draft recommendation, handoff, plan, patch, or creation content for eforge-plan.'),
   planningContribution(SESSION_PLAN_CREATION_TASK_ID, 'Create an eforge-plan session-plan draft', 'Draft a ready session-plan creation payload using eforge-plan readiness contracts.'),
   planningContribution(PLAN_REVISION_TASK_ID, 'Draft an eforge-plan plan revision turn', 'Draft a bounded revision turn for an existing flat session plan.'),
   planningContribution(RECOMMENDATION_REFRESH_TASK_ID, 'Refresh eforge-plan recommendations', 'Refresh recommendation-only planning output for the current eforge-plan recommendation source.'),

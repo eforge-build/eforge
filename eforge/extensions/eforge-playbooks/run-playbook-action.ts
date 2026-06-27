@@ -1,5 +1,6 @@
 import { ExtensionActionInputValidationError, ExtensionActionUserError, defineExtensionAction } from '@eforge-build/extension-sdk';
-import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics, playbookToBuildSource, playbookToPlanSeed } from '@eforge-build/input';
+import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } from '@eforge-build/input';
+import { playbookToBuildSource, playbookToPlanSeed } from './compile.js';
 import { RunPlaybookInputSchema, RunPlaybookOutputSchema } from './schemas.js';
 import { invalidField, userError } from './action-errors.js';
 import { loadExact } from './storage.js';
@@ -18,7 +19,12 @@ export const runPlaybookAction = defineExtensionAction({
     if (input.mode !== undefined && input.mode !== playbook.mode) {
       throw invalidField('/mode', `Requested mode "${input.mode}" does not match playbook mode "${playbook.mode}".`);
     }
-    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: input.profile ?? playbook.profile }));
+    const profileOverride = input.profile?.trim();
+    const requestedProfile = profileOverride && profileOverride.length > 0 ? profileOverride : undefined;
+    if (playbook.mode === 'planning') {
+      rejectPlanningQueueOptions(input);
+      return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: requestedProfile ?? playbook.profile }));
+    }
 
     const compiled = playbookToBuildSource(playbook);
     const quality = analyzeAcceptanceCriteriaInBody(compiled.source);
@@ -26,7 +32,7 @@ export const runPlaybookAction = defineExtensionAction({
     try {
       const enqueued = await ctx.buildQueue.enqueue(omitUndefined({
         source: compiled.source,
-        profile: input.profile ?? compiled.profile,
+        profile: requestedProfile ?? compiled.profile,
         postMerge: compiled.postMerge,
         afterQueueId: input.afterQueueId,
         landingAction: input.landingAction,
@@ -42,3 +48,9 @@ export const runPlaybookAction = defineExtensionAction({
     }
   },
 });
+
+function rejectPlanningQueueOptions(input: { afterQueueId?: unknown; landingAction?: unknown; landingAutoMerge?: unknown }): void {
+  if (input.afterQueueId !== undefined) throw invalidField('/afterQueueId', 'afterQueueId is only supported for autonomous playbooks.');
+  if (input.landingAction !== undefined) throw invalidField('/landingAction', 'landingAction is only supported for autonomous playbooks.');
+  if (input.landingAutoMerge !== undefined) throw invalidField('/landingAutoMerge', 'landingAutoMerge is only supported for autonomous playbooks.');
+}
