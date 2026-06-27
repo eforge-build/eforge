@@ -23,7 +23,7 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 ## Compile phase
 
-The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, and writes the plan set and dependency graph.
+The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
 
 ## Daemon
 

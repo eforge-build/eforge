@@ -90,7 +90,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
 3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation.
-4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
+4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 7. **Merge** - Completed plans merge back to your branch in topological order.
@@ -137,11 +137,11 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
-The compile phase produces `orchestration.yaml` - a dependency graph over the plans. The orchestrator launches plans as soon as their dependencies have merged, not in fixed waves. Since agent execution is IO-bound, all ready plans run immediately in parallel.
+The compile phase produces `orchestration.yaml` - a dependency graph over the plans. Non-skipped compiles fail closed if `orchestration.yaml` or its referenced plan files are missing, invalid, mismatched, or empty. The orchestrator launches plans as soon as their dependencies have merged, not in fixed waves. Since agent execution is IO-bound, all ready plans run immediately in parallel.
 
 ## Normalized build-source boundary
 
@@ -3979,7 +3979,7 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 ## Compile phase
 
-The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, and writes the plan set and dependency graph.
+The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
 
 ## Daemon
 
@@ -5103,7 +5103,7 @@ Total variants: 231
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
-| `planning:scope-context:failure` | `failure` |
+| `planning:scope-context:failure` | `failure`, `runId` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

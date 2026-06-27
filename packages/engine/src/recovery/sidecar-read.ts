@@ -11,6 +11,9 @@ import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
 
+const SUPPORTED_SCHEMA_VERSIONS = [3, 4] as const;
+type SupportedRecoverySidecarSchemaVersion = typeof SUPPORTED_SCHEMA_VERSIONS[number];
+
 export interface RecoverySidecarProjection {
   sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>;
   verdict: RecoveryVerdict;
@@ -108,7 +111,7 @@ export function projectBuildFailureSummary(sidecar: RecoveryVerdictSidecar): Bui
 
 function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence> {
   const obj = requireRecord(value, `Recovery sidecar JSON is invalid${suffix(prdId)}`);
-  if (obj.schemaVersion !== 3) throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected 3`);
+  const schemaVersion = validateSchemaVersion(obj.schemaVersion, prdId);
   if (obj['resume' + 'Eligibility'] !== undefined) throw new Error(`Recovery sidecar contains legacy eligibility data${suffix(prdId)}; regenerate the sidecar with continue-and-repair support`);
   const generatedAt = requireString(obj.generatedAt, 'generatedAt', prdId);
   const sidecarPrdId = requireString(obj.prdId, 'prdId', prdId);
@@ -120,7 +123,7 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
   if (boundedEvidence.identity.prdId !== sidecarPrdId) throw new Error(`Recovery sidecar boundedEvidence.identity.prdId does not match top-level prdId${suffix(prdId)}`);
   if (boundedEvidence.identity.setName !== setName) throw new Error(`Recovery sidecar boundedEvidence.identity.setName does not match top-level setName${suffix(prdId)}`);
   return {
-    schemaVersion: 3,
+    schemaVersion,
     generatedAt,
     prdId: sidecarPrdId,
     setName,
@@ -131,6 +134,11 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
+}
+
+function validateSchemaVersion(value: unknown, prdId?: string): SupportedRecoverySidecarSchemaVersion {
+  if (SUPPORTED_SCHEMA_VERSIONS.some((version) => value === version)) return value as SupportedRecoverySidecarSchemaVersion;
+  throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected ${SUPPORTED_SCHEMA_VERSIONS.join(' or ')}`);
 }
 
 function validateSidecarVerdict(value: unknown, prdId?: string): RecoveryVerdict {

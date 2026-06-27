@@ -4,7 +4,7 @@ eforge is **library-first**. The engine is a pure TypeScript library that commun
 
 ## Kernel and extension boundary
 
-The engine is the build-engine kernel. It owns normalized build-spec intake, deterministic compile preflight and prompt-source compaction, dependency-aware branch/worktree orchestration, the compile/build execution loop, conservative validation and review gates, typed failure/recovery dispatch, and baseline console observability/control events. The engine consumes normalized build source and emits typed `EforgeEvent`s; it does not own the authoring experience that produced that source.
+The engine is the build-engine kernel. It owns normalized build-spec intake, deterministic compile preflight and prompt-source compaction, persisted artifact validation, dependency-aware branch/worktree orchestration, the compile/build execution loop, conservative validation and review gates, typed failure/recovery dispatch, and baseline console observability/control events. The engine consumes normalized build source and emits typed `EforgeEvent`s; it does not own the authoring experience that produced that source.
 
 Input surfaces and richer workflow UX sit outside the engine kernel. Playbooks, session plans, wrapper apps, CLI prompts, and PRD files are normalized before they reach the queue; planning workbenches, toolbelts, shell hooks, policy modules, host integrations, and native extensions can shape how work is prepared or governed without becoming engine internals. This boundary keeps the kernel reusable while letting extensions and hosts adapt eforge to different teams and workflows.
 
@@ -152,7 +152,7 @@ Prefixes carry scope unambiguously:
 | `session:*` | Run-wide envelope (`sessionId`) | Session lifecycle boundaries |
 | `phase:*` | Per-command phase (`runId`) | Phase lifecycle boundaries |
 | `config:*` | Run-wide | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
-| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, preflight risk, scope/context failure, error, and load-time `planning:warning` diagnostics. The `planning:complete` event also carries an optional `planConfigs: Array<{ id; build; review }>` field with per-plan build stage and review profile configs - persisted in SQLite so the monitor can reconstruct stage breakdowns after worktrees are cleaned up. The `planning:pipeline` event carries the planner's scope classification, compile pipeline, default build stages, default review profile, and rationale. `planning:preflight` carries bounded compile-risk representatives; `planning:scope-context:failure` persists bounded compile scope/context failure evidence. Continue-repair sessions do not replay `planning:*` history. |
+| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, preflight risk, scope/context failure, artifact-validation error, and load-time `planning:warning` diagnostics. The `planning:complete` event also carries an optional `planConfigs: Array<{ id; build; review }>` field with per-plan build stage and review profile configs - persisted in SQLite so the monitor can reconstruct stage breakdowns after worktrees are cleaned up. The `planning:pipeline` event carries the planner's scope classification, compile pipeline, default build stages, default review profile, and rationale. `planning:preflight` carries bounded compile-risk representatives; `planning:scope-context:failure` persists bounded compile scope/context failure evidence. Continue-repair sessions do not replay `planning:*` history. |
 | `plan:*` | Per-plan artifact lifecycle (`planId`) | Per-plan build (`plan:build:*`), per-plan merge (`plan:merge:*`), per-plan schedule readiness (`plan:schedule:ready`) |
 | `build:resume:*` | Continue-repair session lifecycle | Continue-and-repair eligibility, seeded state, recovered artifact projection (`build:resume:artifacts`), and completion. The artifact projection is persisted as session-scoped metadata so monitors can render recovered source and plan rows without duplicating historical planning, agent, token, or cost activity. |
 | `merge:finalize:*` | Run-wide feature-branch finalization | Final merge of the feature branch to the base branch (`merge:finalize:start`, `merge:finalize:complete`, `merge:finalize:skipped`) |
@@ -174,7 +174,7 @@ The CLI composes async generator middleware around the engine's event stream - t
 
 The engine uses a two-phase pipeline. Each phase is a sequence of named stages - async generators registered in a global stage registry.
 
-- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected. Planner-family agents apply prompt and live context-budget guardrails after prompt assembly and during non-final usage updates, so oversized compile context can stop through the typed scope/context failure path before a provider hard context-window failure.
+- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected. Planner-family agents apply prompt and live context-budget guardrails after prompt assembly and during non-final usage updates, so oversized compile context can stop through the typed scope/context failure path before a provider hard context-window failure. After the compile pipeline finishes, the engine validates persisted plan-set artifacts before reporting compile success.
 - **Build stages** run once per plan. The stage list is per-plan, stored in `orchestration.yaml`.
 
 ```mermaid
@@ -205,7 +205,15 @@ graph LR
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
 | `module-planning` | Writes detailed plans for each module using architecture context |
 | `cohesion-review-cycle` | Reviews cross-module plan cohesion for consistency and integration gaps |
-| `compile-expedition` | Compiles module plans into final plan files and orchestration |
+| `compile-expedition` | Validates expedition module files, then compiles module plans into final plan files and orchestration |
+
+### Compile artifact validation
+
+Compile success is gated on persisted artifacts, not only on planner events. For non-skipped compile runs, `orchestration.yaml` must exist, parse successfully, contain the injected effective compile pipeline, and reference a valid plan set. Every referenced plan file must exist under the plan-set directory, parse as a `PlanFile`, match the orchestration entry's `id` and branch, and contain a non-empty body. The engine reloads `ctx.plans` from these validated persisted plan files before the no-review artifact commit path.
+
+Artifact-validation failures fail closed: the compile phase emits `planning:error` and ends with `phase:end` status `failed` using a bounded summary. The summary shape is the client-owned `CompileArtifactSummary`, shared with compile scope/context recovery evidence, so consumers do not need a separate engine-defined wire contract. A `planning:skip` compile remains a valid terminal path and does not require plan artifacts.
+
+Expedition compilation has an additional stage-boundary check. Before deterministic expedition compilation, the stage parses the expedition `index.yaml`, checks that module IDs match the architecture/module context, and verifies each `modules/<id>.md` file exists with non-whitespace content. After compilation, the same persisted-artifact success gate runs before expedition completion events are emitted.
 
 ### Build stages
 

@@ -4835,6 +4835,9 @@
               "const": "planning:scope-context:failure",
               "type": "string"
             },
+            "runId": {
+              "type": "string"
+            },
             "failure": {
               "type": "object",
               "required": [
@@ -5179,7 +5182,7 @@
                       "type": "boolean"
                     },
                     "attempt": {
-                      "minimum": 1,
+                      "minimum": 0,
                       "type": "integer"
                     },
                     "maxAttempts": {
@@ -19879,6 +19882,9 @@
                             "const": "planning:scope-context:failure",
                             "type": "string"
                           },
+                          "runId": {
+                            "type": "string"
+                          },
                           "failure": {
                             "type": "object",
                             "required": [
@@ -20223,7 +20229,7 @@
                                     "type": "boolean"
                                   },
                                   "attempt": {
-                                    "minimum": 1,
+                                    "minimum": 0,
                                     "type": "integer"
                                   },
                                   "maxAttempts": {

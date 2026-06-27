@@ -10,6 +10,7 @@ import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-bui
 import { safeParseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
+import { buildRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-payload';
 import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
@@ -90,6 +91,29 @@ describe('writeRecoverySidecar', () => {
     expect(JSON.stringify(parsed)).not.toContain(['suggested', 'Successor', 'Prd'].join(''));
     expect(parsed.generatedAt).toBeDefined();
     expect(typeof parsed.generatedAt).toBe('string');
+  });
+
+  it('uses schemaVersion: 4 for compile-scope-context recovery options', () => {
+    const payload = buildRecoverySidecarPayload({
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict()!,
+      recoveryOptions: [{
+        kind: 'compile-scope-context',
+        action: 'bounded-decomposition',
+        recommended: true,
+        eligible: true,
+        reason: 'decompose oversized compile scope',
+        attempted: false,
+        attempt: 0,
+        maxAttempts: 1,
+        source: 'provider',
+        failureKind: 'context-window',
+      }],
+    });
+
+    expect(payload.schemaVersion).toBe(4);
+    expect(parseRecoverySidecarPayload(JSON.stringify(payload)).schemaVersion).toBe(4);
   });
 
   it('markdown includes verdict, plan table, and landed commits', async () => {

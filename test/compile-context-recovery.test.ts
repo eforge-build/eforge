@@ -95,6 +95,15 @@ describe('compile context recovery', () => {
     expect(ctx.compileScopeRecovery?.retryAsExpeditionAttempts).toBe(0);
   });
 
+  it('does not prefer repair-existing-artifacts when artifacts fail final validation', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
+    await writeValidPlanSet(ctx);
+    ctx.pipeline = { ...ctx.pipeline, compile: ['planner'] };
+    const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
+    expect(failure.recovery.action).not.toBe('repair-existing-artifacts');
+    expect(failure.artifacts).toMatchObject({ validPlanCount: 1, invalidPlanCount: 1, missingPlanFileCount: 0 });
+  });
+
   it('builds terminal events and sidecar options', async () => {
     const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'expedition' } });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'module-planner', explanation: 'context window exceeded' });

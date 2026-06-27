@@ -77,7 +77,7 @@ Total variants: 231
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
-| `planning:scope-context:failure` | `failure` |
+| `planning:scope-context:failure` | `failure`, `runId` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

@@ -83,6 +83,9 @@ import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type Comp
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
 import { CompileScopeContextError } from './compile-resilience/context-guard.js';
 // --- eforge:endregion plan-04-context-recovery ---
+// --- eforge:region plan-05-artifact-validation ---
+import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
+// --- eforge:endregion plan-05-artifact-validation ---
 
 const exec = promisify(execFile);
 
@@ -332,12 +335,15 @@ export class EforgeEngine {
   }
 
   /**
-   * Plan: explore codebase, assess scope, write planning artifacts.
+   * Plan: explore codebase, assess scope, write and validate planning artifacts.
    *
    * The planner explores and assesses scope. Based on the assessment:
    * - errand/excursion: planner generates plan files + orchestration.yaml directly
    * - expedition: planner generates architecture.md + index.yaml + module list,
    *   then engine runs module planners and compiles plan files
+   *
+   * Non-skipped compiles report success only after persisted orchestration and
+   * plan files validate.
    */
   async *compile(source: string, options: Partial<CompileOptions> = {}): AsyncGenerator<EforgeEvent> {
     const runId = randomUUID();
@@ -450,6 +456,20 @@ export class EforgeEngine {
 
       // Run compile pipeline
       yield* runCompilePipeline(ctx);
+
+      // --- eforge:region plan-05-artifact-validation ---
+      const artifactValidation = await validateCompileArtifacts(ctx);
+      for (const warning of artifactValidation.warnings) {
+        yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
+      }
+      if (!artifactValidation.ok) {
+        status = 'failed';
+        summary = artifactValidation.message;
+        yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: artifactValidation.message };
+        return;
+      }
+      ctx.plans = artifactValidation.plans;
+      // --- eforge:endregion plan-05-artifact-validation ---
 
       // If compile pipeline didn't produce plans and there's no plan-review-cycle
       // in the compile stages, commit artifacts here

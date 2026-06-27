@@ -9,6 +9,7 @@ import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
 
 const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT = 4;
 const BULLET_LIMIT = 12;
 const BULLET_CHARS = 500;
 const ERROR_CHARS = 1_000;
@@ -32,7 +33,7 @@ export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayload
   const recoveryOptions = recoveryOptionsFor(options.continueRepairEligibility, options.recoveryOptions);
   const report = buildReport(options.summary, options.verdict, boundedEvidence, options.continueRepairEligibility, recoveryOptions);
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: schemaVersionForRecoveryOptions(recoveryOptions),
     generatedAt,
     prdId: options.prdId,
     setName: options.summary.setName,
@@ -202,6 +203,12 @@ function recoveryOptionsFor(
     recommended: true,
     reason: 'Compiled plan artifacts are eligible for continue-and-repair.',
   }];
+}
+
+function schemaVersionForRecoveryOptions(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): number {
+  return recoveryOptions?.some((option) => option.kind === 'compile-scope-context') === true
+    ? SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT
+    : SCHEMA_VERSION;
 }
 
 function hasRecommendedContinueRepairOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): boolean {

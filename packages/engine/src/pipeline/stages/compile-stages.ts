@@ -24,7 +24,7 @@ import { composePipeline, type PipelineComposerOptions } from '../../agents/pipe
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig } from '../../plan.js';
 import { runParallel, type ParallelTask } from '../../concurrency.js';
-import type { ResolvedAgentConfig, BuildStageSpec, ReviewProfileConfig } from '../../config.js';
+import type { ResolvedAgentConfig } from '../../config.js';
 
 import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
@@ -45,6 +45,9 @@ import { compileContextGuardOptions, CompileScopeContextError } from '../../comp
 // --- eforge:region plan-04-context-recovery ---
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
 // --- eforge:endregion plan-04-context-recovery ---
+// --- eforge:region plan-05-artifact-validation ---
+import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
+// --- eforge:endregion plan-05-artifact-validation ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -559,8 +562,13 @@ registerCompileStage({
   // Only runs when expedition modules are detected
   if (ctx.expeditionModules.length === 0) return;
 
+  // --- eforge:region plan-05-artifact-validation ---
+  const moduleValidation = await validateExpeditionModuleInputs(ctx);
+  if (!moduleValidation.ok) throw new Error(moduleValidation.message);
+  // --- eforge:endregion plan-05-artifact-validation ---
+
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
+  await compileExpedition(ctx.cwd, ctx.planSetName, ctx.moduleBuildConfigs, ctx.config.plan.outputDir);
 
   // Write the full pipeline composition and backfill per-plan build/review from
   // defaults for any module whose planner didn't emit a <build-config> block.
@@ -568,14 +576,15 @@ registerCompileStage({
   const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
   await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch, ctx.diffBaseRef);
 
-  // Parse the injected orchestration config to derive per-plan build + review for durable storage.
-  let expeditionPlanConfigs: Array<{ id: string; build: BuildStageSpec[]; review: ReviewProfileConfig }> | undefined;
-  try {
-    const orchConfig = await parseOrchestrationConfig(orchYamlPath);
-    expeditionPlanConfigs = orchConfig.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
-  } catch {
-    // Graceful degradation: if parsing fails, omit planConfigs.
+  // --- eforge:region plan-05-artifact-validation ---
+  const artifactValidation = await validateCompileArtifacts(ctx);
+  for (const warning of artifactValidation.warnings) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
   }
+  if (!artifactValidation.ok) throw new Error(artifactValidation.message);
+  const plans = artifactValidation.plans;
+  const expeditionPlanConfigs = artifactValidation.orchestration?.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
+  // --- eforge:endregion plan-05-artifact-validation ---
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
   yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans, ...(expeditionPlanConfigs && { planConfigs: expeditionPlanConfigs }) };

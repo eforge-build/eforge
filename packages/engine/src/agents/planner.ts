@@ -329,7 +329,12 @@ ${existingPlans}`;
 
     const prompt = await buildPrompt();
     // --- eforge:region plan-03-planner-guardrails ---
-    contextGuard.assertPrompt(prompt);
+    try {
+      contextGuard.assertPrompt(prompt);
+    } catch (err) {
+      options.abortController?.abort();
+      throw err;
+    }
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
     // --- eforge:endregion plan-03-planner-guardrails ---
 

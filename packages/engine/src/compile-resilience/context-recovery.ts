@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import type { EforgeEvent, CompileArtifactSummary, CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure } from '../events.js';
+import {
+  MAX_COMPILE_RISK_LIST_ITEMS,
+  type CompileArtifactSummary,
+  type CompilePreflightRisk,
+  type CompileRecoveryAction,
+  type CompileScopeContextFailure,
+  type EforgeEvent,
+} from '../events.js';
 import type { RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import type { PipelineContext } from '../pipeline/types.js';
-import { parseOrchestrationConfig, parsePlanFile } from '../plan.js';
 import { estimateCompilePreflightRisk } from './preflight.js';
 import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
+import { validateCompileArtifacts } from './artifact-validation.js';
 import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
 export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
 
@@ -31,7 +36,6 @@ export interface CompileScopeContextFailureInput {
 }
 
 const MAX_REASON_BYTES = 1000;
-const MAX_ARTIFACT_FILE_NAME_BYTES = 2000;
 const EXPEDITION_COMPILE = ['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
 
 export async function toCompileScopeContextError(
@@ -154,42 +158,13 @@ export function compileScopeTerminalFailureEvent(input: { runId: string; failure
 }
 
 export async function summarizeCompileArtifactsForRecovery(ctx: PipelineContext): Promise<CompileArtifactSummary> {
-  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  const orchPath = join(planDir, 'orchestration.yaml');
-  if (!existsSync(orchPath)) return emptyArtifactSummary(false);
-  let validPlanCount = 0;
-  let invalidPlanCount = 0;
-  let missingPlanFileCount = 0;
-  const missingPlanFiles: string[] = [];
-  const invalidPlanFiles: string[] = [];
-  try {
-    const orch = await parseOrchestrationConfig(orchPath);
-    for (const plan of orch.plans) {
-      const file = join(planDir, `${plan.id}.md`);
-      if (!existsSync(file)) {
-        missingPlanFileCount++;
-        missingPlanFiles.push(boundedArtifactFileName(`${plan.id}.md`));
-        continue;
-      }
-      try {
-        await parsePlanFile(file, ctx.config.agents?.tiers);
-        validPlanCount++;
-      } catch {
-        invalidPlanCount++;
-        invalidPlanFiles.push(boundedArtifactFileName(`${plan.id}.md`));
-      }
-    }
-  } catch {
-    invalidPlanCount++;
-    invalidPlanFiles.push('orchestration.yaml');
-  }
+  const result = await validateCompileArtifacts(ctx);
+  if (result.ok) return result.summary;
+  if (!result.summary.orchestrationExists || result.summary.invalidPlanCount > 0 || result.summary.missingPlanFileCount > 0) return result.summary;
   return {
-    orchestrationExists: true,
-    validPlanCount,
-    invalidPlanCount,
-    missingPlanFileCount,
-    missingPlanFiles: missingPlanFiles.slice(0, 12),
-    invalidPlanFiles: invalidPlanFiles.slice(0, 12),
+    ...result.summary,
+    invalidPlanCount: 1,
+    invalidPlanFiles: ['orchestration.yaml', ...result.summary.invalidPlanFiles].slice(0, MAX_COMPILE_RISK_LIST_ITEMS),
   };
 }
 
@@ -251,14 +226,6 @@ function ensureCompileScopeRecoveryState(ctx: PipelineContext): CompileScopeReco
   const created: CompileScopeRecoveryState = { sourceHash, retryAsExpeditionAttempts: 0, maxRetryAsExpeditionAttempts: 1, attemptedSourceHashes: [] };
   ctx.compileScopeRecovery = created;
   return created;
-}
-
-function emptyArtifactSummary(orchestrationExists: boolean): CompileArtifactSummary {
-  return { orchestrationExists, validPlanCount: 0, invalidPlanCount: 0, missingPlanFileCount: 0, missingPlanFiles: [], invalidPlanFiles: [] };
-}
-
-function boundedArtifactFileName(fileName: string): string {
-  return capUtf8(fileName, MAX_ARTIFACT_FILE_NAME_BYTES);
 }
 
 function capUtf8(text: string, maxBytes: number): string {
