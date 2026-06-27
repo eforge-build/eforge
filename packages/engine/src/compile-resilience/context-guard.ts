@@ -1,4 +1,4 @@
-import type { EforgeEvent, CompilePreflightRisk, CompileScopeContextFailure } from '../events.js';
+import type { EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk, CompileScopeContextFailure } from '../events.js';
 
 export interface CompileContextGuardLimits {
   maxPromptBytes: number;
@@ -11,6 +11,7 @@ export interface CompileContextGuardOptions {
   stage: 'pipeline-composer' | 'planner' | 'module-planner';
   risk?: CompilePreflightRisk;
   limits?: Partial<CompileContextGuardLimits>;
+  guardDiagnostics?: CompileContextGuardDiagnostics;
 }
 
 const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
@@ -43,7 +44,7 @@ export function createCompileContextGuard(options?: CompileContextGuardOptions):
   let sawFinalUsage = false;
 
   function fail(reason: string): never {
-    throw new CompileScopeContextError(buildFailure({ stage, limits, risk: options?.risk, observed, reason }));
+    throw new CompileScopeContextError(buildFailure({ stage, limits, risk: options?.risk, observed, reason, guardDiagnostics: options?.guardDiagnostics }));
   }
 
   return {
@@ -107,8 +108,9 @@ export function compileContextGuardOptions(input: {
   stage: CompileContextGuardOptions['stage'];
   risk?: CompilePreflightRisk;
   limits?: Partial<CompileContextGuardLimits>;
+  guardDiagnostics?: CompileContextGuardDiagnostics;
 }): CompileContextGuardOptions {
-  return { stage: input.stage, risk: input.risk, limits: input.limits };
+  return { stage: input.stage, risk: input.risk, limits: input.limits, guardDiagnostics: input.guardDiagnostics };
 }
 
 function buildFailure(input: {
@@ -117,6 +119,7 @@ function buildFailure(input: {
   limits: CompileContextGuardLimits;
   observed: { inputTokens: number; outputTokens: number; turns: number; promptBytes: number };
   reason: string;
+  guardDiagnostics?: CompileContextGuardDiagnostics;
 }): CompileScopeContextFailure {
   const explanation = capUtf8([
     `Planner-family context budget exceeded at stage=${input.stage}.`,
@@ -132,6 +135,7 @@ function buildFailure(input: {
     stage: input.stage,
     explanation,
     ...(input.risk && { risk: input.risk }),
+    ...(input.guardDiagnostics && { guardDiagnostics: input.guardDiagnostics }),
     observed: {
       inputTokens: Math.max(0, Math.floor(input.observed.inputTokens)),
       outputTokens: Math.max(0, Math.floor(input.observed.outputTokens)),

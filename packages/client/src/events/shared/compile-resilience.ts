@@ -18,6 +18,7 @@ function utf8ByteLength(value: string): number {
 const BoundedStringSchema = Type.String({ maxLength: MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH });
 const BoundedStringListSchema = Type.Array(BoundedStringSchema, { maxItems: MAX_COMPILE_RISK_LIST_ITEMS });
 const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
+const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
 const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
 export const CompileRiskLevelSchema = Type.Union([
@@ -92,6 +93,32 @@ export const CompileArtifactSummarySchema = Type.Object({
   invalidPlanFiles: BoundedStringListSchema,
 });
 
+export const CompileContextGuardLimitsSchema = Type.Object({
+  maxPromptBytes: PositiveIntegerSchema,
+  maxObservedInputTokens: PositiveIntegerSchema,
+  maxObservedTurns: Type.Optional(PositiveIntegerSchema),
+  maxExplanationBytes: PositiveIntegerSchema,
+});
+
+export const CompileContextGuardMetadataSourceSchema = Type.Union([
+  Type.Literal('registry'),
+  Type.Literal('builtin'),
+  Type.Literal('synthetic'),
+  Type.Literal('fallback'),
+]);
+
+export const CompileContextGuardDiagnosticsSchema = Type.Object({
+  provider: Type.Optional(Type.String()),
+  modelId: Type.Optional(Type.String()),
+  metadataSource: CompileContextGuardMetadataSourceSchema,
+  fallbackReason: Type.Optional(BoundedStringSchema),
+  contextWindow: Type.Optional(PositiveIntegerSchema),
+  outputReserveTokens: PositiveIntegerSchema,
+  overheadReserveTokens: PositiveIntegerSchema,
+  safetyMargin: Type.Number({ exclusiveMinimum: 0, maximum: 1 }),
+  limits: CompileContextGuardLimitsSchema,
+});
+
 export const CompileScopeContextFailureSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
@@ -110,6 +137,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     turns: Type.Optional(NonNegativeIntegerSchema),
     promptBytes: Type.Optional(NonNegativeIntegerSchema),
   })),
+  guardDiagnostics: Type.Optional(CompileContextGuardDiagnosticsSchema),
   recovery: Type.Object({
     action: CompileRecoveryActionSchema,
     eligible: Type.Boolean(),
@@ -145,6 +173,9 @@ export type CompileScopeContextSource = Static<typeof CompileScopeContextSourceS
 export type CompileScopeContextFailureKind = Static<typeof CompileScopeContextFailureKindSchema>;
 export type CompilePreflightRisk = Static<typeof CompilePreflightRiskSchema>;
 export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>;
+export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
+export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
+export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
 export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;

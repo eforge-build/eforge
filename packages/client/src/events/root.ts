@@ -3,6 +3,9 @@ import { EventEnvelopeSchema } from './envelope.js';
 import { EforgeEventVariantsSchema } from './variants.js';
 import {
   CompileArtifactSummarySchema,
+  CompileContextGuardDiagnosticsSchema,
+  CompileContextGuardLimitsSchema,
+  CompileContextGuardMetadataSourceSchema,
   CompilePipelineScopeSchema,
   CompilePreflightRiskSchema,
   CompileRecoveryActionSchema,
@@ -114,6 +117,9 @@ export type CompileRecoveryAction = Static<typeof CompileRecoveryActionSchema>;
 export type CompilePipelineScope = Static<typeof CompilePipelineScopeSchema>;
 export type CompilePreflightRisk = Static<typeof CompilePreflightRiskSchema>;
 export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>;
+export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
+export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
+export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
 export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;

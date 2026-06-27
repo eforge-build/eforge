@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { classifyAgentTerminalSubtype } from '@eforge-build/engine/harness';
-import type { CompilePreflightRisk } from '@eforge-build/engine/events';
+import type { CompileContextGuardDiagnostics, CompilePreflightRisk } from '@eforge-build/engine/events';
 import { DEFAULT_BUILD, makePipelineCtx } from './pipeline-helpers.js';
 import { useTempDir } from './test-tmpdir.js';
 import { DEFAULT_REVIEW } from '@eforge-build/engine/config';
@@ -76,6 +76,26 @@ describe('compile context recovery', () => {
     expect(failure.recovery.eligible).toBe(false);
   });
 
+  it('carries optional guard diagnostics without changing legacy recovery classification', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'expedition' } });
+    const legacy = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'module-planner', explanation: 'context window exceeded' });
+    const withDiagnostics = await buildCompileScopeContextFailure(ctx, {
+      source: 'provider',
+      failureKind: 'context-window',
+      stage: 'module-planner',
+      explanation: 'context window exceeded',
+      guardDiagnostics: guardDiagnostics(),
+    });
+
+    expect(legacy.guardDiagnostics).toBeUndefined();
+    expect(withDiagnostics.guardDiagnostics).toMatchObject({ provider: 'anthropic', modelId: 'claude-sonnet-4-5', contextWindow: 1_000_000 });
+    expect(withDiagnostics.recovery).toMatchObject({
+      action: legacy.recovery.action,
+      eligible: legacy.recovery.eligible,
+      attempted: legacy.recovery.attempted,
+    });
+  });
+
   it('increments retry-as-expedition metadata only when a retry starts and prevents second retries', async () => {
     const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
@@ -143,6 +163,19 @@ async function writeValidPlanSet(ctx: ReturnType<typeof makePipelineCtx>): Promi
     pipeline: ctx.pipeline,
     plans: [{ id: 'plan-01', name: 'Plan 01', branch: 'eforge/plan-01', build: DEFAULT_BUILD, review: DEFAULT_REVIEW }],
   }));
+}
+
+function guardDiagnostics(): CompileContextGuardDiagnostics {
+  return {
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4-5',
+    metadataSource: 'registry',
+    contextWindow: 1_000_000,
+    outputReserveTokens: 64_000,
+    overheadReserveTokens: 8_192,
+    safetyMargin: 0.9,
+    limits: { maxPromptBytes: 1_500_000, maxObservedInputTokens: 835_027, maxExplanationBytes: 1_500 },
+  };
 }
 
 function advisoryRisk(): CompilePreflightRisk {

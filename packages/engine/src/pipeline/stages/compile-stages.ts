@@ -37,9 +37,10 @@ import {
   runCohesionReviewCycleStage,
 } from './compile-review-cycles.js';
 import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
-import { compileContextGuardOptions, CompileScopeContextError } from '../../compile-resilience/context-guard.js';
+import { compileContextGuardOptions, CompileScopeContextError, type CompileContextGuardOptions } from '../../compile-resilience/context-guard.js';
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
 import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
+import { derivePiCompileContextGuard } from '../../harnesses/pi-model-resolution.js';
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -48,6 +49,28 @@ import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../
 function mergePromptAppend(configured: string | undefined, preflightAppend: string | undefined): string {
   return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
 }
+
+// --- eforge:region plan-01-engine-contract ---
+async function resolveModelAwareCompileContextGuardOptions(
+  ctx: PipelineContext,
+  stage: CompileContextGuardOptions['stage'],
+  agentConfig: ResolvedAgentConfig,
+): Promise<CompileContextGuardOptions> {
+  if (agentConfig.harness !== 'pi') {
+    // Claude Agent SDK model-aware guard integration is intentionally not implemented:
+    // that harness is expected to be deprecated, and Anthropic policies constrain
+    // third-party harness/model metadata integrations.
+    return compileContextGuardOptions({ stage, risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits });
+  }
+  const derived = await derivePiCompileContextGuard({ model: agentConfig.model, limits: ctx.compileContextGuardLimits });
+  return compileContextGuardOptions({
+    stage,
+    risk: ctx.compilePreflight,
+    limits: derived.limits,
+    guardDiagnostics: derived.guardDiagnostics,
+  });
+}
+// --- eforge:endregion plan-01-engine-contract ---
 
 /**
  * Run a single planner attempt (per-retry span + event processing).
@@ -60,6 +83,7 @@ async function* runPlannerAttempt(
 ): AsyncGenerator<EforgeEvent> {
   const { tracker, end, error } = createStageSpanWiring('planner', ctx.tracing, { source: ctx.sourceContent, planSet: ctx.planSetName });
   const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner');
+  const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'planner', agentConfig);
   try {
     for await (const event of runPlanner(ctx.sourceContent, {
       cwd: ctx.cwd,
@@ -74,7 +98,7 @@ async function* runPlannerAttempt(
       defaultBuild: ctx.pipeline.defaultBuild,
       defaultReview: ctx.pipeline.defaultReview,
       promptSourceContent: ctx.promptSourceContent,
-      contextGuard: compileContextGuardOptions({ stage: 'planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+      contextGuard,
       ...agentConfig,
       promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
       ...plannerTb,
@@ -140,7 +164,7 @@ async function* runPlannerAttempt(
     end();
   } catch (err) {
     error(err as Error);
-    const contextError = await toCompileScopeContextError(ctx, err, 'planner');
+    const contextError = await toCompileScopeContextError(ctx, err, 'planner', contextGuard.guardDiagnostics);
     if (contextError) throw contextError;
     throw err;
   }
@@ -158,6 +182,7 @@ async function* runModulePlannerAttempt(
   architectureContent: string,
   completedPlans: Map<string, string>,
   agentConfig: ResolvedAgentConfig,
+  contextGuard: CompileContextGuardOptions,
 ): AsyncGenerator<EforgeEvent> {
   // Gather completed dependency plan content from earlier waves
   const depContent = mod.dependsOn
@@ -183,7 +208,7 @@ async function* runModulePlannerAttempt(
       architectureContent,
       sourceContent: ctx.sourceContent,
       promptSourceContent: ctx.promptSourceContent,
-      contextGuard: compileContextGuardOptions({ stage: 'module-planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+      contextGuard,
       dependencyPlanContent,
       verbose: ctx.verbose,
       onClarification: ctx.onClarification,
@@ -228,7 +253,7 @@ async function* runModulePlannerAttempt(
       modSpan.error(err);
       throw err;
     }
-    const contextError = await toCompileScopeContextError(ctx, err, 'module-planner');
+    const contextError = await toCompileScopeContextError(ctx, err, 'module-planner', contextGuard.guardDiagnostics);
     if (contextError) {
       modTracker.cleanup();
       modSpan.error(contextError);
@@ -256,10 +281,11 @@ registerCompileStage({
   // Run pipeline composition first (fast LLM call to determine scope and stages)
   const { harness: composerHarness, toolbeltSummary: composerTb } = ctx.agentRuntimes.forRoleResolved('pipeline-composer');
   const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
+  const composerContextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'pipeline-composer', composerConfig);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
     promptSourceContent: ctx.promptSourceContent,
-    contextGuard: compileContextGuardOptions({ stage: 'pipeline-composer', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+    contextGuard: composerContextGuard,
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
@@ -297,7 +323,7 @@ registerCompileStage({
       composerOptions,
     );
   } catch (err) {
-    const contextError = await toCompileScopeContextError(ctx, err, 'pipeline-composer');
+    const contextError = await toCompileScopeContextError(ctx, err, 'pipeline-composer', composerContextGuard.guardDiagnostics);
     throw contextError ?? err;
   }
 
@@ -473,6 +499,7 @@ registerCompileStage({
   const completedPlans = new Map<string, string>(); // moduleId -> plan file content
   const { toolbeltSummary: modulePlannerTbStage } = ctx.agentRuntimes.forRoleResolved('module-planner');
   const agentConfig = resolveAgentConfig('module-planner', ctx.config, undefined, modulePlannerTbStage);
+  const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'module-planner', agentConfig);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -481,7 +508,7 @@ registerCompileStage({
 
     const waveTasks: ParallelTask<EforgeEvent>[] = waveModuleIds.map((modId) => ({
       id: modId,
-      run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig),
+      run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig, contextGuard),
     }));
 
     yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });

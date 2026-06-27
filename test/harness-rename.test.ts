@@ -67,6 +67,7 @@ describe('directory structure: harnesses/ present with all required files', () =
     'eforge-resource-filter.ts',
     'pi-extensions.ts',
     'pi-mcp-bridge.ts',
+    'pi-model-resolution.ts',
     'tool-safety.ts',
     'usage.ts',
   ] as const;
@@ -85,7 +86,7 @@ describe('directory structure: harnesses/ present with all required files', () =
     });
   }
 
-  it('harnesses/ contains exactly 7 TypeScript source files', () => {
+  it('harnesses/ contains exactly the required TypeScript source files', () => {
     const tsFiles = readdirSync(HARNESSES_DIR).filter(f => f.endsWith('.ts'));
     expect(tsFiles).toHaveLength(REQUIRED_FILES.length);
   });
