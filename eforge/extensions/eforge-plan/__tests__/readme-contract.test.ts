@@ -44,7 +44,6 @@ describe('eforge-plan README planner contract', () => {
     }
   });
 
-  // --- eforge:region plan-02-agent-docs-and-guidance ---
   it('documents body-safe direct agent backlog updates', async () => {
     const readme = await readFile(README, 'utf-8');
     const workflow = sectionBetween(readme, '## Direct agent backlog workflow', '## Storage model');
@@ -84,7 +83,6 @@ describe('eforge-plan README planner contract', () => {
     expect(storage).toMatch(/search documents? dirty/i);
     expect(storage).toMatch(/recommendation metadata stale|recommendations? stale/i);
   });
-  // --- eforge:endregion plan-02-agent-docs-and-guidance ---
 
 
   it('documents private recommendations, promotion sources, planner boundaries, and non-goals', async () => {

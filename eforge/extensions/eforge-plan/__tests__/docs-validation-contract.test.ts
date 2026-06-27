@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 const README = 'eforge/extensions/eforge-plan/README.md';
 const WORKSTATION_README = 'eforge/extensions/eforge-plan/workstation-src/plans/README.md';
-// --- eforge:region plan-02-agent-docs-and-guidance ---
 const WEB_CONTENT_DOCS = 'web/content/docs/eforge-plan.md';
 const WEB_PUBLIC_DOCS = 'web/public/docs/eforge-plan.md';
-// --- eforge:endregion plan-02-agent-docs-and-guidance ---
 
 async function docs(): Promise<{ readme: string; workstation: string }> {
   const [readme, workstation] = await Promise.all([
@@ -16,7 +14,6 @@ async function docs(): Promise<{ readme: string; workstation: string }> {
   return { readme, workstation };
 }
 
-// --- eforge:region plan-02-agent-docs-and-guidance ---
 async function webDocs(): Promise<{ content: string; publicDocs: string }> {
   const [content, publicDocs] = await Promise.all([
     readFile(WEB_CONTENT_DOCS, 'utf-8'),
@@ -24,7 +21,6 @@ async function webDocs(): Promise<{ content: string; publicDocs: string }> {
   ]);
   return { content, publicDocs };
 }
-// --- eforge:endregion plan-02-agent-docs-and-guidance ---
 
 describe('plan-03 workstation docs validation contract', () => {
   it('keeps accepted-analysis baseline documentation private and distinct from recommendations', async () => {
