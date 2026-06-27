@@ -132,7 +132,7 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     report,
     boundedEvidence,
     ...(obj.continueRepairEligibility !== undefined ? { continueRepairEligibility: validateContinueRepairEligibility(obj.continueRepairEligibility, prdId) } : {}),
-    ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
+    ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, schemaVersion, prdId) } : {}),
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
 }
@@ -289,14 +289,17 @@ function validateContinueRepairEligibility(value: unknown, prdId?: string): Reco
   };
 }
 
-function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySidecarRecoveryOption[] {
+function validateRecoveryOptions(value: unknown, schemaVersion: SupportedRecoverySidecarSchemaVersion, prdId?: string): RecoverySidecarRecoveryOption[] {
   return requireArray(value, 'recoveryOptions', prdId).map((item) => {
     const obj = requireRecord(item, `Recovery sidecar recoveryOptions item is invalid${suffix(prdId)}`);
     const kind = requireString(obj.kind, 'recoveryOptions.kind', prdId);
     const action = requireString(obj.action, 'recoveryOptions.action', prdId);
     if (kind === 'compiled-build-resume' || action === 'eforge_' + 'resume_build') throw new Error(`recoveryOptions contains a legacy repair action${suffix(prdId)}`);
     if (kind === 'continue-repair') return validateContinueRepairOption(obj, action, prdId);
-    if (kind === 'compile-scope-context') return validateCompileScopeContextOption(obj, action, prdId);
+    if (kind === 'compile-scope-context') {
+      if (schemaVersion !== 4) throw new Error(`recoveryOptions compile-scope-context requires schemaVersion 4${suffix(prdId)}`);
+      return validateCompileScopeContextOption(obj, action, prdId);
+    }
     throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
   });
 }

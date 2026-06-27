@@ -110,7 +110,8 @@ export type RecoverySidecarSchemaVersion = 3 | 4;
  * bounded evidence, generated timestamp, optional read-only continue-and-repair
  * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
  * durable `applied` marker. Version 4 is used when compile-scope-context
- * recovery guidance is present; otherwise version 3 is used.
+ * recovery guidance is present; schemaVersion 3 sidecars must not contain
+ * compile-scope-context recovery options.
  */
 export interface RecoveryVerdictSidecar {
   schemaVersion: RecoverySidecarSchemaVersion;

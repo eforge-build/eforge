@@ -21,6 +21,7 @@ import {
   runReview,
   parseReviewIssuesStrict,
   computeReviewContext,
+  boundReviewPlanContent,
   filterGeneratedReviewArtifactPaths,
   getReviewDiffPathspecArgs,
   mergeReviewerResultText,
@@ -220,6 +221,7 @@ export async function* runParallelReview(
   // This avoids repeating git invocations per-perspective and ensures reviewers with
   // read-only tools (no bash/Bash) still see the changed files and diff excerpt.
   const reviewContext = await computeReviewContext(cwd, baseBranch);
+  const reviewerPlanContent = boundReviewPlanContent(planContent);
 
   // Above threshold (or forced parallel) - run parallel specialist reviewers
   // Use perspectives override if provided, otherwise determine from file categories
@@ -342,7 +344,7 @@ export async function* runParallelReview(
             : extensionSection;
 
           const prompt = await loadPrompt('reviewer', {
-            plan_content: planContent,
+            plan_content: reviewerPlanContent,
             base_branch: baseBranch,
             changed_files: reviewContext.changedFiles,
             diff_context: reviewContext.diffContext,
@@ -432,7 +434,7 @@ export async function* runParallelReview(
 
       try {
         const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
-          plan_content: planContent,
+          plan_content: reviewerPlanContent,
           base_branch: baseBranch,
           changed_files: reviewContext.changedFiles,
           diff_context: reviewContext.diffContext,

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { computeReviewThresholdSnapshot, runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
-import { computeReviewContext, runReview } from '@eforge-build/engine/agents/reviewer';
+import { boundReviewPlanContent, computeReviewContext, REVIEW_PLAN_CONTENT_MAX_CHARS, runReview } from '@eforge-build/engine/agents/reviewer';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -111,6 +111,57 @@ async function drain(generator: AsyncGenerator<EforgeEvent>): Promise<EforgeEven
   }
   return events;
 }
+
+describe('reviewer plan content bounds', () => {
+  it('preserves head and tail while bounding oversized plan content', () => {
+    const planContent = `HEAD-${'x'.repeat(REVIEW_PLAN_CONTENT_MAX_CHARS)}-TAIL`;
+
+    const bounded = boundReviewPlanContent(planContent);
+
+    expect(bounded).toHaveLength(REVIEW_PLAN_CONTENT_MAX_CHARS);
+    expect(bounded).toContain('HEAD-');
+    expect(bounded).toContain('-TAIL');
+    expect(bounded).toContain('plan content truncated');
+  });
+
+  it('runReview injects bounded plan content into the reviewer prompt', async () => {
+    const cwd = await createReviewDiffRepo();
+    const harness = new StubHarness([validReviewResponse()]);
+    const planContent = `HEAD-${'x'.repeat(REVIEW_PLAN_CONTENT_MAX_CHARS)}-TAIL`;
+
+    await drain(runReview({
+      harness,
+      planContent,
+      baseBranch: 'main',
+      planId: 'plan-01',
+      cwd,
+    }));
+
+    expect(harness.prompts[0]).toContain('plan content truncated');
+    expect(harness.prompts[0]).not.toContain(planContent);
+  });
+
+  it('parallel reviewers inject bounded plan content into each perspective prompt', async () => {
+    const cwd = await createReviewDiffRepo();
+    const harness = new StubHarness(Array.from({ length: 16 }, () => validReviewResponse()));
+    const planContent = `HEAD-${'x'.repeat(REVIEW_PLAN_CONTENT_MAX_CHARS)}-TAIL`;
+
+    await drain(runParallelReview({
+      harness,
+      planContent,
+      baseBranch: 'main',
+      planId: 'plan-01',
+      cwd,
+      strategy: 'parallel',
+    }));
+
+    expect(harness.prompts.length).toBeGreaterThan(0);
+    for (const prompt of harness.prompts) {
+      expect(prompt).toContain('plan content truncated');
+      expect(prompt).not.toContain(planContent);
+    }
+  });
+});
 
 describe('reviewer harness changedFiles propagation', () => {
   it('runReview passes the filtered changed-file list to the reviewer harness', async () => {

@@ -67,7 +67,7 @@ describe('planner-family context guard', () => {
     }).not.toThrow();
   });
 
-  it('runPlanner prompt guard throws before the harness is called and aborts the controller', async () => {
+  it('runPlanner prompt guard throws before the harness is called without aborting the parent controller', async () => {
     const backend = new StubHarness([{ text: 'not reached' }]);
     const abortController = new AbortController();
     await expect(collectEvents(runPlanner('Build widgets', {
@@ -79,7 +79,7 @@ describe('planner-family context guard', () => {
       contextGuard: { stage: 'planner', limits: { maxPromptBytes: 1 } },
     }))).rejects.toThrow(CompileScopeContextError);
     expect(backend.calls).toHaveLength(0);
-    expect(abortController.signal.aborted).toBe(true);
+    expect(abortController.signal.aborted).toBe(false);
   });
 
   it('composePipeline prompt guard throws before the harness is called', async () => {

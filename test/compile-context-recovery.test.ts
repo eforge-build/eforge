@@ -115,6 +115,7 @@ describe('compile context recovery', () => {
   it('accepts compile-scope-context sidecars, rejects action none, and recommends compile rationale', async () => {
     const payload = sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'decompose', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }]);
     expect(parseRecoverySidecarPayload(JSON.stringify(payload)).recoveryOptions?.[0]).toMatchObject({ kind: 'compile-scope-context', attempt: 0 });
+    expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'decompose', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }], 3)))).toThrow(/schemaVersion 4/);
     expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'none', recommended: true, eligible: true, reason: 'invalid', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }])))).toThrow(/recoveryOptions\.action/);
     expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'invalid', attempted: false, attempt: 2, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }])))).toThrow(/attempt cannot exceed/);
     const rec = determineRecoveryRecommendation({ prdId: 'p', setName: 's', featureBranch: 'f', baseBranch: 'main', plans: [], failingPlan: { planId: 'compile' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(), terminalFailure: { scope: 'compile', terminalSubtype: 'error_context_window', stage: 'planner' } });
@@ -149,8 +150,8 @@ function retryRisk(): CompilePreflightRisk {
   };
 }
 
-function sidecarPayload(recoveryOptions: unknown[]) {
-  return { schemaVersion: 3, generatedAt: new Date().toISOString(), prdId: 'p', setName: 's', verdict: { verdict: 'manual', confidence: 'medium', rationale: 'r', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'r', recommendedAction: 'manual', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'p', setName: 's', featureBranch: 'f', baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'compile' }, landedCommits: [], modelsUsed: [] }, recoveryOptions };
+function sidecarPayload(recoveryOptions: unknown[], schemaVersion: 3 | 4 = 4) {
+  return { schemaVersion, generatedAt: new Date().toISOString(), prdId: 'p', setName: 's', verdict: { verdict: 'manual', confidence: 'medium', rationale: 'r', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'r', recommendedAction: 'manual', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'p', setName: 's', featureBranch: 'f', baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'compile' }, landedCommits: [], modelsUsed: [] }, recoveryOptions };
 }
 
 async function tempDir(): Promise<string> {

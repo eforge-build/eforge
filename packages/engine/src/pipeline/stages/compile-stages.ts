@@ -564,7 +564,10 @@ registerCompileStage({
 
   // --- eforge:region plan-05-artifact-validation ---
   const moduleValidation = await validateExpeditionModuleInputs(ctx);
-  if (!moduleValidation.ok) throw new Error(moduleValidation.message);
+  if (!moduleValidation.ok) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: moduleValidation.message };
+    throw new Error(moduleValidation.message);
+  }
   // --- eforge:endregion plan-05-artifact-validation ---
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
@@ -581,7 +584,10 @@ registerCompileStage({
   for (const warning of artifactValidation.warnings) {
     yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
   }
-  if (!artifactValidation.ok) throw new Error(artifactValidation.message);
+  if (!artifactValidation.ok) {
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: artifactValidation.message };
+    throw new Error(artifactValidation.message);
+  }
   const plans = artifactValidation.plans;
   const expeditionPlanConfigs = artifactValidation.orchestration?.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
   // --- eforge:endregion plan-05-artifact-validation ---
