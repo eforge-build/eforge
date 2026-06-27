@@ -5,6 +5,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { classifyAgentTerminalSubtype } from '@eforge-build/engine/harness';
 import type { CompilePreflightRisk } from '@eforge-build/engine/events';
 import { DEFAULT_BUILD, makePipelineCtx } from './pipeline-helpers.js';
+import { useTempDir } from './test-tmpdir.js';
 import { DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 import { determineRecoveryRecommendation } from '@eforge-build/engine/recovery/recommendation';
@@ -17,6 +18,8 @@ import {
   MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES,
   summarizeCompileArtifactsForRecovery,
 } from '@eforge-build/engine/compile-resilience/context-recovery';
+
+const makeTempDir = useTempDir('eforge-compile-context-');
 
 describe('compile context recovery', () => {
   it('classifies provider context failures and ignores overloads', () => {
@@ -155,7 +158,5 @@ function sidecarPayload(recoveryOptions: unknown[], schemaVersion: 3 | 4 = 4) {
 }
 
 async function tempDir(): Promise<string> {
-  const dir = join(process.cwd(), '.tmp-test', `compile-context-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  await mkdir(dir, { recursive: true });
-  return dir;
+  return makeTempDir();
 }
