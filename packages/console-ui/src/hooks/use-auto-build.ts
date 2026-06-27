@@ -1,19 +1,36 @@
 import { useCallback, useRef, useState } from 'react';
 import { API_ROUTES, pauseScheduler as pauseSchedulerRequest, resumeScheduler as resumeSchedulerRequest } from '@eforge-build/client/browser';
 import type { AutoBuildState } from '@eforge-build/client/browser';
+import { isAutoStartPaused } from '@/lib/auto-start';
 
-async function setAutoBuild(enabled: boolean): Promise<AutoBuildState | null> {
-  try {
-    const response = await fetch(API_ROUTES.autoBuildSet, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    });
-    if (!response.ok) return null;
-    return response.json() as Promise<AutoBuildState>;
-  } catch {
-    return null;
+async function requestAutoBuildEnabled(enabled: boolean): Promise<AutoBuildState> {
+  const response = await fetch(API_ROUTES.autoBuildSet, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Auto-start request failed (${response.status}): ${text}`);
   }
+  return response.json() as Promise<AutoBuildState>;
+}
+
+function desiredAutoBuildEnabled(autoBuildState: AutoBuildState): boolean {
+  return (autoBuildState.desired ?? (autoBuildState.enabled ? 'enabled' : 'disabled')) === 'enabled';
+}
+
+async function setAutoStartEnabled(autoBuildState: AutoBuildState, enabled: boolean): Promise<AutoBuildState | null> {
+  const desiredEnabled = desiredAutoBuildEnabled(autoBuildState);
+
+  if (enabled) {
+    if (desiredEnabled && isAutoStartPaused(autoBuildState)) return resumeSchedulerRequest();
+    if (desiredEnabled && ['running', 'starting', 'restarting', undefined].includes(autoBuildState.mode)) return null;
+    return requestAutoBuildEnabled(true);
+  }
+
+  if (desiredEnabled) return pauseSchedulerRequest();
+  return null;
 }
 
 export function useAutoBuild(
@@ -21,27 +38,25 @@ export function useAutoBuild(
   onUpdate: (state: AutoBuildState | null) => void,
 ): {
   toggling: boolean;
+  error: string | null;
   setEnabled: (enabled: boolean) => void;
-  schedulerToggling: boolean;
-  schedulerError: string | null;
-  pauseScheduler: () => void;
-  resumeScheduler: () => void;
 } {
   const [toggling, setToggling] = useState(false);
-  const [schedulerToggling, setSchedulerToggling] = useState(false);
-  const [schedulerError, setSchedulerError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const togglingRef = useRef(false);
-  const schedulerTogglingRef = useRef(false);
 
   const setEnabled = useCallback((enabled: boolean) => {
     if (!autoBuildState || togglingRef.current) return;
     togglingRef.current = true;
     setToggling(true);
-    setAutoBuild(enabled)
+    setError(null);
+    setAutoStartEnabled(autoBuildState, enabled)
       .then((newState) => {
-        if (newState) {
-          onUpdate(newState);
-        }
+        if (newState) onUpdate(newState);
+        setError(null);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
         togglingRef.current = false;
@@ -49,32 +64,5 @@ export function useAutoBuild(
       });
   }, [autoBuildState, onUpdate]);
 
-  const runSchedulerMutation = useCallback((mutation: () => Promise<AutoBuildState>) => {
-    if (!autoBuildState || schedulerTogglingRef.current || autoBuildState.desired !== 'enabled') return;
-    schedulerTogglingRef.current = true;
-    setSchedulerToggling(true);
-    setSchedulerError(null);
-    mutation()
-      .then((newState) => {
-        onUpdate(newState);
-        setSchedulerError(null);
-      })
-      .catch((err) => {
-        setSchedulerError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        schedulerTogglingRef.current = false;
-        setSchedulerToggling(false);
-      });
-  }, [autoBuildState, onUpdate]);
-
-  const pauseScheduler = useCallback(() => {
-    runSchedulerMutation(() => pauseSchedulerRequest());
-  }, [runSchedulerMutation]);
-
-  const resumeScheduler = useCallback(() => {
-    runSchedulerMutation(() => resumeSchedulerRequest());
-  }, [runSchedulerMutation]);
-
-  return { toggling, setEnabled, schedulerToggling, schedulerError, pauseScheduler, resumeScheduler };
+  return { toggling, error, setEnabled };
 }

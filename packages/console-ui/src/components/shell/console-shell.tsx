@@ -5,11 +5,8 @@ import type { ConsoleProjectState } from '@/lib/project-state';
 interface ConsoleShellProps {
   projectState: ConsoleProjectState;
   autoBuildToggling: boolean;
+  autoBuildError?: string | null;
   onSetAutoBuildEnabled: (enabled: boolean) => void;
-  schedulerToggling: boolean;
-  schedulerError: string | null;
-  onPauseScheduler: () => void;
-  onResumeScheduler: () => void;
   children: React.ReactNode;
   onNavigate?: (href: string) => void;
 }
@@ -17,11 +14,8 @@ interface ConsoleShellProps {
 export function ConsoleShell({
   projectState,
   autoBuildToggling,
+  autoBuildError,
   onSetAutoBuildEnabled,
-  schedulerToggling,
-  schedulerError,
-  onPauseScheduler,
-  onResumeScheduler,
   children,
   onNavigate,
 }: ConsoleShellProps) {
@@ -30,11 +24,8 @@ export function ConsoleShell({
       <Header
         projectState={projectState}
         autoBuildToggling={autoBuildToggling}
+        autoBuildError={autoBuildError}
         onSetAutoBuildEnabled={onSetAutoBuildEnabled}
-        schedulerToggling={schedulerToggling}
-        schedulerError={schedulerError}
-        onPauseScheduler={onPauseScheduler}
-        onResumeScheduler={onResumeScheduler}
         onNavigate={onNavigate}
       />
       <main className="flex-1 overflow-auto p-4">
