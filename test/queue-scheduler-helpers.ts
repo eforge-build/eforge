@@ -12,7 +12,7 @@
 
 import { afterEach, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { execFile, spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,6 +22,7 @@ import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import type { PolicyGateRegistration, ProfileRouterRegistration } from '@eforge-build/engine/extensions/types';
+export { makeDeadPid } from './process-helpers.js';
 
 export const exec = promisify(execFile);
 
@@ -60,23 +61,6 @@ export function makeQueuedPrd(id: string, dependsOn: string[] = [], filePath?: s
     lastCommitHash: '',
     lastCommitDate: '',
   };
-}
-
-export function makeDeadPid(): number {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
-    if (result.error) throw result.error;
-    if (typeof result.pid !== 'number' || result.pid <= 0) {
-      throw new Error('spawnSync did not return a positive child pid');
-    }
-
-    try {
-      process.kill(result.pid, 0);
-    } catch {
-      return result.pid;
-    }
-  }
-  throw new Error('could not create a definitely dead pid for lock tests');
 }
 
 export function makeQueueDispatchPolicyGate(

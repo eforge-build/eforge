@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, cleanupCompletedPrd, setQueuedPrdProfile, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { findQueuedPrdForControl, removeQueuedPrd, updateQueuedPrdPriority, isQueueControlError,
   overrideQueuedPrdDependency,
 } from '@eforge-build/engine/queue/control';
+import { makeDeadPid } from './process-helpers.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -22,23 +23,6 @@ function makeQueuedPrd(overrides: Partial<QueuedPrd> & { id: string }): QueuedPr
     lastCommitDate: '',
     ...overrides,
   };
-}
-
-function makeDeadPid(): number {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
-    if (result.error) throw result.error;
-    if (typeof result.pid !== 'number' || result.pid <= 0) {
-      throw new Error('spawnSync did not return a positive child pid');
-    }
-
-    try {
-      process.kill(result.pid, 0);
-    } catch {
-      return result.pid;
-    }
-  }
-  throw new Error('could not create a definitely dead pid for lock tests');
 }
 
 // ---------------------------------------------------------------------------

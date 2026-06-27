@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { withNativeEventHooks, type EventHookContext } from '@eforge-build/engine/extensions';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EventHookRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
+import { eventuallyNotRunning, eventuallyReadNumberFile } from './process-helpers.js';
 import { collectEvents, filterEvents, findEvent } from './test-events.js';
 
 type Handler = (event: EforgeEvent, ctx: EventHookContext) => unknown;
@@ -28,19 +29,6 @@ async function* asyncIterableFrom(events: EforgeEvent[]): AsyncGenerator<EforgeE
 
 function event(type: EforgeEvent['type'], extra: Record<string, unknown> = {}): EforgeEvent {
   return { type, timestamp: '2025-01-01T00:00:00.000Z', ...extra } as EforgeEvent;
-}
-
-async function eventuallyNotRunning(pid: number): Promise<boolean> {
-  const deadline = Date.now() + 1000;
-  while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    } catch {
-      return true;
-    }
-  }
-  return false;
 }
 
 describe('withNativeEventHooks', () => {
@@ -285,23 +273,28 @@ describe('withNativeEventHooks', () => {
   it('aborts ctx.exec.run subprocess trees when the handler times out', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'eforge-extension-runtime-'));
     const pidFile = join(tmp, 'child.pid');
+    const grandchildPidFile = join(tmp, 'grandchild.pid');
     try {
       const script = `
-        require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
-        setInterval(() => {}, 1000);
+        set -eu
+        printf '%s' "$$" > "$1"
+        ( while :; do sleep 1; done ) &
+        printf '%s' "$!" > "$2"
+        wait
       `;
       const output = await collectEvents(withNativeEventHooks(
         asyncIterableFrom([event('plan:build:complete', { planId: 'plan-01' })]),
         registry([hook('*', async (_evt, ctx) => {
-          await ctx.exec.run(process.execPath, ['-e', script]);
+          await ctx.exec.run('/bin/sh', ['-c', script, 'eforge-test-child', pidFile, grandchildPidFile]);
         }, 'killer')]),
-        { timeoutMs: 100 },
+        { timeoutMs: 500 },
       ));
 
-      expect(findEvent(output, 'extension:event-handler:timeout')).toMatchObject({ extensionName: 'killer', timeoutMs: 100 });
-      const pid = Number(await readFile(pidFile, 'utf-8'));
-      expect(Number.isFinite(pid)).toBe(true);
+      expect(findEvent(output, 'extension:event-handler:timeout')).toMatchObject({ extensionName: 'killer', timeoutMs: 500 });
+      const pid = await eventuallyReadNumberFile(pidFile);
+      const grandchildPid = await eventuallyReadNumberFile(grandchildPidFile);
       expect(await eventuallyNotRunning(pid)).toBe(true);
+      expect(await eventuallyNotRunning(grandchildPid)).toBe(true);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }

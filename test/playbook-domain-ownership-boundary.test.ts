@@ -34,7 +34,16 @@ const scanRoots = [
 ] as const;
 
 const textExtensions = new Set(['.cjs', '.css', '.html', '.js', '.json', '.md', '.mjs', '.ts', '.tsx', '.txt', '.yaml', '.yml']);
-const skippedParts = new Set(['node_modules', 'dist', '.git', '.eforge', '.next', 'coverage']);
+const skippedParts = new Set([
+  'node_modules',
+  'dist',
+  '.git',
+  '.eforge',
+  '.next',
+  'coverage',
+  'workstation-assets',
+  'storybook-static',
+]);
 
 const forbiddenTokens = [
   'registerPlaybookCommands',
