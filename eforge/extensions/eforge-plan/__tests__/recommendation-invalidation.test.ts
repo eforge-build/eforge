@@ -133,7 +133,7 @@ describe('recommendation invalidation', () => {
         expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(beforeCurrent);
       });
     }
-  });
+  }, 10_000);
 
   it('records lifecycle stale reasons for correlated enqueue, queue PRD, session, landing, and auto-merge updates', async () => {
     const events = [

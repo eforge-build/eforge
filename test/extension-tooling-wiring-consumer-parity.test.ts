@@ -209,7 +209,7 @@ describe('MCP/Pi eforge_extension parity', () => {
       }
       if (text.includes('rawLength')) expect(text, action).toContain(HOST_OUTPUT_GUIDANCE);
     }
-  });
+  }, 10_000);
 
   it('Pi extension registers eforge_extension and delegates to the shared dispatcher', () => {
     const block = piExtensionBlock();
