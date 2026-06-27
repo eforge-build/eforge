@@ -16,6 +16,9 @@ import {
 const MAX_PI_GUARD_FALLBACK_REASON_LENGTH = 2000;
 
 export const PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS = 16_384;
+// Planner-family Pi guards cap valid model output metadata at 64 Ki tokens so
+// very large generation limits do not consume the entire live input budget.
+export const PI_COMPILE_CONTEXT_PLANNER_OUTPUT_RESERVE_TOKEN_CAP = 64 * 1024;
 export const PI_COMPILE_CONTEXT_OVERHEAD_RESERVE_TOKENS = 8_192;
 export const PI_COMPILE_CONTEXT_SAFETY_MARGIN = 0.9;
 
@@ -123,10 +126,7 @@ export async function derivePiCompileContextGuard(input: PiCompileContextGuardDe
     }, 'Pi model metadata is missing a positive contextWindow');
   }
 
-  const rawMaxTokens = (resolution.model as Partial<Model<Api>>).maxTokens;
-  const outputReserveTokens = rawMaxTokens === undefined
-    ? PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS
-    : positiveInteger(rawMaxTokens);
+  const outputReserveTokens = effectivePlannerOutputReserve((resolution.model as Partial<Model<Api>>).maxTokens);
   if (outputReserveTokens === undefined) {
     return fallbackDerivation(input, {
       ...baseDiagnostics,
@@ -199,6 +199,14 @@ function finalLimits(limits: Partial<CompileContextGuardLimits> | undefined, max
     ...(resolved.maxObservedTurns !== undefined ? { maxObservedTurns: resolved.maxObservedTurns } : {}),
     maxExplanationBytes: resolved.maxExplanationBytes,
   };
+}
+
+function effectivePlannerOutputReserve(rawMaxTokens: unknown): number | undefined {
+  if (rawMaxTokens === undefined) return PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS;
+  const maxTokens = positiveInteger(rawMaxTokens);
+  return maxTokens === undefined
+    ? undefined
+    : Math.min(maxTokens, PI_COMPILE_CONTEXT_PLANNER_OUTPUT_RESERVE_TOKEN_CAP);
 }
 
 function normalizeNonEmpty(value: string | undefined): string | undefined {
