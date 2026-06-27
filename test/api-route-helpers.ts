@@ -26,7 +26,7 @@ afterEach(() => {
   hasIsolatedXdgConfigHome = false;
 });
 
-export async function setupPlaybookApiProject(tmpDir: string): Promise<{ configDir: string }> {
+export async function setupApiProject(tmpDir: string): Promise<{ configDir: string }> {
   isolateXdgConfigHome(tmpDir);
   const gitOpts = { cwd: tmpDir };
   execFileSync('git', ['init', '-b', 'main'], gitOpts);
@@ -53,13 +53,6 @@ export function makeStubWorkerTracker(): WorkerTracker {
   };
 }
 
-export function invalidAcPlaybookRaw(opts: { name?: string; mode?: string; profile?: string } = {}): string {
-  const { name = 'bad-ac', mode = 'autonomous', profile } = opts;
-  const lines = ['---', `name: ${name}`, 'description: Bad AC', 'scope: project-team', `mode: ${mode}`];
-  if (profile) lines.push(`profile: ${profile}`);
-  lines.push('---', '', '## Goal', '', 'Implement something.', '', '## Acceptance Criteria', '', '- Tests cover:', '- `pnpm test`', '- Works');
-  return lines.join('\n');
-}
 
 export async function postJson(url: string, body: unknown): Promise<Response> {
   return fetch(url, {

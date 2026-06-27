@@ -407,29 +407,29 @@ describe('listNamedSet', () => {
   it('returns empty array when all tiers are empty', async () => {
     const root = makeTempDir();
     const { opts } = await makeTree(root);
-    const result = await listNamedSet('playbooks', { ...opts, extension: 'md' });
+    const result = await listNamedSet('templates', { ...opts, extension: 'md' });
     expect(result).toEqual([]);
   });
 
   it('returns entries sorted alphabetically', async () => {
     const root = makeTempDir();
     const { opts, userRoot } = await makeTree(root);
-    const dir = resolve(userRoot, 'playbooks');
+    const dir = resolve(userRoot, 'templates');
     await writeArtifact(dir, 'zebra', 'md');
     await writeArtifact(dir, 'alpha', 'md');
     await writeArtifact(dir, 'mango', 'md');
 
-    const result = await listNamedSet('playbooks', { ...opts, extension: 'md' });
+    const result = await listNamedSet('templates', { ...opts, extension: 'md' });
     expect(result.map((e) => e.name)).toEqual(['alpha', 'mango', 'zebra']);
   });
 
   it('includes name, scope, path, and shadows in each entry', async () => {
     const root = makeTempDir();
     const { opts, userRoot, localRoot } = await makeTree(root);
-    await writeArtifact(resolve(userRoot, 'playbooks'), 'my-plan', 'md');
-    const localPath = await writeArtifact(resolve(localRoot, 'playbooks'), 'my-plan', 'md');
+    await writeArtifact(resolve(userRoot, 'templates'), 'my-plan', 'md');
+    const localPath = await writeArtifact(resolve(localRoot, 'templates'), 'my-plan', 'md');
 
-    const result = await listNamedSet('playbooks', { ...opts, extension: 'md' });
+    const result = await listNamedSet('templates', { ...opts, extension: 'md' });
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('my-plan');
     expect(result[0].scope).toBe('project-local');
@@ -442,18 +442,18 @@ describe('listNamedSet', () => {
     const { opts, userRoot, teamRoot, localRoot } = await makeTree(root);
 
     // 'shared' in all tiers
-    await writeArtifact(resolve(userRoot, 'playbooks'), 'shared', 'md');
-    await writeArtifact(resolve(teamRoot, 'playbooks'), 'shared', 'md');
-    await writeArtifact(resolve(localRoot, 'playbooks'), 'shared', 'md');
+    await writeArtifact(resolve(userRoot, 'templates'), 'shared', 'md');
+    await writeArtifact(resolve(teamRoot, 'templates'), 'shared', 'md');
+    await writeArtifact(resolve(localRoot, 'templates'), 'shared', 'md');
 
     // 'beta' in user and project-team only
-    await writeArtifact(resolve(userRoot, 'playbooks'), 'beta', 'md');
-    await writeArtifact(resolve(teamRoot, 'playbooks'), 'beta', 'md');
+    await writeArtifact(resolve(userRoot, 'templates'), 'beta', 'md');
+    await writeArtifact(resolve(teamRoot, 'templates'), 'beta', 'md');
 
     // 'gamma' in user only
-    await writeArtifact(resolve(userRoot, 'playbooks'), 'gamma', 'md');
+    await writeArtifact(resolve(userRoot, 'templates'), 'gamma', 'md');
 
-    const result = await listNamedSet('playbooks', { ...opts, extension: 'md' });
+    const result = await listNamedSet('templates', { ...opts, extension: 'md' });
     expect(result).toHaveLength(3);
 
     const byName = Object.fromEntries(result.map((e) => [e.name, e]));

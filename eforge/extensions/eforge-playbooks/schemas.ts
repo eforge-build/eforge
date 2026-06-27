@@ -6,6 +6,7 @@ const Mode = Type.Union([Type.Literal('autonomous'), Type.Literal('planning')]);
 const Name = Type.String({ minLength: 1, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' });
 const PostMergeCommand = Type.String({ pattern: '^[^\\x00-\\x1F\\x7F]*\\S[^\\x00-\\x1F\\x7F]*$' });
 const StringArray = Type.Array(PostMergeCommand);
+const Overwrite = Type.Optional(Type.Boolean({ description: 'Defaults to true; set false to reject existing destinations.' }));
 
 export const SourceSchema = Type.Object({ source: Scope, path: Type.String() }, { additionalProperties: false });
 export const ShadowSchema = Type.Object({ source: Scope, path: Type.String() }, { additionalProperties: false });
@@ -43,7 +44,7 @@ export const ListPlaybooksOutputSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ShowPlaybookInputSchema = Type.Object({ name: Name, scope: Type.Optional(Scope) }, { additionalProperties: false });
-export const MovePlaybookInputSchema = Type.Object({ name: Name, overwrite: Type.Optional(Type.Boolean()) }, { additionalProperties: false });
+export const MovePlaybookInputSchema = Type.Object({ name: Name, overwrite: Overwrite }, { additionalProperties: false });
 export const ShowPlaybookOutputSchema = Type.Object({
   playbook: PlaybookSchema,
   source: SourceSchema,
@@ -54,7 +55,7 @@ export const SavePlaybookInputSchema = Type.Object({
   scope: Scope,
   name: Type.Optional(Name),
   raw: Type.Optional(Type.String()),
-  overwrite: Type.Optional(Type.Boolean()),
+  overwrite: Overwrite,
   playbook: Type.Optional(Type.Object({
     frontmatter: Type.Object({
       name: Name,
@@ -92,7 +93,7 @@ export const CopyPlaybookInputSchema = Type.Object({
   name: Name,
   targetScope: Scope,
   sourceScope: Type.Optional(Scope),
-  overwrite: Type.Optional(Type.Boolean()),
+  overwrite: Overwrite,
 }, { additionalProperties: false });
 export const CopyPlaybookOutputSchema = Type.Object({ sourcePath: Type.String(), targetPath: Type.String(), targetScope: Scope }, { additionalProperties: false });
 

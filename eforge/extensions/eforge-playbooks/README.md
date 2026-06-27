@@ -78,9 +78,9 @@ Registered action IDs are local to the extension and are exposed with effective 
 | `show-playbook` | Show the highest-precedence playbook by name, or an exact scoped copy when `scope` is supplied. | `local-read` |
 | `save-playbook` | Save a playbook from raw Markdown, nested `{ playbook: { frontmatter, body } }`, or flattened fields. Defaults `overwrite` to `true` and validates acceptance criteria before writing. | `local-write` |
 | `validate-playbook` | Validate raw playbook Markdown without filesystem writes. This preserves raw validation semantics and does not run the save/run acceptance-criteria quality gate. | `none` |
-| `copy-playbook` | Copy a playbook to another scope, updating frontmatter `scope` and honoring `overwrite: false`. | `local-read`, `local-write` |
-| `promote-playbook` | Move a playbook from `project-local` to `project-team`. | `local-write` |
-| `demote-playbook` | Move a playbook from `project-team` to `project-local`. | `local-write` |
+| `copy-playbook` | Copy a playbook to another scope, updating frontmatter `scope`; `overwrite` defaults to `true` (set `false` to reject existing destinations). | `local-read`, `local-write` |
+| `promote-playbook` | Move a playbook from `project-local` to `project-team`; `overwrite` defaults to `true` (set `false` to reject existing destinations). | `local-write` |
+| `demote-playbook` | Move a playbook from `project-team` to `project-local`; `overwrite` defaults to `true` (set `false` to reject existing destinations). | `local-write` |
 | `run-playbook` | Resolve and run a playbook. Autonomous playbooks compile to normalized build source and enqueue through the generic build queue. Planning-mode playbooks return eforge-plan planning entry metadata or diagnostics and never enqueue. | `local-read`, `daemon-state`, `build-queue` |
 
 Common action input forms:

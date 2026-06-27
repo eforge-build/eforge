@@ -25,6 +25,19 @@ function emptyTotals() {
   return { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 };
 }
 
+function emptyContributionManifest(): ExtensionContributionManifestResponse {
+  return {
+    schemaVersion: 1,
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    actions: [],
+    consoleContributions: [],
+    consoleWorkstations: [],
+    integrationCommands: [],
+    deepLinks: [],
+    diagnostics: [],
+  };
+}
+
 function playbooksContributionManifest(): ExtensionContributionManifestResponse {
   return {
     schemaVersion: 1,
@@ -103,6 +116,14 @@ describe('playbook Console ownership boundary', () => {
     expect(existsSync(join(systemViewDir, 'playbooks-section.tsx'))).toBe(false);
   });
 
+  it('does not render playbook controls when the manifest has no playbook contribution', () => {
+    render(<SystemViewContent state={makeState(emptyContributionManifest())} onRefresh={() => {}} />);
+
+    expect(screen.queryByRole('heading', { name: 'Playbooks' })).toBeNull();
+    expect(screen.queryByText('Playbook inventory')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'List playbooks' })).toBeNull();
+  });
+
   it('renders eforge-playbooks inventory controls through generic extension contributions', async () => {
     invokeExtensionAction.mockResolvedValueOnce({ ok: true, invocationId: 'inv-playbooks', output: null });
 
@@ -133,8 +154,14 @@ describe('playbook Console ownership boundary', () => {
       `${playbookToken}ListResponse`,
       `${playbookToken}ListEntry`,
       `select${playbookToken}ModeCounts`,
+      `select${playbookToken}Rows`,
+      `commandPalette${playbookToken}s`,
       `${playbooksToken}.list`,
+      `${playbooksToken}.run`,
       `state.${playbooksToken}`,
+      `/${playbooksToken}`,
+      `PLAYBOOK_CONTRIBUTION_IDS`,
+      `eforge-playbooks:list-playbooks`,
     ];
 
     const offenders = collectSourceFiles(root).flatMap((file) => {

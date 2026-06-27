@@ -11,7 +11,7 @@ A playbook is an optional workflow artifact around the eforge build-engine kerne
 
 `eforge-playbooks` owns playbook management and run behavior. The first-party extension exposes the canonical actions `eforge-playbooks:list-playbooks`, `eforge-playbooks:show-playbook`, `eforge-playbooks:save-playbook`, `eforge-playbooks:validate-playbook`, `eforge-playbooks:copy-playbook`, `eforge-playbooks:promote-playbook`, `eforge-playbooks:demote-playbook`, and `eforge-playbooks:run-playbook` through generic extension contribution/action invocation. Hosts discover and invoke these contributions through their generic extension integration surfaces rather than dedicated playbook commands or tools.
 
-`eforge-playbooks` keeps the pure playbook parse, serialize, list, load, write, move, copy, validate, compile, and seed helpers locally, with named-set storage resolved through `@eforge-build/scopes` and `@eforge-build/input` used only for domain-neutral acceptance-criteria quality helpers. Autonomous playbooks enqueue through `ctx.buildQueue.enqueue(...)` via generic extension action handoff. Planning playbooks check the `eforge.plan.planning-workstation` capability from eforge-plan and return planning-entry metadata or unavailable diagnostics; they do not create session plans or enqueue PRDs directly. Console playbook management is displayed through extension contributions and workstations, not a core Console playbooks section.
+`eforge-playbooks` keeps parse, serialize, list, load, write, move, copy, validate, compile, and seed helpers locally, with named-set storage resolved through `@eforge-build/scopes`. Domain-neutral acceptance-criteria helpers remain separate input-layer utilities. Autonomous playbooks enqueue through `ctx.buildQueue.enqueue(...)` via generic extension action handoff. Planning playbooks check the `eforge.plan.planning-workstation` capability from eforge-plan and return planning-entry metadata or unavailable diagnostics; they do not create session plans or enqueue PRDs directly. Console playbook management is displayed through extension contributions and workstations, not a core Console playbooks section.
 
 If `eforge-playbooks` is unavailable, hosts report extension-unavailable diagnostics and guidance to install, trust, validate, or reload the extension before retrying.
 
@@ -133,7 +133,7 @@ Copy an existing playbook between scopes through the generic extension contribut
 eforge extension contributions invoke eforge-playbooks:copy-playbook --kind command --input-json '{"name":"docs-sync","targetScope":"project-local","overwrite":true}'
 ```
 
-The action validates the source and destination, writes through the extension-owned playbook helpers, and returns the copied playbook metadata.
+The action validates the source and destination, writes through extension-owned storage helpers, and returns the copied playbook metadata.
 
 ## Edit a playbook
 

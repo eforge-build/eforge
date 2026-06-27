@@ -46,8 +46,8 @@ describe('extension-owned playbook storage core', () => {
     process.env.XDG_CONFIG_HOME = `${cwd}/.xdg`;
     await writeRawPlaybook(cwd, 'project-local', 'move-me');
     await writeRawPlaybook(cwd, 'project-team', 'move-me');
-    await expect(movePlaybook({ cwd, configDir, name: 'move-me', fromScope: 'project-local', toScope: 'project-team' })).rejects.toThrow(/already exists/);
-    const moved = await movePlaybook({ cwd, configDir, name: 'move-me', fromScope: 'project-local', toScope: 'project-team', overwrite: true });
+    await expect(movePlaybook({ cwd, configDir, name: 'move-me', fromScope: 'project-local', toScope: 'project-team', overwrite: false })).rejects.toThrow(/already exists/);
+    const moved = await movePlaybook({ cwd, configDir, name: 'move-me', fromScope: 'project-local', toScope: 'project-team' });
     expect(parsePlaybook(await readFile(moved.path, 'utf-8')).scope).toBe('project-team');
   }));
 

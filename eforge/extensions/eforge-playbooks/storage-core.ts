@@ -140,7 +140,7 @@ export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: stri
   if (!result.ok) throw new Error(`Playbook "${opts.name}" at ${src} is invalid: ${result.errors.join('; ')}`);
   assertPlaybookNameMatchesRequested(opts.name, result.playbook, src);
   await mkdir(playbooksDir(opts.toScope, opts), { recursive: true });
-  if (!opts.overwrite && await fileExists(dst)) throw new Error(`Playbook "${opts.name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
+  if (opts.overwrite === false && await fileExists(dst)) throw new Error(`Playbook "${opts.name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
   const tmp = `${dst}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, serializePlaybook({ ...result.playbook, scope: opts.toScope }), 'utf-8');
   await rename(tmp, dst);

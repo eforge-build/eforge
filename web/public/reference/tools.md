@@ -9,11 +9,11 @@ eforge exposes its capabilities through two integration surfaces:
 
 Both surfaces are kept in parity per `AGENTS.md`.
 
-Playbook and session-plan host tools are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities. `eforge_playbook` is a compatibility facade over the first-party `eforge-playbooks` extension contributions, including list/show/save/validate/copy/promote/demote/run behavior. Session-plan host tools manage project-local planning artifacts separately.
+Extension-provided workflows are discovered, inspected, and invoked through generic contribution APIs: `eforge_extension_contribution` for MCP/Pi hosts and `eforge extension contributions list|show|invoke` for the CLI. Hosts treat contribution IDs as opaque extension-owned identifiers; session-plan host tools manage project-local planning artifacts separately.
 
 ## MCP tools (Claude Code)
 
-Total tools: 20
+Total tools: 19
 
 | Tool name | Description |
 |-----------|-------------|
@@ -33,14 +33,13 @@ Total tools: 20
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue from scratch (retry), queue continue-and-repair from preserved artifacts, archive (abandon), or report manual no-action. |
 | `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. |
-| `eforge_playbook` | Compatibility facade for eforge playbook actions. Delegates to eforge-playbooks command contributions. Actions: list, show, save, validate, copy, promote, demote, run. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the selected planning template; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed (default activeBuildPolicy), 'deferred' means the sync was blocked by active builds and recorded for potential retry (requires activeBuildPolicy: 'defer'). |
 | `eforge_extension_contribution` | List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management. |
 
 ## Native tools (Pi extension)
 
-Total tools: 21
+Total tools: 20
 
 | Tool name | Description |
 |-----------|-------------|
@@ -61,8 +60,7 @@ Total tools: 21
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. Response shape includes verdict: 'retry' \| 'continue-repair' \| 'abandon' \| 'manual'. retry starts fresh, continue-repair queues preserved compiled artifacts for repair, abandon archives the failed PRD, and manual returns noAction: true without mutation. |
 | `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts. Use when a failed PRD has eligible compiled artifacts and should continue from them with repair work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
-| `eforge_playbook` | Compatibility facade for eforge playbook actions through eforge-playbooks command contributions. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the selected planning template; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. When active builds are running, the sync may be deferred — check the outcome field in the response and retry when active builds complete, or use activeBuildPolicy: 'defer' to get a retryable deferred result instead of skipping. |
 | `eforge_extension_contribution` | List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management. |
 
@@ -85,5 +83,4 @@ Rows are generated from the docs generator skill-pair map and frontmatter in `ef
 | `restart` | `eforge-restart` | Safely restart the eforge daemon, checking for active builds first |
 | `status` | `eforge-status` | Check eforge run status and queue state via MCP tools |
 | `update` | `eforge-update` | Check for eforge updates and guide through updating the CLI package, daemon, and plugin |
-| `playbook` | `eforge-playbook` | Create, edit, run, list, and promote eforge playbooks — reusable recurring-workflow templates |
 | `recover` | `eforge-recover` | Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, continue-repair, abandon, or manual) |

@@ -70,14 +70,15 @@ describe('playbook extension docs boundary', () => {
     expect(playbooksGuide).not.toMatch(/daemon returns/i);
   });
 
-  it('documents generic contribution invocation and host compatibility instead of direct playbook HTTP APIs', () => {
+  it('documents generic contribution invocation instead of direct host playbook APIs', () => {
     const integrations = read('web/content/docs/integrations.md');
-    expect(integrations).toMatch(/Claude Code MCP.*eforge_playbook|Pi.*eforge_playbook|Playbook commands call `eforge-playbooks:\*`/is);
     expect(integrations).toContain('eforge-playbooks:*');
     expect(integrations).toContain('eforge_extension_contribution');
     expect(integrations).toMatch(/direct playbook-specific (?:daemon )?routes are absent|playbook-specific routes are absent|no playbook-specific routes/i);
     expect(integrations).toContain('invokeExtensionAction');
     expect(integrations).toContain('fetchExtensionContributionManifest');
+    expect(integrations).not.toContain('eforge_playbook');
+    expect(integrations).not.toContain('eforge:playbook');
 
     for (const path of ['docs/extensions.md', 'web/content/docs/extensions.md']) {
       const contents = read(path);
@@ -120,18 +121,18 @@ describe('playbook extension docs boundary', () => {
     }
   });
 
-  it('regenerates tools and LLM references around eforge-playbooks compatibility facades', () => {
+  it('regenerates tools and LLM references around generic contribution invocation', () => {
     for (const path of ['web/content/reference/tools.md', 'web/public/reference/tools.md']) {
       const toolsReference = read(path);
-      expect(toolsReference).toContain('eforge_playbook');
-      expect(toolsReference).toContain('eforge-playbooks');
-      expect(toolsReference).toMatch(/copy/i);
+      expect(toolsReference).toContain('eforge_extension_contribution');
+      expect(toolsReference).not.toContain('eforge_playbook');
       expect(toolsReference).not.toContain('create-from-' + 'playbook');
       expect(toolsReference).not.toContain('playbook_name');
     }
 
     const llmsFull = read('web/public/llms-full.txt');
     expect(llmsFull).toContain('eforge-playbooks:run-playbook');
+    expect(llmsFull).not.toContain('eforge_playbook');
     expect(llmsFull).not.toContain(forbiddenDirectRoute());
   });
 });

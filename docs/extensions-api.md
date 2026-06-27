@@ -173,7 +173,7 @@ Compatibility helper that resolves safe path segments under the project-local `.
 
 Prefer `createEforgeProjectPaths` or `resolveExtensionStoragePath` for new extension-owned storage so the scope and `storage/extensions/<extension-name>/` convention are explicit.
 
-These helpers do not add a native workflow registration API. The first-party `eforge-playbooks` package exposes shipped playbook behavior through extension actions, owns playbook parser/storage/compiler/seed behavior locally, and uses `@eforge-build/input` only for domain-neutral acceptance-criteria quality helpers; session-planning helpers remain separate from that playbook extension boundary. User-authored custom playbook or session-plan extraction remains future/deferred work.
+These helpers do not add a native workflow registration API. The first-party `eforge-playbooks` package exposes shipped playbook behavior through extension actions and owns parser/storage/compiler/seed behavior locally; domain-neutral acceptance-criteria helpers and session-planning helpers remain separate from that playbook extension boundary. User-authored custom playbook or session-plan extraction remains future/deferred work.
 
 ---
 

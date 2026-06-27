@@ -5,7 +5,7 @@ Canonical scope names, directory helpers, named-set resolution, and layered-sing
 ## Consumers
 
 - `@eforge-build/engine` - scope directory lookup and config merge order
-- `@eforge-build/eforge-playbooks` - playbook named-set path resolution
+- First-party extensions that need generic named-set path resolution
 - Future wrapper apps that need to read or write eforge-scoped files directly
 
 ## Canonical scopes
@@ -31,13 +31,13 @@ Precedence order: `project-local > project-team > user`
 
 **Layered singleton** - all existing scope files are returned in canonical merge order (`user -> project-team -> project-local`). Used for `config.yaml`. The caller owns parsing and merge semantics.
 
-**Named set** - directory entries are unique by name across tiers; same-name entries at higher-precedence tiers shadow lower-precedence ones. Used for `profiles/` and `playbooks/`. The highest-precedence copy wins.
+**Named set** - directory entries are unique by name across tiers; same-name entries at higher-precedence tiers shadow lower-precedence ones. Used for `profiles/` and `templates/`. The highest-precedence copy wins.
 
-See [docs/config.md](../../docs/config.md) for how the engine applies these primitives to config layers, profiles, and playbooks.
+See [docs/config.md](../../docs/config.md) for how eforge applies these primitives to config layers, profiles, and other named sets.
 
 ## Out of scope
 
-This package has no config schema, no playbook or profile schema, no daemon knowledge, no queue knowledge, and no engine concepts. It is a pure path and file-resolution utility.
+This package has no config schema, no artifact schema, no daemon knowledge, no queue knowledge, and no engine concepts. It is a pure path and file-resolution utility.
 
 ## Stability
 

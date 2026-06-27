@@ -47,7 +47,9 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
 
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
 export const EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN = '^(?:[A-Za-z0-9._:-]{1,128}|(?=.{1,256}$)(?!.*[/\\\\\\u0000-\\u001F\\u007F-\\u009F])(?!(?:\\.|\\.\\.):).+:[a-z][a-z0-9-]{0,63})$' as const;
+export const SESSION_PLAN_ID_PATTERN = '^[a-z0-9]+(?:-[a-z0-9]+)*$' as const;
 export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: EXTENSION_AGENT_TASK_ID_PATTERN });
+export const EforgeSessionPlanIdSchema = Type.String({ minLength: 1, pattern: SESSION_PLAN_ID_PATTERN });
 export const ExtensionAgentTaskContributionRefSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 256, pattern: EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN }),
   extensionName: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })),
@@ -133,7 +135,7 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
 
 // --- eforge:region session-plan-creation-draft ---
 export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
-  session: Type.String({ minLength: 1, pattern: '\\S' }),
+  session: EforgeSessionPlanIdSchema,
   topic: Type.String({ minLength: 1, pattern: '\\S' }),
   planningType: EforgePlanPlanningTypeSchema,
   planningDepth: EforgePlanPlanningDepthSchema,

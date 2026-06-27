@@ -340,13 +340,19 @@ describe('loadDocPage', () => {
       expect(profiles, `Expected profiles guide to mention ${snippet}`).toContain(snippet);
     }
 
+    for (const removed of ['eforge_playbook', '/eforge:playbook', 'eforge playbook', 'eforge play ']) {
+      expect(playbooks, `Expected playbooks guide not to document removed host facade ${removed}`).not.toContain(removed);
+      expect(readGuide('integrations'), `Expected integrations guide not to document removed host facade ${removed}`).not.toContain(removed);
+    }
+
     for (const snippet of [
       '~/.config/eforge/playbooks/',
       'eforge/playbooks/',
       '.eforge/playbooks/',
-      '/eforge:playbook create',
-      '/eforge:playbook run',
-      '/eforge:playbook list',
+      'eforge extension contributions invoke eforge-playbooks:save-playbook --kind command',
+      'eforge extension contributions invoke eforge-playbooks:run-playbook --kind command',
+      'eforge extension contributions list --extension-name eforge-playbooks',
+      'eforge-plan:planning-workstation',
       'eforge-playbooks:save-playbook',
       'eforge-playbooks:run-playbook',
       'eforge-playbooks:promote-playbook',

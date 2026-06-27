@@ -473,10 +473,12 @@ describe('playbook skills — host facades removed', () => {
 describe('docs/config.md — planning playbook prose', () => {
   const docsConfig = readRepoFile('docs/config.md');
 
-  it('documents planning playbook profile inheritance without the removed plan skill', () => {
+  it('documents planning playbook profile inheritance through generic contribution guidance', () => {
     expect(docsConfig).toContain('eforge-plan planning flow');
-    expect(docsConfig).toContain('agent_profile');
+    expect(docsConfig).toContain('eforge.plan.planning-workstation');
+    expect(docsConfig).toContain('eforge extension contributions invoke');
     expect(docsConfig).not.toContain('/eforge:plan');
+    expect(docsConfig).not.toContain('planning-mode-playbook');
   });
 });
 

@@ -107,11 +107,6 @@
       "category": "implementation"
     },
     {
-      "path": "packages/pi-eforge/extensions/eforge/playbook-commands.ts",
-      "noGrowthCeiling": 747,
-      "category": "implementation"
-    },
-    {
       "path": "packages/monitor/src/db.ts",
       "noGrowthCeiling": 819,
       "category": "implementation"
@@ -119,11 +114,6 @@
     {
       "path": "packages/pi-eforge/extensions/eforge/profile-commands.ts",
       "noGrowthCeiling": 732,
-      "category": "implementation"
-    },
-    {
-      "path": "packages/input/src/playbook.ts",
-      "noGrowthCeiling": 731,
       "category": "implementation"
     },
     {

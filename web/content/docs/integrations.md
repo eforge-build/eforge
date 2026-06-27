@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), `eforge_playbook` compatibility over `eforge-playbooks:*` contributions, existing queue controls, and auto-build state. Extension-management and contribution tools use compact default projections and share a 12,000-character host-output budget for returned tool text; oversized payloads are summarized or truncated with guidance instead of dumping raw daemon objects into the coding-agent context. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. Playbook behavior is available only when the first-party extension contributes actions to that generic surface. Extension-management and contribution tools use compact default projections and share a 12,000-character host-output budget for returned tool text; oversized payloads are summarized or truncated with guidance instead of dumping raw daemon objects into the coding-agent context. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -42,7 +42,6 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt, PRD, file path, or optional session-plan artifact |
-| `/eforge:playbook` | Optional workflow command over `eforge-playbooks:*` contributions to create, run, list, edit, copy, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
 | `/eforge:workflow` | Choose or reconfigure landing action, PR auto-merge policy, stacking, and automatic stack sync |
@@ -74,7 +73,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`; `eforge_playbook` delegates to `eforge-playbooks:*` through generic contribution invocation. Pi extension-management and contribution tool text uses the same 12,000-character host-output budget as MCP. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links without dumping raw manifests by default, including optional [eforge-plan](/docs/eforge-plan) planning entries, SQLite store/search/maintenance actions, and `eforge-playbooks` contributions when those extensions are loaded.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_extension`, and `eforge_extension_contribution`. Playbook behavior is reached through generic contribution invocation when the first-party extension is loaded. Pi extension-management and contribution tool text uses the same 12,000-character host-output budget as MCP. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links without dumping raw manifests by default, including optional [eforge-plan](/docs/eforge-plan) planning entries, SQLite store/search/maintenance actions, and `eforge-playbooks` contributions when those extensions are loaded.
 
 ### Pi commands
 
@@ -97,7 +96,7 @@ npm install -g @eforge-build/eforge
 npx @eforge-build/eforge build "Add rate limiting to the API"
 ```
 
-Daemon management, playbook compatibility commands, extension commands, and one-off build profile overrides are available from the CLI. Playbook commands call `eforge-playbooks:*` through the generic extension contribution dispatcher:
+Daemon management, extension commands, and one-off build profile overrides are available from the CLI. Playbook actions are discovered and invoked through the generic extension contribution dispatcher:
 
 ```bash
 eforge build "Add dark mode toggle"
@@ -106,8 +105,8 @@ eforge build --landing-action pr plans/my-feature-prd.md
 eforge queue run --all
 eforge queue priority <prdId> <priority>
 eforge queue remove <prdId>
-eforge play docs-sync
-eforge playbook list
+eforge extension contributions list --kind command --search playbook
+eforge extension contributions invoke eforge-playbooks:run-playbook --kind command --input-json '{"name":"docs-sync"}'
 eforge daemon status
 eforge daemon start
 eforge daemon stop

@@ -45,7 +45,7 @@ async function createReviewDiffRepo(): Promise<string> {
   await writeRepoFile(cwd, 'web/public/reference/events.md', '# Generated public reference doc\n');
   await writeRepoFile(cwd, 'web/public/schemas/events.schema.json', '{"generated":true}\n');
   await writeRepoFile(cwd, 'web/public/llms-full.txt', '# Generated LLM bundle\n');
-  await writeRepoFile(cwd, 'eforge/playbooks/dependency-update.md', '# Real playbook change\n');
+  await writeRepoFile(cwd, 'workflow/templates/dependency-update.md', '# Real workflow template change\n');
   await git(cwd, ['add', '.']);
   await git(cwd, ['commit', '-m', 'feature change']);
 
@@ -63,10 +63,10 @@ describe('review context generated-artifact filtering', () => {
     const context = await computeReviewContext(cwd, 'main');
 
     expect(context.changedFiles.split('\n')).toEqual([
-      'eforge/playbooks/dependency-update.md',
       'src/app.ts',
+      'workflow/templates/dependency-update.md',
     ]);
-    expect(context.diffContext).toContain('eforge/playbooks/dependency-update.md');
+    expect(context.diffContext).toContain('workflow/templates/dependency-update.md');
     expect(context.diffContext).toContain('src/app.ts');
     expect(context.diffContext).not.toContain('eforge/plans/demo/orchestration.yaml');
     expect(context.diffContext).not.toContain('eforge/plans/demo/plan-01.md');
@@ -83,8 +83,8 @@ describe('review context generated-artifact filtering', () => {
     const snapshot = await computeReviewThresholdSnapshot(cwd, 'main');
 
     expect(snapshot.changedFiles).toEqual([
-      'eforge/playbooks/dependency-update.md',
       'src/app.ts',
+      'workflow/templates/dependency-update.md',
     ]);
     expect(snapshot.changedLines).toBe(3);
     expect(snapshot.willParallelize).toBe(false);
@@ -96,8 +96,8 @@ describe('review context generated-artifact filtering', () => {
 // ---------------------------------------------------------------------------
 
 const EXPECTED_CHANGED_FILES = [
-  'eforge/playbooks/dependency-update.md',
   'src/app.ts',
+  'workflow/templates/dependency-update.md',
 ];
 
 function validReviewResponse(): { text: string } {
