@@ -87,8 +87,8 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
-3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for planner prompts while preserving the full source for artifacts and validation.
-4. **Planning** - A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
+3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation.
+4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 7. **Merge** - Completed plans merge back to your branch in topological order.

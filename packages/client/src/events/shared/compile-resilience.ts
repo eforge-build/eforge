@@ -1,10 +1,21 @@
-import { Type, type Static } from '@sinclair/typebox';
+import { FormatRegistry, Type, type Static } from '@sinclair/typebox';
 
 export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
+export const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
 export const MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH = 4096;
 export const MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH = 4096;
 
-const BoundedStringSchema = Type.String({ maxLength: 2000 });
+const VALIDATION_DIAGNOSTIC_EXCERPT_FORMAT = 'eforge-validation-diagnostic-excerpt-bytes';
+const VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT = 'eforge-validation-diagnostic-message-bytes';
+
+FormatRegistry.Set(VALIDATION_DIAGNOSTIC_EXCERPT_FORMAT, (value) => utf8ByteLength(value) <= MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH);
+FormatRegistry.Set(VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT, (value) => utf8ByteLength(value) <= MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH);
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+const BoundedStringSchema = Type.String({ maxLength: MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH });
 const BoundedStringListSchema = Type.Array(BoundedStringSchema, { maxItems: MAX_COMPILE_RISK_LIST_ITEMS });
 const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
 const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -119,12 +130,12 @@ export const BoundedValidationDiagnosticSchema = Type.Object({
   schemaPath: Type.String(),
   expectedType: Type.String(),
   receivedType: Type.String(),
-  excerpt: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH }),
+  excerpt: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, format: VALIDATION_DIAGNOSTIC_EXCERPT_FORMAT }),
   payloadBytes: NonNegativeIntegerSchema,
   payloadSha256: Sha256HexSchema,
   omittedBytes: NonNegativeIntegerSchema,
   truncated: Type.Boolean(),
-  message: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH }),
+  message: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH, format: VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT }),
 });
 
 export type CompileRiskLevel = Static<typeof CompileRiskLevelSchema>;

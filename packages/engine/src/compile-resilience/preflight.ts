@@ -76,7 +76,7 @@ export function buildCompilePromptSourceBundle(
       || block.pathReferences.some((path) => allowedPaths.has(normalizePath(path)));
     promptSource += strippedSource.slice(cursor, block.start);
     const base = toCompaction(block);
-    detected.push({ ...base, omittedBytes: allow ? 0 : block.originalBytes });
+    detected.push({ ...base, pathReferences: block.pathReferences, omittedBytes: allow ? 0 : block.originalBytes });
     if (allow) {
       promptSource += strippedSource.slice(block.start, block.end);
     } else {

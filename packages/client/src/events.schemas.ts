@@ -20,6 +20,7 @@ export {
   CompileScopeContextFailureSchema,
   CompileScopeContextSourceSchema,
   MAX_COMPILE_RISK_LIST_ITEMS,
+  MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events/shared/compile-resilience.js';

@@ -9,6 +9,9 @@ import { formatStageRegistry, validatePipeline } from '../pipeline.js';
 import { REVIEW_PERSPECTIVES, parseWithSchema } from '@eforge-build/client';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import type { ValidationProviderRegistration } from '../extensions/types.js';
+// --- eforge:region plan-03-planner-guardrails ---
+import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
+// --- eforge:endregion plan-03-planner-guardrails ---
 
 /**
  * Options for the pipeline composer agent.
@@ -22,6 +25,10 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
   /** Prompt-safe compacted source content. Defaults to source. */
   promptSourceContent?: string;
   // --- eforge:endregion plan-02-preflight-compaction ---
+  // --- eforge:region plan-03-planner-guardrails ---
+  /** Prompt/live context guardrails for planner-family runs. */
+  contextGuard?: CompileContextGuardOptions;
+  // --- eforge:endregion plan-03-planner-guardrails ---
   /** Working directory */
   cwd: string;
   /** Whether to emit verbose agent-level events */
@@ -93,6 +100,9 @@ export async function* composePipeline(
   options: PipelineComposerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { harness, source, cwd, verbose, abortController } = options;
+  // --- eforge:region plan-03-planner-guardrails ---
+  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'pipeline-composer' });
+  // --- eforge:endregion plan-03-planner-guardrails ---
   // --- eforge:region plan-02-preflight-compaction ---
   const promptSourceContent = options.promptSourceContent ?? source;
   // --- eforge:endregion plan-02-preflight-compaction ---
@@ -137,6 +147,15 @@ export async function* composePipeline(
         + `Return valid JSON matching the schema above, correcting the specific issue noted.`;
     }
 
+    // --- eforge:region plan-03-planner-guardrails ---
+    try {
+      contextGuard.assertPrompt(promptText);
+    } catch (err) {
+      abortController?.abort();
+      throw err;
+    }
+    // --- eforge:endregion plan-03-planner-guardrails ---
+
     let resultText: string | undefined;
 
     for await (const event of harness.run(
@@ -151,6 +170,14 @@ export async function* composePipeline(
       'pipeline-composer',
       options.lane,
     )) {
+      // --- eforge:region plan-03-planner-guardrails ---
+      try {
+        contextGuard.observe(event);
+      } catch (err) {
+        abortController?.abort();
+        throw err;
+      }
+      // --- eforge:endregion plan-03-planner-guardrails ---
       if (isAlwaysYieldedAgentEvent(event) || verbose) {
         yield event;
       }

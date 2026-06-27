@@ -16,6 +16,13 @@ import {
 import { safeParseWithSchema, type ValueError } from '@eforge-build/client';
 import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
 import { emitPlanningDecision } from '../decisions.js';
+// --- eforge:region plan-03-planner-guardrails ---
+import {
+  formatPlannerToolSchemaValidationError,
+  formatPlannerToolSemanticValidationError,
+} from '../compile-resilience/diagnostics.js';
+import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
+// --- eforge:endregion plan-03-planner-guardrails ---
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
@@ -23,6 +30,10 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   /** Prompt-safe compacted source content. Defaults to resolved source content. */
   promptSourceContent?: string;
   // --- eforge:endregion plan-02-preflight-compaction ---
+  // --- eforge:region plan-03-planner-guardrails ---
+  /** Prompt/live context guardrails for planner-family runs. */
+  contextGuard?: CompileContextGuardOptions;
+  // --- eforge:endregion plan-03-planner-guardrails ---
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -112,11 +123,21 @@ function createPlanSetSubmissionTool(
     handler: async (input: unknown) => {
       const parseResult = safeParseWithSchema(planSetSubmissionSchema, input);
       if (!parseResult.success) {
-        return formatSubmissionValidationError(parseResult.error.errors);
+        return formatPlannerToolSchemaValidationError({
+          toolName: 'submit_plan_set',
+          schema: planSetSubmissionSchema,
+          errors: parseResult.error.errors,
+          fullPayload: input,
+        });
       }
       const validationResult = validatePlanSetSubmission(parseResult.data);
       if (!validationResult.success) {
-        return formatSubmissionValidationError(validationResult.error.errors);
+        return formatPlannerToolSemanticValidationError({
+          toolName: 'submit_plan_set',
+          errors: validationResult.error.errors,
+          fullPayload: input,
+          expectedType: 'valid plan-set submission',
+        });
       }
       if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
@@ -140,11 +161,21 @@ function createArchitectureSubmissionTool(
     handler: async (input: unknown) => {
       const parseResult = safeParseWithSchema(architectureSubmissionSchema, input);
       if (!parseResult.success) {
-        return formatSubmissionValidationError(parseResult.error.errors);
+        return formatPlannerToolSchemaValidationError({
+          toolName: 'submit_architecture',
+          schema: architectureSubmissionSchema,
+          errors: parseResult.error.errors,
+          fullPayload: input,
+        });
       }
       const validationResult = validateArchitectureSubmission(parseResult.data);
       if (!validationResult.success) {
-        return formatSubmissionValidationError(validationResult.error.errors);
+        return formatPlannerToolSemanticValidationError({
+          toolName: 'submit_architecture',
+          errors: validationResult.error.errors,
+          fullPayload: input,
+          expectedType: 'valid architecture submission',
+        });
       }
       if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
@@ -172,6 +203,9 @@ export async function* runPlanner(
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
   const { harness } = options;
+  // --- eforge:region plan-03-planner-guardrails ---
+  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
+  // --- eforge:endregion plan-03-planner-guardrails ---
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
@@ -281,6 +315,14 @@ ${existingPlans}`;
     iteration++;
 
     const prompt = await buildPrompt();
+    // --- eforge:region plan-03-planner-guardrails ---
+    try {
+      contextGuard.assertPrompt(prompt);
+    } catch (err) {
+      options.abortController?.abort();
+      throw err;
+    }
+    // --- eforge:endregion plan-03-planner-guardrails ---
 
     if (iteration === 1) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
@@ -295,6 +337,14 @@ ${existingPlans}`;
       'planner',
       options.lane,
     )) {
+      // --- eforge:region plan-03-planner-guardrails ---
+      try {
+        contextGuard.observe(event);
+      } catch (err) {
+        options.abortController?.abort();
+        throw err;
+      }
+      // --- eforge:endregion plan-03-planner-guardrails ---
       if (event.type === 'agent:message') {
         if (!skipEmitted) {
           const skipReason = parseSkipBlock(event.content);

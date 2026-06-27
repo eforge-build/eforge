@@ -20,6 +20,9 @@ import type { ReviewerPerspectiveRegistration, ValidationProviderRegistration } 
 import type { CompilePreflightRisk } from '../events.js';
 import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
 // --- eforge:endregion plan-02-preflight-compaction ---
+// --- eforge:region plan-03-planner-guardrails ---
+import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
+// --- eforge:endregion plan-03-planner-guardrails ---
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -35,6 +38,9 @@ export interface PipelineContext {
   compilePreflightOptions?: CompilePreflightOptions;
   compilePreflight?: CompilePreflightRisk;
   // --- eforge:endregion plan-02-preflight-compaction ---
+  // --- eforge:region plan-03-planner-guardrails ---
+  compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
+  // --- eforge:endregion plan-03-planner-guardrails ---
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

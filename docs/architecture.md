@@ -174,7 +174,7 @@ The CLI composes async generator middleware around the engine's event stream - t
 
 The engine uses a two-phase pipeline. Each phase is a sequence of named stages - async generators registered in a global stage registry.
 
-- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected.
+- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected. Planner-family agents apply prompt and live context-budget guardrails after prompt assembly and during non-final usage updates, so oversized compile context can stop through the typed scope/context failure path before a provider hard context-window failure.
 - **Build stages** run once per plan. The stage list is per-plan, stored in `orchestration.yaml`.
 
 ```mermaid
@@ -200,7 +200,7 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `planner` | Agent explores codebase, selects profile, submits plan set via `submit_plan_set` or `submit_architecture` custom tool - engine writes plan files and `orchestration.yaml` from validated payload. The `AgentHarness` translates bare tool names into the harness-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
+| `planner` | Agent explores codebase, selects profile, submits plan set via `submit_plan_set` or `submit_architecture` custom tool - engine writes plan files and `orchestration.yaml` from validated payload. Tool validation failures return bounded diagnostics with schema path, expected/received type summaries, payload byte count, SHA-256 hash, omitted-byte/truncation metadata, and compact excerpts rather than echoing raw submitted arguments. The `AgentHarness` translates bare tool names into the harness-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
 | `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
 | `module-planning` | Writes detailed plans for each module using architecture context |

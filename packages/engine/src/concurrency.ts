@@ -116,6 +116,8 @@ export interface ParallelTask<T> {
 export interface RunParallelOptions {
   /** Maximum number of concurrent tasks. Defaults to `availableParallelism()`. */
   parallelism?: number;
+  /** Rethrow matching task failures after all running tasks have drained. */
+  rethrowIf?: (error: unknown) => boolean;
 }
 
 /**
@@ -134,6 +136,7 @@ export async function* runParallel<T>(
   const semaphore = new Semaphore(parallelism);
   const eventQueue = new AsyncEventQueue<T>();
 
+  const fatalErrors: unknown[] = [];
   const taskPromises = tasks.map(async (task) => {
     eventQueue.addProducer();
     let acquired = false;
@@ -144,8 +147,9 @@ export async function* runParallel<T>(
       for await (const event of task.run()) {
         eventQueue.push(event);
       }
-    } catch {
-      // Individual task failures are non-fatal — swallowed here.
+    } catch (err) {
+      if (options?.rethrowIf?.(err)) fatalErrors.push(err);
+      // Other individual task failures are non-fatal — swallowed here.
       // Callers wrap their run() generators to emit domain-specific error events.
     } finally {
       if (acquired) semaphore.release();
@@ -160,4 +164,5 @@ export async function* runParallel<T>(
 
   // All producers finished — promises should be settled
   await Promise.allSettled(taskPromises);
+  if (fatalErrors.length > 0) throw fatalErrors[0];
 }

@@ -39,10 +39,17 @@ import {
 // --- eforge:region plan-02-preflight-compaction ---
 import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
 // --- eforge:endregion plan-02-preflight-compaction ---
+// --- eforge:region plan-03-planner-guardrails ---
+import { compileContextGuardOptions, CompileScopeContextError } from '../../compile-resilience/context-guard.js';
+// --- eforge:endregion plan-03-planner-guardrails ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
 // ---------------------------------------------------------------------------
+
+function mergePromptAppend(configured: string | undefined, preflightAppend: string | undefined): string {
+  return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
+}
 
 /**
  * Run a single planner attempt (per-retry span + event processing).
@@ -70,9 +77,14 @@ async function* runPlannerAttempt(
       defaultReview: ctx.pipeline.defaultReview,
       // --- eforge:region plan-02-preflight-compaction ---
       promptSourceContent: ctx.promptSourceContent,
-      promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
       // --- eforge:endregion plan-02-preflight-compaction ---
+      // --- eforge:region plan-03-planner-guardrails ---
+      contextGuard: compileContextGuardOptions({ stage: 'planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+      // --- eforge:endregion plan-03-planner-guardrails ---
       ...agentConfig,
+      // --- eforge:region plan-02-preflight-compaction ---
+      promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
+      // --- eforge:endregion plan-02-preflight-compaction ---
       ...plannerTb,
       phase: 'compile',
       stage: 'planner',
@@ -178,14 +190,19 @@ async function* runModulePlannerAttempt(
       sourceContent: ctx.sourceContent,
       // --- eforge:region plan-02-preflight-compaction ---
       promptSourceContent: ctx.promptSourceContent,
-      promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
       // --- eforge:endregion plan-02-preflight-compaction ---
+      // --- eforge:region plan-03-planner-guardrails ---
+      contextGuard: compileContextGuardOptions({ stage: 'module-planner', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+      // --- eforge:endregion plan-03-planner-guardrails ---
       dependencyPlanContent,
       verbose: ctx.verbose,
       onClarification: ctx.onClarification,
       abortController: ctx.abortController,
       outputDir: ctx.config.plan.outputDir,
       ...agentConfig,
+      // --- eforge:region plan-02-preflight-compaction ---
+      promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
+      // --- eforge:endregion plan-02-preflight-compaction ---
       ...modulePlannerTb,
       phase: 'compile',
       stage: 'module-planner',
@@ -218,6 +235,13 @@ async function* runModulePlannerAttempt(
     modTracker.cleanup();
     modSpan.end();
   } catch (err) {
+    // --- eforge:region plan-03-planner-guardrails ---
+    if (err instanceof CompileScopeContextError) {
+      modTracker.cleanup();
+      modSpan.error(err);
+      throw err;
+    }
+    // --- eforge:endregion plan-03-planner-guardrails ---
     // Module planning failure is non-fatal - continue with other modules
     modTracker.cleanup();
     modSpan.error(err as Error);
@@ -244,12 +268,17 @@ registerCompileStage({
     source: ctx.sourceContent,
     // --- eforge:region plan-02-preflight-compaction ---
     promptSourceContent: ctx.promptSourceContent,
-    promptAppend: formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle }),
     // --- eforge:endregion plan-02-preflight-compaction ---
+    // --- eforge:region plan-03-planner-guardrails ---
+    contextGuard: compileContextGuardOptions({ stage: 'pipeline-composer', risk: ctx.compilePreflight, limits: ctx.compileContextGuardLimits }),
+    // --- eforge:endregion plan-03-planner-guardrails ---
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
     ...composerConfig,
+    // --- eforge:region plan-02-preflight-compaction ---
+    promptAppend: mergePromptAppend(composerConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
+    // --- eforge:endregion plan-02-preflight-compaction ---
     phase: 'compile',
     stage: 'pipeline-composer',
     harness: composerHarness,
@@ -446,7 +475,7 @@ registerCompileStage({
       run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig),
     }));
 
-    yield* runParallel(waveTasks);
+    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });
 
     // Read completed module plan files for this wave (context for later waves)
     for (const modId of waveModuleIds) {
