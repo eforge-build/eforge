@@ -296,6 +296,77 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
   });
 
+  it('single delegation preserves parsed issues after a late context-window reviewer error', async () => {
+    const backend = new StubHarness([{
+      resultText: validLateReviewXml,
+      lateError: new AgentTerminalError('error_context_window', 'Backend error: input exceeds the context window after result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-single-late-context-reviewer-error',
+        cwd: '/tmp',
+        strategy: 'single',
+        round: 1,
+      }),
+    );
+
+    expect(findEvent(events, 'agent:warning')).toMatchObject({
+      code: 'reviewer-late-infrastructure-error-downgraded',
+      agent: 'reviewer',
+      planId: 'plan-test-single-late-context-reviewer-error',
+    });
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: 'bug', file: 'src/parallel.ts', issueId: 'review-r1-single-1' }),
+    ]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
+  it('salvages non-strict reviewer findings after a late context-window error', async () => {
+    const nonStrictXml = `<review-issues>
+  <issue severity="high">
+    <title>Generated docs still advertise removed playbook host commands/tools</title>
+    <evidence>
+      <item path="web/content/reference/cli.md" line="12">Still documents removed commands.</item>
+    </evidence>
+    <recommendation>Run pnpm docs:generate and commit regenerated artifacts.</recommendation>
+  </issue>
+</review-issues>`;
+    const backend = new StubHarness([{
+      resultText: nonStrictXml,
+      lateError: new AgentTerminalError('error_context_window', 'Backend error: input exceeds the context window after result'),
+    }]);
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nTest plan.',
+        baseBranch: 'main',
+        planId: 'plan-test-late-context-salvage',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code'],
+      }),
+    );
+
+    expect(filterEvents(events, 'plan:build:review:parallel:perspective:error')).toHaveLength(0);
+    const complete = findEvent(events, 'plan:build:review:complete');
+    expect(complete!.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'critical',
+        category: 'reviewer-finding',
+        file: 'web/content/reference/cli.md',
+        line: 12,
+        fix: 'Run pnpm docs:generate and commit regenerated artifacts.',
+      }),
+    ]));
+    expect(complete!.issues.some(issue => issue.category === 'review-contract')).toBe(false);
+  });
+
   it('extension perspective preserves parsed issues after a late transient reviewer error', async () => {
     const registration: ReviewerPerspectiveRegistration = {
       kind: 'reviewerPerspective',

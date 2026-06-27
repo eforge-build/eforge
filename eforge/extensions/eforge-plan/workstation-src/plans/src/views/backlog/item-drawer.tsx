@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Drawer } from '@/components/ui/drawer';
 import { ErrorBox } from '@/components/ui/error-box';
 import { Select } from '@/components/ui/select';
+import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import { mergeCompactItemDetail } from '@/lib/compact-board-adapter';
 import type { PlanLink } from '@/lib/plan-links';
@@ -59,7 +60,7 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
     let cancelled = false;
     setDetailLoading(true);
     setDetailError(null);
-    getBridge().invokeAction<CompactBoardDetailResponse>('get-item', { id: item.id })
+    getBridge().invokeAction<CompactBoardDetailResponse>('get-item', { id: item.id, includeBody: true })
       .then((response) => { if (!cancelled) setDetail(mergeCompactItemDetail(item, response)); })
       .catch((caught: unknown) => { if (!cancelled) setDetailError(caught instanceof Error ? caught.message : String(caught)); })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
@@ -164,6 +165,12 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
             <div className="flex flex-wrap gap-1">
               {displayItem.tags.map((tag) => <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{tag}</span>)}
             </div>
+          </Section>
+        )}
+
+        {displayItem.body?.trim() && (
+          <Section title="Body">
+            <SafeMarkdown markdown={displayItem.body} />
           </Section>
         )}
 

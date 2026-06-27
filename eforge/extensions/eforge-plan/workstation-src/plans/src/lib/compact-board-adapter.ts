@@ -159,6 +159,7 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
     associatedLinks: detail.associatedLinks ?? summary.associatedLinks ?? [],
     ...eligibility,
     snippets: detail.snippet?.text ? [detail.snippet.text] : summary.snippets,
+    body: detail.body ?? summary.body,
   };
 }
 
