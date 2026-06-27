@@ -52,7 +52,9 @@ export interface PiCompileContextGuardDerivationInput {
 }
 
 export async function resolvePiRuntimeModel(input: PiRuntimeModelResolutionInput): Promise<PiRuntimeModelResolution> {
-  const authStorage = input.authStorage ?? AuthStorage.create();
+  const authStorage = input.authStorage
+    ?? input.modelRegistry?.authStorage
+    ?? (input.modelRegistry ? AuthStorage.inMemory() : AuthStorage.create());
   const modelRegistry = input.modelRegistry ?? ModelRegistry.create(authStorage);
   const provider = requireNonEmpty(input.provider, 'provider');
   const modelId = requireNonEmpty(input.modelId, 'model id');
@@ -87,9 +89,9 @@ export async function resolvePiRuntimeModel(input: PiRuntimeModelResolutionInput
 export async function derivePiCompileContextGuard(input: PiCompileContextGuardDerivationInput): Promise<PiCompileContextGuardDerivation> {
   const provider = normalizeNonEmpty(input.model.provider);
   const modelId = normalizeNonEmpty(input.model.id);
-  const baseDiagnostics = {
-    provider,
-    modelId,
+  const baseDiagnostics: Omit<CompileContextGuardDiagnostics, 'fallbackReason' | 'limits'> = {
+    ...(provider ? { provider } : {}),
+    ...(modelId ? { modelId } : {}),
     metadataSource: 'fallback' as const,
     outputReserveTokens: PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS,
     overheadReserveTokens: PI_COMPILE_CONTEXT_OVERHEAD_RESERVE_TOKENS,

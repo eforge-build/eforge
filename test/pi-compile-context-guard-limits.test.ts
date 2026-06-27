@@ -38,25 +38,28 @@ function scopeContextFailureEvent(guardDiagnostics: Awaited<ReturnType<typeof de
 }
 
 describe('Pi compile context guard limit derivation', () => {
-  it('derives a safe per-turn input limit from built-in-style registry metadata', async () => {
+  it('derives a safe per-turn input limit from Pi built-in metadata', async () => {
+    const contextWindow = 1_048_576;
+    const outputReserveTokens = 65_536;
     const result = await derivePiCompileContextGuard({
-      model: { provider: 'anthropic', id: 'claude-large-context' },
-      modelRegistry: registry({ findModel: model({ provider: 'anthropic', id: 'claude-large-context', contextWindow: 1_000_000, maxTokens: 64_000 }) }),
+      model: { provider: 'google', id: 'gemini-2.5-flash' },
+      modelRegistry: registry({}),
     });
 
-    expect(result.limits.maxObservedInputTokens).toBe(expectedLimit(1_000_000, 64_000));
-    expect(result.limits.maxObservedInputTokens).toBeLessThan(1_000_000);
+    expect(result.limits.maxObservedInputTokens).toBe(expectedLimit(contextWindow, outputReserveTokens));
+    expect(result.limits.maxObservedInputTokens).toBeLessThan(contextWindow);
     expect(result.limits.maxObservedInputTokens).toBeGreaterThan(DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS.maxObservedInputTokens);
     expect(result.guardDiagnostics).toMatchObject({
-      provider: 'anthropic',
-      modelId: 'claude-large-context',
-      metadataSource: 'registry',
-      contextWindow: 1_000_000,
-      outputReserveTokens: 64_000,
+      provider: 'google',
+      modelId: 'gemini-2.5-flash',
+      metadataSource: 'builtin',
+      contextWindow,
+      outputReserveTokens,
       overheadReserveTokens: PI_COMPILE_CONTEXT_OVERHEAD_RESERVE_TOKENS,
       safetyMargin: PI_COMPILE_CONTEXT_SAFETY_MARGIN,
       limits: result.limits,
     });
+    expect(result.guardDiagnostics).not.toHaveProperty('fallbackReason');
   });
 
   it('uses custom override-style metadata and output-token metadata in the formula', async () => {
@@ -98,10 +101,14 @@ describe('Pi compile context guard limit derivation', () => {
     const missingProvider = await derivePiCompileContextGuard({ model: { id: 'custom-planner' }, modelRegistry: registry({}) });
     const missingModel = await derivePiCompileContextGuard({ model: { provider: 'custom-provider', id: '' }, modelRegistry: registry({}) });
 
+    expect(missingProvider.guardDiagnostics).not.toHaveProperty('provider');
+    expect(missingModel.guardDiagnostics).not.toHaveProperty('modelId');
+
     for (const result of [missingProvider, missingModel]) {
       expect(result.limits.maxObservedInputTokens).toBe(DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS.maxObservedInputTokens);
       expect(result.guardDiagnostics.fallbackReason).toBeTruthy();
       expect(result.guardDiagnostics.metadataSource).toBe('fallback');
+      expect(safeParseEforgeEvent(scopeContextFailureEvent(result.guardDiagnostics)).success).toBe(true);
     }
   });
 
