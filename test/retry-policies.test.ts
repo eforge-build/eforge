@@ -191,6 +191,20 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
   });
 
+  it('shouldRetry returns false for retryable infrastructure after compact inspection continuation', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:inspection-summary' } as EforgeEvent,
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'compact synthesis stream dropped' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_transient_transport',
+      events,
+      error: new Error('Backend error: WebSocket closed 1000'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
+  });
+
   it('shouldRetry returns false for error_transient_transport when planning:submission was already emitted', () => {
     const events: EforgeEvent[] = [
       { timestamp: ts(), type: 'planning:submission', planCount: 1, totalBodySize: 100, hasMigrations: false },

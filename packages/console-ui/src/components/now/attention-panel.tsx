@@ -7,17 +7,10 @@ import {
   asVerdict,
   asConfidence,
 } from '@/components/recovery/verdict-chip';
-import type {
-  QueueCascadeApplyRequest,
-  QueueCascadeApplyResponse,
-  QueueCascadeOperation,
-  QueueCascadePreviewResponse,
-} from '@eforge-build/client/browser';
 import type { NowAttentionItem } from '@/lib/selectors/now';
 import { formatQueueDispatchFailure } from '@/lib/selectors/queue-dispatch-failure';
 import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
 import { FailedEnqueueRow } from './failed-enqueue-row';
-import { QueueCascadeAction } from './queue-cascade-action';
 import { cn } from '@/lib/utils';
 
 interface AttentionPanelProps {
@@ -48,10 +41,6 @@ interface AttentionPanelProps {
     errorsByRunId: Record<string, string>;
     onReenqueue: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
     onDismiss: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
-  };
-  queueCleanupControls?: {
-    previewCascade: (id: string, operation: QueueCascadeOperation) => Promise<QueueCascadePreviewResponse>;
-    applyCascade: (id: string, request: QueueCascadeApplyRequest) => Promise<QueueCascadeApplyResponse>;
   };
 }
 
@@ -89,18 +78,15 @@ function SeverityTag({ severity }: { severity: NowAttentionItem['severity'] }) {
   return <Badge variant="secondary" className="shrink-0 capitalize">Info</Badge>;
 }
 
-/** A failed PRD awaiting recovery and/or queue cleanup. */
+/** A failed PRD awaiting recovery. */
 function FailedQueueRow({
   item,
   onRecover,
-  queueCleanupControls,
 }: {
   item: NowAttentionItem;
   onRecover?: (recovery: NonNullable<NowAttentionItem['recovery']>) => void;
-  queueCleanupControls?: AttentionPanelProps['queueCleanupControls'];
 }) {
   const recovery = item.recovery;
-  const queueCleanup = item.queueCleanup;
   const verdict = asVerdict(recovery?.verdict);
   const confidence = asConfidence(recovery?.confidence);
   const dispatchDetail = formatQueueDispatchFailure(recovery?.dispatchFailure);
@@ -113,7 +99,7 @@ function FailedQueueRow({
         Failed
       </Badge>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground">{recovery?.prdTitle ?? queueCleanup?.prdTitle ?? item.message}</p>
+        <p className="truncate text-sm text-foreground">{recovery?.prdTitle ?? item.message}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {dispatchDetail && <span>{dispatchDetail}</span>}
           {verdict && confidence ? (
@@ -138,17 +124,6 @@ function FailedQueueRow({
         >
           Recover…
         </Button>
-      )}
-      {queueCleanup && queueCleanupControls && (
-        <QueueCascadeAction
-          itemId={queueCleanup.prdId}
-          itemTitle={queueCleanup.prdTitle}
-          operation="remove"
-          capability={queueCleanup.capabilities?.remove}
-          cascadeCapability={queueCleanup.capabilities?.cascadeRemove}
-          onPreviewCascade={queueCleanupControls.previewCascade}
-          onApplyCascade={queueCleanupControls.applyCascade}
-        />
       )}
     </li>
   );
@@ -214,7 +189,7 @@ function HealthRow({ item }: { item: NowAttentionItem }) {
   );
 }
 
-export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust, failedEnqueueControls, queueCleanupControls }: AttentionPanelProps) {
+export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust, failedEnqueueControls }: AttentionPanelProps) {
   if (items.length === 0) return null;
 
   return (
@@ -237,8 +212,8 @@ export function AttentionPanel({ items, hiddenCount, title = 'Attention', onReco
               />
             ) : item.extensionTrust ? (
               <ExtensionTrustRow key={item.id} item={item} controls={extensionTrust} />
-            ) : item.recovery || item.queueCleanup ? (
-              <FailedQueueRow key={item.id} item={item} onRecover={onRecover} queueCleanupControls={queueCleanupControls} />
+            ) : item.recovery ? (
+              <FailedQueueRow key={item.id} item={item} onRecover={onRecover} />
             ) : (
               <HealthRow key={item.id} item={item} />
             ),

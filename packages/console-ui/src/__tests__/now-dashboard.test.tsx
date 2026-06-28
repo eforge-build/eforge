@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
@@ -330,84 +329,6 @@ describe('NowDashboard', () => {
       await waitFor(() => expect(applyCascadeMock).toHaveBeenCalledWith('q-pending', expect.objectContaining({ operation: 'remove' })));
       await screen.findByText(/Queue cascade request failed/);
       expect(refreshQueue).not.toHaveBeenCalled();
-    });
-
-    function failedCleanupState() {
-      return connectedState({
-        queue: [makeQueue({ id: 'q-failed', title: 'Failed Build', status: 'failed', recoveryVerdict: { verdict: 'retry', confidence: 'high' } })],
-      });
-    }
-
-    it('cleans up a failed attention row through shared cascade helpers and refreshes queue and runs', async () => {
-      previewCascadeMock.mockResolvedValue({
-        operation: 'remove',
-        target: { prdId: 'q-failed', title: 'Failed Build', status: 'failed', effect: 'remove', depth: 0, blockers: [] },
-        dependents: [],
-        expectedAffected: { prdIds: ['q-failed'] },
-        warnings: [],
-        blockers: [],
-      });
-      applyCascadeMock.mockResolvedValue({
-        applied: true,
-        operation: 'remove',
-        strategy: 'target-only',
-        affected: { prdIds: ['q-failed'] },
-        warnings: [],
-        blockers: [],
-      });
-      const refreshQueue = vi.fn().mockResolvedValue(undefined);
-      const refreshRuns = vi.fn().mockResolvedValue(undefined);
-
-      render(
-        <NowDashboard
-          projectState={failedCleanupState()}
-          activeSessions={emptyActiveSessions}
-          refreshQueue={refreshQueue}
-          refreshRuns={refreshRuns}
-        />,
-      );
-
-      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-      await waitFor(() => expect(previewCascadeMock).toHaveBeenCalledWith('q-failed', { operation: 'remove' }));
-      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }));
-
-      await waitFor(() => expect(applyCascadeMock).toHaveBeenCalledWith('q-failed', expect.objectContaining({ operation: 'remove', strategy: 'target-only' })));
-      await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
-      expect(refreshRuns).toHaveBeenCalledTimes(1);
-      expect(replaceStateSpy).not.toHaveBeenCalled();
-    });
-
-    it('drops the failed attention row when the queue refresh supplies updated state', async () => {
-      previewCascadeMock.mockResolvedValue({
-        operation: 'remove',
-        target: { prdId: 'q-failed', title: 'Failed Build', status: 'failed', effect: 'remove', depth: 0, blockers: [] },
-        dependents: [],
-        expectedAffected: { prdIds: ['q-failed'] },
-        warnings: [],
-        blockers: [],
-      });
-      applyCascadeMock.mockResolvedValue({ applied: true, operation: 'remove', strategy: 'target-only', affected: { prdIds: ['q-failed'] }, warnings: [], blockers: [] });
-
-      function Harness() {
-        const [state, setState] = React.useState(failedCleanupState);
-        return (
-          <NowDashboard
-            projectState={state}
-            activeSessions={emptyActiveSessions}
-            refreshQueue={() => setState((current) => ({ ...current, queue: [] }))}
-            refreshRuns={vi.fn()}
-          />
-        );
-      }
-
-      render(<Harness />);
-      expect(screen.getByText('Failed Build')).toBeDefined();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-      await screen.findByText('Affects 1 PRD.');
-      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }));
-
-      await waitFor(() => expect(screen.queryByText('Failed Build')).toBeNull());
     });
 
     function dependencyState() {

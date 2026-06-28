@@ -98,7 +98,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     isStripAttentionItem,
   );
 
-  const queueActions = useQueueControlActions({ refreshQueue, refreshRuns });
+  const queueActions = useQueueControlActions({ refreshQueue });
   const failedEnqueueActions = useFailedEnqueueActions({ refreshQueue, refreshRuns, refreshFailedEnqueues });
 
   return (
@@ -143,10 +143,6 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
               errorsByRunId: failedEnqueueActions.errorsByRunId,
               onReenqueue: failedEnqueueActions.reenqueue,
               onDismiss: failedEnqueueActions.dismiss,
-            }}
-            queueCleanupControls={{
-              previewCascade: queueActions.previewCascade,
-              applyCascade: queueActions.applyCascade,
             }}
           />
           <ActiveBuildsGrid

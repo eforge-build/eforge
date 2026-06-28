@@ -69,7 +69,6 @@ export interface NowAttentionItem {
    * the Recover action for failures.
    */
   recovery?: { prdId: string; prdTitle: string; verdict?: string; confidence?: string; dispatchFailure?: QueueItem['dispatchFailure'] };
-  queueCleanup?: { prdId: string; prdTitle: string; capabilities?: QueueItem['capabilities'] };
   /** Trust action payload for an extension-trust attention item (Now strip owns Trust/Re-trust). */
   extensionTrust?: { name: string; path: string; trustState?: ExtensionTrustState; actionLabel: 'Trust' | 'Re-trust' };
   failedEnqueue?: FailedEnqueueInfo;
@@ -364,7 +363,6 @@ export function selectNowAttentionItems(
         message: `Failed: ${label}`,
         detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : formatDispatchAwareVerdictDetail(item.dispatchFailure, rv.verdict, rv.confidence),
         ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence, ...(item.dispatchFailure ? { dispatchFailure: item.dispatchFailure } : {}) } }),
-        queueCleanup: { prdId: item.id, prdTitle: label, capabilities: item.capabilities },
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
@@ -383,7 +381,6 @@ export function selectNowAttentionItems(
         message: `Failed: ${label}`,
         detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : (formatQueueDispatchFailure(item.dispatchFailure) ?? 'recovery pending'),
         ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, ...(item.dispatchFailure ? { dispatchFailure: item.dispatchFailure } : {}) } }),
-        queueCleanup: { prdId: item.id, prdTitle: label, capabilities: item.capabilities },
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });

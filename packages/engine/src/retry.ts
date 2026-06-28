@@ -1084,7 +1084,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     shouldRetry: (info) =>
       (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events) && !hasCompactInspectionContinuation(info.events)) ||
       (info.subtype === 'error_max_turns' && !hasCompactInspectionContinuation(info.events)) ||
-      (isRetryableInfrastructureSubtype(info.subtype) && isBeforePlannerSubmissionBoundary(info.events)),
+      (isRetryableInfrastructureSubtype(info.subtype) && isBeforePlannerSubmissionBoundary(info.events) && !hasCompactInspectionContinuation(info.events)),
     buildContinuationInput: (info) => buildPlannerContinuationInput(info as RetryAttemptInfo<PlannerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const reason: 'max_turns' | 'dropped_submission' =
