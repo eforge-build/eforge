@@ -199,7 +199,7 @@ export function isDroppedSubmission(events: readonly EforgeEvent[]): boolean {
   let sawSubmissionToolUse = false;
   let sawSkip = false;
   for (const ev of events) {
-    if (ev.type === 'agent:tool_use' && (ev.tool === 'submit_plan_set' || ev.tool === 'submit_architecture')) {
+    if (ev.type === 'agent:tool_use' && isPlannerSubmissionToolName(ev.tool)) {
       sawSubmissionToolUse = true;
     }
     if (ev.type === 'planning:skip') {
@@ -207,6 +207,10 @@ export function isDroppedSubmission(events: readonly EforgeEvent[]): boolean {
     }
   }
   return !sawSubmissionToolUse && !sawSkip;
+}
+
+function isPlannerSubmissionToolName(tool: string): boolean {
+  return tool === 'submit_plan_set' || tool === 'submit_architecture' || tool.endsWith('__submit_plan_set') || tool.endsWith('__submit_architecture');
 }
 
 // --- eforge:region plan-02-planner-continuation-surfaces ---
@@ -1066,18 +1070,20 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   planner: {
     agent: 'planner',
     maxAttempts: 3,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: EMPTY_SUBTYPES,
     // Only retry dropped-submission when the thrown error is actually a
     // `PlannerSubmissionError`. Inspecting events alone would also match
     // unrelated `AgentTerminalError` subtypes (e.g. `error_during_execution`,
     // `error_max_budget_usd`) that happen to have no submission tool call,
-    // which the prior ad-hoc loop explicitly did not retry. Retryable
-    // infrastructure/transport failures use the same continuation prompt only
-    // when the stream failed before any planner boundary event; otherwise the
-    // submitted or completed plans are already authoritative and rerunning
-    // would duplicate side effects.
+    // which the prior ad-hoc loop explicitly did not retry. Max-turns retries
+    // are blocked after compact-inspection handoff, and infrastructure/transport
+    // failures use the same continuation prompt only when the stream failed
+    // before any planner boundary event; otherwise the submitted or completed
+    // plans (or compact synthesis context) are already authoritative and
+    // rerunning would duplicate side effects.
     shouldRetry: (info) =>
       (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events) && !hasCompactInspectionContinuation(info.events)) ||
+      (info.subtype === 'error_max_turns' && !hasCompactInspectionContinuation(info.events)) ||
       (isRetryableInfrastructureSubtype(info.subtype) && isBeforePlannerSubmissionBoundary(info.events)),
     buildContinuationInput: (info) => buildPlannerContinuationInput(info as RetryAttemptInfo<PlannerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {

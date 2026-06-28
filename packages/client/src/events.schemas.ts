@@ -26,6 +26,7 @@ export {
   PlannerContextObservationSchema,
   PlannerInspectionBudgetDiagnosticsSchema,
   PlannerInspectionIdentifiersSchema,
+  PlannerInspectionOmittedCountsSchema,
   PlannerInspectionSourceBuildContextSchema,
   PlannerInspectionSummarySchema,
   PlannerInspectionSourceContextTextSchema,
@@ -97,6 +98,7 @@ export type {
   PlannerContextObservation,
   PlannerInspectionBudgetDiagnostics,
   PlannerInspectionIdentifiers,
+  PlannerInspectionOmittedCounts,
   PlannerInspectionSourceBuildContext,
   PlannerInspectionSummary,
   // --- eforge:endregion plan-02-planner-continuation-surfaces ---

@@ -70,14 +70,9 @@ function createLinkedAbortController(parentSignal?: AbortSignal): AbortControlle
 // --- eforge:region plan-02-planner-continuation-surfaces ---
 type PlannerExecutionPhase = 'inspection' | 'synthesis';
 
-function synthesisMaxTurns(initialMaxTurns: number): number {
-  return initialMaxTurns <= 1 ? 1 : Math.max(1, Math.min(initialMaxTurns - 1, Math.floor(initialMaxTurns * 0.4)));
-}
-
+function synthesisMaxTurns(initialMaxTurns: number): number { return initialMaxTurns <= 1 ? 1 : Math.max(1, Math.min(initialMaxTurns - 1, Math.floor(initialMaxTurns * 0.4))); }
 function compactInspectionEnabled(options: PlannerOptions): boolean { return options.continuationContext === undefined; }
-function isSubmissionToolUse(event: EforgeEvent): boolean {
-  return event.type === 'agent:tool_use' && (event.tool === 'submit_plan_set' || event.tool === 'submit_architecture');
-}
+function isSubmissionToolUse(event: EforgeEvent, submissionToolNames: ReadonlySet<string>): boolean { return event.type === 'agent:tool_use' && submissionToolNames.has(event.tool); }
 
 function buildInspectionSourceContext(sourceContent: string, promptSourceContent: string, sourceLabel?: string): PlannerInspectionSourceContext {
   return { sourceSummary: sourceLabel ?? firstNonEmptyLine(sourceContent), buildGoal: firstMarkdownHeading(sourceContent) ?? firstNonEmptyLine(sourceContent), promptSourceSnippet: promptSourceContent };
@@ -256,11 +251,13 @@ export async function* runPlanner(
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
+  let sourceResolvedFromFile = false;
   try {
     const sourcePath = resolve(cwd, source);
     const stats = await stat(sourcePath);
     if (stats.isFile()) {
       sourceContent = await readFile(sourcePath, 'utf-8');
+      sourceResolvedFromFile = true;
     } else {
       sourceContent = source;
     }
@@ -369,6 +366,7 @@ ${existingPlans}`);
   }
 
   const outputDir = options.outputDir ?? 'eforge/plans';
+  const submissionToolNames = new Set(customTools.flatMap((tool) => [tool.name, harness.effectiveCustomToolName(tool.name)]));
 
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
@@ -388,6 +386,7 @@ ${existingPlans}`);
 
     const prompt = await buildPrompt();
     contextGuard.assertPrompt(prompt);
+    inspectionObserver?.setPrompt(prompt);
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
 
     if (iteration === 1) {
@@ -412,7 +411,7 @@ ${existingPlans}`);
           attemptAbort.abort();
           throw err;
         }
-        if (isSubmissionToolUse(event)) sawSubmissionToolUse = true;
+        if (isSubmissionToolUse(event, submissionToolNames)) sawSubmissionToolUse = true;
         const inspectionStatus = executionPhase === 'inspection' && inspectionObserver && !plannerBoundaryReached()
           ? inspectionObserver.observe(event)
           : undefined;
@@ -449,13 +448,14 @@ ${existingPlans}`);
           compactInspectionHandoff = inspectionObserver!.buildHandoff({
             source: {
               sourceName: sourceLabel ?? planSetName,
-              ...(source.includes('\n') ? {} : { sourcePath: source }),
+              ...(sourceResolvedFromFile ? { sourcePath: source } : {}),
               ...(options.runId ? { buildId: options.runId, runId: options.runId } : {}),
               planSetName,
             },
             sourceBuildContext: buildInspectionSourceContext(sourceContent, promptSourceContent, sourceLabel),
             stage: 'planner',
             incompleteReason: inspectionStatus.reason,
+            prompt,
           });
           const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };

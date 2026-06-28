@@ -4772,6 +4772,403 @@
           "type": "object",
           "required": [
             "type",
+            "summary"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:inspection-summary",
+              "type": "string"
+            },
+            "summary": {
+              "type": "object",
+              "required": [
+                "kind",
+                "version",
+                "source",
+                "relevantFiles",
+                "observedFacts",
+                "importantFindings",
+                "inferredImplementationAreas",
+                "unresolvedQuestions",
+                "sourceBuildContext",
+                "budgetDiagnostics",
+                "caveats",
+                "omittedCounts"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "planner-inspection-handoff",
+                  "type": "string"
+                },
+                "version": {
+                  "const": 1,
+                  "type": "number"
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "sourcePath": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "buildId": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "planSetName": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "runId": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  }
+                },
+                "relevantFiles": {
+                  "maxItems": 40,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "observedFacts": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "importantFindings": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "inferredImplementationAreas": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "unresolvedQuestions": {
+                  "maxItems": 8,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "sourceBuildContext": {
+                  "type": "object",
+                  "properties": {
+                    "sourceSummary": {
+                      "maxLength": 3000,
+                      "type": "string"
+                    },
+                    "buildGoal": {
+                      "maxLength": 3000,
+                      "type": "string"
+                    },
+                    "promptSourceSnippet": {
+                      "maxLength": 3000,
+                      "type": "string"
+                    }
+                  }
+                },
+                "budgetDiagnostics": {
+                  "type": "object",
+                  "required": [
+                    "maxObservedInputTokens",
+                    "softInputTokenThreshold",
+                    "plannerMaxTurns",
+                    "inspectionTurnBudget",
+                    "softInputTokenRatio",
+                    "softTurnRatio",
+                    "observed",
+                    "toolUseCount",
+                    "toolResultCount"
+                  ],
+                  "properties": {
+                    "maxObservedInputTokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "softInputTokenThreshold": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "plannerMaxTurns": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "inspectionTurnBudget": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "softInputTokenRatio": {
+                      "minimum": 0,
+                      "maximum": 1,
+                      "type": "number"
+                    },
+                    "softTurnRatio": {
+                      "minimum": 0,
+                      "maximum": 1,
+                      "type": "number"
+                    },
+                    "guardDiagnostics": {
+                      "type": "object",
+                      "required": [
+                        "metadataSource",
+                        "outputReserveTokens",
+                        "overheadReserveTokens",
+                        "safetyMargin",
+                        "limits"
+                      ],
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "modelId": {
+                          "type": "string"
+                        },
+                        "metadataSource": {
+                          "anyOf": [
+                            {
+                              "const": "registry",
+                              "type": "string"
+                            },
+                            {
+                              "const": "builtin",
+                              "type": "string"
+                            },
+                            {
+                              "const": "synthetic",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fallback",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "fallbackReason": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "contextWindow": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "outputReserveTokens": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "overheadReserveTokens": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "safetyMargin": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 1,
+                          "type": "number"
+                        },
+                        "limits": {
+                          "type": "object",
+                          "required": [
+                            "maxPromptBytes",
+                            "maxObservedInputTokens",
+                            "maxExplanationBytes"
+                          ],
+                          "properties": {
+                            "maxPromptBytes": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "maxObservedInputTokens": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "maxObservedTurns": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "maxExplanationBytes": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "observed": {
+                      "type": "object",
+                      "required": [
+                        "inputTokens",
+                        "outputTokens",
+                        "turns",
+                        "promptBytes"
+                      ],
+                      "properties": {
+                        "inputTokens": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "outputTokens": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "turns": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "promptBytes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "toolUseCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "toolResultCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                "caveats": {
+                  "maxItems": 8,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "omittedCounts": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "relevantFiles": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "observedFacts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "importantFindings": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "inferredImplementationAreas": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "unresolvedQuestions": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "toolUses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "toolResults": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "toolUseSummaryBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "toolResultSnippetBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "importantFindingBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "messageBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "inferredImplementationAreaBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourceIdBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourceNameBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourcePathBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "buildIdBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "planSetNameBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "runIdBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sourceSummaryBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "buildGoalBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "promptSourceSnippetBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "relevantFileBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "caveatBytes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "artifactPath": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "reason"
           ],
           "properties": {
@@ -5434,6 +5831,10 @@
                 },
                 {
                   "const": "dropped_submission",
+                  "type": "string"
+                },
+                {
+                  "const": "compact_inspection",
                   "type": "string"
                 }
               ]
@@ -19904,6 +20305,403 @@
                         "type": "object",
                         "required": [
                           "type",
+                          "summary"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:inspection-summary",
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "version",
+                              "source",
+                              "relevantFiles",
+                              "observedFacts",
+                              "importantFindings",
+                              "inferredImplementationAreas",
+                              "unresolvedQuestions",
+                              "sourceBuildContext",
+                              "budgetDiagnostics",
+                              "caveats",
+                              "omittedCounts"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "planner-inspection-handoff",
+                                "type": "string"
+                              },
+                              "version": {
+                                "const": 1,
+                                "type": "number"
+                              },
+                              "source": {
+                                "type": "object",
+                                "properties": {
+                                  "sourceId": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "sourceName": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "sourcePath": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "buildId": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "planSetName": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  },
+                                  "runId": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "relevantFiles": {
+                                "maxItems": 40,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "observedFacts": {
+                                "maxItems": 16,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "importantFindings": {
+                                "maxItems": 12,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "inferredImplementationAreas": {
+                                "maxItems": 16,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "unresolvedQuestions": {
+                                "maxItems": 8,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "sourceBuildContext": {
+                                "type": "object",
+                                "properties": {
+                                  "sourceSummary": {
+                                    "maxLength": 3000,
+                                    "type": "string"
+                                  },
+                                  "buildGoal": {
+                                    "maxLength": 3000,
+                                    "type": "string"
+                                  },
+                                  "promptSourceSnippet": {
+                                    "maxLength": 3000,
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "budgetDiagnostics": {
+                                "type": "object",
+                                "required": [
+                                  "maxObservedInputTokens",
+                                  "softInputTokenThreshold",
+                                  "plannerMaxTurns",
+                                  "inspectionTurnBudget",
+                                  "softInputTokenRatio",
+                                  "softTurnRatio",
+                                  "observed",
+                                  "toolUseCount",
+                                  "toolResultCount"
+                                ],
+                                "properties": {
+                                  "maxObservedInputTokens": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "softInputTokenThreshold": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "plannerMaxTurns": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "inspectionTurnBudget": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "softInputTokenRatio": {
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                    "type": "number"
+                                  },
+                                  "softTurnRatio": {
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                    "type": "number"
+                                  },
+                                  "guardDiagnostics": {
+                                    "type": "object",
+                                    "required": [
+                                      "metadataSource",
+                                      "outputReserveTokens",
+                                      "overheadReserveTokens",
+                                      "safetyMargin",
+                                      "limits"
+                                    ],
+                                    "properties": {
+                                      "provider": {
+                                        "type": "string"
+                                      },
+                                      "modelId": {
+                                        "type": "string"
+                                      },
+                                      "metadataSource": {
+                                        "anyOf": [
+                                          {
+                                            "const": "registry",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "builtin",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "synthetic",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "fallback",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      },
+                                      "fallbackReason": {
+                                        "maxLength": 2000,
+                                        "type": "string"
+                                      },
+                                      "contextWindow": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "outputReserveTokens": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "overheadReserveTokens": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "safetyMargin": {
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 1,
+                                        "type": "number"
+                                      },
+                                      "limits": {
+                                        "type": "object",
+                                        "required": [
+                                          "maxPromptBytes",
+                                          "maxObservedInputTokens",
+                                          "maxExplanationBytes"
+                                        ],
+                                        "properties": {
+                                          "maxPromptBytes": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          },
+                                          "maxObservedInputTokens": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          },
+                                          "maxObservedTurns": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          },
+                                          "maxExplanationBytes": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "observed": {
+                                    "type": "object",
+                                    "required": [
+                                      "inputTokens",
+                                      "outputTokens",
+                                      "turns",
+                                      "promptBytes"
+                                    ],
+                                    "properties": {
+                                      "inputTokens": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "outputTokens": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "turns": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "promptBytes": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    }
+                                  },
+                                  "toolUseCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "toolResultCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              "caveats": {
+                                "maxItems": 8,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "omittedCounts": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "properties": {
+                                  "relevantFiles": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "observedFacts": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "importantFindings": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "inferredImplementationAreas": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "unresolvedQuestions": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "toolUses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "toolResults": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "toolUseSummaryBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "toolResultSnippetBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "importantFindingBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "messageBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "inferredImplementationAreaBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sourceIdBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sourceNameBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sourcePathBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "buildIdBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "planSetNameBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "runIdBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "sourceSummaryBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "buildGoalBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "promptSourceSnippetBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "relevantFileBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "caveatBytes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "artifactPath": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
                           "reason"
                         ],
                         "properties": {
@@ -20566,6 +21364,10 @@
                               },
                               {
                                 "const": "dropped_submission",
+                                "type": "string"
+                              },
+                              {
+                                "const": "compact_inspection",
                                 "type": "string"
                               }
                             ]

@@ -52,6 +52,31 @@ export const PlannerInspectionSourceBuildContextSchema = Type.Object({
   buildGoal: Type.Optional(PlannerInspectionSourceContextTextSchema),
   promptSourceSnippet: Type.Optional(PlannerInspectionSourceContextTextSchema),
 });
+export const PlannerInspectionOmittedCountsSchema = Type.Object({
+  relevantFiles: Type.Optional(NonNegativeIntegerSchema),
+  observedFacts: Type.Optional(NonNegativeIntegerSchema),
+  importantFindings: Type.Optional(NonNegativeIntegerSchema),
+  inferredImplementationAreas: Type.Optional(NonNegativeIntegerSchema),
+  unresolvedQuestions: Type.Optional(NonNegativeIntegerSchema),
+  toolUses: Type.Optional(NonNegativeIntegerSchema),
+  toolResults: Type.Optional(NonNegativeIntegerSchema),
+  toolUseSummaryBytes: Type.Optional(NonNegativeIntegerSchema),
+  toolResultSnippetBytes: Type.Optional(NonNegativeIntegerSchema),
+  importantFindingBytes: Type.Optional(NonNegativeIntegerSchema),
+  messageBytes: Type.Optional(NonNegativeIntegerSchema),
+  inferredImplementationAreaBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceNameBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourcePathBytes: Type.Optional(NonNegativeIntegerSchema),
+  buildIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  planSetNameBytes: Type.Optional(NonNegativeIntegerSchema),
+  runIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceSummaryBytes: Type.Optional(NonNegativeIntegerSchema),
+  buildGoalBytes: Type.Optional(NonNegativeIntegerSchema),
+  promptSourceSnippetBytes: Type.Optional(NonNegativeIntegerSchema),
+  relevantFileBytes: Type.Optional(NonNegativeIntegerSchema),
+  caveatBytes: Type.Optional(NonNegativeIntegerSchema),
+}, { additionalProperties: false });
 // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export const CompileRiskLevelSchema = Type.Union([
@@ -177,7 +202,7 @@ export const PlannerInspectionSummarySchema = Type.Object({
   sourceBuildContext: PlannerInspectionSourceBuildContextSchema,
   budgetDiagnostics: PlannerInspectionBudgetDiagnosticsSchema,
   caveats: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_CAVEATS }),
-  omittedCounts: Type.Record(Type.String(), NonNegativeIntegerSchema),
+  omittedCounts: PlannerInspectionOmittedCountsSchema,
 });
 // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
@@ -243,6 +268,7 @@ export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailur
 export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
 export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
 export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;
+export type PlannerInspectionOmittedCounts = Static<typeof PlannerInspectionOmittedCountsSchema>;
 export type PlannerInspectionBudgetDiagnostics = Static<typeof PlannerInspectionBudgetDiagnosticsSchema>;
 export type PlannerInspectionSummary = Static<typeof PlannerInspectionSummarySchema>;
 // --- eforge:endregion plan-02-planner-continuation-surfaces ---

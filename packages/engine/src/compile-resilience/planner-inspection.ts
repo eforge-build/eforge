@@ -1,11 +1,25 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
-import type { CompileContextGuardDiagnostics, EforgeEvent } from '../events.js';
+import type {
+  CompileContextGuardDiagnostics,
+  EforgeEvent,
+  PlannerInspectionBudgetDiagnostics as PlannerInspectionSummaryBudgetDiagnostics,
+  PlannerInspectionSummary,
+} from '../events.js';
+import {
+  MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS,
+  MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS,
+  MAX_PLANNER_INSPECTION_OBSERVED_FACTS,
+  MAX_PLANNER_INSPECTION_RELEVANT_FILES,
+  MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH,
+  MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,
+} from '../events.js';
 import {
   resolveCompileContextGuardLimits,
   createPlannerContextObservationState,
   observePlannerContextUsage,
+  setPlannerContextPromptBytes,
   type CompileContextGuardLimits,
   type PlannerContextObservation,
   type PlannerFamilyStage,
@@ -18,12 +32,12 @@ const DEFAULT_PLANNER_MAX_TURNS = 80;
 const SOFT_INPUT_TOKEN_RATIO = 0.72;
 const SOFT_TURN_RATIO = 0.75;
 const MAX_TEXT_BYTES = 2_000;
-const MAX_FACTS = 16;
-const MAX_FINDINGS = 12;
-const MAX_FILES = 40;
-const MAX_AREAS = 16;
-const MAX_QUESTIONS = 8;
-const MAX_SOURCE_CONTEXT_BYTES = 3_000;
+const MAX_FACTS = MAX_PLANNER_INSPECTION_OBSERVED_FACTS;
+const MAX_FINDINGS = MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS;
+const MAX_FILES = MAX_PLANNER_INSPECTION_RELEVANT_FILES;
+const MAX_AREAS = MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS;
+const MAX_QUESTIONS = MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS;
+const MAX_SOURCE_CONTEXT_BYTES = MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH;
 const MAX_TOOL_SNIPPET_BYTES = 1_200;
 const MAX_IDENTIFIER_BYTES = 300;
 const MAX_PATH_BYTES = 500;
@@ -50,49 +64,16 @@ export interface PlannerInspectionBudget {
   diagnostics: PlannerInspectionBudgetDiagnostics;
 }
 
-export interface PlannerInspectionBudgetDiagnostics {
-  maxObservedInputTokens: number;
-  softInputTokenThreshold: number;
-  plannerMaxTurns: number;
-  inspectionTurnBudget: number;
-  softInputTokenRatio: number;
-  softTurnRatio: number;
-  guardDiagnostics?: CompileContextGuardDiagnostics;
-}
-
-export interface PlannerInspectionIdentifiers {
-  sourceId?: string;
-  sourceName?: string;
-  sourcePath?: string;
-  buildId?: string;
-  planSetName?: string;
-  runId?: string;
-}
-
-export interface PlannerInspectionSourceContext {
-  sourceSummary?: string;
-  buildGoal?: string;
-  promptSourceSnippet?: string;
-}
-
-export interface PlannerInspectionHandoff {
-  kind: 'planner-inspection-handoff';
-  version: 1;
-  source: PlannerInspectionIdentifiers;
-  relevantFiles: string[];
-  observedFacts: string[];
-  importantFindings: string[];
-  inferredImplementationAreas: string[];
-  unresolvedQuestions: string[];
-  sourceBuildContext: PlannerInspectionSourceContext;
-  budgetDiagnostics: PlannerInspectionBudgetDiagnostics & { observed: PlannerContextObservation; toolUseCount: number; toolResultCount: number };
-  caveats: string[];
-  omittedCounts: Record<string, number>;
-}
+export type PlannerInspectionHandoff = PlannerInspectionSummary;
+export type PlannerInspectionIdentifiers = PlannerInspectionHandoff['source'];
+export type PlannerInspectionSourceContext = PlannerInspectionHandoff['sourceBuildContext'];
+export type PlannerInspectionOmittedCounts = PlannerInspectionHandoff['omittedCounts'];
+export type PlannerInspectionBudgetDiagnostics = Omit<PlannerInspectionSummaryBudgetDiagnostics, 'observed' | 'toolUseCount' | 'toolResultCount'>;
 
 export interface PlannerInspectionObserver {
   observe(event: EforgeEvent): PlannerInspectionObservationStatus;
   shouldHandoff(): boolean;
+  setPrompt(prompt: string): PlannerContextObservation;
   buildHandoff(input: Omit<BuildPlannerInspectionHandoffInput, 'events' | 'budget'>): PlannerInspectionHandoff;
   readonly observed: PlannerContextObservation;
   readonly events: readonly EforgeEvent[];
@@ -111,6 +92,7 @@ export interface BuildPlannerInspectionHandoffInput {
   sourceBuildContext?: PlannerInspectionSourceContext;
   stage?: PlannerFamilyStage;
   incompleteReason?: string;
+  prompt?: string;
 }
 // --- eforge:endregion planner-inspection-contracts ---
 
@@ -167,6 +149,9 @@ export function createPlannerInspectionObserver(input: {
     shouldHandoff(): boolean {
       return handoffReason !== undefined;
     },
+    setPrompt(prompt: string): PlannerContextObservation {
+      return { ...setPlannerContextPromptBytes(state, prompt) };
+    },
     buildHandoff(input: Omit<BuildPlannerInspectionHandoffInput, 'events' | 'budget'>): PlannerInspectionHandoff {
       return buildPlannerInspectionHandoff({ ...input, events, budget, incompleteReason: input.incompleteReason ?? handoffReason });
     },
@@ -185,11 +170,12 @@ export function buildPlannerInspectionHandoff(input: BuildPlannerInspectionHando
   const stage = input.stage ?? 'planner';
   const evidence = extractEvidence(input.events, stage, input.budget.toolUseCaps);
   const observed = createPlannerContextObservationState();
+  if (input.prompt !== undefined) setPlannerContextPromptBytes(observed, input.prompt);
   for (const event of input.events) observePlannerContextUsage(observed, event, stage);
   const sourceContextCap = capSourceContext(input.sourceBuildContext ?? {});
   const sourceCap = capSourceIdentifiers(input.source);
   const sourceBuildContext = sourceContextCap.context;
-  const omittedCounts: Record<string, number> = { ...evidence.omittedCounts, ...sourceContextCap.omittedCounts, ...sourceCap.omittedCounts };
+  const omittedCounts: PlannerInspectionOmittedCounts = { ...evidence.omittedCounts, ...sourceContextCap.omittedCounts, ...sourceCap.omittedCounts };
   const caveats = buildCaveats(input, evidence, omittedCounts);
 
   return {
@@ -210,7 +196,7 @@ export function buildPlannerInspectionHandoff(input: BuildPlannerInspectionHando
     },
     caveats,
     omittedCounts,
-  };
+  } satisfies PlannerInspectionHandoff;
 }
 
 export function formatPlannerInspectionHandoffMarkdown(handoff: PlannerInspectionHandoff): string {
@@ -271,6 +257,8 @@ export async function writePlannerInspectionHandoffArtifact(input: {
 // --- eforge:endregion planner-inspection-handoff-formatting ---
 
 // --- eforge:region planner-inspection-evidence-helpers ---
+type PlannerInspectionOmittedCountKey = keyof PlannerInspectionOmittedCounts;
+
 interface Evidence {
   relevantFiles: string[];
   observedFacts: string[];
@@ -279,7 +267,7 @@ interface Evidence {
   unresolvedQuestions: string[];
   toolUseCount: number;
   toolResultCount: number;
-  omittedCounts: Record<string, number>;
+  omittedCounts: PlannerInspectionOmittedCounts;
 }
 
 function extractEvidence(events: readonly EforgeEvent[], stage: PlannerFamilyStage, caps: PlannerInspectionToolUseCaps): Evidence {
@@ -288,7 +276,7 @@ function extractEvidence(events: readonly EforgeEvent[], stage: PlannerFamilySta
   const findings: string[] = [];
   const questions: string[] = [];
   const toolUseIndex = new Map<string, { tool: string; input: unknown }>();
-  const omittedCounts: Record<string, number> = {};
+  const omittedCounts: PlannerInspectionOmittedCounts = {};
   let toolUseCount = 0;
   let toolResultCount = 0;
 
@@ -331,12 +319,12 @@ function extractEvidence(events: readonly EforgeEvent[], stage: PlannerFamilySta
   return { relevantFiles, observedFacts, importantFindings, inferredImplementationAreas, unresolvedQuestions, toolUseCount, toolResultCount, omittedCounts };
 }
 
-function buildCaveats(input: BuildPlannerInspectionHandoffInput, evidence: Evidence, omittedCounts: Record<string, number>): string[] {
+function buildCaveats(input: BuildPlannerInspectionHandoffInput, evidence: Evidence, omittedCounts: PlannerInspectionOmittedCounts): string[] {
   const caveats = [
     `Inspection is incomplete; resume synthesis from compact evidence rather than assuming the full codebase was inspected.`,
     `Soft budget reason: ${input.incompleteReason ?? 'manual handoff'}.`,
   ];
-  if (Object.values(omittedCounts).some((count) => count > 0)) caveats.push('Some evidence was omitted by deterministic caps; inspect omitted-count diagnostics before relying on absence of evidence.');
+  if (Object.values(omittedCounts).some((count) => Number(count) > 0)) caveats.push('Some evidence was omitted by deterministic caps; inspect omitted-count diagnostics before relying on absence of evidence.');
   if (evidence.toolUseCount === 0) caveats.push('No tool-use evidence was observed for the planner stage.');
   return capCountedStrings(caveats, MAX_CAVEAT_BYTES, 'caveatBytes', omittedCounts);
 }
@@ -348,8 +336,8 @@ function inspectionReason(observed: PlannerContextObservation, budget: PlannerIn
   return undefined;
 }
 
-function capSourceIdentifiers(source: PlannerInspectionIdentifiers): { source: PlannerInspectionIdentifiers; omittedCounts: Record<string, number> } {
-  const omittedCounts: Record<string, number> = {};
+function capSourceIdentifiers(source: PlannerInspectionIdentifiers): { source: PlannerInspectionIdentifiers; omittedCounts: PlannerInspectionOmittedCounts } {
+  const omittedCounts: PlannerInspectionOmittedCounts = {};
   return {
     source: {
       ...(source.sourceId ? { sourceId: capCountedText(source.sourceId, MAX_IDENTIFIER_BYTES, 'sourceIdBytes', omittedCounts) } : {}),
@@ -363,8 +351,8 @@ function capSourceIdentifiers(source: PlannerInspectionIdentifiers): { source: P
   };
 }
 
-function capSourceContext(context: PlannerInspectionSourceContext): { context: PlannerInspectionSourceContext; omittedCounts: Record<string, number> } {
-  const omittedCounts: Record<string, number> = {};
+function capSourceContext(context: PlannerInspectionSourceContext): { context: PlannerInspectionSourceContext; omittedCounts: PlannerInspectionOmittedCounts } {
+  const omittedCounts: PlannerInspectionOmittedCounts = {};
   const sourceSummary = context.sourceSummary ? capText(context.sourceSummary, MAX_SOURCE_CONTEXT_BYTES) : undefined;
   const buildGoal = context.buildGoal ? capText(context.buildGoal, MAX_SOURCE_CONTEXT_BYTES) : undefined;
   const promptSourceSnippet = context.promptSourceSnippet ? capText(context.promptSourceSnippet, MAX_SOURCE_CONTEXT_BYTES) : undefined;
@@ -381,15 +369,15 @@ function capSourceContext(context: PlannerInspectionSourceContext): { context: P
   };
 }
 
-function addCappedPaths(files: Set<string>, value: unknown, omittedCounts: Record<string, number>): void {
+function addCappedPaths(files: Set<string>, value: unknown, omittedCounts: PlannerInspectionOmittedCounts): void {
   for (const path of extractPaths(value)) files.add(capCountedText(path, MAX_PATH_BYTES, 'relevantFileBytes', omittedCounts));
 }
 
-function capCountedStrings(items: readonly string[], maxBytes: number, key: string, omittedCounts: Record<string, number>): string[] {
+function capCountedStrings(items: readonly string[], maxBytes: number, key: PlannerInspectionOmittedCountKey, omittedCounts: PlannerInspectionOmittedCounts): string[] {
   return items.map((item) => capCountedText(item, maxBytes, key, omittedCounts));
 }
 
-function capCountedText(text: string, maxBytes: number, key: string, omittedCounts: Record<string, number>): string {
+function capCountedText(text: string, maxBytes: number, key: PlannerInspectionOmittedCountKey, omittedCounts: PlannerInspectionOmittedCounts): string {
   const capped = capText(text, maxBytes);
   incrementOmitted(omittedCounts, key, capped.omittedBytes);
   return capped.text;
@@ -473,13 +461,13 @@ function isInsideDirectory(child: string, parent: string): boolean {
   return relativePath.length > 0 && !relativePath.startsWith('..') && !isAbsolute(relativePath);
 }
 
-function capArray<T>(items: readonly T[], max: number, key: string, omittedCounts: Record<string, number>): T[] {
+function capArray<T>(items: readonly T[], max: number, key: PlannerInspectionOmittedCountKey, omittedCounts: PlannerInspectionOmittedCounts): T[] {
   const cap = Math.max(0, Math.floor(max));
   if (items.length > cap) omittedCounts[key] = items.length - cap;
   return items.slice(0, cap);
 }
 
-function incrementOmitted(omittedCounts: Record<string, number>, key: string, count: number): void {
+function incrementOmitted(omittedCounts: PlannerInspectionOmittedCounts, key: PlannerInspectionOmittedCountKey, count: number): void {
   if (count > 0) omittedCounts[key] = (omittedCounts[key] ?? 0) + count;
 }
 

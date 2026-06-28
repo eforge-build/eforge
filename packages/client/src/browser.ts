@@ -460,6 +460,7 @@ export type {
   PlannerContextObservation,
   PlannerInspectionBudgetDiagnostics,
   PlannerInspectionIdentifiers,
+  PlannerInspectionOmittedCounts,
   PlannerInspectionSourceBuildContext,
   PlannerInspectionSummary,
   PlannerInspectionSummaryEvent,
@@ -482,7 +483,7 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema,
   // --- eforge:region plan-02-planner-continuation-surfaces ---
   PlannerContextObservationSchema, PlannerInspectionBudgetDiagnosticsSchema, PlannerInspectionIdentifiersSchema,
-  PlannerInspectionSourceBuildContextSchema, PlannerInspectionSummarySchema, PlannerInspectionSourceContextTextSchema,
+  PlannerInspectionOmittedCountsSchema, PlannerInspectionSourceBuildContextSchema, PlannerInspectionSummarySchema, PlannerInspectionSourceContextTextSchema,
   PlannerInspectionSummaryTextSchema, MAX_PLANNER_INSPECTION_CAVEATS, MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS,
   MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS, MAX_PLANNER_INSPECTION_OBSERVED_FACTS, MAX_PLANNER_INSPECTION_RELEVANT_FILES,
   MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH, MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,

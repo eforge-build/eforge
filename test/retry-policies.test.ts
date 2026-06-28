@@ -37,8 +37,8 @@ import { ts, makeAttemptInfo, makeThrowingAgent, makeSuccessfulAgent, makeMultiA
 describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
   const planner = DEFAULT_RETRY_POLICIES.planner!;
 
-  it('has retryableSubtypes including error_max_turns', () => {
-    expect(planner.retryableSubtypes.has('error_max_turns')).toBe(true);
+  it('does not include error_max_turns in retryableSubtypes — max-turns planner retry is governed by shouldRetry', () => {
+    expect(planner.retryableSubtypes.has('error_max_turns')).toBe(false);
   });
 
   it('has label "planner-continuation"', () => {
@@ -60,6 +60,20 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
       error: new PlannerSubmissionError('no submission tool called'),
     });
     expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('shouldRetry returns false for dropped submission after compact inspection continuation', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:inspection-summary' } as EforgeEvent,
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'synthesis ended without submitting' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_during_execution',
+      events,
+      error: new PlannerSubmissionError('compact synthesis did not submit'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
   });
 
   it('shouldRetry returns false when submit_plan_set tool was used', () => {
@@ -117,11 +131,38 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
     // shouldRetry. Adding error_transient_transport to retryableSubtypes would
     // bypass that guard and allow retries after planning:submission.
     expect(planner.retryableSubtypes.has('error_transient_transport')).toBe(false);
-    expect(planner.retryableSubtypes).toEqual(new Set(['error_max_turns']));
+    expect(planner.retryableSubtypes).toEqual(new Set());
   });
 
   it('retryableSubtypes does NOT include error_pi_tool_infrastructure — pi infra planner retry is governed by shouldRetry', () => {
     expect(planner.retryableSubtypes.has('error_pi_tool_infrastructure')).toBe(false);
+  });
+
+  it('shouldRetry returns true for error_max_turns when no compact inspection continuation was emitted', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'thinking...' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_max_turns',
+      events,
+      error: new AgentTerminalError('error_max_turns', 'turns exhausted'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(true);
+  });
+
+  it('shouldRetry returns false for error_max_turns after compact inspection continuation', () => {
+    const events: EforgeEvent[] = [
+      { timestamp: ts(), type: 'planning:inspection-summary' } as EforgeEvent,
+      { timestamp: ts(), type: 'agent:message', agentId: 'a1', agent: 'planner', content: 'compact synthesis ran out of turns' },
+    ];
+    const info = makeAttemptInfo({
+      prevInput: {} as unknown,
+      subtype: 'error_max_turns',
+      events,
+      error: new AgentTerminalError('error_max_turns', 'turns exhausted'),
+    });
+    expect(planner.shouldRetry!(info as RetryAttemptInfo<unknown>)).toBe(false);
   });
 
   it('shouldRetry returns true for error_transient_transport when no submission or skip events have been emitted', () => {

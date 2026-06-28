@@ -547,7 +547,11 @@ describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
     for (const role of requiredRoles) {
       const policy = DEFAULT_RETRY_POLICIES[role];
       expect(policy, `policy missing for ${role}`).toBeDefined();
-      expect(policy!.retryableSubtypes.has('error_max_turns')).toBe(true);
+      if (role === 'planner') {
+        expect(policy!.shouldRetry).toBeDefined();
+      } else {
+        expect(policy!.retryableSubtypes.has('error_max_turns')).toBe(true);
+      }
       expect(policy!.maxAttempts).toBeGreaterThanOrEqual(2);
     }
   });

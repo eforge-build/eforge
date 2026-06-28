@@ -66,7 +66,11 @@ describe('runPlanner compact inspection continuation', () => {
     }));
 
     expect(findEvent(events, 'planning:inspection-summary')).toBeDefined();
+    expect(findEvent(events, 'planning:continuation')?.reason).toBe('compact_inspection');
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    const planContent = await readFile(resolve(cwd, 'eforge/plans/build-compact-planner-continuation/plan-01-compact.md'), 'utf8');
+    expect(planContent).toContain('id: plan-01-compact');
+    expect(planContent).toContain('Use compact inspection evidence to finish planning.');
     expect(backend.calls[0].tools).toBe('coding');
     expect(backend.calls[1].tools).toBe('read-only');
     expect(backend.customToolSets[1]?.map((tool) => tool.name)).toContain('submit_plan_set');
@@ -104,6 +108,7 @@ describe('runPlanner compact inspection continuation', () => {
     expect(summary.importantFindings.join('\n')).toContain('Important finding');
     expect(summary.inferredImplementationAreas).toContain('packages/engine/src/queue');
     expect(summary.unresolvedQuestions.join('\n')).toContain('Unresolved question');
+    expect(summary.source.sourcePath).toBeUndefined();
     expect(summary.sourceBuildContext.buildGoal).toContain('Queue cleanup');
     expect(summary.budgetDiagnostics.observed.inputTokens).toBe(72);
     expect(summary.caveats.join('\n')).toContain('Inspection is incomplete');
@@ -203,6 +208,8 @@ describe('runPlanner compact inspection continuation', () => {
       contextGuard: { stage: 'planner', limits: { maxObservedInputTokens: 100 } },
     }));
 
+    const summary = findEvent(events, 'planning:inspection-summary')?.summary;
+    expect(summary?.source.sourcePath).toBe(fixturePath);
     expect(filterEvents(events, 'planning:inspection-summary')).toHaveLength(1);
     expect(backend.calls).toHaveLength(2);
   });

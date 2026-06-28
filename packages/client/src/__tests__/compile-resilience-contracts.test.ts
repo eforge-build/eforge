@@ -217,6 +217,11 @@ describe('compile resilience contracts', () => {
       timestamp,
       summary: { ...summary, observedFacts: oversizedFacts },
     }).success).toBe(false);
+    expect(safeParseEforgeEvent({
+      type: 'planning:inspection-summary',
+      timestamp,
+      summary: { ...summary, omittedCounts: { ...summary.omittedCounts, unexpectedFutureKey: 1 } },
+    }).success).toBe(false);
   });
   // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
