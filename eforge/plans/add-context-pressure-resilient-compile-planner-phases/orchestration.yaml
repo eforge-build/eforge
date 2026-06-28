@@ -1,0 +1,96 @@
+name: add-context-pressure-resilient-compile-planner-phases
+description: Add compile-planner resilience phases that capture compact
+  inspection evidence before hard context guard failures and resume synthesis
+  from a compact handoff.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-inspection-foundation
+    name: Planner Inspection Budget and Handoff Foundation
+    depends_on: []
+    branch: add-context-pressure-resilient-compile-planner-phases/plan-01-inspection-foundation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The foundation touches context accounting and bounded evidence
+          extraction; small mistakes can bypass the hard guard or leak oversized
+          transcripts.
+      reviewer:
+        effort: high
+        rationale: Review must verify the new soft-budget math shares semantics with the
+          existing hard context guard.
+  - id: plan-02-planner-continuation-surfaces
+    name: Compact Planner Continuation Integration and Surfaces
+    depends_on:
+      - plan-01-inspection-foundation
+    branch: add-context-pressure-resilient-compile-planner-phases/plan-02-planner-continuation-surfaces
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: This plan integrates the state machine into planner orchestration,
+          adds client-owned event schemas, and updates tests across engine,
+          client, CLI, and Console surfaces.
+      reviewer:
+        effort: high
+        rationale: Review must check event-shape ownership, retry-loop caps, and
+          preservation of hard guard safety nets.
+      tester:
+        effort: high
+        rationale: Regression coverage needs StubHarness-driven multi-call planner flows
+          plus client and renderer validation.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a broad engine feature touching planner orchestration,
+    context-pressure handling, recovery artifacts, possible client-owned event
+    schemas, and regression tests, but the pieces are tightly coupled rather
+    than independent enough for expedition module planning. Plan review is
+    included to catch scope and dependency issues before build. The build
+    pipeline includes docs support for any exposed diagnostics or event/API
+    behavior, explicit test generation and execution for the many test
+    acceptance criteria, the registered validation gate, and iterative review.
+    Review focuses on code correctness and API/event-shape stability without
+    adding unrelated security or verify perspectives.
+diff_base_ref: 0b58215704be31c749a5bc9cca26c8be5f34a278
