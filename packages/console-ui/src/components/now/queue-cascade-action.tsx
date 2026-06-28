@@ -58,14 +58,24 @@ export function QueueCascadeAction({
   const label = operation === 'cancel' ? 'Cancel PRD…' : 'Remove…';
 
   React.useEffect(() => {
-    if (!open || preview || loading || !onPreviewCascade) return;
+    if (!open || preview || message || !onPreviewCascade) return;
+    let cancelled = false;
     setLoading(true);
     setMessage(null);
     onPreviewCascade(itemId, operation)
-      .then(setPreview)
-      .catch((err) => setMessage(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, [itemId, loading, onPreviewCascade, open, operation, preview]);
+      .then((response) => {
+        if (!cancelled) setPreview(response);
+      })
+      .catch((err) => {
+        if (!cancelled) setMessage(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [itemId, message, onPreviewCascade, open, operation, preview]);
 
   async function apply() {
     if (!preview || !onApplyCascade) return;
@@ -99,7 +109,7 @@ export function QueueCascadeAction({
 
   return (
     <span className="inline-flex items-center gap-2">
-      <AlertDialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) { setPreview(null); setUseCascade(false); setConfirmDependents(false); setMessage(null); } }}>
+      <AlertDialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) { setPreview(null); setLoading(false); setUseCascade(false); setConfirmDependents(false); setMessage(null); } }}>
         <AlertDialogTrigger asChild>
           <Button type="button" size="sm" variant={operation === 'cancel' ? 'outline' : 'destructive'} disabled={disabled}>{label}</Button>
         </AlertDialogTrigger>
