@@ -15,6 +15,7 @@ import {
   EforgePlanPlanningDraftResultSchema,
   type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceItemPacket,
+  type BacklogCurationMapReduceReducerInput,
   type BacklogCurationMapReduceSourceBundle,
 } from '@eforge-build/client';
 import { runBacklogCurationMapReduceTask } from '../routes/extensions/backlog-curation-map-reduce-runner.js';
@@ -186,6 +187,83 @@ describe('backlog curation map/reduce runner', () => {
     expect(reducerPrompt).toContain('"outcome": "audited-finding"');
   });
 
+  it('passes protected terminal findings to the reducer under byte pressure', async () => {
+    const harness = new MapReduceHarness();
+    const sourceBundle = multiPacketBundle(220);
+    await runBacklogCurationMapReduceTask(baseOptions({
+      harness,
+      sourceBundle,
+      providerHooks: mapReduceProviderHooksForCachedFindings((itemId) => terminalAwareFinding(itemId, itemId === 'item-220' ? 'shipped' : 'still-needed')),
+    }));
+
+    const retained = harness.reducerInputs.at(0)?.outcomes?.find((outcome) => isRecordValue(outcome) && outcome.itemId === 'item-220') as { finding?: { verdict?: string } } | undefined;
+    expect(retained?.finding?.verdict).toBe('shipped');
+  });
+
+  it('makes omitted protected terminal diagnostics visible as draft needs-input rows', async () => {
+    const harness = new MapReduceHarness();
+    const sourceBundle = multiPacketBundle(40);
+    const result = await runBacklogCurationMapReduceTask(baseOptions({
+      harness,
+      sourceBundle,
+      providerHooks: mapReduceProviderHooksForCachedFindings((itemId) => terminalAwareFinding(itemId, Number(itemId.replace('item-', '')) % 2 === 0 ? 'shipped' : 'superseded')),
+    }));
+
+    const reducerInput = harness.reducerInputs.at(0);
+    const omissions = terminalOmissionDiagnosticsForTest(reducerInput?.diagnostics);
+    const curationResult = result as { backlogCurationDraft?: { needsInput: unknown[] } };
+
+    expect(omissions.length).toBeGreaterThan(0);
+    for (const omission of omissions) {
+      expect(curationResult.backlogCurationDraft?.needsInput).toContainEqual(expect.objectContaining({
+        kind: 'item',
+        id: omission.itemId,
+        question: expect.stringContaining(omission.verdict),
+        reason: expect.stringContaining(`Protected terminal ${omission.verdict}`),
+      }));
+    }
+  });
+
+  it('derives named needs-input from full outcomes when legacy aggregate omission diagnostics appear', async () => {
+    const harness = new MapReduceHarness();
+    const result = await runBacklogCurationMapReduceTask(baseOptions({
+      harness,
+      providerHooks: {
+        readBacklogCurationItemAuditCache: async (input) => ({ hit: true, finding: terminalAwareFinding(String(input.itemId), 'shipped') }),
+        buildBacklogCurationReducerInput: (globalContext) => ({
+          schemaVersion: 1,
+          sourceFingerprint: globalContext.sourceFingerprint,
+          globalContext,
+          outcomes: [],
+          diagnostics: [{ code: 'reducer-input-protected-terminal-omitted-too-many', severity: 'warning', message: 'Legacy aggregate omission diagnostic.', path: 'outcomes/protected-terminal-omissions-too-many' }],
+        }),
+      },
+    }));
+
+    expect(JSON.stringify(result)).toContain('item-1');
+    expect(JSON.stringify(result)).toContain('shipped');
+    expect(JSON.stringify(result)).not.toContain('without complete item names');
+  });
+
+  it('fails closed with top-level needs-input naming all omitted terminal candidates when no draft rows can be appended', async () => {
+    const harness = new MapReduceHarness({ reducerResult: { summary: 'No draft.', assumptionsOpenQuestions: [], decision: 'draft', rationale: 'Missing backlog curation draft.' } });
+    const sourceBundle = multiPacketBundle(60);
+    const result = await runBacklogCurationMapReduceTask(baseOptions({
+      harness,
+      sourceBundle,
+      providerHooks: mapReduceProviderHooksForCachedFindings((itemId) => terminalAwareFinding(itemId, Number(itemId.replace('item-', '')) % 2 === 0 ? 'shipped' : 'superseded')),
+    }));
+
+    const omissions = terminalOmissionDiagnosticsForTest(harness.reducerInputs.at(0)?.diagnostics);
+    const resultText = JSON.stringify(result);
+    expect(omissions.length).toBeGreaterThan(12);
+    expect(result).toMatchObject({ decision: 'needs-input' });
+    for (const omission of omissions) {
+      expect(resultText).toContain(omission.itemId);
+      expect(resultText).toContain(omission.verdict);
+    }
+  });
+
   it('cancels active item audits without starting queued work or invoking the reducer', async () => {
     const controller = new AbortController();
     const harness = new MapReduceHarness({ blockItemAudits: true });
@@ -224,6 +302,55 @@ function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]
     progress: async (message) => { overrides.progress?.push(message); },
     backlogCurationProgress: async (progress) => { overrides.curationProgress?.push(progress); },
     sectionProgress: async () => {},
+  };
+}
+
+function mapReduceProviderHooksForCachedFindings(findingForItem: (itemId: string) => BacklogCurationMapReduceFinding): RunnerOptions['providerHooks'] {
+  return {
+    readBacklogCurationItemAuditCache: async (input) => ({ hit: true, finding: findingForItem(String(input.itemId)) }),
+    buildBacklogCurationReducerInput: cappedReducerInputForTest,
+  };
+}
+
+function cappedReducerInputForTest(globalContext: BacklogCurationMapReduceSourceBundle['globalContext'], outcomes: readonly BacklogCurationMapReduceSourceBundle['degradedOutcomes'][number][], generatedAt?: string): BacklogCurationMapReduceReducerInput {
+  const prioritized = [...outcomes].sort((left, right) => Number(!isProtectedTerminalOutcomeForTest(left)) - Number(!isProtectedTerminalOutcomeForTest(right)) || left.itemId.localeCompare(right.itemId));
+  const retained = prioritized.slice(0, 24);
+  const retainedIds = new Set(retained.map((outcome) => outcome.itemId));
+  const diagnostics = prioritized.filter((outcome) => isProtectedTerminalOutcomeForTest(outcome) && !retainedIds.has(outcome.itemId)).map((outcome) => {
+    const verdict = outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding' ? outcome.finding.verdict : 'shipped';
+    return { code: 'reducer-input-protected-terminal-omitted', severity: 'warning' as const, message: `Protected terminal ${verdict} finding for ${outcome.itemId} was omitted by reducer byte caps.`, path: `outcomes/${outcome.itemId}/${verdict}` };
+  });
+  return { schemaVersion: 1, sourceFingerprint: globalContext.sourceFingerprint, ...(generatedAt !== undefined && { generatedAt }), globalContext, outcomes: retained, diagnostics };
+}
+
+function isProtectedTerminalOutcomeForTest(outcome: BacklogCurationMapReduceSourceBundle['degradedOutcomes'][number]): boolean {
+  if (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding') return false;
+  return outcome.finding.disposition === 'change' && (outcome.finding.verdict === 'shipped' || outcome.finding.verdict === 'superseded');
+}
+
+function terminalAwareFinding(itemId: string, verdict: 'shipped' | 'superseded' | 'still-needed'): BacklogCurationMapReduceFinding {
+  const terminal = verdict === 'shipped' || verdict === 'superseded';
+  return {
+    schemaVersion: 1,
+    itemId,
+    sourceFingerprint: SHA,
+    packetSha256: sha256Json({ itemId, packet: true }),
+    bodySha256: BODY_SHA,
+    promptVersion: BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
+    runtimeIdentity: { provider: 'stub', modelId: 'stub-model' },
+    disposition: terminal ? 'change' : 'recheck',
+    verdict,
+    closureEvidenceRoles: verdict === 'superseded' ? ['replacement', 'product-surface', 'supporting'] : ['implementation', 'product-surface', 'supporting'],
+    checkedPaths: [{ path: `src/${itemId}.ts`, reason: 'current source inspected ' + 'x'.repeat(180) }],
+    summary: `${itemId} ${verdict} summary. ${'s'.repeat(1_600)}`,
+    rationale: `${itemId} ${verdict} rationale. ${'r'.repeat(2_600)}`,
+    citations: [
+      { kind: 'implementation', source: 'current-source', confidence: 'high', path: `src/${itemId}.ts`, excerpt: 'implementation '.repeat(50), matchedBy: ['implementation'] },
+      { kind: 'product-surface', source: 'current-source', confidence: 'high', path: `docs/${itemId}.md`, excerpt: 'product surface '.repeat(50), matchedBy: ['product-surface'] },
+      { kind: 'supporting', source: 'current-source', confidence: 'medium', path: `test/${itemId}.test.ts`, excerpt: 'supporting '.repeat(50), matchedBy: ['supporting'] },
+    ],
+    recommendationSignals: [{ source: 'recommendation', signal: 'Recommendation detail. '.repeat(20) }],
+    diagnostics: [],
   };
 }
 
@@ -294,7 +421,7 @@ function curationContributionHandles(): Pick<RunnerOptions, 'itemAuditContributi
 class MapReduceHarness implements AgentHarness {
   itemAuditCalls = 0;
   reducerCalls = 0;
-  reducerInputs: Array<{ outcomes?: unknown[] }> = [];
+  reducerInputs: Array<{ outcomes?: unknown[]; diagnostics?: unknown[] }> = [];
   reducerPrompts: string[] = [];
   observedAborted: boolean[] = [];
 
@@ -326,6 +453,10 @@ class MapReduceHarness implements AgentHarness {
   }
 }
 
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 async function waitFor(condition: () => boolean): Promise<void> {
   for (let i = 0; i < 100; i += 1) {
     if (condition()) return;
@@ -344,10 +475,29 @@ function multiPacketBundle(count: number): BacklogCurationMapReduceSourceBundle 
   return { ...bundle, globalContext: { ...bundle.globalContext, itemCount: count, openItemIds: packets.map((entry) => entry.itemId) }, packets, reducerInput: { ...bundle.reducerInput, globalContext: { ...bundle.reducerInput.globalContext, itemCount: count, openItemIds: packets.map((entry) => entry.itemId) } } };
 }
 
-function extractReducerInput(prompt: string): { outcomes?: unknown[] } {
+function terminalOmissionDiagnosticsForTest(diagnostics: unknown): Array<{ itemId: string; verdict: 'shipped' | 'superseded' }> {
+  if (!Array.isArray(diagnostics)) return [];
+  return diagnostics.flatMap((entry) => {
+    if (!isRecordValue(entry) || entry.code !== 'reducer-input-protected-terminal-omitted') return [];
+    if (typeof entry.message === 'string') {
+      const fromMessage = (entry.message.match(/[A-Za-z0-9_.:-]+:(?:shipped|superseded)/g) ?? []).map((match) => {
+        const separator = match.lastIndexOf(':');
+        return { itemId: match.slice(0, separator), verdict: match.slice(separator + 1) as 'shipped' | 'superseded' };
+      });
+      if (fromMessage.length > 0) return fromMessage;
+    }
+    if (typeof entry.path !== 'string') return [];
+    const parts = entry.path.split('/');
+    const verdict = parts.at(-1);
+    const itemId = parts.length >= 3 ? parts.slice(1, -1).join('/') : '';
+    return (verdict === 'shipped' || verdict === 'superseded') && itemId.length > 0 ? [{ itemId, verdict }] : [];
+  });
+}
+
+function extractReducerInput(prompt: string): { outcomes?: unknown[]; diagnostics?: unknown[] } {
   const match = /```json\n([\s\S]*?)\n```/.exec(prompt);
   if (match === null) return {};
-  return JSON.parse(match[1]!) as { outcomes?: unknown[] };
+  return JSON.parse(match[1]!) as { outcomes?: unknown[]; diagnostics?: unknown[] };
 }
 
 function validReducerResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {

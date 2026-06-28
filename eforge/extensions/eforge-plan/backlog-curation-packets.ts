@@ -13,6 +13,7 @@ import {
   type BacklogCurationMapReduceDependencyFact,
   type BacklogCurationMapReduceDiagnostic,
   type BacklogCurationMapReduceGlobalContext,
+  type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceHistoricalHint,
   type BacklogCurationMapReduceItemOutcome,
   type BacklogCurationMapReduceItemPacket,
@@ -71,18 +72,14 @@ export function buildBacklogCurationReducerInput(globalContext: BacklogCurationM
     diagnostics,
   };
   const bytes = byteLength(reducer);
-  if (bytes > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) {
-    diagnostics.push({ code: 'reducer-input-byte-cap-exceeded', severity: 'warning', message: `Reducer input is ${bytes} bytes; cap is ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES}.` });
-    shrinkReducerGlobalContext(reducer.globalContext, reducer, diagnostics);
-    const observedOutcomeCount = reducer.outcomes.length;
-    while (reducer.outcomes.length > 0 && byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) reducer.outcomes.pop();
-    if (reducer.outcomes.length < observedOutcomeCount) {
-      const outcomeDiagnostic: BacklogCurationMapReduceDiagnostic = { code: 'reducer-input-outcomes-dropped', severity: 'warning', message: `Reducer input outcomes were dropped to fit the byte cap; observed ${observedOutcomeCount}, retained ${reducer.outcomes.length}.` };
-      diagnostics.push(outcomeDiagnostic);
-      while (reducer.outcomes.length > 0 && byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) reducer.outcomes.pop();
-      outcomeDiagnostic.message = `Reducer input outcomes were dropped to fit the byte cap; observed ${observedOutcomeCount}, retained ${reducer.outcomes.length}.`;
-    }
-  }
+  if (bytes <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) return reducer;
+
+  diagnostics.push({ code: 'reducer-input-byte-cap-exceeded', severity: 'warning', message: `Reducer input is ${bytes} bytes; cap is ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES}.` });
+  shrinkReducerGlobalContext(reducer.globalContext, reducer, diagnostics);
+  reducer.outcomes = prioritizeReducerOutcomes(outcomes).map((entry) => compactReducerOutcomeForCap(entry.outcome));
+  if (byteLength(reducer) <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) return reducer;
+
+  selectReducerOutcomesUnderCap(reducer, outcomes, diagnostics);
   return reducer;
 }
 
@@ -114,6 +111,221 @@ function shrinkReducerGlobalContext(
     delete globalContext.redraftSummary;
   }
 }
+
+// --- eforge:region backlog-curation-terminal-omissions ---
+interface PrioritizedReducerOutcome { outcome: BacklogCurationMapReduceItemOutcome; originalIndex: number; priority: number }
+
+const PROTECTED_TERMINAL_OMITTED_CODE = 'reducer-input-protected-terminal-omitted' as const;
+const REDUCER_DIAGNOSTICS_MAX = 40, REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH = 800;
+
+type TerminalVerdict = 'shipped' | 'superseded';
+
+interface NamedTerminalOmission { itemId: string; verdict: TerminalVerdict }
+
+function selectReducerOutcomesUnderCap(
+  reducer: BacklogCurationMapReduceReducerInput,
+  sourceOutcomes: readonly BacklogCurationMapReduceItemOutcome[],
+  diagnostics: BacklogCurationMapReduceDiagnostic[],
+): void {
+  const prioritized = prioritizeReducerOutcomes(sourceOutcomes).map((entry) => ({ ...entry, outcome: compactReducerOutcomeForCap(entry.outcome) }));
+  const observed = sourceOutcomes.length;
+  const droppedDiagnostic: BacklogCurationMapReduceDiagnostic = { code: 'reducer-input-outcomes-dropped', severity: 'warning', message: `Reducer input outcomes were semantically pruned to fit the byte cap; observed ${observed}, retained pending. Protected terminal findings are retained first; omitted protected terminals are named separately.` };
+  diagnostics.push(droppedDiagnostic);
+  let omittedTerminals = new Set<string>();
+  const maxAttempts = prioritized.length + 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    resetTerminalOmissionDiagnostics(diagnostics);
+    diagnostics.push(...terminalOmissionDiagnostics(prioritized, omittedTerminals, REDUCER_DIAGNOSTICS_MAX - diagnostics.length));
+    const selectedIndexes = fitPrioritizedOutcomes(reducer, prioritized);
+    if (!terminalOmissionDiagnosticsFit(reducer, prioritized, omittedTerminals)) break;
+    const nextOmittedTerminals = omittedProtectedTerminalKeys(prioritized, selectedIndexes);
+    if (setsEqual(omittedTerminals, nextOmittedTerminals)) break;
+    omittedTerminals = nextOmittedTerminals;
+  }
+  if (reducer.outcomes.length < observed) {
+    droppedDiagnostic.message = `Reducer input outcomes were semantically pruned to fit the byte cap; observed ${observed}, retained ${reducer.outcomes.length}. Protected terminal findings are retained first; omitted protected terminals are named separately.`;
+  } else {
+    diagnostics.splice(diagnostics.indexOf(droppedDiagnostic), 1);
+  }
+}
+
+function fitPrioritizedOutcomes(reducer: BacklogCurationMapReduceReducerInput, prioritized: readonly PrioritizedReducerOutcome[]): Set<number> {
+  const selected = new Set<number>();
+  reducer.outcomes = [];
+  for (const entry of prioritized) {
+    reducer.outcomes.push(entry.outcome);
+    if (byteLength(reducer) <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) selected.add(entry.originalIndex);
+    else reducer.outcomes.pop();
+  }
+  return selected;
+}
+
+function prioritizeReducerOutcomes(outcomes: readonly BacklogCurationMapReduceItemOutcome[]): PrioritizedReducerOutcome[] {
+  return outcomes.map((outcome, originalIndex) => ({ outcome, originalIndex, priority: reducerOutcomePriority(outcome) }))
+    .sort((left, right) => left.priority - right.priority || left.originalIndex - right.originalIndex || left.outcome.itemId.localeCompare(right.outcome.itemId));
+}
+
+function reducerOutcomePriority(outcome: BacklogCurationMapReduceItemOutcome): number {
+  if (isProtectedTerminalOutcome(outcome)) return 0;
+  if ((outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') && outcome.finding.disposition === 'change') return 1;
+  if ((outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') && (outcome.finding.disposition === 'needs-input' || outcome.finding.verdict === 'needs-product-input')) return 2;
+  if (outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') {
+    if (outcome.finding.verdict === 'partial' || outcome.finding.verdict === 'still-needed' || outcome.finding.verdict === 'stale-invalid') return 3;
+    if ((outcome.finding.recommendationSignals?.length ?? 0) > 0) return 4;
+    return 5;
+  }
+  if (outcome.outcome === 'invalid-finding' || outcome.outcome === 'item-agent-failure') return 6;
+  if (outcome.outcome === 'oversized-packet') return 7;
+  return 8;
+}
+
+function isProtectedTerminalOutcome(outcome: BacklogCurationMapReduceItemOutcome): boolean {
+  if (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding') return false;
+  return outcome.finding.disposition === 'change' && isTerminalVerdict(outcome.finding.verdict);
+}
+
+function isTerminalVerdict(value: unknown): value is TerminalVerdict {
+  return value === 'shipped' || value === 'superseded';
+}
+
+function compactReducerOutcomeForCap(outcome: BacklogCurationMapReduceItemOutcome): BacklogCurationMapReduceItemOutcome {
+  const base = {
+    schemaVersion: outcome.schemaVersion,
+    outcome: outcome.outcome,
+    itemId: outcome.itemId,
+    sourceFingerprint: outcome.sourceFingerprint,
+    ...(outcome.packetSha256 !== undefined && { packetSha256: outcome.packetSha256 }),
+    ...(outcome.bodySha256 !== undefined && { bodySha256: outcome.bodySha256 }),
+    diagnostics: compactReducerDiagnostics(outcome.diagnostics, 2),
+  };
+  if (outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') return { ...base, finding: compactFindingForReducerCap(outcome.finding, isProtectedTerminalOutcome(outcome)) } as BacklogCurationMapReduceItemOutcome;
+  if (outcome.outcome === 'item-agent-failure') return { ...base, error: boundText(outcome.error, 400) } as BacklogCurationMapReduceItemOutcome;
+  if (outcome.outcome === 'invalid-finding') return { ...base, validationErrors: outcome.validationErrors.slice(0, 4).map((error) => boundText(error, 180)) } as BacklogCurationMapReduceItemOutcome;
+  if (outcome.outcome === 'oversized-packet') return { ...base, byteLength: outcome.byteLength, byteCap: outcome.byteCap } as BacklogCurationMapReduceItemOutcome;
+  return { ...base, ...(outcome.reason !== undefined && { reason: boundText(outcome.reason, 180) }) } as BacklogCurationMapReduceItemOutcome;
+}
+
+function compactFindingForReducerCap(finding: BacklogCurationMapReduceFinding, protectedTerminal: boolean): BacklogCurationMapReduceFinding {
+  const citationLimit = protectedTerminal ? 6 : 3;
+  return {
+    schemaVersion: finding.schemaVersion,
+    itemId: finding.itemId,
+    sourceFingerprint: finding.sourceFingerprint,
+    packetSha256: finding.packetSha256,
+    bodySha256: finding.bodySha256,
+    promptVersion: boundText(finding.promptVersion, 120),
+    runtimeIdentity: compactRuntimeIdentity(finding.runtimeIdentity),
+    disposition: finding.disposition,
+    ...(finding.verdict !== undefined && { verdict: finding.verdict }),
+    ...(finding.closureEvidenceRoles !== undefined && { closureEvidenceRoles: finding.closureEvidenceRoles.slice(0, protectedTerminal ? 8 : 4) }),
+    checkedPaths: compactReducerCheckedPaths(finding.checkedPaths, protectedTerminal ? 8 : 4),
+    summary: boundText(finding.summary, protectedTerminal ? 700 : 300),
+    rationale: boundText(finding.rationale, protectedTerminal ? 1_000 : 400),
+    citations: compactReducerCitations(finding.citations, citationLimit),
+    recommendationSignals: protectedTerminal ? [] : finding.recommendationSignals.slice(0, 2).map((signal) => ({ source: boundText(signal.source, 120), ...(signal.ref !== undefined && { ref: boundText(signal.ref, 100) }), signal: boundText(signal.signal, 180) })),
+    diagnostics: compactReducerDiagnostics(finding.diagnostics, protectedTerminal ? 2 : 1),
+  };
+}
+
+function compactRuntimeIdentity(value: BacklogCurationMapReduceFinding['runtimeIdentity']): BacklogCurationMapReduceFinding['runtimeIdentity'] {
+  return { provider: boundText(value.provider, 120), modelId: boundText(value.modelId, 200), ...(value.agentProfile !== undefined && { agentProfile: boundText(value.agentProfile, 200) }) };
+}
+
+function compactReducerCitations(citations: BacklogCurationMapReduceFinding['citations'], maxItems: number): BacklogCurationMapReduceFinding['citations'] {
+  return [...citations]
+    .sort((left, right) => reducerCitationPriority(left) - reducerCitationPriority(right))
+    .slice(0, maxItems)
+    .map((citation) => ({
+      kind: citation.kind,
+      source: boundText(citation.source, 200),
+      ...(citation.confidence !== undefined && { confidence: boundText(citation.confidence, 80) }),
+      ...(citation.path !== undefined && { path: boundText(citation.path, 260) }),
+      ...(citation.excerpt !== undefined && { excerpt: boundText(citation.excerpt, 260) }),
+      ...(citation.matchedBy !== undefined && { matchedBy: citation.matchedBy.slice(0, 4).map((entry) => boundText(entry, 80)) }),
+    }));
+}
+
+function reducerCitationPriority(citation: BacklogCurationMapReduceCitation): number {
+  if (citation.kind === 'implementation' || citation.matchedBy?.includes('replacement') === true) return 0;
+  if (citation.kind === 'product-surface') return 2;
+  if (citation.kind === 'supporting') return 3;
+  if (citation.kind === 'current-source') return 4;
+  return 9;
+}
+
+function compactReducerCheckedPaths(paths: BacklogCurationMapReduceFinding['checkedPaths'], maxItems: number): NonNullable<BacklogCurationMapReduceFinding['checkedPaths']> {
+  return (paths ?? []).slice(0, maxItems).map((entry) => ({ path: boundText(entry.path, 260), ...(entry.reason !== undefined && { reason: boundText(entry.reason, 180) }) }));
+}
+
+function compactReducerDiagnostics(diagnostics: readonly BacklogCurationMapReduceDiagnostic[], maxItems: number): BacklogCurationMapReduceDiagnostic[] {
+  return diagnostics.slice(0, maxItems).map((diagnostic) => ({ code: boundText(diagnostic.code, 160), severity: diagnostic.severity, ...(diagnostic.message !== undefined && { message: boundText(diagnostic.message, 220) }), ...(diagnostic.path !== undefined && { path: boundText(diagnostic.path, 180) }) }));
+}
+
+function omittedProtectedTerminalKeys(prioritized: readonly PrioritizedReducerOutcome[], selectedIndexes: Set<number>): Set<string> {
+  return new Set(prioritized.filter((entry) => !selectedIndexes.has(entry.originalIndex) && isProtectedTerminalOutcome(entry.outcome)).map(terminalKey));
+}
+
+function terminalOmissionDiagnostics(prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>, availableSlots: number): BacklogCurationMapReduceDiagnostic[] {
+  const omissions = namedTerminalOmissions(prioritized, omitted);
+  if (omissions.length === 0) return [];
+  const chunks = chunkTerminalOmissionNames(omissions, availableSlots);
+  if (chunks === undefined) throwCannotFitTerminalOmissions(omissions);
+  return chunks.map((chunk, index) => ({ code: PROTECTED_TERMINAL_OMITTED_CODE, severity: 'warning' as const, message: `Protected terminal findings omitted by reducer byte caps: ${chunk.join(', ')}.`, path: `outcomes/protected-terminal-omissions/${index + 1}` }));
+}
+
+function namedTerminalOmissions(prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>): NamedTerminalOmission[] {
+  return prioritized.flatMap((entry) => {
+    const outcome = entry.outcome;
+    if (!omitted.has(terminalKey(entry)) || (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding')) return [];
+    const verdict = outcome.finding.verdict;
+    if (outcome.finding.disposition !== 'change' || !isTerminalVerdict(verdict)) return [];
+    return [{ itemId: outcome.itemId, verdict }];
+  });
+}
+
+function chunkTerminalOmissionNames(omissions: readonly NamedTerminalOmission[], availableSlots: number): string[][] | undefined {
+  if (availableSlots <= 0) return undefined;
+  const prefix = 'Protected terminal findings omitted by reducer byte caps: ';
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  for (const omission of omissions) {
+    const name = `${omission.itemId}:${omission.verdict}`;
+    const candidate = [...current, name];
+    if (`${prefix}${candidate.join(', ')}.`.length <= REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH) current = candidate;
+    else {
+      if (current.length === 0 || chunks.length >= availableSlots) return undefined;
+      chunks.push(current);
+      current = [name];
+      if (`${prefix}${name}.`.length > REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH) return undefined;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks.length <= availableSlots ? chunks : undefined;
+}
+
+function terminalOmissionDiagnosticsFit(reducer: BacklogCurationMapReduceReducerInput, prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>): boolean {
+  if (byteLength(reducer) <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) return true;
+  throwCannotFitTerminalOmissions(namedTerminalOmissions(prioritized, omitted));
+}
+
+function throwCannotFitTerminalOmissions(omissions: readonly NamedTerminalOmission[]): never {
+  throw new Error(`Reducer input cannot fit named protected terminal omissions under ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES} bytes; omitted candidates: ${omissions.map((omission) => `${omission.itemId}:${omission.verdict}`).join(', ')}.`);
+}
+
+function terminalKey(entry: PrioritizedReducerOutcome): string { return `${entry.originalIndex}:${entry.outcome.itemId}`; }
+
+function resetTerminalOmissionDiagnostics(diagnostics: BacklogCurationMapReduceDiagnostic[]): void {
+  for (let index = diagnostics.length - 1; index >= 0; index -= 1) {
+    if (diagnostics[index]?.code === PROTECTED_TERMINAL_OMITTED_CODE) diagnostics.splice(index, 1);
+  }
+}
+
+function setsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const entry of left) if (!right.has(entry)) return false;
+  return true;
+}
+// --- eforge:endregion backlog-curation-terminal-omissions ---
 
 export function buildBacklogCurationItemPacket(source: Record<string, unknown>, item: Record<string, unknown>, sourceFingerprint: string): PacketBuildResult {
   const itemId = stringValue(item.id) ?? 'unknown-item';

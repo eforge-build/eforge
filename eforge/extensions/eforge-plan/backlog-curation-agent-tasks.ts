@@ -308,6 +308,7 @@ function compactReducerOutcome(value: unknown): unknown {
 }
 
 function compactFindingForReducerPrompt(value: Record<string, unknown>): Record<string, unknown> {
+  const protectedTerminal = value.disposition === 'change' && (value.verdict === 'shipped' || value.verdict === 'superseded');
   return {
     schemaVersion: value.schemaVersion,
     itemId: value.itemId,
@@ -318,19 +319,18 @@ function compactFindingForReducerPrompt(value: Record<string, unknown>): Record<
     disposition: value.disposition,
     verdict: value.verdict,
     closureEvidenceRoles: value.closureEvidenceRoles,
-    checkedPaths: compactCheckedPaths(value.checkedPaths),
-    summary: typeof value.summary === 'string' ? truncateText(value.summary, 500) : value.summary,
-    rationale: typeof value.rationale === 'string' ? truncateText(value.rationale, 900) : value.rationale,
-    citations: compactCitations(value.citations),
-    recommendationSignals: compactRecommendationSignals(value.recommendationSignals),
-    diagnostics: compactDiagnostics(value.diagnostics, 4),
+    checkedPaths: compactCheckedPaths(value.checkedPaths, protectedTerminal ? 10 : 8),
+    summary: typeof value.summary === 'string' ? truncateText(value.summary, protectedTerminal ? 800 : 500) : value.summary,
+    rationale: typeof value.rationale === 'string' ? truncateText(value.rationale, protectedTerminal ? 1_200 : 900) : value.rationale,
+    citations: compactCitations(value.citations, protectedTerminal ? 8 : 6),
+    recommendationSignals: protectedTerminal ? [] : compactRecommendationSignals(value.recommendationSignals),
+    diagnostics: compactDiagnostics(value.diagnostics, protectedTerminal ? 2 : 4),
   };
 }
 
-function compactCitations(value: unknown): unknown[] {
+function compactCitations(value: unknown, maxItems: number): unknown[] {
   if (!Array.isArray(value)) return [];
-  const priority = new Map<string, number>([['implementation', 0], ['product-surface', 1], ['replacement', 2], ['supporting', 3], ['current-source', 4]]);
-  return [...value].filter(isRecord).sort((left, right) => (priority.get(String(left.kind)) ?? 9) - (priority.get(String(right.kind)) ?? 9)).slice(0, 6).map((citation) => ({
+  return [...value].filter(isRecord).sort((left, right) => citationPriority(left) - citationPriority(right)).slice(0, maxItems).map((citation) => ({
     kind: citation.kind,
     source: typeof citation.source === 'string' ? truncateText(citation.source, 160) : citation.source,
     confidence: citation.confidence,
@@ -340,9 +340,17 @@ function compactCitations(value: unknown): unknown[] {
   }));
 }
 
-function compactCheckedPaths(value: unknown): unknown[] {
+function citationPriority(citation: Record<string, unknown>): number {
+  if (citation.kind === 'implementation' || (Array.isArray(citation.matchedBy) && citation.matchedBy.includes('replacement'))) return 0;
+  if (citation.kind === 'product-surface') return 2;
+  if (citation.kind === 'supporting') return 3;
+  if (citation.kind === 'current-source') return 4;
+  return 9;
+}
+
+function compactCheckedPaths(value: unknown, maxItems: number): unknown[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).slice(0, 8).map((entry) => ({
+  return value.filter(isRecord).slice(0, maxItems).map((entry) => ({
     path: typeof entry.path === 'string' ? truncateText(entry.path, 240) : entry.path,
     reason: typeof entry.reason === 'string' ? truncateText(entry.reason, 180) : entry.reason,
   }));
@@ -355,11 +363,14 @@ function compactRecommendationSignals(value: unknown): unknown[] {
 
 function compactDiagnostics(value: unknown, maxItems: number): unknown[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).slice(0, maxItems).map((diagnostic) => ({
+  const diagnostics = value.filter(isRecord);
+  const terminalOmissions = diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted');
+  const others = diagnostics.filter((diagnostic) => diagnostic.code !== 'reducer-input-protected-terminal-omitted').slice(0, maxItems);
+  return [...terminalOmissions, ...others].map((diagnostic) => ({
     code: diagnostic.code,
     severity: diagnostic.severity,
-    message: typeof diagnostic.message === 'string' ? truncateText(diagnostic.message, 220) : diagnostic.message,
-    path: typeof diagnostic.path === 'string' ? truncateText(diagnostic.path, 180) : diagnostic.path,
+    message: typeof diagnostic.message === 'string' && diagnostic.code !== 'reducer-input-protected-terminal-omitted' ? truncateText(diagnostic.message, 220) : diagnostic.message,
+    path: typeof diagnostic.path === 'string' && diagnostic.code !== 'reducer-input-protected-terminal-omitted' ? truncateText(diagnostic.path, 180) : diagnostic.path,
   }));
 }
 
