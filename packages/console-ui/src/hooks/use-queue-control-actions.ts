@@ -44,7 +44,7 @@ export function useQueueControlActions({ refreshQueue, refreshRuns }: UseQueueCo
     const response = await applyQueueCascade(id, request);
     if (response.applied === true) {
       await refreshQueue?.();
-      if (request.operation === 'cancel') await refreshRuns?.();
+      if (request.operation === 'remove' || request.operation === 'cancel') await refreshRuns?.();
     }
     return response;
   }, [refreshQueue, refreshRuns]);

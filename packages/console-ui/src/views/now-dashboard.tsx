@@ -144,6 +144,10 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
               onReenqueue: failedEnqueueActions.reenqueue,
               onDismiss: failedEnqueueActions.dismiss,
             }}
+            queueCleanupControls={{
+              previewCascade: queueActions.previewCascade,
+              applyCascade: queueActions.applyCascade,
+            }}
           />
           <ActiveBuildsGrid
             cards={model.activeBuilds}

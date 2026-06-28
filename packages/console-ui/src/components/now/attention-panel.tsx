@@ -7,10 +7,17 @@ import {
   asVerdict,
   asConfidence,
 } from '@/components/recovery/verdict-chip';
+import type {
+  QueueCascadeApplyRequest,
+  QueueCascadeApplyResponse,
+  QueueCascadeOperation,
+  QueueCascadePreviewResponse,
+} from '@eforge-build/client/browser';
 import type { NowAttentionItem } from '@/lib/selectors/now';
 import { formatQueueDispatchFailure } from '@/lib/selectors/queue-dispatch-failure';
 import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
 import { FailedEnqueueRow } from './failed-enqueue-row';
+import { QueueCascadeAction } from './queue-cascade-action';
 import { cn } from '@/lib/utils';
 
 interface AttentionPanelProps {
@@ -41,6 +48,10 @@ interface AttentionPanelProps {
     errorsByRunId: Record<string, string>;
     onReenqueue: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
     onDismiss: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
+  };
+  queueCleanupControls?: {
+    previewCascade: (id: string, operation: QueueCascadeOperation) => Promise<QueueCascadePreviewResponse>;
+    applyCascade: (id: string, request: QueueCascadeApplyRequest) => Promise<QueueCascadeApplyResponse>;
   };
 }
 
@@ -78,20 +89,21 @@ function SeverityTag({ severity }: { severity: NowAttentionItem['severity'] }) {
   return <Badge variant="secondary" className="shrink-0 capitalize">Info</Badge>;
 }
 
-/** A failed PRD awaiting a recovery decision. */
-function RecoveryRow({
-  recovery,
+/** A failed PRD awaiting recovery and/or queue cleanup. */
+function FailedQueueRow({
+  item,
   onRecover,
+  queueCleanupControls,
 }: {
-  recovery: NonNullable<NowAttentionItem['recovery']>;
+  item: NowAttentionItem;
   onRecover?: (recovery: NonNullable<NowAttentionItem['recovery']>) => void;
+  queueCleanupControls?: AttentionPanelProps['queueCleanupControls'];
 }) {
-  // Validate the wire strings before rendering the chip; an unrecognized
-  // verdict/confidence degrades to "analysis pending" rather than a chip with
-  // no color classes.
-  const verdict = asVerdict(recovery.verdict);
-  const confidence = asConfidence(recovery.confidence);
-  const dispatchDetail = formatQueueDispatchFailure(recovery.dispatchFailure);
+  const recovery = item.recovery;
+  const queueCleanup = item.queueCleanup;
+  const verdict = asVerdict(recovery?.verdict);
+  const confidence = asConfidence(recovery?.confidence);
+  const dispatchDetail = formatQueueDispatchFailure(recovery?.dispatchFailure);
   return (
     <li className="flex items-center gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
       <Badge
@@ -101,20 +113,22 @@ function RecoveryRow({
         Failed
       </Badge>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground">{recovery.prdTitle}</p>
+        <p className="truncate text-sm text-foreground">{recovery?.prdTitle ?? queueCleanup?.prdTitle ?? item.message}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {dispatchDetail && <span>{dispatchDetail}</span>}
           {verdict && confidence ? (
             <>
-              <span>{dispatchDetail ? 'Suggested' : 'Suggested'}</span>
+              <span>Suggested</span>
               <RecoveryVerdictChip verdict={verdict} confidence={confidence} />
             </>
-          ) : !dispatchDetail ? (
+          ) : !dispatchDetail && recovery ? (
             <span>Recovery analysis pending</span>
+          ) : item.detail ? (
+            <span>{item.detail}</span>
           ) : null}
         </div>
       </div>
-      {onRecover && (
+      {recovery && onRecover && (
         <Button
           type="button"
           variant="outline"
@@ -124,6 +138,17 @@ function RecoveryRow({
         >
           Recover…
         </Button>
+      )}
+      {queueCleanup && queueCleanupControls && (
+        <QueueCascadeAction
+          itemId={queueCleanup.prdId}
+          itemTitle={queueCleanup.prdTitle}
+          operation="remove"
+          capability={queueCleanup.capabilities?.remove}
+          cascadeCapability={queueCleanup.capabilities?.cascadeRemove}
+          onPreviewCascade={queueCleanupControls.previewCascade}
+          onApplyCascade={queueCleanupControls.applyCascade}
+        />
       )}
     </li>
   );
@@ -189,7 +214,7 @@ function HealthRow({ item }: { item: NowAttentionItem }) {
   );
 }
 
-export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust, failedEnqueueControls }: AttentionPanelProps) {
+export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust, failedEnqueueControls, queueCleanupControls }: AttentionPanelProps) {
   if (items.length === 0) return null;
 
   return (
@@ -212,8 +237,8 @@ export function AttentionPanel({ items, hiddenCount, title = 'Attention', onReco
               />
             ) : item.extensionTrust ? (
               <ExtensionTrustRow key={item.id} item={item} controls={extensionTrust} />
-            ) : item.recovery ? (
-              <RecoveryRow key={item.id} recovery={item.recovery} onRecover={onRecover} />
+            ) : item.recovery || item.queueCleanup ? (
+              <FailedQueueRow key={item.id} item={item} onRecover={onRecover} queueCleanupControls={queueCleanupControls} />
             ) : (
               <HealthRow key={item.id} item={item} />
             ),
