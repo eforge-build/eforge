@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CompilePreflightRisk, CompileScopeContextFailure } from '@eforge-build/client';
-import { renderCompilePreflightLines, renderCompileScopeContextFailureModel } from '../packages/eforge/src/cli/compile-resilience-display.js';
+import type { CompilePreflightRisk, CompileScopeContextFailure, PlannerInspectionSummary } from '@eforge-build/client';
+import { plannerContinuationReasonLabel, renderCompilePreflightLines, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from '../packages/eforge/src/cli/compile-resilience-display.js';
 
 const hash = 'a'.repeat(64);
 
@@ -17,6 +17,35 @@ function risk(level: CompilePreflightRisk['level']): CompilePreflightRisk {
     recommendation: { action: level === 'normal' ? 'none' : 'bounded-decomposition', eligible: true, reason: 'Split into bounded pieces.' },
   };
 }
+
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+function plannerInspectionSummary(): PlannerInspectionSummary {
+  return {
+    kind: 'planner-inspection-handoff',
+    version: 1,
+    source: { sourceName: 'Queue cleanup', planSetName: 'set-a' },
+    relevantFiles: ['packages/engine/src/queue/scheduler.ts'],
+    observedFacts: ['Read scheduler cleanup code.'],
+    importantFindings: ['Queue cleanup coverage was removed.'],
+    inferredImplementationAreas: ['packages/engine/src/queue'],
+    unresolvedQuestions: ['Confirm failed dispatch shape.'],
+    sourceBuildContext: { sourceSummary: 'Fix removed queue coverage cleanup.' },
+    budgetDiagnostics: {
+      maxObservedInputTokens: 160000,
+      softInputTokenThreshold: 115200,
+      plannerMaxTurns: 80,
+      inspectionTurnBudget: 60,
+      softInputTokenRatio: 0.72,
+      softTurnRatio: 0.75,
+      observed: { inputTokens: 115200, outputTokens: 1200, turns: 44, promptBytes: 4096 },
+      toolUseCount: 32,
+      toolResultCount: 31,
+    },
+    caveats: ['Inspection is incomplete.'],
+    omittedCounts: { toolResults: 1 },
+  };
+}
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 function failure(): CompileScopeContextFailure {
   return {
@@ -70,6 +99,17 @@ describe('compile resilience CLI formatting', () => {
     const overflow = renderCompilePreflightLines(risk('overflow-risk'));
     expect(overflow.join('\n')).toContain('Split into bounded pieces.');
   });
+
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  it('renders compact planner inspection details and continuation reason labels', () => {
+    const model = renderPlannerInspectionSummaryModel(plannerInspectionSummary());
+    const detail = model.details.join('\n');
+    expect(model.headline).toContain('Planner compact inspection summary');
+    expect(detail).toContain('packages/engine/src/queue/scheduler.ts');
+    expect(detail).toContain('Queue cleanup coverage was removed');
+    expect(plannerContinuationReasonLabel('compact_inspection')).toBe('compact inspection synthesis');
+  });
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('renders scope/context failure details without raw payloads', () => {
     const model = renderCompileScopeContextFailureModel(failure());

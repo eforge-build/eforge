@@ -209,6 +209,12 @@ export function isDroppedSubmission(events: readonly EforgeEvent[]): boolean {
   return !sawSubmissionToolUse && !sawSkip;
 }
 
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+export function hasCompactInspectionContinuation(events: readonly EforgeEvent[]): boolean {
+  return events.some((ev) => ev.type === 'planning:inspection-summary');
+}
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
+
 // ---------------------------------------------------------------------------
 // Internal helpers (duplicated from pipeline.ts to avoid circular imports)
 // ---------------------------------------------------------------------------
@@ -1071,7 +1077,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     // submitted or completed plans are already authoritative and rerunning
     // would duplicate side effects.
     shouldRetry: (info) =>
-      (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events)) ||
+      (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events) && !hasCompactInspectionContinuation(info.events)) ||
       (isRetryableInfrastructureSubtype(info.subtype) && isBeforePlannerSubmissionBoundary(info.events)),
     buildContinuationInput: (info) => buildPlannerContinuationInput(info as RetryAttemptInfo<PlannerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {

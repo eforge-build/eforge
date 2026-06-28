@@ -11,6 +11,13 @@ import {
   CompileRecoveryActionSchema,
   CompileRiskLevelSchema,
   CompileScopeContextFailureSchema,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerContextObservationSchema,
+  PlannerInspectionBudgetDiagnosticsSchema,
+  PlannerInspectionIdentifiersSchema,
+  PlannerInspectionSourceBuildContextSchema,
+  PlannerInspectionSummarySchema,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   BoundedDiagnosticOptionsSchema,
   BoundedValidationDiagnosticSchema,
 } from './shared/compile-resilience.js';
@@ -121,10 +128,20 @@ export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsS
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
 export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
+export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
+export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;
+export type PlannerInspectionBudgetDiagnostics = Static<typeof PlannerInspectionBudgetDiagnosticsSchema>;
+export type PlannerInspectionSummary = Static<typeof PlannerInspectionSummarySchema>;
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;
 export type CompilePreflightEvent = Extract<EforgeEvent, { type: 'planning:preflight' }>;
 export type CompileScopeContextFailureEvent = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>;
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+export type PlannerInspectionSummaryEvent = Extract<EforgeEvent, { type: 'planning:inspection-summary' }>;
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 export type AutoBuildDesired = Static<typeof AutoBuildDesiredSchema>;
 export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
 export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;

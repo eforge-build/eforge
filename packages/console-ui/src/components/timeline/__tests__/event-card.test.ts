@@ -82,6 +82,38 @@ const preflightEvent = {
   },
 } as unknown as EforgeEvent;
 
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+const inspectionSummaryEvent = {
+  type: 'planning:inspection-summary',
+  timestamp: '2026-01-01T00:00:02.000Z',
+  artifactPath: '/project/eforge/plans/set-a/planner-inspection-handoff.json',
+  summary: {
+    kind: 'planner-inspection-handoff',
+    version: 1,
+    source: { sourceName: 'Queue cleanup', planSetName: 'set-a' },
+    relevantFiles: ['packages/engine/src/queue/scheduler.ts'],
+    observedFacts: ['Read scheduler cleanup code.'],
+    importantFindings: ['Queue cleanup coverage was removed.'],
+    inferredImplementationAreas: ['packages/engine/src/queue'],
+    unresolvedQuestions: ['Confirm failed dispatch shape.'],
+    sourceBuildContext: { sourceSummary: 'Fix removed queue coverage cleanup.' },
+    budgetDiagnostics: {
+      maxObservedInputTokens: 160000,
+      softInputTokenThreshold: 115200,
+      plannerMaxTurns: 80,
+      inspectionTurnBudget: 60,
+      softInputTokenRatio: 0.72,
+      softTurnRatio: 0.75,
+      observed: { inputTokens: 115200, outputTokens: 1200, turns: 44, promptBytes: 4096 },
+      toolUseCount: 32,
+      toolResultCount: 31,
+    },
+    caveats: ['Inspection is incomplete.'],
+    omittedCounts: { toolResults: 1 },
+  },
+} as unknown as EforgeEvent;
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
+
 const scopeFailureEvent = {
   type: 'planning:scope-context:failure',
   timestamp: '2026-01-01T00:00:01.000Z',
@@ -132,6 +164,20 @@ describe('EventCard compile resilience rendering branches', () => {
     expect(screen.getByText(/Subsystem evidence: rendering surfaces/)).toBeTruthy();
     expect(screen.getByText(/Split oversized generated scope/)).toBeTruthy();
   });
+
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  it('renders planning:inspection-summary with expandable compact detail', () => {
+    renderEventCard(inspectionSummaryEvent);
+
+    const typeLabel = screen.getByText('planning:inspection-summary');
+    expect(typeLabel.className).toContain('text-yellow');
+    expect(screen.getByText(/Planner compact inspection summary/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'details' }));
+    expect(screen.getByText(/packages\/engine\/src\/queue\/scheduler.ts/)).toBeTruthy();
+    expect(screen.getByText(/Queue cleanup coverage was removed/)).toBeTruthy();
+    expect(screen.getByText(/planner-inspection-handoff.json/)).toBeTruthy();
+  });
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('renders planning:scope-context:failure with failed styling and detail', () => {
     renderEventCard(scopeFailureEvent);

@@ -21,6 +21,9 @@ import {
   formatPlannerToolSemanticValidationError,
 } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
@@ -28,6 +31,10 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   promptSourceContent?: string;
   /** Prompt/live context guardrails for planner-family runs. */
   contextGuard?: CompileContextGuardOptions;
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  /** Soft-budget observer configuration for compact planner inspection continuation. */ plannerInspectionBudget?: PlannerInspectionBudget;
+  /** Run identifier used in compact planner inspection diagnostics. */ runId?: string;
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -59,6 +66,41 @@ function createLinkedAbortController(parentSignal?: AbortSignal): AbortControlle
   }
   return controller;
 }
+
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+type PlannerExecutionPhase = 'inspection' | 'synthesis';
+
+function synthesisMaxTurns(initialMaxTurns: number): number {
+  return initialMaxTurns <= 1 ? 1 : Math.max(1, Math.min(initialMaxTurns - 1, Math.floor(initialMaxTurns * 0.4)));
+}
+
+function compactInspectionEnabled(options: PlannerOptions): boolean { return options.continuationContext === undefined; }
+function isSubmissionToolUse(event: EforgeEvent): boolean {
+  return event.type === 'agent:tool_use' && (event.tool === 'submit_plan_set' || event.tool === 'submit_architecture');
+}
+
+function buildInspectionSourceContext(sourceContent: string, promptSourceContent: string, sourceLabel?: string): PlannerInspectionSourceContext {
+  return { sourceSummary: sourceLabel ?? firstNonEmptyLine(sourceContent), buildGoal: firstMarkdownHeading(sourceContent) ?? firstNonEmptyLine(sourceContent), promptSourceSnippet: promptSourceContent };
+}
+
+function formatCompactInspectionContinuation(handoff: PlannerInspectionHandoff, submitTool: string): string {
+  return `## Compact Inspection Continuation
+
+Automatic compact-inspection continuation 1 of 1 is active. The prior inspection attempt was stopped before the hard context guard so synthesis can proceed from bounded evidence.
+
+### Required synthesis objective
+
+Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. Perform only targeted read-only checks if absolutely necessary, then call ${submitTool}. Reasoning text alone does not submit plans.
+
+${formatPlannerInspectionHandoffMarkdown(handoff)}`;
+}
+
+function firstMarkdownHeading(text: string): string | undefined {
+  return text.split('\n').map((line) => line.trim()).find((line) => /^#{1,3}\s+\S/.test(line))?.replace(/^#{1,3}\s+/, '');
+}
+
+function firstNonEmptyLine(text: string): string | undefined { return text.split('\n').map((line) => line.trim()).find((line) => line.length > 0)?.slice(0, 300); }
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 /**
  * Format accumulated clarification Q&A into a prompt section for retry.
@@ -210,7 +252,7 @@ export async function* runPlanner(
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
   const { harness } = options;
-  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
+  let contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
@@ -229,6 +271,14 @@ export async function* runPlanner(
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
   const promptSourceContent = options.promptSourceContent ?? sourceContent;
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  const initialMaxTurns = options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning;
+  const inspectionBudget = options.plannerInspectionBudget ?? derivePlannerInspectionBudget({
+    hardLimits: options.contextGuard?.limits,
+    guardDiagnostics: options.contextGuard?.guardDiagnostics,
+    plannerMaxTurns: initialMaxTurns,
+  });
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
@@ -237,6 +287,10 @@ export async function* runPlanner(
 
   // Track clarification Q&A across iterations
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
+
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  let compactInspectionHandoff: PlannerInspectionHandoff | undefined;
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   function buildPrompt(): Promise<string> {
     // Resolve the backend-visible name for the submission tool(s) currently
@@ -249,23 +303,27 @@ export async function* runPlanner(
     const effectiveNames = customTools.map(t => harness.effectiveCustomToolName(t.name));
     const submitTool = effectiveNames.join(' or ');
 
-    let continuationContextText = '';
+    const continuationSections: string[] = [];
+    if (compactInspectionHandoff) {
+      continuationSections.push(formatCompactInspectionContinuation(compactInspectionHandoff, submitTool));
+    }
     if (options.continuationContext) {
       const { attempt, maxContinuations, existingPlans, reason } = options.continuationContext;
       if (reason === 'dropped_submission') {
-        continuationContextText = `## Continuation Context
+        continuationSections.push(`## Continuation Context
 
-This is continuation attempt ${attempt} of ${maxContinuations}. The previous attempt completed reasoning but did not call ${submitTool}. You MUST call ${submitTool} with your final plan set to complete this run — reasoning alone does not submit plans.`;
+This is continuation attempt ${attempt} of ${maxContinuations}. The previous attempt completed reasoning but did not call ${submitTool}. You MUST call ${submitTool} with your final plan set to complete this run — reasoning alone does not submit plans.`);
       } else {
-        continuationContextText = `## Continuation Context
+        continuationSections.push(`## Continuation Context
 
 This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit the max turns limit on the previous attempt. The following plan files have already been written. Do NOT redo any of the completed work below.
 
 ### Existing Plans
 
-${existingPlans}`;
+${existingPlans}`);
       }
     }
+    const continuationContextText = continuationSections.join('\n\n');
 
     return loadPrompt('planner', {
       source: promptSourceContent,
@@ -310,9 +368,20 @@ ${existingPlans}`;
     customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
   }
 
+  const outputDir = options.outputDir ?? 'eforge/plans';
+
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
   const maxIterations = 5; // prevent infinite loops
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  const inspectionObserver = compactInspectionEnabled(options)
+    ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'planner' })
+    : undefined;
+  let executionPhase: PlannerExecutionPhase = 'inspection';
+  let compactInspectionUsed = false;
+  let sawSubmissionToolUse = false;
+  const plannerBoundaryReached = () => skipEmitted || sawSubmissionToolUse || alreadySubmitted();
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   while (iteration < maxIterations) {
     iteration++;
@@ -323,6 +392,8 @@ ${existingPlans}`;
 
     if (iteration === 1) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
+    } else if (executionPhase === 'synthesis') {
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Planner resumed from compact inspection summary' };
     } else {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Planner restarted with prior clarifications' };
     }
@@ -331,7 +402,7 @@ ${existingPlans}`;
 
     try {
       for await (const event of harness.run(
-        { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: executionPhase === 'synthesis' ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {
@@ -341,6 +412,10 @@ ${existingPlans}`;
           attemptAbort.abort();
           throw err;
         }
+        if (isSubmissionToolUse(event)) sawSubmissionToolUse = true;
+        const inspectionStatus = executionPhase === 'inspection' && inspectionObserver && !plannerBoundaryReached()
+          ? inspectionObserver.observe(event)
+          : undefined;
         if (event.type === 'agent:message') {
           if (!skipEmitted) {
             const skipReason = parseSkipBlock(event.content);
@@ -369,6 +444,29 @@ ${existingPlans}`;
         if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
           yield event;
         }
+
+        if (inspectionStatus?.shouldHandoff && !plannerBoundaryReached() && !compactInspectionUsed) {
+          compactInspectionHandoff = inspectionObserver!.buildHandoff({
+            source: {
+              sourceName: sourceLabel ?? planSetName,
+              ...(source.includes('\n') ? {} : { sourcePath: source }),
+              ...(options.runId ? { buildId: options.runId, runId: options.runId } : {}),
+              planSetName,
+            },
+            sourceBuildContext: buildInspectionSourceContext(sourceContent, promptSourceContent, sourceLabel),
+            stage: 'planner',
+            incompleteReason: inspectionStatus.reason,
+          });
+          const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff });
+          yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
+          yield { timestamp: new Date().toISOString(), type: 'planning:continuation', attempt: 1, maxContinuations: 1, reason: 'compact_inspection' };
+          compactInspectionUsed = true;
+          executionPhase = 'synthesis';
+          contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
+          attemptAbort.abort();
+          needsRestart = true;
+          break;
+        }
       }
     } finally {
       attemptAbort.dispose();
@@ -379,8 +477,6 @@ ${existingPlans}`;
 
   // Skip was emitted — no plans to write
   if (skipEmitted) return;
-
-  const outputDir = options.outputDir ?? 'eforge/plans';
 
   // Handle plan set submission
   if (captured.planSet) {

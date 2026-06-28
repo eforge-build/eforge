@@ -346,6 +346,13 @@ const eventRegistry = {
     summary: (e) => `Compile preflight: ${e.risk.level}; ${e.risk.sourceBytes} source bytes; recovery ${e.risk.recommendation.action}`,
   },
 
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  'planning:inspection-summary': {
+    scope: 'session', persist: true,
+    summary: (e) => `Planner compact inspection summary: ${e.summary.relevantFiles.length} file(s), ${e.summary.observedFacts.length} fact(s), ${e.summary.importantFindings.length} finding(s)`,
+  },
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
+
   'planning:skip': {
     scope: 'session',
     persist: false,
@@ -390,7 +397,7 @@ const eventRegistry = {
   'planning:continuation': {
     scope: 'session',
     persist: false,
-    summary: (e) => `Planning continuation attempt ${e.attempt}/${e.maxContinuations}`,
+    summary: (e) => `Planning continuation attempt ${e.attempt}/${e.maxContinuations}${e.reason ? ` (${e.reason})` : ''}`,
   },
 
   'planning:pipeline': {

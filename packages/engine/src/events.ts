@@ -58,6 +58,14 @@ export type {
   CompileRiskLevel,
   CompileScopeContextFailure,
   CompileScopeContextFailureEvent,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerContextObservation,
+  PlannerInspectionBudgetDiagnostics,
+  PlannerInspectionIdentifiers,
+  PlannerInspectionSourceBuildContext,
+  PlannerInspectionSummary,
+  PlannerInspectionSummaryEvent,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 } from '@eforge-build/client';
 
 export {
@@ -82,6 +90,13 @@ export {
   CompileRecoveryActionSchema,
   CompileRiskLevelSchema,
   CompileScopeContextFailureSchema,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerContextObservationSchema,
+  PlannerInspectionBudgetDiagnosticsSchema,
+  PlannerInspectionIdentifiersSchema,
+  PlannerInspectionSourceBuildContextSchema,
+  PlannerInspectionSummarySchema,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   MAX_COMPILE_RISK_LIST_ITEMS,
 } from '@eforge-build/client';
 

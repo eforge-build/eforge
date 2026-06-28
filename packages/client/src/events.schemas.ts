@@ -22,6 +22,22 @@ export {
   CompileScopeContextFailureKindSchema,
   CompileScopeContextFailureSchema,
   CompileScopeContextSourceSchema,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerContextObservationSchema,
+  PlannerInspectionBudgetDiagnosticsSchema,
+  PlannerInspectionIdentifiersSchema,
+  PlannerInspectionSourceBuildContextSchema,
+  PlannerInspectionSummarySchema,
+  PlannerInspectionSourceContextTextSchema,
+  PlannerInspectionSummaryTextSchema,
+  MAX_PLANNER_INSPECTION_CAVEATS,
+  MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS,
+  MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS,
+  MAX_PLANNER_INSPECTION_OBSERVED_FACTS,
+  MAX_PLANNER_INSPECTION_RELEVANT_FILES,
+  MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH,
+  MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
@@ -77,6 +93,13 @@ export type {
   CompileRecoveryAction,
   CompileRiskLevel,
   CompileScopeContextFailure,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerContextObservation,
+  PlannerInspectionBudgetDiagnostics,
+  PlannerInspectionIdentifiers,
+  PlannerInspectionSourceBuildContext,
+  PlannerInspectionSummary,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 } from './events/shared/compile-resilience.js';
 export type { BuildDecision, PlanningDecision, PlanningDecisionEvent } from './events/decisions.js';
 export type { QueueDispatchFailureStage, QueueEvent } from './events/queue-events.js';
@@ -100,6 +123,9 @@ export type {
   BuildResumeIneligibleEvent,
   CompilePreflightEvent,
   CompileScopeContextFailureEvent,
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  PlannerInspectionSummaryEvent,
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   BuildResumeStartEvent,
   BuildResumeStateEvent,
   ClarificationQuestion,

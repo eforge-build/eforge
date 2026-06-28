@@ -12,6 +12,14 @@ export interface StubToolCall {
   output: string;
 }
 
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+export type StubScriptedEvent =
+  | { kind: 'message'; content: string }
+  | { kind: 'usage'; usage?: Partial<AgentResultData['usage']>; costUsd?: number; numTurns?: number; final?: boolean }
+  | { kind: 'tool_call'; tool: string; toolUseId: string; input: unknown; output: string }
+  | { kind: 'event'; event: EforgeEvent };
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
+
 export interface StubResponse {
   /** Text content the "agent" produces (emitted as agent:message events) */
   text?: string;
@@ -23,6 +31,10 @@ export interface StubResponse {
   resultText?: string;
   /** Tool use/result events to emit before the text */
   toolCalls?: StubToolCall[];
+  // --- eforge:region plan-02-planner-continuation-surfaces ---
+  /** Interleaved scripted events emitted before the final result. Preserves legacy toolCalls/text behavior when omitted. */
+  events?: StubScriptedEvent[];
+  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   /** Throw this error instead of completing normally */
   error?: Error;
   /** Throw this error after emitting agent:result */
@@ -37,6 +49,47 @@ const STUB_RESULT: AgentResultData = {
   usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 },
   modelUsage: {},
 };
+
+// --- eforge:region plan-02-planner-continuation-surfaces ---
+type StubEmitContext = {
+  planId?: string;
+  agentId: string;
+  agent: AgentRole;
+  customToolMap: Map<string, NonNullable<AgentRunOptions['customTools']>[number]>;
+};
+
+async function* emitToolCall(tc: StubToolCall, ctx: StubEmitContext): AsyncGenerator<EforgeEvent> {
+  yield { type: 'agent:tool_use', planId: ctx.planId, agentId: ctx.agentId, agent: ctx.agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
+  const customTool = ctx.customToolMap.get(tc.tool);
+  const output = customTool ? await customTool.handler(tc.input) : tc.output;
+  yield { type: 'agent:tool_result', planId: ctx.planId, agentId: ctx.agentId, agent: ctx.agent, tool: tc.tool, toolUseId: tc.toolUseId, output };
+}
+
+async function* emitScriptedEvent(scripted: StubScriptedEvent, ctx: StubEmitContext): AsyncGenerator<EforgeEvent> {
+  if (scripted.kind === 'tool_call') {
+    yield* emitToolCall(scripted, ctx);
+    return;
+  }
+  if (scripted.kind === 'usage') {
+    yield {
+      type: 'agent:usage',
+      planId: ctx.planId,
+      agentId: ctx.agentId,
+      agent: ctx.agent,
+      usage: { ...STUB_RESULT.usage, ...(scripted.usage ?? {}) },
+      costUsd: scripted.costUsd ?? 0,
+      numTurns: scripted.numTurns ?? 1,
+      ...(scripted.final !== undefined ? { final: scripted.final } : {}),
+    };
+    return;
+  }
+  if (scripted.kind === 'message') {
+    yield { type: 'agent:message', planId: ctx.planId, agentId: ctx.agentId, agent: ctx.agent, content: scripted.content };
+    return;
+  }
+  yield scripted.event;
+}
+// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 /**
  * A test harness that yields scripted EforgeEvents.
@@ -116,21 +169,20 @@ export class StubHarness implements AgentHarness {
         throw response.error;
       }
 
-      // Emit tool calls — invoke custom tool handlers when matched
-      if (response.toolCalls) {
-        const customToolMap = new Map(
-          (options.customTools ?? []).map(ct => [ct.name, ct]),
-        );
+      // --- eforge:region plan-02-planner-continuation-surfaces ---
+      const customToolMap = new Map(
+        (options.customTools ?? []).map(ct => [ct.name, ct]),
+      );
+      if (response.events) {
+        for (const scripted of response.events) {
+          yield* emitScriptedEvent(scripted, { planId, agentId, agent, customToolMap });
+        }
+      } else if (response.toolCalls) {
         for (const tc of response.toolCalls) {
-          yield { type: 'agent:tool_use', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, input: tc.input };
-          let output = tc.output;
-          const customTool = customToolMap.get(tc.tool);
-          if (customTool) {
-            output = await customTool.handler(tc.input);
-          }
-          yield { type: 'agent:tool_result', planId, agentId, agent, tool: tc.tool, toolUseId: tc.toolUseId, output };
+          yield* emitToolCall(tc, { planId, agentId, agent, customToolMap });
         }
       }
+      // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
       // Emit text as agent:message
       if (response.text) {
