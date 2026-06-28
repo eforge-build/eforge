@@ -20,6 +20,18 @@ import {
   BoundedValidationDiagnosticSchema,
 } from './shared/compile-resilience.js';
 import {
+  DecompositionFailureEvidenceSchema,
+  PlanningCoverageSummarySchema,
+  PlanningDecompositionLimitsSchema,
+  PlanningDecompositionRiskEvidenceSchema,
+  PlanningDecompositionUnitStatusSchema,
+  PlanningDecompositionUnitSummarySchema,
+  PlanningObservedBudgetPressureSchema,
+  PlanningScheduleDecisionSchema,
+  PlanningSourceSliceSummarySchema,
+  PlanningUnitBudgetSchema,
+} from './shared/planning-decomposition.js';
+import {
   AcceptanceCriteriaConflictSchema,
   AcceptanceCriterionVerdictSchema,
   AgentResultDataSchema,
@@ -133,9 +145,34 @@ export type PlannerInspectionBudgetDiagnostics = Static<typeof PlannerInspection
 export type PlannerInspectionSummary = Static<typeof PlannerInspectionSummarySchema>;
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;
+// --- eforge:region plan-01-contracts-config ---
+export type PlanningDecompositionUnitStatus = Static<typeof PlanningDecompositionUnitStatusSchema>;
+export type PlanningDecompositionLimits = Static<typeof PlanningDecompositionLimitsSchema>;
+export type PlanningUnitBudget = Static<typeof PlanningUnitBudgetSchema>;
+export type PlanningObservedBudgetPressure = Static<typeof PlanningObservedBudgetPressureSchema>;
+export type PlanningSourceSliceSummary = Static<typeof PlanningSourceSliceSummarySchema>;
+export type PlanningCoverageSummary = Static<typeof PlanningCoverageSummarySchema>;
+export type PlanningDecompositionUnitSummary = Static<typeof PlanningDecompositionUnitSummarySchema>;
+export type PlanningScheduleDecision = Static<typeof PlanningScheduleDecisionSchema>;
+export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecompositionRiskEvidenceSchema>;
+export type DecompositionFailureEvidence = Static<typeof DecompositionFailureEvidenceSchema>;
+// --- eforge:endregion plan-01-contracts-config ---
 export type CompilePreflightEvent = Extract<EforgeEvent, { type: 'planning:preflight' }>;
 export type CompileScopeContextFailureEvent = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>;
 export type PlannerInspectionSummaryEvent = Extract<EforgeEvent, { type: 'planning:inspection-summary' }>;
+// --- eforge:region plan-01-contracts-config ---
+export type PlanningDecompositionStartEvent = Extract<EforgeEvent, { type: 'planning:decomposition:start' }>;
+export type PlanningDecompositionUnitQueuedEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:queued' }>;
+export type PlanningDecompositionUnitRunningEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:running' }>;
+export type PlanningDecompositionUnitProgressEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:progress' }>;
+export type PlanningDecompositionUnitCompletedEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:completed' }>;
+export type PlanningDecompositionUnitSkippedEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:skipped' }>;
+export type PlanningDecompositionUnitFailedEvent = Extract<EforgeEvent, { type: 'planning:decomposition:unit:failed' }>;
+export type PlanningDecompositionScheduleEvent = Extract<EforgeEvent, { type: 'planning:decomposition:schedule' }>;
+export type PlanningDecompositionBudgetEvent = Extract<EforgeEvent, { type: 'planning:decomposition:budget' }>;
+export type PlanningDecompositionCompactHandoffEvent = Extract<EforgeEvent, { type: 'planning:decomposition:compact-handoff' }>;
+export type PlanningDecompositionSynthesisCompleteEvent = Extract<EforgeEvent, { type: 'planning:decomposition:synthesis:complete' }>;
+// --- eforge:endregion plan-01-contracts-config ---
 export type AutoBuildDesired = Static<typeof AutoBuildDesiredSchema>;
 export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
 export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;

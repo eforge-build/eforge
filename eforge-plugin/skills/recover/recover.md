@@ -63,7 +63,7 @@ Inspect sidecar-provided continue-and-repair fields. If `continueRepairEligibili
 
 If `continueRepairEligibility.eligible === false`, show the bounded reason and do not recommend continue-and-repair. The mutating `mcp__eforge__eforge_continue_repair` tool validates eligibility server-side if the user explicitly asks to try after reviewing the warning.
 
-If `recoveryOptions` contains `kind: "compile-scope-context"`, treat it as non-mutating guidance: summarize its action, eligibility, source/failure kind, and reason, but do not map it to `eforge_apply_recovery` or `eforge_continue_repair`.
+If `recoveryOptions` contains `kind: "compile-scope-context"`, treat it as non-mutating guidance: summarize its action, eligibility, source/failure kind, reason, and any bounded decomposition evidence summary, but do not map it to `eforge_apply_recovery` or `eforge_continue_repair`.
 
 Do not author replacement PRD content from the recovery sidecar. If the verdict is `manual`, render the full report and use the manual guidance below.
 

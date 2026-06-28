@@ -409,6 +409,68 @@
       },
       "additionalProperties": false
     },
+    "compile": {
+      "type": "object",
+      "properties": {
+        "planningUnitParallelism": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxDepth": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxPromptSourceBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxPromptBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxObservedInputTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxObservedTurns": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxCompactHandoffBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxLocalExplorationToolUses": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxCriteriaPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxSubsystemsPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "planningUnitMaxSplitAttemptsPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false,
+      "description": "Context-managed compile planning-unit limits"
+    },
     "build": {
       "type": "object",
       "properties": {

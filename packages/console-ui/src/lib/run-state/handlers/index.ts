@@ -351,6 +351,19 @@ export const IGNORED_EVENT_TYPES = [
   'planning:preflight',
   'planning:inspection-summary',
   'planning:scope-context:failure',
+  // --- eforge:region plan-01-contracts-config ---
+  'planning:decomposition:start',
+  'planning:decomposition:unit:queued',
+  'planning:decomposition:unit:running',
+  'planning:decomposition:unit:progress',
+  'planning:decomposition:unit:completed',
+  'planning:decomposition:unit:skipped',
+  'planning:decomposition:unit:failed',
+  'planning:decomposition:schedule',
+  'planning:decomposition:budget',
+  'planning:decomposition:compact-handoff',
+  'planning:decomposition:synthesis:complete',
+  // --- eforge:endregion plan-01-contracts-config ---
   // build:terminal-failure — run-level authoritative terminal failure event.
   // Console rendering is handled outside this session reducer.
   'build:terminal-failure',

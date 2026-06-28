@@ -1,4 +1,5 @@
 import type { EforgeEvent } from './events/root.js';
+import { PLANNING_DECOMPOSITION_EVENT_TYPES } from './events/shared/planning-decomposition.js';
 import type { SchemaError } from './schema-utils.js';
 
 export const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
@@ -38,6 +39,19 @@ export function validateReviewIssueMetadataBoundsForEvent(value: unknown): Schem
 }
 
 const ACTION_EVENT_FORBIDDEN_FIELDS = new Set(['input', 'output', 'rawInput', 'rawOutput', 'payload']);
+const DECOMPOSITION_EVENT_ALLOWED_METADATA_SUFFIX = /(bytes|hash|count|length)$/;
+const DECOMPOSITION_EVENT_FORBIDDEN_FIELD_KEYS = new Set([
+  'prompt',
+  'rawprompt',
+  'prompttext',
+  'sourcecontent',
+  'rawsource',
+  'sourcetext',
+  'transcript',
+  'rawtranscript',
+  'transcripttext',
+]);
+const DECOMPOSITION_EVENT_TYPES = new Set<string>(PLANNING_DECOMPOSITION_EVENT_TYPES);
 const ACTION_EVENT_TYPES = new Set([
   'extension:action:start',
   'extension:action:complete',
@@ -65,6 +79,13 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     }
   }
 
+  // --- eforge:region plan-01-contracts-config ---
+  if (DECOMPOSITION_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
+    const rawFieldError = findForbiddenDecompositionEventField(event, '');
+    if (rawFieldError) return rawFieldError;
+  }
+  // --- eforge:endregion plan-01-contracts-config ---
+
   // --- eforge:region extension-agent-task-contracts ---
   if (TASK_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
     const rawFieldError = findForbiddenTaskEventField(event, '');
@@ -86,6 +107,18 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
 
   if (event.type === 'planning:scope-context:failure' && event.failure.recovery.attempt > event.failure.recovery.maxAttempts) {
     return validationError('/failure/recovery/attempt', 'recovery attempt cannot exceed maxAttempts');
+  }
+
+  if (event.type === 'planning:decomposition:unit:failed' && event.unitId !== event.evidence.unitId) {
+    return validationError('/evidence/unitId', 'failed unit evidence unitId must match the event unitId');
+  }
+
+  if (event.type === 'planning:decomposition:unit:skipped' && event.unit && event.unitId !== event.unit.unitId) {
+    return validationError('/unit/unitId', 'skipped unit summary unitId must match the event unitId');
+  }
+
+  if (event.type === 'planning:decomposition:schedule' && event.decision.selectedBatchUnitIds.length > event.decision.parallelism) {
+    return validationError('/decision/selectedBatchUnitIds', 'selected batch size cannot exceed schedule parallelism');
   }
 
   if (event.type === 'stack:landing:conflict:recovery:failed' && event.abortSucceeded && !event.abortAttempted) {
@@ -186,6 +219,35 @@ function findForbiddenTaskEventField(value: unknown, path: string): SchemaError 
   return undefined;
 }
 // --- eforge:endregion extension-agent-task-contracts ---
+
+// --- eforge:region plan-01-contracts-config ---
+function findForbiddenDecompositionEventField(value: unknown, path: string): SchemaError | undefined {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const childError = findForbiddenDecompositionEventField(value[index], `${path}/${index}`);
+      if (childError) return childError;
+    }
+    return undefined;
+  }
+  if (!isPlainObject(value)) return undefined;
+  for (const [key, child] of Object.entries(value)) {
+    if (isForbiddenDecompositionEventField(key)) {
+      const fieldPath = `${path}/${key}`;
+      return validationError(fieldPath, 'planning decomposition events must not include raw source, prompt, or transcript fields');
+    }
+    const childError = findForbiddenDecompositionEventField(child, `${path}/${key}`);
+    if (childError) return childError;
+  }
+  return undefined;
+}
+
+function isForbiddenDecompositionEventField(key: string): boolean {
+  const normalized = key.replace(/[_\-\s]/g, '').toLowerCase();
+  if (DECOMPOSITION_EVENT_ALLOWED_METADATA_SUFFIX.test(normalized)) return false;
+  if (DECOMPOSITION_EVENT_FORBIDDEN_FIELD_KEYS.has(normalized)) return true;
+  return normalized.includes('prompt') || normalized.includes('transcript') || normalized.includes('rawsource') || normalized.includes('sourcecontent') || normalized.includes('sourcetext');
+}
+// --- eforge:endregion plan-01-contracts-config ---
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

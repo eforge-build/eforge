@@ -2746,6 +2746,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
+    compile: overrides.compile ? { ...base.compile, ...overrides.compile } : base.compile,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,

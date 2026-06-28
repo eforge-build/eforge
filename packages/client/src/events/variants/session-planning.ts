@@ -46,6 +46,19 @@ import {
   CompileScopeContextFailureSchema,
   PlannerInspectionSummarySchema,
 } from '../shared/compile-resilience.js';
+import {
+  PlanningDecompositionBudgetFields,
+  PlanningDecompositionCompactHandoffFields,
+  PlanningDecompositionScheduleFields,
+  PlanningDecompositionStartFields,
+  PlanningDecompositionSynthesisCompleteFields,
+  PlanningDecompositionUnitCompletedFields,
+  PlanningDecompositionUnitFailedFields,
+  PlanningDecompositionUnitProgressFields,
+  PlanningDecompositionUnitQueuedFields,
+  PlanningDecompositionUnitRunningFields,
+  PlanningDecompositionUnitSkippedFields,
+} from '../shared/planning-decomposition.js';
 import { agentStartFields } from '../shared/agent-fields.js';
 import {
   ExtensionActionEventBaseFields,
@@ -148,6 +161,19 @@ export const planningEventVariants = [
     runId: Type.Optional(Type.String()),
     failure: CompileScopeContextFailureSchema,
   }),
+  // --- eforge:region plan-01-contracts-config ---
+  Type.Object({ type: Type.Literal('planning:decomposition:start'), ...PlanningDecompositionStartFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:queued'), ...PlanningDecompositionUnitQueuedFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:running'), ...PlanningDecompositionUnitRunningFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:progress'), ...PlanningDecompositionUnitProgressFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:completed'), ...PlanningDecompositionUnitCompletedFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:skipped'), ...PlanningDecompositionUnitSkippedFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:unit:failed'), ...PlanningDecompositionUnitFailedFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:schedule'), ...PlanningDecompositionScheduleFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:budget'), ...PlanningDecompositionBudgetFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:compact-handoff'), ...PlanningDecompositionCompactHandoffFields }),
+  Type.Object({ type: Type.Literal('planning:decomposition:synthesis:complete'), ...PlanningDecompositionSynthesisCompleteFields }),
+  // --- eforge:endregion plan-01-contracts-config ---
   Type.Object({
     type: Type.Literal('planning:clarification'),
     questions: Type.Array(ClarificationQuestionSchema),

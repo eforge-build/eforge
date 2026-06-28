@@ -23,7 +23,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once, or use context-managed planning units governed by `compile.planningUnit*` limits, when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -58,7 +58,7 @@ The pipeline-composer selects one of three workflow profiles based on scope comp
 
 **Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
 
-You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation before planning continues.
+You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation or bounded planning-unit decomposition before planning continues.
 
 ## Separation of Concerns
 

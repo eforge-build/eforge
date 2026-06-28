@@ -111,6 +111,19 @@ build:
   #   allowNoCommittedChanges: false   # Allow builds that produce no committed changes to pass instead of failing
   #   noCommittedChangesReason: ""     # Required when allowNoCommittedChanges is true
 
+compile:
+  planningUnitParallelism: 2            # Context-managed compile planning unit concurrency
+  planningUnitMaxDepth: 3               # Max recursive planning-unit split depth
+  planningUnitMaxPromptSourceBytes: 40000
+  planningUnitMaxPromptBytes: 80000
+  planningUnitMaxObservedInputTokens: 120000
+  # planningUnitMaxObservedTurns: 20    # Optional; unset by default
+  planningUnitMaxCompactHandoffBytes: 12000
+  planningUnitMaxLocalExplorationToolUses: 24
+  planningUnitMaxCriteriaPerUnit: 20
+  planningUnitMaxSubsystemsPerUnit: 2
+  planningUnitMaxSplitAttemptsPerUnit: 2
+
 # Landing action
 # landing:
 #   action: pr                # pr | merge | leave (default: merge)
@@ -190,6 +203,26 @@ monitor:
 ```
 
 Each command in `postMergeCommands`, queued PRD `postMerge` metadata, and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
+
+## Compile planning limits
+
+The top-level `compile` block controls budgets for context-managed planning when compile inputs are too large or risky for direct planning. These limits do not change normal direct planning; they only bound decomposition into planning units for overflow-risk compile inputs.
+
+All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `compile.planningUnitParallelism` | `2` | Maximum number of planning units that may run at the same time. |
+| `compile.planningUnitMaxDepth` | `3` | Maximum recursive split depth for planning units. |
+| `compile.planningUnitMaxPromptSourceBytes` | `40000` | Maximum source bytes assigned to one planning-unit prompt. |
+| `compile.planningUnitMaxPromptBytes` | `80000` | Maximum total prompt bytes for one planning unit. |
+| `compile.planningUnitMaxObservedInputTokens` | `120000` | Maximum observed input tokens before the unit is considered over budget. |
+| `compile.planningUnitMaxObservedTurns` | unset | Optional maximum observed agent turns for one planning unit. |
+| `compile.planningUnitMaxCompactHandoffBytes` | `12000` | Maximum compact handoff size emitted between planning units. |
+| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | Maximum local exploration tool uses per planning unit. |
+| `compile.planningUnitMaxCriteriaPerUnit` | `20` | Maximum acceptance criteria assigned to one planning unit. |
+| `compile.planningUnitMaxSubsystemsPerUnit` | `2` | Maximum subsystem hints assigned to one planning unit. |
+| `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | Maximum split attempts for one planning unit before exhaustion. |
 
 ## Workflow Presets
 

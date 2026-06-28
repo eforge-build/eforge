@@ -15,6 +15,7 @@ eforge merges configuration from three tiers (highest precedence first):
 |-------|-------------|
 | `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
 | `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
+| `compile` | Context-managed compile planning-unit limits |
 | `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
 | `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |

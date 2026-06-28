@@ -113,12 +113,12 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 **What to look for:**
 
 - `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
-- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason, plus bounded decomposition evidence for `decomposition-exhausted` failures.
 
 **How to interpret recovery guidance:**
 
 - `retry-as-expedition` means eforge determined the compile may fit after escalating from errand/excursion to expedition decomposition. If a retry was attempted, Console and CLI show it as recovery progress; if not attempted or terminal, treat it as guidance for the next build attempt.
-- `bounded-decomposition` means the input should be split into smaller, independently reviewable PRDs or modules before retrying.
+- `bounded-decomposition` means eforge should use, or the operator should manually create, smaller independently reviewable planning units, PRDs, or modules before retrying. Context-managed planning-unit budgets come from the top-level `compile.planningUnit*` config keys.
 - `manual-reduce-scope` means a human should remove generated bulk, duplicate context, or unrelated requirements and enqueue a reduced source.
 - `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
 

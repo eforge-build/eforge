@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 232
+Total variants: 243
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -79,6 +79,17 @@ Total variants: 232
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
+| `planning:decomposition:start` | `limits`, `riskEvidence`, `runId` |
+| `planning:decomposition:unit:queued` | `unit` |
+| `planning:decomposition:unit:running` | `unitId` |
+| `planning:decomposition:unit:progress` | `message`, `observed`, `unitId` |
+| `planning:decomposition:unit:completed` | `unit` |
+| `planning:decomposition:unit:skipped` | `reason`, `unit`, `unitId` |
+| `planning:decomposition:unit:failed` | `evidence`, `reason`, `unitId` |
+| `planning:decomposition:schedule` | `decision` |
+| `planning:decomposition:budget` | `limits`, `observed`, `unitBudgets` |
+| `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `unitId` |
+| `planning:decomposition:synthesis:complete` | `artifactPaths`, `coverage`, `unitCount` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

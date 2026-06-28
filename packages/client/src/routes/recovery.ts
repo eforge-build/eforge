@@ -3,6 +3,7 @@ import type { Static } from '@sinclair/typebox';
 import {
   CompileScopeContextFailureKindSchema,
   CompileScopeContextSourceSchema,
+  DecompositionFailureEvidenceSchema,
   type CompileScopeContextFailure,
   type RecoveryVerdict,
 } from '../events.js';
@@ -225,6 +226,7 @@ export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
   maxAttempts: PositiveIntegerSchema,
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
+  decompositionEvidence: Type.Optional(DecompositionFailureEvidenceSchema),
 });
 
 export const RecoverySidecarRecoveryOptionSchema = Type.Union([
@@ -237,6 +239,7 @@ export type RecoverySidecarCompileScopeContextAction = typeof RECOVERY_SIDECAR_C
 export type RecoverySidecarCompileScopeContextOption = Static<typeof RecoverySidecarCompileScopeContextOptionSchema> & {
   source: CompileScopeContextFailure['source'];
   failureKind: CompileScopeContextFailure['failureKind'];
+  decompositionEvidence?: CompileScopeContextFailure['decompositionEvidence'];
 };
 export type RecoverySidecarRecoveryOption = Static<typeof RecoverySidecarRecoveryOptionSchema>;
 

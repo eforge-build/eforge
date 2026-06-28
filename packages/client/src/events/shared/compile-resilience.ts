@@ -1,4 +1,5 @@
 import { FormatRegistry, Type, type Static } from '@sinclair/typebox';
+import { DecompositionFailureEvidenceSchema } from './planning-decomposition.js';
 
 export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
 export const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
@@ -99,6 +100,7 @@ export const CompileScopeContextSourceSchema = Type.Union([
   Type.Literal('preflight'),
   Type.Literal('live-context-guard'),
   Type.Literal('provider'),
+  Type.Literal('decomposition'),
 ]);
 
 export const CompileScopeContextFailureKindSchema = Type.Union([
@@ -106,6 +108,7 @@ export const CompileScopeContextFailureKindSchema = Type.Union([
   Type.Literal('context-window'),
   Type.Literal('context-length'),
   Type.Literal('scope-too-broad'),
+  Type.Literal('decomposition-exhausted'),
 ]);
 
 export const CompilePreflightRiskSchema = Type.Object({
@@ -209,6 +212,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     Type.Literal('module-planner'),
     Type.Literal('compile-expedition'),
     Type.Literal('compile'),
+    Type.Literal('planning-decomposition'),
   ]),
   explanation: BoundedStringSchema,
   risk: Type.Optional(CompilePreflightRiskSchema),
@@ -219,6 +223,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     promptBytes: Type.Optional(NonNegativeIntegerSchema),
   })),
   guardDiagnostics: Type.Optional(CompileContextGuardDiagnosticsSchema),
+  decompositionEvidence: Type.Optional(DecompositionFailureEvidenceSchema),
   recovery: Type.Object({
     action: CompileRecoveryActionSchema,
     eligible: Type.Boolean(),

@@ -369,11 +369,11 @@ const eventRegistry = {
     summary: (e) => `Planning error: ${e.reason}`,
   },
 
-  'planning:scope-context:failure': {
-    scope: 'session',
-    persist: true,
-    summary: (e) => `Compile scope/context failure: ${e.failure.failureKind} from ${e.failure.source}; recovery ${e.failure.recovery.action}`,
-  },
+  'planning:scope-context:failure': { scope: 'session', persist: true, summary: (e) => `Compile scope/context failure: ${e.failure.failureKind} from ${e.failure.source}; recovery ${e.failure.recovery.action}` },
+
+  // --- eforge:region plan-01-contracts-config ---
+  'planning:decomposition:start': { scope: 'session', persist: true, summary: (e) => `Planning decomposition started with parallelism ${e.limits.parallelism}` }, 'planning:decomposition:unit:queued': { scope: 'session', persist: true, summary: (e) => `Planning unit ${e.unit.unitId} queued` }, 'planning:decomposition:unit:running': { scope: 'session', persist: true, summary: (e) => `Planning unit ${e.unitId} running` }, 'planning:decomposition:unit:progress': { scope: 'session', persist: false, summary: (e) => `Planning unit ${e.unitId}: ${e.message}` }, 'planning:decomposition:unit:completed': { scope: 'session', persist: true, summary: (e) => `Planning unit ${e.unit.unitId} completed` }, 'planning:decomposition:unit:skipped': { scope: 'session', persist: true, summary: (e) => `Planning unit ${e.unitId} skipped: ${e.reason}` }, 'planning:decomposition:unit:failed': { scope: 'session', persist: true, summary: (e) => `Planning unit ${e.unitId} failed: ${e.reason}` }, 'planning:decomposition:schedule': { scope: 'session', persist: true, summary: (e) => `Planning decomposition scheduled ${e.decision.selectedBatchUnitIds.length} unit(s)` }, 'planning:decomposition:budget': { scope: 'session', persist: true, summary: (e) => `Planning decomposition budget: parallelism ${e.limits.parallelism}` }, 'planning:decomposition:compact-handoff': { scope: 'session', persist: true, summary: (e) => `Planning decomposition compact handoff (${e.byteLength} bytes)` }, 'planning:decomposition:synthesis:complete': { scope: 'session', persist: true, summary: (e) => `Planning decomposition synthesis complete: ${e.unitCount} unit(s)` },
+  // --- eforge:endregion plan-01-contracts-config ---
 
   'planning:clarification': {
     scope: 'session',
