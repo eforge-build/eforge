@@ -89,7 +89,7 @@ describe('planning decomposition event contracts', () => {
     expect(sourceText.success).toBe(false);
     if (!sourceText.success) expect(sourceText.error.errors[0]?.path).toBe('/unit/sourceSlices/0/sourceText');
 
-    for (const field of ['rawSourceContent', 'promptSource', 'transcriptMessages']) {
+    for (const field of ['source', 'rawSourceContent', 'promptSource', 'transcriptMessages']) {
       const result = safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:unit:running', unitId: 'unit-1', [field]: 'raw' });
       expect(result.success, field).toBe(false);
       if (!result.success) expect(result.error.errors[0]?.path).toBe(`/${field}`);
@@ -103,6 +103,16 @@ describe('planning decomposition event contracts', () => {
       timestamp,
       type: 'planning:decomposition:schedule',
       decision: { readyUnitIds: ['unit-1', 'unit-2'], runningUnitIds: [], waitingUnitIds: [], selectedBatchUnitIds: ['unit-1', 'unit-2'], parallelism: 1, blockedPairs: [] },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.errors[0]?.path).toBe('/decision/selectedBatchUnitIds');
+  });
+
+  it('rejects schedules where running plus selected units exceed parallelism', () => {
+    const result = safeParseEforgeEvent({
+      timestamp,
+      type: 'planning:decomposition:schedule',
+      decision: { readyUnitIds: ['unit-2'], runningUnitIds: ['unit-1'], waitingUnitIds: [], selectedBatchUnitIds: ['unit-2'], parallelism: 1, blockedPairs: [] },
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.errors[0]?.path).toBe('/decision/selectedBatchUnitIds');

@@ -5169,6 +5169,24 @@ eforge merges configuration from three tiers (highest precedence first):
 | `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
 | `tools` | Toolbelt configuration for named project MCP server bundles. |
 
+## Compile
+
+`compile` tunes context-managed planning units for overflow-risk compile inputs. Ordinary direct planning does not use these limits. All `compile.planningUnit*` values are positive integers when set.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `compile.planningUnitParallelism` | `2` | Maximum planning units processed concurrently. |
+| `compile.planningUnitMaxDepth` | `3` | Maximum recursive split depth for planning units. |
+| `compile.planningUnitMaxPromptSourceBytes` | `40000` | Maximum source bytes packed into a single planning-unit prompt. |
+| `compile.planningUnitMaxPromptBytes` | `80000` | Maximum total prompt bytes for a single planning unit. |
+| `compile.planningUnitMaxObservedInputTokens` | `120000` | Maximum observed input-token budget per planning unit. |
+| `compile.planningUnitMaxObservedTurns` | unset | Optional observed turn limit per planning unit. |
+| `compile.planningUnitMaxCompactHandoffBytes` | `12000` | Maximum compact handoff size carried between planning-unit steps. |
+| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | Maximum local exploration tool uses per planning unit. |
+| `compile.planningUnitMaxCriteriaPerUnit` | `20` | Maximum acceptance criteria assigned to one planning unit. |
+| `compile.planningUnitMaxSubsystemsPerUnit` | `2` | Maximum subsystems assigned to one planning unit. |
+| `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | Maximum split retries attempted for one planning unit. |
+
 ## Toolbelts
 
 `tools.toolbelts` declares named bundles of project MCP servers that tiers can opt into with `agents.tiers.<tier>.toolbelt`. Toolbelts are intended for profiles that need a focused capability set, such as browser automation for UI implementation and review.

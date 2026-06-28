@@ -1,4 +1,4 @@
-import { validateEforgeEventSemanticFields, validateReviewIssueMetadataBoundsForEvent } from '../event-validation.js';
+import { validateDecompositionRawFieldsForEvent, validateEforgeEventSemanticFields, validateReviewIssueMetadataBoundsForEvent } from '../event-validation.js';
 import { formatSchemaError, safeParseWithSchema } from '../schema-utils.js';
 import type { SafeParseResult } from '../schema-utils.js';
 import { EforgeEventSchema, type EforgeEvent } from './root.js';
@@ -8,6 +8,9 @@ import { DaemonStreamSnapshotSchema, SessionStreamSnapshotSchema, type DaemonStr
 export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEvent> {
   const metadataBoundsError = validateReviewIssueMetadataBoundsForEvent(value);
   if (metadataBoundsError) return { success: false, error: metadataBoundsError };
+
+  const decompositionRawFieldError = validateDecompositionRawFieldsForEvent(value);
+  if (decompositionRawFieldError) return { success: false, error: decompositionRawFieldError };
 
   const result = safeParseWithSchema(EforgeEventSchema, value);
   if (!result.success) return result;

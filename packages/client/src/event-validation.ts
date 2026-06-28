@@ -38,12 +38,22 @@ export function validateReviewIssueMetadataBoundsForEvent(value: unknown): Schem
   }
 }
 
+export function validateDecompositionRawFieldsForEvent(value: unknown): SchemaError | undefined {
+  try {
+    if (!isPlainObject(value) || typeof value.type !== 'string' || !DECOMPOSITION_EVENT_TYPES.has(value.type)) return undefined;
+    return findForbiddenDecompositionEventField(value, '');
+  } catch {
+    return validationError('/decomposition', 'planning decomposition raw-field traversal failed');
+  }
+}
+
 const ACTION_EVENT_FORBIDDEN_FIELDS = new Set(['input', 'output', 'rawInput', 'rawOutput', 'payload']);
 const DECOMPOSITION_EVENT_ALLOWED_METADATA_SUFFIX = /(bytes|hash|count|length)$/;
 const DECOMPOSITION_EVENT_FORBIDDEN_FIELD_KEYS = new Set([
   'prompt',
   'rawprompt',
   'prompttext',
+  'source',
   'sourcecontent',
   'rawsource',
   'sourcetext',
@@ -117,8 +127,11 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     return validationError('/unit/unitId', 'skipped unit summary unitId must match the event unitId');
   }
 
-  if (event.type === 'planning:decomposition:schedule' && event.decision.selectedBatchUnitIds.length > event.decision.parallelism) {
-    return validationError('/decision/selectedBatchUnitIds', 'selected batch size cannot exceed schedule parallelism');
+  if (event.type === 'planning:decomposition:schedule') {
+    const concurrentUnitCount = event.decision.runningUnitIds.length + event.decision.selectedBatchUnitIds.length;
+    if (concurrentUnitCount > event.decision.parallelism) {
+      return validationError('/decision/selectedBatchUnitIds', 'running plus selected unit count cannot exceed schedule parallelism');
+    }
   }
 
   if (event.type === 'stack:landing:conflict:recovery:failed' && event.abortSucceeded && !event.abortAttempted) {

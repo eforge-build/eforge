@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as engineEventsFacade from '../packages/engine/src/events.js';
 import {
@@ -79,4 +81,18 @@ describe('planning decomposition compile config', () => {
     expect(engineEventsFacade.PLANNING_DECOMPOSITION_MAX_DEPENDENCIES).toBeGreaterThan(0);
     expect(engineEventsFacade.PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS).toBeGreaterThan(0);
   });
+
+  it('keeps generated public schemas in sync with compile and decomposition contracts', () => {
+    const configSchema = readGeneratedSchema('config.schema.json');
+    const eventsSchema = readGeneratedSchema('events.schema.json');
+
+    expect(JSON.stringify(configSchema)).toContain('planningUnitParallelism');
+    expect(JSON.stringify(configSchema)).toContain('planningUnitMaxPromptSourceBytes');
+    expect(JSON.stringify(eventsSchema)).toContain('planning:decomposition:synthesis:complete');
+    expect(JSON.stringify(eventsSchema)).toContain('planning:decomposition:unit:progress');
+  });
 });
+
+function readGeneratedSchema(fileName: string): unknown {
+  return JSON.parse(readFileSync(join(process.cwd(), 'web/public/schemas', fileName), 'utf8')) as unknown;
+}
