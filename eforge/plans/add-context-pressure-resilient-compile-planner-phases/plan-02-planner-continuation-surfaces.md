@@ -105,3 +105,21 @@ Add a one-shot compact-inspection continuation path to `runPlanner`. During the 
 - [ ] `safeParseEforgeEvent` accepts valid compact inspection events and rejects oversized compact summary arrays.
 - [ ] CLI and Console tests render compact inspection summaries from shared client types.
 - [ ] Existing retry-as-expedition, bounded-decomposition, prompt-source compaction, model-aware guard diagnostics, capped output reserve, and provider context failure tests continue to pass.
+
+## Recovery Guidance
+
+- Failed PRD: "add-context-pressure-resilient-compile-planner-phases"
+- Root failed plan: "plan-02-planner-continuation-surfaces"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for add-context-pressure-resilient-compile-planner-phases. artifact source: feature-branch; 4 landed commit(s); failing plan: plan-02-planner-continuation-surfaces; feature branch: eforge/add-context-pressure-resilient-compile-planner-phases. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "Backend error: Codex error: Your input exceeds the context window of this model. Please adjust your input and try again."
+- Failure detail: "Backend error: Codex error: Your input exceeds the context window of this model. Please adjust your input and try again."
+- Failure detail: "terminal subtype: error_context_window"
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair add-context-pressure-resilient-compile-planner-phases`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair and complete plan-02-planner-continuation-surfaces from preserved compiled artifacts"
+  - "Diagnose and prevent the context-window failure encountered during plan-02 repair/build execution"
+  - "Run required validation: pnpm test, pnpm type-check, and pnpm maintainability:check"
+- Retry/resume guidance: Continue plan-02-planner-continuation-surfaces for failed PRD add-context-pressure-resilient-compile-planner-phases from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-06-28T00:56:58.022Z
+- Source sidecar: .eforge/queue/failed/add-context-pressure-resilient-compile-planner-phases.recovery.json
+- Source identity: prdId=add-context-pressure-resilient-compile-planner-phases; setName=add-context-pressure-resilient-compile-planner-phases; featureBranch=eforge/add-context-pressure-resilient-compile-planner-phases; baseBranch=main
