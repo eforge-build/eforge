@@ -130,13 +130,11 @@ export const planningEventVariants = [
     type: Type.Literal('planning:preflight'),
     risk: CompilePreflightRiskSchema,
   }),
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   Type.Object({
     type: Type.Literal('planning:inspection-summary'),
     summary: PlannerInspectionSummarySchema,
     artifactPath: Type.Optional(Type.String()),
   }),
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   Type.Object({ type: Type.Literal('planning:skip'), reason: Type.String() }),
   Type.Object({
     type: Type.Literal('planning:submission'),
@@ -170,9 +168,7 @@ export const planningEventVariants = [
       Type.Union([
         Type.Literal('max_turns'),
         Type.Literal('dropped_submission'),
-        // --- eforge:region plan-02-planner-continuation-surfaces ---
         Type.Literal('compact_inspection'),
-        // --- eforge:endregion plan-02-planner-continuation-surfaces ---
       ]),
     ),
   }),

@@ -36,9 +36,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     return { cls: level === 'normal' ? 'info' : 'warning', label: type };
   }
   if (type === 'planning:scope-context:failure') return { cls: 'failed', label: type };
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   if (type === 'planning:inspection-summary') return { cls: 'warning', label: type };
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
@@ -99,9 +97,7 @@ function eventSummary(event: EforgeEvent): string {
     case 'planning:progress': return event.message;
     case 'planning:preflight': return compilePreflightSummary(event.risk);
     case 'planning:scope-context:failure': return compileScopeContextFailureSummary(event.failure);
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     case 'planning:inspection-summary': return plannerInspectionSummarySummary(event.summary);
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
     case 'planning:complete': return `${event.plans?.length || 0} plan(s) generated`;
     case 'planning:review:start': return 'Plan review started';
     case 'planning:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
@@ -225,12 +221,10 @@ function eventDetail(event: EforgeEvent): string | null {
       return compilePreflightDetail(event.risk);
     case 'planning:scope-context:failure':
       return compileScopeContextFailureDetail(event.failure);
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     case 'planning:inspection-summary': {
       const detail = plannerInspectionSummaryDetail(event.summary);
       return event.artifactPath ? `${detail}\nArtifact: ${event.artifactPath}` : detail;
     }
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
     case 'planning:review:complete':
     case 'planning:architecture:review:complete':
     case 'plan:build:review:complete':

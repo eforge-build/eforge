@@ -36,7 +36,6 @@ const compileRisk: CompilePreflightRisk = {
   recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split generated scope into smaller PRDs.' },
 };
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 const inspectionSummary: PlannerInspectionSummary = {
   kind: 'planner-inspection-handoff',
   version: 1,
@@ -61,7 +60,6 @@ const inspectionSummary: PlannerInspectionSummary = {
   caveats: ['Inspection is incomplete.'],
   omittedCounts: { toolResults: 1 },
 };
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 const scopeFailure: CompileScopeContextFailure = {
   source: 'provider',
@@ -164,7 +162,6 @@ describe('renderEvent', () => {
     expect(lines.join('\n')).toContain('bounded decomposition');
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('renders compact planner inspection summaries through the top-level dispatcher', () => {
     const lines = captureConsoleLogs(() => {
       renderEvent({ type: 'planning:inspection-summary', timestamp: '2025-01-01T00:00:00.000Z', summary: inspectionSummary, artifactPath: '/tmp/planner-inspection-handoff.json' });
@@ -175,7 +172,6 @@ describe('renderEvent', () => {
     expect(lines.join('\n')).toContain('Queue cleanup coverage was removed');
     expect(lines.join('\n')).toContain('planner-inspection-handoff.json');
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('renders terminal compile scope/context failures through the top-level dispatcher', () => {
     const lines = captureConsoleLogs(() => {

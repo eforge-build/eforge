@@ -11,18 +11,14 @@ import {
   CompileArtifactSummarySchema,
   CompileContextGuardDiagnosticsSchema,
   CompileContextGuardLimitsSchema,
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   MAX_PLANNER_INSPECTION_OBSERVED_FACTS,
   PlannerInspectionSummarySchema,
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
   safeParseEforgeEvent,
   type CompilePreflightRisk,
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   type PlannerInspectionSummary,
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 } from '../events.js';
 import {
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
@@ -79,7 +75,6 @@ function riskWith(update: (risk: CompilePreflightRisk) => CompilePreflightRisk):
   return update(validRisk());
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 function validPlannerInspectionSummary(): PlannerInspectionSummary {
   return {
     kind: 'planner-inspection-handoff',
@@ -106,7 +101,6 @@ function validPlannerInspectionSummary(): PlannerInspectionSummary {
     omittedCounts: { toolResults: 1 },
   };
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 describe('compile resilience contracts', () => {
   it('parses valid planning preflight events', () => {
@@ -204,7 +198,6 @@ describe('compile resilience contracts', () => {
     expect(safeParseEforgeEvent({ type: 'planning:scope-context:failure', timestamp, failure: { ...baseFailure, guardDiagnostics: { ...guardDiagnostics, safetyMargin: 0 } } }).success).toBe(false);
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('parses compact planner inspection summaries and rejects oversized summary arrays', () => {
     const summary = validPlannerInspectionSummary();
     expect(Value.Check(PlannerInspectionSummarySchema, summary)).toBe(true);
@@ -223,7 +216,6 @@ describe('compile resilience contracts', () => {
       summary: { ...summary, omittedCounts: { ...summary.omittedCounts, unexpectedFutureKey: 1 } },
     }).success).toBe(false);
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('accepts context-window terminal subtypes for compile terminal failures', () => {
     expect(Value.Check(AgentTerminalSubtypeSchema, 'error_context_window')).toBe(true);
@@ -310,9 +302,7 @@ describe('compile resilience contracts', () => {
   it('registers concise event metadata and summaries', () => {
     expect(eventRegistry['planning:preflight']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['planning:scope-context:failure']).toMatchObject({ scope: 'session', persist: true });
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     expect(eventRegistry['planning:inspection-summary']).toMatchObject({ scope: 'session', persist: true });
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
     const preflightSummary = getEventSummary({ type: 'planning:preflight', timestamp, risk: validRisk() });
     const failureSummary = getEventSummary({
@@ -328,18 +318,14 @@ describe('compile resilience contracts', () => {
       },
     });
 
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     const inspectionSummary = getEventSummary({ type: 'planning:inspection-summary', timestamp, summary: validPlannerInspectionSummary() });
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
     expect(preflightSummary).toContain('elevated');
     expect(preflightSummary).not.toContain('docs/prd.md');
     expect(failureSummary).toContain('context-window');
     expect(failureSummary).not.toContain('too broad');
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     expect(inspectionSummary).toContain('Planner compact inspection summary');
     expect(inspectionSummary).not.toContain('Queue cleanup');
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   });
 
   it('exports schemas and constants from public client barrels', () => {
@@ -350,10 +336,8 @@ describe('compile resilience contracts', () => {
       expect(facade.CompileContextGuardDiagnosticsSchema).toBeDefined();
       expect(facade.CompileContextGuardLimitsSchema).toBeDefined();
       expect(facade.BoundedValidationDiagnosticSchema).toBeDefined();
-      // --- eforge:region plan-02-planner-continuation-surfaces ---
       expect(facade.PlannerInspectionSummarySchema).toBeDefined();
       expect(facade.MAX_PLANNER_INSPECTION_OBSERVED_FACTS).toBe(MAX_PLANNER_INSPECTION_OBSERVED_FACTS);
-      // --- eforge:endregion plan-02-planner-continuation-surfaces ---
     }
   });
 });

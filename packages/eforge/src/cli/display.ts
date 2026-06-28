@@ -244,7 +244,6 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
     case 'planning:continuation':
       setSpinnerText('plan', `Planning - continuing via ${plannerContinuationReasonLabel(event.reason)} (attempt ${event.attempt}/${event.maxContinuations})`);
       return true;
-    // --- eforge:region plan-02-planner-continuation-surfaces ---
     case 'planning:inspection-summary': {
       const model = renderPlannerInspectionSummaryModel(event.summary);
       console.log(chalk.yellow(`  ⚠ ${model.headline}`));
@@ -253,7 +252,6 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
       setSpinnerText('plan', 'Planner compact inspection summary captured; resuming synthesis...');
       return true;
     }
-    // --- eforge:endregion plan-02-planner-continuation-surfaces ---
     case 'planning:preflight': {
       const lines = renderCompilePreflightLines(event.risk, { verbose });
       for (const line of lines) console.log(chalk.yellow(`  ⚠ ${line}`));

@@ -86,7 +86,6 @@ export type {
   CompileRiskLevel,
   CompileScopeContextFailure,
   CompileScopeContextFailureEvent,
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   PlannerContextObservation,
   PlannerInspectionBudgetDiagnostics,
   PlannerInspectionIdentifiers,
@@ -94,7 +93,6 @@ export type {
   PlannerInspectionSourceBuildContext,
   PlannerInspectionSummary,
   PlannerInspectionSummaryEvent,
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 } from './events.schemas.js';
 
 export {
@@ -149,7 +147,6 @@ export {
   CompileScopeContextFailureKindSchema,
   CompileScopeContextFailureSchema,
   CompileScopeContextSourceSchema,
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   PlannerContextObservationSchema,
   PlannerInspectionBudgetDiagnosticsSchema,
   PlannerInspectionIdentifiersSchema,
@@ -165,7 +162,6 @@ export {
   MAX_PLANNER_INSPECTION_RELEVANT_FILES,
   MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH,
   MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,

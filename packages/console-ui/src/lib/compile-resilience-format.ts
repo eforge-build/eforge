@@ -101,7 +101,6 @@ function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   return lines;
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export function plannerInspectionSummarySummary(summary: PlannerInspectionSummary): string {
   const observed = summary.budgetDiagnostics.observed;
   return `Planner compact inspection summary: ${summary.relevantFiles.length} file(s), ${summary.observedFacts.length} fact(s), ${summary.importantFindings.length} finding(s), ${observed.turns} turn(s)`;
@@ -125,7 +124,6 @@ export function plannerInspectionSummaryDetail(summary: PlannerInspectionSummary
   if (omitted.length > 0) lines.push(`Omitted: ${omitted.map(([key, count]) => `${key}=${count}`).join(', ')}`);
   return lines.join('\n');
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export function compileScopeContextFailureSummary(failure: CompileScopeContextFailure): string {
   return `Compile scope/context failure: ${failure.failureKind} from ${failure.source} at ${failure.stage} — ${recoveryActionLabel(failure.recovery.action)}`;

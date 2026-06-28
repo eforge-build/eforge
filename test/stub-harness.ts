@@ -12,13 +12,11 @@ export interface StubToolCall {
   output: string;
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export type StubScriptedEvent =
   | { kind: 'message'; content: string }
   | { kind: 'usage'; usage?: Partial<AgentResultData['usage']>; costUsd?: number; numTurns?: number; final?: boolean }
   | { kind: 'tool_call'; tool: string; toolUseId: string; input: unknown; output: string }
   | { kind: 'event'; event: EforgeEvent };
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export interface StubResponse {
   /** Text content the "agent" produces (emitted as agent:message events) */
@@ -31,10 +29,8 @@ export interface StubResponse {
   resultText?: string;
   /** Tool use/result events to emit before the text */
   toolCalls?: StubToolCall[];
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   /** Interleaved scripted events emitted before the final result. Preserves legacy toolCalls/text behavior when omitted. */
   events?: StubScriptedEvent[];
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   /** Throw this error instead of completing normally */
   error?: Error;
   /** Throw this error after emitting agent:result */
@@ -50,7 +46,6 @@ const STUB_RESULT: AgentResultData = {
   modelUsage: {},
 };
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 type StubEmitContext = {
   planId?: string;
   agentId: string;
@@ -89,7 +84,6 @@ async function* emitScriptedEvent(scripted: StubScriptedEvent, ctx: StubEmitCont
   }
   yield scripted.event;
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 /**
  * A test harness that yields scripted EforgeEvents.
@@ -169,7 +163,6 @@ export class StubHarness implements AgentHarness {
         throw response.error;
       }
 
-      // --- eforge:region plan-02-planner-continuation-surfaces ---
       const customToolMap = new Map(
         (options.customTools ?? []).map(ct => [ct.name, ct]),
       );
@@ -182,7 +175,6 @@ export class StubHarness implements AgentHarness {
           yield* emitToolCall(tc, { planId, agentId, agent, customToolMap });
         }
       }
-      // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
       // Emit text as agent:message
       if (response.text) {

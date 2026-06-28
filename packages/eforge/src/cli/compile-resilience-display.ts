@@ -10,7 +10,6 @@ export interface CompileScopeContextFailureRenderModel {
   details: string[];
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export interface PlannerInspectionSummaryRenderModel {
   headline: string;
   details: string[];
@@ -24,7 +23,6 @@ export function plannerContinuationReasonLabel(reason: Extract<EforgeEvent, { ty
     case undefined: return 'continuation';
   }
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export function recoveryActionLabel(action: CompileRecoveryAction): string {
   switch (action) {
@@ -87,7 +85,6 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export function renderPlannerInspectionSummaryModel(summary: PlannerInspectionSummary): PlannerInspectionSummaryRenderModel {
   const observed = summary.budgetDiagnostics.observed;
   const headline = `Planner compact inspection summary: ${summary.relevantFiles.length} file(s), ${summary.observedFacts.length} fact(s), ${summary.importantFindings.length} finding(s)`;
@@ -102,7 +99,6 @@ export function renderPlannerInspectionSummaryModel(summary: PlannerInspectionSu
   if (summary.caveats.length > 0) details.push(`Caveats: ${summary.caveats.join('; ')}`);
   return { headline, details };
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   const guard = failure.guardDiagnostics;

@@ -4,7 +4,6 @@ export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
 export const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
 export const MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH = 4096;
 export const MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH = 4096;
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export const MAX_PLANNER_INSPECTION_RELEVANT_FILES = 40;
 export const MAX_PLANNER_INSPECTION_OBSERVED_FACTS = 16;
 export const MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS = 12;
@@ -12,7 +11,6 @@ export const MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS = 16;
 export const MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS = 8;
 export const MAX_PLANNER_INSPECTION_CAVEATS = 8;
 export const MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH = 3000;
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 const VALIDATION_DIAGNOSTIC_EXCERPT_FORMAT = 'eforge-validation-diagnostic-excerpt-bytes';
 const VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT = 'eforge-validation-diagnostic-message-bytes';
@@ -30,7 +28,6 @@ const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
 const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
 const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export const PlannerInspectionSummaryTextSchema = BoundedStringSchema;
 export const PlannerInspectionSourceContextTextSchema = Type.String({ maxLength: MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH });
 export const PlannerContextObservationSchema = Type.Object({
@@ -77,7 +74,6 @@ export const PlannerInspectionOmittedCountsSchema = Type.Object({
   relevantFileBytes: Type.Optional(NonNegativeIntegerSchema),
   caveatBytes: Type.Optional(NonNegativeIntegerSchema),
 }, { additionalProperties: false });
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export const CompileRiskLevelSchema = Type.Union([
   Type.Literal('normal'),
@@ -177,7 +173,6 @@ export const CompileContextGuardDiagnosticsSchema = Type.Object({
   limits: CompileContextGuardLimitsSchema,
 });
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export const PlannerInspectionBudgetDiagnosticsSchema = Type.Object({
   maxObservedInputTokens: NonNegativeIntegerSchema,
   softInputTokenThreshold: NonNegativeIntegerSchema,
@@ -204,7 +199,6 @@ export const PlannerInspectionSummarySchema = Type.Object({
   caveats: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_CAVEATS }),
   omittedCounts: PlannerInspectionOmittedCountsSchema,
 });
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 export const CompileScopeContextFailureSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
@@ -264,13 +258,11 @@ export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsS
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
 export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
 export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
 export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;
 export type PlannerInspectionOmittedCounts = Static<typeof PlannerInspectionOmittedCountsSchema>;
 export type PlannerInspectionBudgetDiagnostics = Static<typeof PlannerInspectionBudgetDiagnosticsSchema>;
 export type PlannerInspectionSummary = Static<typeof PlannerInspectionSummarySchema>;
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;

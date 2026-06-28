@@ -82,7 +82,6 @@ const preflightEvent = {
   },
 } as unknown as EforgeEvent;
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 const inspectionSummaryEvent = {
   type: 'planning:inspection-summary',
   timestamp: '2026-01-01T00:00:02.000Z',
@@ -112,7 +111,6 @@ const inspectionSummaryEvent = {
     omittedCounts: { toolResults: 1 },
   },
 } as unknown as EforgeEvent;
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 const scopeFailureEvent = {
   type: 'planning:scope-context:failure',
@@ -165,7 +163,6 @@ describe('EventCard compile resilience rendering branches', () => {
     expect(screen.getByText(/Split oversized generated scope/)).toBeTruthy();
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('renders planning:inspection-summary with expandable compact detail', () => {
     renderEventCard(inspectionSummaryEvent);
 
@@ -177,7 +174,6 @@ describe('EventCard compile resilience rendering branches', () => {
     expect(screen.getByText(/Queue cleanup coverage was removed/)).toBeTruthy();
     expect(screen.getByText(/planner-inspection-handoff.json/)).toBeTruthy();
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('renders planning:scope-context:failure with failed styling and detail', () => {
     renderEventCard(scopeFailureEvent);

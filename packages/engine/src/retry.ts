@@ -213,11 +213,9 @@ function isPlannerSubmissionToolName(tool: string): boolean {
   return tool === 'submit_plan_set' || tool === 'submit_architecture' || tool.endsWith('__submit_plan_set') || tool.endsWith('__submit_architecture');
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 export function hasCompactInspectionContinuation(events: readonly EforgeEvent[]): boolean {
   return events.some((ev) => ev.type === 'planning:inspection-summary');
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 // ---------------------------------------------------------------------------
 // Internal helpers (duplicated from pipeline.ts to avoid circular imports)

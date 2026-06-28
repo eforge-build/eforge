@@ -27,7 +27,6 @@ const failure: CompileScopeContextFailure = {
   artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 1, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
 };
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 const inspectionSummary: PlannerInspectionSummary = {
   kind: 'planner-inspection-handoff',
   version: 1,
@@ -52,7 +51,6 @@ const inspectionSummary: PlannerInspectionSummary = {
   caveats: ['Inspection is incomplete.'],
   omittedCounts: { toolResults: 1 },
 };
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 const failureWithGuardDiagnostics: CompileScopeContextFailure = {
   ...failure,
@@ -94,7 +92,6 @@ describe('compile resilience console formatting', () => {
     expect(detail).not.toContain('Model:');
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('formats compact planner inspection summary and detail', () => {
     expect(plannerInspectionSummarySummary(inspectionSummary)).toContain('Planner compact inspection summary');
     const detail = plannerInspectionSummaryDetail(inspectionSummary);
@@ -103,7 +100,6 @@ describe('compile resilience console formatting', () => {
     expect(detail).toContain('Queue cleanup coverage was removed');
     expect(detail).toContain('Omitted: toolResults=1');
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('formats optional guard diagnostics', () => {
     const detail = compileScopeContextFailureDetail(failureWithGuardDiagnostics);

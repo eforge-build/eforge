@@ -9,9 +9,7 @@ import type {
   ExpeditionModule,
   ReviewIssue,
   OrchestrationConfig,
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   PlannerInspectionSummary,
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import type { PipelineComposition } from '../schemas.js';
@@ -39,9 +37,7 @@ export interface PipelineContext {
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
   runId?: string;
   compileScopeRecovery?: CompileScopeRecoveryState;
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   plannerInspectionSummary?: PlannerInspectionSummary;
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

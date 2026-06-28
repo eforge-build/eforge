@@ -33,7 +33,6 @@ describe('compile context recovery engine integration', () => {
     expect(events.at(-1)).toMatchObject({ type: 'phase:end', result: { status: 'failed' } });
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('keeps oversized initial prompts on the existing hard-guard failure path without compact inspection', async () => {
     const harness = new StubHarness([]);
     const engine = await EforgeEngine.create({ cwd: await setupProject(), agentRuntimes: harness });
@@ -45,7 +44,6 @@ describe('compile context recovery engine integration', () => {
     expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
     expect(events.at(-1)).toMatchObject({ type: 'phase:end', result: { status: 'failed' } });
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('caps retry-as-expedition after one preflight escalation and emits bounded decomposition guidance', async () => {
     const harness = new StubHarness([

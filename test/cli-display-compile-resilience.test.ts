@@ -18,7 +18,6 @@ function risk(level: CompilePreflightRisk['level']): CompilePreflightRisk {
   };
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 function plannerInspectionSummary(): PlannerInspectionSummary {
   return {
     kind: 'planner-inspection-handoff',
@@ -45,7 +44,6 @@ function plannerInspectionSummary(): PlannerInspectionSummary {
     omittedCounts: { toolResults: 1 },
   };
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 function failure(): CompileScopeContextFailure {
   return {
@@ -100,7 +98,6 @@ describe('compile resilience CLI formatting', () => {
     expect(overflow.join('\n')).toContain('Split into bounded pieces.');
   });
 
-  // --- eforge:region plan-02-planner-continuation-surfaces ---
   it('renders compact planner inspection details and continuation reason labels', () => {
     const model = renderPlannerInspectionSummaryModel(plannerInspectionSummary());
     const detail = model.details.join('\n');
@@ -109,7 +106,6 @@ describe('compile resilience CLI formatting', () => {
     expect(detail).toContain('Queue cleanup coverage was removed');
     expect(plannerContinuationReasonLabel('compact_inspection')).toBe('compact inspection synthesis');
   });
-  // --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
   it('renders scope/context failure details without raw payloads', () => {
     const model = renderCompileScopeContextFailureModel(failure());

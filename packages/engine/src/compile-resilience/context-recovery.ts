@@ -228,7 +228,6 @@ function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, inp
   return input.explanation;
 }
 
-// --- eforge:region plan-02-planner-continuation-surfaces ---
 function plannerCompactInspectionGuidance(ctx: PipelineContext, input: CompileScopeContextFailureInput, artifacts: CompileArtifactSummary): string | undefined {
   if (input.stage !== 'planner') return undefined;
   if (artifacts.validPlanCount > 0 || artifacts.orchestrationExists) return undefined;
@@ -239,7 +238,6 @@ function plannerCompactInspectionGuidance(ctx: PipelineContext, input: CompileSc
 function withCompactGuidance(reason: string, compactGuidance: string | undefined): string {
   return compactGuidance ? `${reason} ${compactGuidance}` : reason;
 }
-// --- eforge:endregion plan-02-planner-continuation-surfaces ---
 
 function ensureCompileScopeRecoveryState(ctx: PipelineContext): CompileScopeRecoveryState {
   const existing = ctx.compileScopeRecovery;
