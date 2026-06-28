@@ -187,3 +187,21 @@ Use these raw config defaults unless implementation discovers an existing named 
   }
 }
 </build-config>
+
+## Recovery Guidance
+
+- Failed PRD: "add-context-managed-compile-planning-for-oversized-sources"
+- Root failed plan: "plan-01-contracts-config"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for add-context-managed-compile-planning-for-oversized-sources. artifact source: feature-branch; 5 landed commit(s); failing plan: plan-01-contracts-config; feature branch: eforge/add-context-managed-compile-planning-for-oversized-sources. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 1 rejected, 0 under review)."
+- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 1 rejected, 0 under review)."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair add-context-managed-compile-planning-for-oversized-sources`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair plan-01-contracts-config by enforcing bounded top-level decomposition event extras in a way compatible with EventEnvelopeSchema intersections."
+  - "Do not add additionalProperties: false directly to variant-only Type.Object schemas that are later intersected with the event envelope."
+  - "After plan-01 is repaired, unblock and execute plan-02-decomposition-core, plan-03-bounded-agent-execution, plan-04-compile-orchestration-synthesis, and plan-05-recovery-rendering."
+  - "Run required validation, including pnpm type-check, pnpm test, and pnpm maintainability:check."
+- Retry/resume guidance: Continue plan-01-contracts-config for failed PRD add-context-managed-compile-planning-for-oversized-sources from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-06-28T19:01:39.952Z
+- Source sidecar: .eforge/queue/failed/add-context-managed-compile-planning-for-oversized-sources.recovery.json
+- Source identity: prdId=add-context-managed-compile-planning-for-oversized-sources; setName=add-context-managed-compile-planning-for-oversized-sources; featureBranch=eforge/add-context-managed-compile-planning-for-oversized-sources; baseBranch=main
