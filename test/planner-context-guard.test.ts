@@ -5,7 +5,13 @@ import type { AgentRole, EforgeEvent, CompileContextGuardDiagnostics, CompilePre
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
-import { CompileScopeContextError, createCompileContextGuard } from '@eforge-build/engine/compile-resilience/context-guard';
+import {
+  CompileScopeContextError,
+  createCompileContextGuard,
+  createPlannerContextObservationState,
+  observePlannerContextUsage,
+  setPlannerContextPromptBytes,
+} from '@eforge-build/engine/compile-resilience/context-guard';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -71,6 +77,19 @@ describe('planner-family context guard', () => {
     guard.assertPrompt('ok');
     guard.observe(usageEvent('planner', { input: 6, total: 6 }, false));
     expect(() => guard.observe(usageEvent('planner', { input: 5, total: 5 }, false))).not.toThrow();
+  });
+
+  it('exposes shared planner-family observation state for soft inspection users', () => {
+    const state = createPlannerContextObservationState();
+    setPlannerContextPromptBytes(state, 'hello');
+    const first = observePlannerContextUsage(state, usageEvent('planner', { input: 6, total: 6 }, false), 'planner');
+    const ignored = observePlannerContextUsage(state, usageEvent('builder', { input: 100, total: 100 }, false), 'planner');
+    const second = observePlannerContextUsage(state, usageEvent('planner', { input: 0, total: 10 }, false, 2), 'planner');
+
+    expect(first).toMatchObject({ inputTokens: 6, turns: 1, final: false });
+    expect(ignored).toBeUndefined();
+    expect(second).toMatchObject({ inputTokens: 10, turns: 2, final: false });
+    expect(state.observed).toMatchObject({ promptBytes: 5, inputTokens: 10, outputTokens: 0, turns: 3 });
   });
 
   it('throws when a single non-final usage event crosses the input-token budget', () => {
