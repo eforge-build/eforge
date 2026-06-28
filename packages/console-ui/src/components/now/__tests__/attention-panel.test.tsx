@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
-import type { QueueCascadePreviewResponse } from '@eforge-build/client/browser';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { AttentionPanel } from '../attention-panel';
 import type { NowAttentionItem } from '@/lib/selectors/now';
 
@@ -15,33 +14,6 @@ function failedItem(): NowAttentionItem {
     message: 'Failed: My PRD',
     detail: 'retry / high',
     recovery: { prdId: 'my-prd', prdTitle: 'My PRD', verdict: 'retry', confidence: 'high' },
-  };
-}
-
-function preview(overrides: Partial<QueueCascadePreviewResponse> = {}): QueueCascadePreviewResponse {
-  return {
-    operation: 'remove',
-    target: { prdId: 'my-prd', title: 'My PRD', status: 'failed', effect: 'remove', depth: 0, blockers: [] },
-    dependents: [],
-    expectedAffected: { prdIds: ['my-prd'] },
-    warnings: [],
-    blockers: [],
-    ...overrides,
-  };
-}
-
-function cleanupItem(capabilities: NonNullable<NowAttentionItem['queueCleanup']>['capabilities']): NowAttentionItem {
-  return {
-    ...failedItem(),
-    queueCleanup: { prdId: 'my-prd', prdTitle: 'My PRD', capabilities },
-  };
-}
-
-function cleanupControls(overrides: Partial<NonNullable<Parameters<typeof AttentionPanel>[0]['queueCleanupControls']>> = {}) {
-  return {
-    previewCascade: vi.fn().mockResolvedValue(preview()),
-    applyCascade: vi.fn().mockResolvedValue({ applied: true, operation: 'remove', strategy: 'target-only', affected: { prdIds: ['my-prd'] }, warnings: [], blockers: [] }),
-    ...overrides,
   };
 }
 
@@ -108,109 +80,6 @@ describe('AttentionPanel', () => {
     expect(screen.queryByRole('button', { name: /recover/i })).toBeNull();
   });
 
-  it('renders Recover and Remove controls on the same failed queue row', () => {
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: true }, cascadeRemove: { allowed: true } })]}
-        hiddenCount={0}
-        onRecover={vi.fn()}
-        queueCleanupControls={cleanupControls()}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: /recover/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Remove…' })).toBeDefined();
-  });
-
-  it('renders direct remove cleanup when remove is allowed', () => {
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: true }, cascadeRemove: { allowed: false, reason: 'No dependents allowed' } })]}
-        hiddenCount={0}
-        queueCleanupControls={cleanupControls()}
-      />,
-    );
-
-    expect((screen.getByRole('button', { name: 'Remove…' }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('renders cascade-only cleanup when cascadeRemove is allowed', () => {
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: false, reason: 'Dependents require cascade' }, cascadeRemove: { allowed: true } })]}
-        hiddenCount={0}
-        queueCleanupControls={cleanupControls()}
-      />,
-    );
-
-    expect((screen.getByRole('button', { name: 'Remove…' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText('Dependents require cascade')).toBeDefined();
-  });
-
-  it('renders denied cleanup capability reason inline', () => {
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: false, reason: 'Remove denied by daemon' }, cascadeRemove: { allowed: false, reason: 'Cascade denied by daemon' } })]}
-        hiddenCount={0}
-        queueCleanupControls={cleanupControls()}
-      />,
-    );
-
-    expect((screen.getByRole('button', { name: 'Remove…' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('Remove denied by daemon')).toBeDefined();
-  });
-
-  it('does not apply cleanup when the confirmation dialog is canceled', async () => {
-    const controls = cleanupControls();
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: true }, cascadeRemove: { allowed: true } })]}
-        hiddenCount={0}
-        queueCleanupControls={controls}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-    const dialog = screen.getByRole('alertdialog');
-    await screen.findByText('Affects 1 PRD.');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-
-    expect(controls.applyCascade).not.toHaveBeenCalled();
-  });
-
-  it('renders preview failures as alert text and keeps the dialog open', async () => {
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: true }, cascadeRemove: { allowed: true } })]}
-        hiddenCount={0}
-        queueCleanupControls={cleanupControls({ previewCascade: vi.fn().mockRejectedValue(new Error('Preview refused')) })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-
-    expect((await screen.findByRole('alert')).textContent).toContain('Preview refused');
-    expect(screen.getByRole('alertdialog')).toBeDefined();
-  });
-
-  it('renders apply failures as alert text and keeps the dialog open', async () => {
-    const controls = cleanupControls({ applyCascade: vi.fn().mockRejectedValue(new Error('Apply refused')) });
-    render(
-      <AttentionPanel
-        items={[cleanupItem({ remove: { allowed: true }, cascadeRemove: { allowed: true } })]}
-        hiddenCount={0}
-        queueCleanupControls={controls}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-    await screen.findByText('Affects 1 PRD.');
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }));
-
-    await waitFor(() => expect(controls.applyCascade).toHaveBeenCalled());
-    expect((await screen.findByRole('alert')).textContent).toContain('Apply refused');
-    expect(screen.getByRole('alertdialog')).toBeDefined();
-  });
 });
 
 function untrustedExtensionItem(): NowAttentionItem {

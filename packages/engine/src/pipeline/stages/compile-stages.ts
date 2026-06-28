@@ -38,6 +38,7 @@ import {
 } from './compile-review-cycles.js';
 import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
 import { compileContextGuardOptions, CompileScopeContextError, type CompileContextGuardOptions } from '../../compile-resilience/context-guard.js';
+import { derivePlannerInspectionBudget } from '../../compile-resilience/planner-inspection.js';
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
 import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
 import { derivePiCompileContextGuard } from '../../harnesses/pi-model-resolution.js';
@@ -82,6 +83,11 @@ async function* runPlannerAttempt(
   const { tracker, end, error } = createStageSpanWiring('planner', ctx.tracing, { source: ctx.sourceContent, planSet: ctx.planSetName });
   const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner');
   const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'planner', agentConfig);
+  const plannerInspectionBudget = derivePlannerInspectionBudget({
+    hardLimits: contextGuard.limits,
+    guardDiagnostics: contextGuard.guardDiagnostics,
+    plannerMaxTurns: agentConfig.maxTurns,
+  });
   try {
     for await (const event of runPlanner(ctx.sourceContent, {
       cwd: ctx.cwd,
@@ -97,6 +103,8 @@ async function* runPlannerAttempt(
       defaultReview: ctx.pipeline.defaultReview,
       promptSourceContent: ctx.promptSourceContent,
       contextGuard,
+      plannerInspectionBudget,
+      runId: ctx.runId,
       ...agentConfig,
       promptAppend: mergePromptAppend(agentConfig.promptAppend, formatCompilePreflightPromptAppend({ risk: ctx.compilePreflight, bundle: ctx.compilePromptSourceBundle })),
       ...plannerTb,
@@ -118,6 +126,10 @@ async function* runPlannerAttempt(
       // Track skip — halts further compile stages.
       if (event.type === 'planning:skip') {
         ctx.skipped = true;
+      }
+
+      if (event.type === 'planning:inspection-summary') {
+        ctx.plannerInspectionSummary = event.summary;
       }
 
       // Suppress planner's planning:complete in expedition mode (compilation emits the real one).

@@ -21,6 +21,7 @@ import {
   formatPlannerToolSemanticValidationError,
 } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
+import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
@@ -28,6 +29,8 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   promptSourceContent?: string;
   /** Prompt/live context guardrails for planner-family runs. */
   contextGuard?: CompileContextGuardOptions;
+  /** Soft-budget observer configuration for compact planner inspection continuation. */ plannerInspectionBudget?: PlannerInspectionBudget;
+  /** Run identifier used in compact planner inspection diagnostics. */ runId?: string;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
   scope?: string;
@@ -59,6 +62,34 @@ function createLinkedAbortController(parentSignal?: AbortSignal): AbortControlle
   }
   return controller;
 }
+
+type PlannerExecutionPhase = 'inspection' | 'synthesis';
+
+function synthesisMaxTurns(initialMaxTurns: number): number { return initialMaxTurns <= 1 ? 1 : Math.max(1, Math.min(initialMaxTurns - 1, Math.floor(initialMaxTurns * 0.4))); }
+function compactInspectionEnabled(options: PlannerOptions): boolean { return options.continuationContext === undefined; }
+function isSubmissionToolUse(event: EforgeEvent, submissionToolNames: ReadonlySet<string>): boolean { return event.type === 'agent:tool_use' && submissionToolNames.has(event.tool); }
+
+function buildInspectionSourceContext(sourceContent: string, promptSourceContent: string, sourceLabel?: string): PlannerInspectionSourceContext {
+  return { sourceSummary: sourceLabel ?? firstNonEmptyLine(sourceContent), buildGoal: firstMarkdownHeading(sourceContent) ?? firstNonEmptyLine(sourceContent), promptSourceSnippet: promptSourceContent };
+}
+
+function formatCompactInspectionContinuation(handoff: PlannerInspectionHandoff, submitTool: string): string {
+  return `## Compact Inspection Continuation
+
+Automatic compact-inspection continuation 1 of 1 is active. The prior inspection attempt was stopped before the hard context guard so synthesis can proceed from bounded evidence.
+
+### Required synthesis objective
+
+Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. Perform only targeted read-only checks if absolutely necessary, then call ${submitTool}. Reasoning text alone does not submit plans.
+
+${formatPlannerInspectionHandoffMarkdown(handoff)}`;
+}
+
+function firstMarkdownHeading(text: string): string | undefined {
+  return text.split('\n').map((line) => line.trim()).find((line) => /^#{1,3}\s+\S/.test(line))?.replace(/^#{1,3}\s+/, '');
+}
+
+function firstNonEmptyLine(text: string): string | undefined { return text.split('\n').map((line) => line.trim()).find((line) => line.length > 0)?.slice(0, 300); }
 
 /**
  * Format accumulated clarification Q&A into a prompt section for retry.
@@ -210,15 +241,17 @@ export async function* runPlanner(
 ): AsyncGenerator<EforgeEvent> {
   const cwd = options.cwd ?? process.cwd();
   const { harness } = options;
-  const contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
+  let contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
 
   // Resolve source: file path → read contents, otherwise use as inline string
   let sourceContent: string;
+  let sourceResolvedFromFile = false;
   try {
     const sourcePath = resolve(cwd, source);
     const stats = await stat(sourcePath);
     if (stats.isFile()) {
       sourceContent = await readFile(sourcePath, 'utf-8');
+      sourceResolvedFromFile = true;
     } else {
       sourceContent = source;
     }
@@ -229,6 +262,12 @@ export async function* runPlanner(
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
   const promptSourceContent = options.promptSourceContent ?? sourceContent;
+  const initialMaxTurns = options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning;
+  const inspectionBudget = options.plannerInspectionBudget ?? derivePlannerInspectionBudget({
+    hardLimits: options.contextGuard?.limits,
+    guardDiagnostics: options.contextGuard?.guardDiagnostics,
+    plannerMaxTurns: initialMaxTurns,
+  });
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
@@ -237,6 +276,8 @@ export async function* runPlanner(
 
   // Track clarification Q&A across iterations
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
+
+  let compactInspectionHandoff: PlannerInspectionHandoff | undefined;
 
   function buildPrompt(): Promise<string> {
     // Resolve the backend-visible name for the submission tool(s) currently
@@ -249,23 +290,27 @@ export async function* runPlanner(
     const effectiveNames = customTools.map(t => harness.effectiveCustomToolName(t.name));
     const submitTool = effectiveNames.join(' or ');
 
-    let continuationContextText = '';
+    const continuationSections: string[] = [];
+    if (compactInspectionHandoff) {
+      continuationSections.push(formatCompactInspectionContinuation(compactInspectionHandoff, submitTool));
+    }
     if (options.continuationContext) {
       const { attempt, maxContinuations, existingPlans, reason } = options.continuationContext;
       if (reason === 'dropped_submission') {
-        continuationContextText = `## Continuation Context
+        continuationSections.push(`## Continuation Context
 
-This is continuation attempt ${attempt} of ${maxContinuations}. The previous attempt completed reasoning but did not call ${submitTool}. You MUST call ${submitTool} with your final plan set to complete this run — reasoning alone does not submit plans.`;
+This is continuation attempt ${attempt} of ${maxContinuations}. The previous attempt completed reasoning but did not call ${submitTool}. You MUST call ${submitTool} with your final plan set to complete this run — reasoning alone does not submit plans.`);
       } else {
-        continuationContextText = `## Continuation Context
+        continuationSections.push(`## Continuation Context
 
 This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit the max turns limit on the previous attempt. The following plan files have already been written. Do NOT redo any of the completed work below.
 
 ### Existing Plans
 
-${existingPlans}`;
+${existingPlans}`);
       }
     }
+    const continuationContextText = continuationSections.join('\n\n');
 
     return loadPrompt('planner', {
       source: promptSourceContent,
@@ -310,19 +355,32 @@ ${existingPlans}`;
     customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
   }
 
+  const outputDir = options.outputDir ?? 'eforge/plans';
+  const submissionToolNames = new Set(customTools.flatMap((tool) => [tool.name, harness.effectiveCustomToolName(tool.name)]));
+
   // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
   const maxIterations = 5; // prevent infinite loops
+  const inspectionObserver = compactInspectionEnabled(options)
+    ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'planner' })
+    : undefined;
+  let executionPhase: PlannerExecutionPhase = 'inspection';
+  let compactInspectionUsed = false;
+  let sawSubmissionToolUse = false;
+  const plannerBoundaryReached = () => skipEmitted || sawSubmissionToolUse || alreadySubmitted();
 
   while (iteration < maxIterations) {
     iteration++;
 
     const prompt = await buildPrompt();
     contextGuard.assertPrompt(prompt);
+    inspectionObserver?.setPrompt(prompt);
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
 
     if (iteration === 1) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
+    } else if (executionPhase === 'synthesis') {
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Planner resumed from compact inspection summary' };
     } else {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Planner restarted with prior clarifications' };
     }
@@ -331,7 +389,7 @@ ${existingPlans}`;
 
     try {
       for await (const event of harness.run(
-        { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: executionPhase === 'synthesis' ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {
@@ -341,6 +399,10 @@ ${existingPlans}`;
           attemptAbort.abort();
           throw err;
         }
+        if (isSubmissionToolUse(event, submissionToolNames)) sawSubmissionToolUse = true;
+        const inspectionStatus = executionPhase === 'inspection' && inspectionObserver && !plannerBoundaryReached()
+          ? inspectionObserver.observe(event)
+          : undefined;
         if (event.type === 'agent:message') {
           if (!skipEmitted) {
             const skipReason = parseSkipBlock(event.content);
@@ -369,6 +431,30 @@ ${existingPlans}`;
         if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
           yield event;
         }
+
+        if (inspectionStatus?.shouldHandoff && !plannerBoundaryReached() && !compactInspectionUsed) {
+          compactInspectionHandoff = inspectionObserver!.buildHandoff({
+            source: {
+              sourceName: sourceLabel ?? planSetName,
+              ...(sourceResolvedFromFile ? { sourcePath: source } : {}),
+              ...(options.runId ? { buildId: options.runId, runId: options.runId } : {}),
+              planSetName,
+            },
+            sourceBuildContext: buildInspectionSourceContext(sourceContent, promptSourceContent, sourceLabel),
+            stage: 'planner',
+            incompleteReason: inspectionStatus.reason,
+            prompt,
+          });
+          const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff });
+          yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
+          yield { timestamp: new Date().toISOString(), type: 'planning:continuation', attempt: 1, maxContinuations: 1, reason: 'compact_inspection' };
+          compactInspectionUsed = true;
+          executionPhase = 'synthesis';
+          contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
+          attemptAbort.abort();
+          needsRestart = true;
+          break;
+        }
       }
     } finally {
       attemptAbort.dispose();
@@ -379,8 +465,6 @@ ${existingPlans}`;
 
   // Skip was emitted — no plans to write
   if (skipEmitted) return;
-
-  const outputDir = options.outputDir ?? 'eforge/plans';
 
   // Handle plan set submission
   if (captured.planSet) {

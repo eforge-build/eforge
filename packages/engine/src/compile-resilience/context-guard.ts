@@ -23,6 +23,80 @@ export const DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS: CompileContextGuardLimits = {
   maxExplanationBytes: 1_500,
 };
 
+export type PlannerFamilyStage = CompileContextGuardOptions['stage'];
+
+export interface PlannerContextObservation {
+  inputTokens: number;
+  outputTokens: number;
+  turns: number;
+  promptBytes: number;
+}
+
+export interface PlannerContextUsageDelta {
+  inputTokens: number;
+  outputTokens: number;
+  turns: number;
+  final: boolean;
+}
+
+export interface PlannerContextObservationState {
+  observed: PlannerContextObservation;
+  cumulativeFallback: { inputTokens: number; turns: number };
+  sawFinalUsage: boolean;
+}
+
+export function createPlannerContextObservationState(): PlannerContextObservationState {
+  return {
+    observed: { inputTokens: 0, outputTokens: 0, turns: 0, promptBytes: 0 },
+    cumulativeFallback: { inputTokens: 0, turns: 0 },
+    sawFinalUsage: false,
+  };
+}
+
+export function setPlannerContextPromptBytes(state: PlannerContextObservationState, prompt: string): PlannerContextObservation {
+  state.observed.promptBytes = Buffer.byteLength(prompt, 'utf8');
+  return state.observed;
+}
+
+export function observePlannerContextUsage(
+  state: PlannerContextObservationState,
+  event: EforgeEvent,
+  stage: PlannerFamilyStage,
+): PlannerContextUsageDelta | undefined {
+  if (event.type !== 'agent:usage' || event.agent !== stage) return undefined;
+  const usesInputDelta = event.usage.input > 0;
+  const effectiveInput = usesInputDelta ? event.usage.input : event.usage.total;
+  if (event.final) {
+    state.observed.inputTokens = Math.max(state.observed.inputTokens, effectiveInput);
+    state.observed.outputTokens = Math.max(state.observed.outputTokens, event.usage.output);
+    state.observed.turns = Math.max(state.observed.turns, event.numTurns);
+    state.sawFinalUsage = true;
+    return { inputTokens: effectiveInput, outputTokens: event.usage.output, turns: event.numTurns, final: true };
+  }
+  if (state.sawFinalUsage) {
+    state.observed.inputTokens = 0;
+    state.observed.outputTokens = 0;
+    state.observed.turns = 0;
+    state.cumulativeFallback.inputTokens = 0;
+    state.cumulativeFallback.turns = 0;
+    state.sawFinalUsage = false;
+  }
+  const turnInputTokens = usesInputDelta
+    ? effectiveInput
+    : Math.max(0, effectiveInput - state.cumulativeFallback.inputTokens);
+  const turnCount = usesInputDelta
+    ? event.numTurns
+    : Math.max(0, event.numTurns - state.cumulativeFallback.turns);
+  if (!usesInputDelta) {
+    state.cumulativeFallback.inputTokens = Math.max(state.cumulativeFallback.inputTokens, effectiveInput);
+    state.cumulativeFallback.turns = Math.max(state.cumulativeFallback.turns, event.numTurns);
+  }
+  state.observed.inputTokens = Math.max(state.observed.inputTokens, turnInputTokens);
+  state.observed.turns += turnCount;
+  state.observed.outputTokens += event.usage.output;
+  return { inputTokens: turnInputTokens, outputTokens: event.usage.output, turns: turnCount, final: false };
+}
+
 export class CompileScopeContextError extends Error {
   readonly failure: CompileScopeContextFailure;
 
@@ -39,58 +113,27 @@ export function createCompileContextGuard(options?: CompileContextGuardOptions):
 } {
   const stage = options?.stage ?? 'planner';
   const limits = resolveCompileContextGuardLimits(options?.limits);
-  const observed = { inputTokens: 0, outputTokens: 0, turns: 0, promptBytes: 0 };
-  const cumulativeFallback = { inputTokens: 0, turns: 0 };
-  let sawFinalUsage = false;
+  const observation = createPlannerContextObservationState();
 
   function fail(reason: string): never {
-    throw new CompileScopeContextError(buildFailure({ stage, limits, risk: options?.risk, observed, reason, guardDiagnostics: options?.guardDiagnostics }));
+    throw new CompileScopeContextError(buildFailure({ stage, limits, risk: options?.risk, observed: observation.observed, reason, guardDiagnostics: options?.guardDiagnostics }));
   }
 
   return {
     assertPrompt(prompt: string): void {
-      observed.promptBytes = Buffer.byteLength(prompt, 'utf8');
-      if (observed.promptBytes > limits.maxPromptBytes) {
-        fail(`prompt bytes ${observed.promptBytes} exceed maxPromptBytes ${limits.maxPromptBytes}`);
+      setPlannerContextPromptBytes(observation, prompt);
+      if (observation.observed.promptBytes > limits.maxPromptBytes) {
+        fail(`prompt bytes ${observation.observed.promptBytes} exceed maxPromptBytes ${limits.maxPromptBytes}`);
       }
     },
     observe(event: EforgeEvent): void {
-      if (event.type !== 'agent:usage' || event.agent !== stage) return;
-      const usesInputDelta = event.usage.input > 0;
-      const effectiveInput = usesInputDelta ? event.usage.input : event.usage.total;
-      if (event.final) {
-        observed.inputTokens = Math.max(observed.inputTokens, effectiveInput);
-        observed.outputTokens = Math.max(observed.outputTokens, event.usage.output);
-        observed.turns = Math.max(observed.turns, event.numTurns);
-        sawFinalUsage = true;
-        return;
+      const delta = observePlannerContextUsage(observation, event, stage);
+      if (!delta) return;
+      if (!delta.final && delta.inputTokens > limits.maxObservedInputTokens) {
+        fail(`observed per-turn input tokens ${delta.inputTokens} exceed maxObservedInputTokens ${limits.maxObservedInputTokens}`);
       }
-      if (sawFinalUsage) {
-        observed.inputTokens = 0;
-        observed.outputTokens = 0;
-        observed.turns = 0;
-        cumulativeFallback.inputTokens = 0;
-        cumulativeFallback.turns = 0;
-        sawFinalUsage = false;
-      }
-      const turnInputTokens = usesInputDelta
-        ? effectiveInput
-        : Math.max(0, effectiveInput - cumulativeFallback.inputTokens);
-      const turnCount = usesInputDelta
-        ? event.numTurns
-        : Math.max(0, event.numTurns - cumulativeFallback.turns);
-      if (!usesInputDelta) {
-        cumulativeFallback.inputTokens = Math.max(cumulativeFallback.inputTokens, effectiveInput);
-        cumulativeFallback.turns = Math.max(cumulativeFallback.turns, event.numTurns);
-      }
-      observed.inputTokens = Math.max(observed.inputTokens, turnInputTokens);
-      observed.turns += turnCount;
-      observed.outputTokens += event.usage.output;
-      if (turnInputTokens > limits.maxObservedInputTokens) {
-        fail(`observed per-turn input tokens ${turnInputTokens} exceed maxObservedInputTokens ${limits.maxObservedInputTokens}`);
-      }
-      if (limits.maxObservedTurns !== undefined && observed.turns > limits.maxObservedTurns) {
-        fail(`observed turns ${observed.turns} exceed maxObservedTurns ${limits.maxObservedTurns}`);
+      if (!delta.final && limits.maxObservedTurns !== undefined && observation.observed.turns > limits.maxObservedTurns) {
+        fail(`observed turns ${observation.observed.turns} exceed maxObservedTurns ${limits.maxObservedTurns}`);
       }
     },
   };

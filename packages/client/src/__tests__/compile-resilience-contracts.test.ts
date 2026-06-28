@@ -11,11 +11,14 @@ import {
   CompileArtifactSummarySchema,
   CompileContextGuardDiagnosticsSchema,
   CompileContextGuardLimitsSchema,
+  MAX_PLANNER_INSPECTION_OBSERVED_FACTS,
+  PlannerInspectionSummarySchema,
   MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
   safeParseEforgeEvent,
   type CompilePreflightRisk,
+  type PlannerInspectionSummary,
 } from '../events.js';
 import {
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
@@ -70,6 +73,33 @@ function artifactSummary() {
 
 function riskWith(update: (risk: CompilePreflightRisk) => CompilePreflightRisk): CompilePreflightRisk {
   return update(validRisk());
+}
+
+function validPlannerInspectionSummary(): PlannerInspectionSummary {
+  return {
+    kind: 'planner-inspection-handoff',
+    version: 1,
+    source: { sourceId: 'prd-1', sourceName: 'Queue cleanup', planSetName: 'set-a', runId: 'run-1' },
+    relevantFiles: ['packages/engine/src/queue/scheduler.ts'],
+    observedFacts: ['Read scheduler cleanup code.'],
+    importantFindings: ['Queue cleanup coverage was removed.'],
+    inferredImplementationAreas: ['packages/engine/src/queue'],
+    unresolvedQuestions: ['Confirm failed dispatch cleanup shape.'],
+    sourceBuildContext: { sourceSummary: 'Fix removed queue coverage cleanup.', buildGoal: 'Restore coverage.', promptSourceSnippet: '# Fix removed queue coverage cleanup' },
+    budgetDiagnostics: {
+      maxObservedInputTokens: 160000,
+      softInputTokenThreshold: 115200,
+      plannerMaxTurns: 80,
+      inspectionTurnBudget: 60,
+      softInputTokenRatio: 0.72,
+      softTurnRatio: 0.75,
+      observed: { inputTokens: 115200, outputTokens: 1200, turns: 44, promptBytes: 4096 },
+      toolUseCount: 32,
+      toolResultCount: 31,
+    },
+    caveats: ['Inspection is incomplete.'],
+    omittedCounts: { toolResults: 1 },
+  };
 }
 
 describe('compile resilience contracts', () => {
@@ -168,6 +198,25 @@ describe('compile resilience contracts', () => {
     expect(safeParseEforgeEvent({ type: 'planning:scope-context:failure', timestamp, failure: { ...baseFailure, guardDiagnostics: { ...guardDiagnostics, safetyMargin: 0 } } }).success).toBe(false);
   });
 
+  it('parses compact planner inspection summaries and rejects oversized summary arrays', () => {
+    const summary = validPlannerInspectionSummary();
+    expect(Value.Check(PlannerInspectionSummarySchema, summary)).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:inspection-summary', timestamp, summary, artifactPath: '/tmp/handoff.json' }).success).toBe(true);
+    expect(safeParseEforgeEvent({ type: 'planning:continuation', timestamp, attempt: 1, maxContinuations: 1, reason: 'compact_inspection' }).success).toBe(true);
+
+    const oversizedFacts = Array.from({ length: MAX_PLANNER_INSPECTION_OBSERVED_FACTS + 1 }, (_, index) => `fact-${index}`);
+    expect(safeParseEforgeEvent({
+      type: 'planning:inspection-summary',
+      timestamp,
+      summary: { ...summary, observedFacts: oversizedFacts },
+    }).success).toBe(false);
+    expect(safeParseEforgeEvent({
+      type: 'planning:inspection-summary',
+      timestamp,
+      summary: { ...summary, omittedCounts: { ...summary.omittedCounts, unexpectedFutureKey: 1 } },
+    }).success).toBe(false);
+  });
+
   it('accepts context-window terminal subtypes for compile terminal failures', () => {
     expect(Value.Check(AgentTerminalSubtypeSchema, 'error_context_window')).toBe(true);
     expect(safeParseEforgeEvent({
@@ -253,6 +302,7 @@ describe('compile resilience contracts', () => {
   it('registers concise event metadata and summaries', () => {
     expect(eventRegistry['planning:preflight']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['planning:scope-context:failure']).toMatchObject({ scope: 'session', persist: true });
+    expect(eventRegistry['planning:inspection-summary']).toMatchObject({ scope: 'session', persist: true });
 
     const preflightSummary = getEventSummary({ type: 'planning:preflight', timestamp, risk: validRisk() });
     const failureSummary = getEventSummary({
@@ -268,10 +318,14 @@ describe('compile resilience contracts', () => {
       },
     });
 
+    const inspectionSummary = getEventSummary({ type: 'planning:inspection-summary', timestamp, summary: validPlannerInspectionSummary() });
+
     expect(preflightSummary).toContain('elevated');
     expect(preflightSummary).not.toContain('docs/prd.md');
     expect(failureSummary).toContain('context-window');
     expect(failureSummary).not.toContain('too broad');
+    expect(inspectionSummary).toContain('Planner compact inspection summary');
+    expect(inspectionSummary).not.toContain('Queue cleanup');
   });
 
   it('exports schemas and constants from public client barrels', () => {
@@ -282,6 +336,8 @@ describe('compile resilience contracts', () => {
       expect(facade.CompileContextGuardDiagnosticsSchema).toBeDefined();
       expect(facade.CompileContextGuardLimitsSchema).toBeDefined();
       expect(facade.BoundedValidationDiagnosticSchema).toBeDefined();
+      expect(facade.PlannerInspectionSummarySchema).toBeDefined();
+      expect(facade.MAX_PLANNER_INSPECTION_OBSERVED_FACTS).toBe(MAX_PLANNER_INSPECTION_OBSERVED_FACTS);
     }
   });
 });

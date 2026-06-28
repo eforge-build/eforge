@@ -12,10 +12,9 @@ import {
 
 interface UseQueueControlActionsInput {
   refreshQueue?: () => Promise<void> | void;
-  refreshRuns?: () => Promise<void> | void;
 }
 
-export function useQueueControlActions({ refreshQueue, refreshRuns }: UseQueueControlActionsInput) {
+export function useQueueControlActions({ refreshQueue }: UseQueueControlActionsInput) {
   const setPriority = React.useCallback(async (id: string, priority: number) => {
     await updateQueuePriority(id, { priority });
     await refreshQueue?.();
@@ -42,12 +41,9 @@ export function useQueueControlActions({ refreshQueue, refreshRuns }: UseQueueCo
 
   const applyCascade = React.useCallback(async (id: string, request: QueueCascadeApplyRequest) => {
     const response = await applyQueueCascade(id, request);
-    if (response.applied === true) {
-      await refreshQueue?.();
-      if (request.operation === 'remove' || request.operation === 'cancel') await refreshRuns?.();
-    }
+    if (response.applied === true) await refreshQueue?.();
     return response;
-  }, [refreshQueue, refreshRuns]);
+  }, [refreshQueue]);
 
   return { setPriority, overrideDependency, hold, unhold, previewCascade, applyCascade };
 }

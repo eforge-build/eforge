@@ -105,7 +105,7 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
       attempted: false,
       attempt: state.retryAsExpeditionAttempts,
       maxAttempts: state.maxRetryAsExpeditionAttempts,
-      reason: capUtf8(recoveryReason(action, input, state, artifacts), MAX_REASON_BYTES),
+      reason: capUtf8(recoveryReason(ctx, action, input, state, artifacts), MAX_REASON_BYTES),
     },
     artifacts,
   };
@@ -219,12 +219,24 @@ function chooseRecoveryAction(ctx: PipelineContext, input: CompileScopeContextFa
   return 'manual-reduce-scope';
 }
 
-function recoveryReason(action: CompileRecoveryAction, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): string {
+function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): string {
   if (action === 'repair-existing-artifacts') return `Valid compile artifacts exist (${artifacts.validPlanCount} plan file(s)); prefer continue/repair over retrying compile.`;
-  if (action === 'retry-as-expedition') return `Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`;
-  if (action === 'bounded-decomposition') return `Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); decompose the source into bounded follow-up PRDs.`;
-  if (action === 'manual-reduce-scope') return 'Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.';
+  const compactGuidance = plannerCompactInspectionGuidance(ctx, input, artifacts);
+  if (action === 'retry-as-expedition') return withCompactGuidance(`Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`, compactGuidance);
+  if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); decompose the source into bounded follow-up PRDs.`, compactGuidance);
+  if (action === 'manual-reduce-scope') return withCompactGuidance('Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.', compactGuidance);
   return input.explanation;
+}
+
+function plannerCompactInspectionGuidance(ctx: PipelineContext, input: CompileScopeContextFailureInput, artifacts: CompileArtifactSummary): string | undefined {
+  if (input.stage !== 'planner') return undefined;
+  if (artifacts.validPlanCount > 0 || artifacts.orchestrationExists) return undefined;
+  if (ctx.plannerInspectionSummary) return 'Automatic compact-inspection continuation was attempted and exhausted without producing valid planning artifacts.';
+  return 'Automatic compact-inspection continuation is only available when soft planner inspection pressure is observed before the hard context guard; no compact handoff artifact was available for this failure.';
+}
+
+function withCompactGuidance(reason: string, compactGuidance: string | undefined): string {
+  return compactGuidance ? `${reason} ${compactGuidance}` : reason;
 }
 
 function ensureCompileScopeRecoveryState(ctx: PipelineContext): CompileScopeRecoveryState {

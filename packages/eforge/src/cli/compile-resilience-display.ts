@@ -1,4 +1,4 @@
-import type { CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure } from '@eforge-build/client';
+import type { CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
 
 export interface CompilePreflightRenderOptions {
   verbose?: boolean;
@@ -8,6 +8,20 @@ export interface CompileScopeContextFailureRenderModel {
   attempted: boolean;
   headline: string;
   details: string[];
+}
+
+export interface PlannerInspectionSummaryRenderModel {
+  headline: string;
+  details: string[];
+}
+
+export function plannerContinuationReasonLabel(reason: Extract<EforgeEvent, { type: 'planning:continuation' }>['reason']): string {
+  switch (reason) {
+    case 'max_turns': return 'max turns';
+    case 'dropped_submission': return 'dropped submission';
+    case 'compact_inspection': return 'compact inspection synthesis';
+    case undefined: return 'continuation';
+  }
 }
 
 export function recoveryActionLabel(action: CompileRecoveryAction): string {
@@ -69,6 +83,21 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   if (observed.outputTokens !== undefined) parts.push(`${observed.outputTokens} output tokens`);
   if (observed.turns !== undefined) parts.push(`${observed.turns} turns`);
   return parts.length > 0 ? parts.join(', ') : undefined;
+}
+
+export function renderPlannerInspectionSummaryModel(summary: PlannerInspectionSummary): PlannerInspectionSummaryRenderModel {
+  const observed = summary.budgetDiagnostics.observed;
+  const headline = `Planner compact inspection summary: ${summary.relevantFiles.length} file(s), ${summary.observedFacts.length} fact(s), ${summary.importantFindings.length} finding(s)`;
+  const details = [
+    `Observed: ${observed.inputTokens} input tokens, ${observed.outputTokens} output tokens, ${observed.turns} turns, ${formatBytes(observed.promptBytes)} prompt`,
+    `Budget: soft input ${summary.budgetDiagnostics.softInputTokenThreshold}/${summary.budgetDiagnostics.maxObservedInputTokens}; inspection turns ${summary.budgetDiagnostics.inspectionTurnBudget}/${summary.budgetDiagnostics.plannerMaxTurns}`,
+    `Tools: ${summary.budgetDiagnostics.toolUseCount} use(s), ${summary.budgetDiagnostics.toolResultCount} result(s)`,
+  ];
+  if (summary.relevantFiles.length > 0) details.push(`Relevant files: ${summary.relevantFiles.join(', ')}`);
+  if (summary.importantFindings.length > 0) details.push(`Findings: ${summary.importantFindings.join('; ')}`);
+  if (summary.unresolvedQuestions.length > 0) details.push(`Unresolved: ${summary.unresolvedQuestions.join('; ')}`);
+  if (summary.caveats.length > 0) details.push(`Caveats: ${summary.caveats.join('; ')}`);
+  return { headline, details };
 }
 
 function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {

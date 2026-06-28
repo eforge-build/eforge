@@ -394,6 +394,37 @@ describe('withRetry — planner post-checkpoint terminal-success integration', (
     expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
   });
 
+  it('after compact inspection summary + max-turns, propagates error without generic planner continuation', async () => {
+    let callCount = 0;
+    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
+
+    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
+      callCount++;
+      yield { timestamp: ts(), type: 'planning:inspection-summary' } as EforgeEvent;
+      throw new AgentTerminalError('error_max_turns', 'compact synthesis exhausted turns');
+    };
+
+    const initial: PlannerContinuationInput = {
+      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
+      plannerOptions: {},
+    };
+
+    let thrown: unknown;
+    const out: EforgeEvent[] = [];
+    try {
+      for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
+        out.push(ev);
+      }
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(callCount).toBe(1);
+    expect(thrown).toBeInstanceOf(AgentTerminalError);
+    expect((thrown as AgentTerminalError).subtype).toBe('error_max_turns');
+    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
+  });
+
   it('after planning:submission (no completion) + transient error, propagates error without retry', async () => {
     let callCount = 0;
     const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;

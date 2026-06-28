@@ -9,6 +9,7 @@ import type {
   ExpeditionModule,
   ReviewIssue,
   OrchestrationConfig,
+  PlannerInspectionSummary,
 } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import type { PipelineComposition } from '../schemas.js';
@@ -36,6 +37,7 @@ export interface PipelineContext {
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
   runId?: string;
   compileScopeRecovery?: CompileScopeRecoveryState;
+  plannerInspectionSummary?: PlannerInspectionSummary;
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;

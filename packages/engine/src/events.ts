@@ -58,6 +58,12 @@ export type {
   CompileRiskLevel,
   CompileScopeContextFailure,
   CompileScopeContextFailureEvent,
+  PlannerContextObservation,
+  PlannerInspectionBudgetDiagnostics,
+  PlannerInspectionIdentifiers,
+  PlannerInspectionSourceBuildContext,
+  PlannerInspectionSummary,
+  PlannerInspectionSummaryEvent,
 } from '@eforge-build/client';
 
 export {
@@ -82,6 +88,18 @@ export {
   CompileRecoveryActionSchema,
   CompileRiskLevelSchema,
   CompileScopeContextFailureSchema,
+  PlannerContextObservationSchema,
+  PlannerInspectionBudgetDiagnosticsSchema,
+  PlannerInspectionIdentifiersSchema,
+  PlannerInspectionSourceBuildContextSchema,
+  PlannerInspectionSummarySchema,
+  MAX_PLANNER_INSPECTION_CAVEATS,
+  MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS,
+  MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS,
+  MAX_PLANNER_INSPECTION_OBSERVED_FACTS,
+  MAX_PLANNER_INSPECTION_RELEVANT_FILES,
+  MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH,
+  MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,
   MAX_COMPILE_RISK_LIST_ITEMS,
 } from '@eforge-build/client';
 

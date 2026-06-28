@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { initDisplay, renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
-import type { CompilePreflightRisk, CompileScopeContextFailure, EforgeEvent } from '@eforge-build/client';
+import type { CompilePreflightRisk, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
 
 function captureConsoleLogs(run: () => void): string[] {
   const lines: string[] = [];
@@ -34,6 +34,31 @@ const compileRisk: CompilePreflightRisk = {
   subsystemBreadth: { count: 4, subsystems: ['engine', 'client'], evidence: ['packages/engine'] },
   reasons: ['generated-inventory:detected'],
   recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split generated scope into smaller PRDs.' },
+};
+
+const inspectionSummary: PlannerInspectionSummary = {
+  kind: 'planner-inspection-handoff',
+  version: 1,
+  source: { sourceName: 'Queue cleanup', planSetName: 'set-a' },
+  relevantFiles: ['packages/engine/src/queue/scheduler.ts'],
+  observedFacts: ['Read scheduler cleanup code.'],
+  importantFindings: ['Queue cleanup coverage was removed.'],
+  inferredImplementationAreas: ['packages/engine/src/queue'],
+  unresolvedQuestions: ['Confirm failed dispatch shape.'],
+  sourceBuildContext: { sourceSummary: 'Fix removed queue coverage cleanup.' },
+  budgetDiagnostics: {
+    maxObservedInputTokens: 160000,
+    softInputTokenThreshold: 115200,
+    plannerMaxTurns: 80,
+    inspectionTurnBudget: 60,
+    softInputTokenRatio: 0.72,
+    softTurnRatio: 0.75,
+    observed: { inputTokens: 115200, outputTokens: 1200, turns: 44, promptBytes: 4096 },
+    toolUseCount: 32,
+    toolResultCount: 31,
+  },
+  caveats: ['Inspection is incomplete.'],
+  omittedCounts: { toolResults: 1 },
 };
 
 const scopeFailure: CompileScopeContextFailure = {
@@ -135,6 +160,17 @@ describe('renderEvent', () => {
     expect(lines.join('\n')).toContain('2.0 KiB prompt');
     expect(lines.join('\n')).toContain('9 AC');
     expect(lines.join('\n')).toContain('bounded decomposition');
+  });
+
+  it('renders compact planner inspection summaries through the top-level dispatcher', () => {
+    const lines = captureConsoleLogs(() => {
+      renderEvent({ type: 'planning:inspection-summary', timestamp: '2025-01-01T00:00:00.000Z', summary: inspectionSummary, artifactPath: '/tmp/planner-inspection-handoff.json' });
+    });
+
+    expect(lines.join('\n')).toContain('Planner compact inspection summary');
+    expect(lines.join('\n')).toContain('packages/engine/src/queue/scheduler.ts');
+    expect(lines.join('\n')).toContain('Queue cleanup coverage was removed');
+    expect(lines.join('\n')).toContain('planner-inspection-handoff.json');
   });
 
   it('renders terminal compile scope/context failures through the top-level dispatcher', () => {

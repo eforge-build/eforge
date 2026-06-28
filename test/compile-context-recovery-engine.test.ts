@@ -33,6 +33,18 @@ describe('compile context recovery engine integration', () => {
     expect(events.at(-1)).toMatchObject({ type: 'phase:end', result: { status: 'failed' } });
   });
 
+  it('keeps oversized initial prompts on the existing hard-guard failure path without compact inspection', async () => {
+    const harness = new StubHarness([]);
+    const engine = await EforgeEngine.create({ cwd: await setupProject(), agentRuntimes: harness });
+    const oversizedSource = `# Oversized prompt\n\n${'oversized planner source\n'.repeat(80_000)}`;
+    const events = await collect(engine.compile(oversizedSource, { name: `compile-context-oversized-${Date.now()}` }));
+
+    expect(harness.calls).toHaveLength(0);
+    expect(events.some((event) => event.type === 'planning:inspection-summary')).toBe(false);
+    expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
+    expect(events.at(-1)).toMatchObject({ type: 'phase:end', result: { status: 'failed' } });
+  });
+
   it('caps retry-as-expedition after one preflight escalation and emits bounded decomposition guidance', async () => {
     const harness = new StubHarness([
       { resultText: composer('excursion') },

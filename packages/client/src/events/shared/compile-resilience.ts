@@ -4,6 +4,13 @@ export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
 export const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
 export const MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH = 4096;
 export const MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH = 4096;
+export const MAX_PLANNER_INSPECTION_RELEVANT_FILES = 40;
+export const MAX_PLANNER_INSPECTION_OBSERVED_FACTS = 16;
+export const MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS = 12;
+export const MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS = 16;
+export const MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS = 8;
+export const MAX_PLANNER_INSPECTION_CAVEATS = 8;
+export const MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH = 3000;
 
 const VALIDATION_DIAGNOSTIC_EXCERPT_FORMAT = 'eforge-validation-diagnostic-excerpt-bytes';
 const VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT = 'eforge-validation-diagnostic-message-bytes';
@@ -20,6 +27,53 @@ const BoundedStringListSchema = Type.Array(BoundedStringSchema, { maxItems: MAX_
 const NonNegativeIntegerSchema = Type.Integer({ minimum: 0 });
 const PositiveIntegerSchema = Type.Integer({ minimum: 1 });
 const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
+
+export const PlannerInspectionSummaryTextSchema = BoundedStringSchema;
+export const PlannerInspectionSourceContextTextSchema = Type.String({ maxLength: MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH });
+export const PlannerContextObservationSchema = Type.Object({
+  inputTokens: NonNegativeIntegerSchema,
+  outputTokens: NonNegativeIntegerSchema,
+  turns: NonNegativeIntegerSchema,
+  promptBytes: NonNegativeIntegerSchema,
+});
+export const PlannerInspectionIdentifiersSchema = Type.Object({
+  sourceId: Type.Optional(BoundedStringSchema),
+  sourceName: Type.Optional(BoundedStringSchema),
+  sourcePath: Type.Optional(BoundedStringSchema),
+  buildId: Type.Optional(BoundedStringSchema),
+  planSetName: Type.Optional(BoundedStringSchema),
+  runId: Type.Optional(BoundedStringSchema),
+});
+export const PlannerInspectionSourceBuildContextSchema = Type.Object({
+  sourceSummary: Type.Optional(PlannerInspectionSourceContextTextSchema),
+  buildGoal: Type.Optional(PlannerInspectionSourceContextTextSchema),
+  promptSourceSnippet: Type.Optional(PlannerInspectionSourceContextTextSchema),
+});
+export const PlannerInspectionOmittedCountsSchema = Type.Object({
+  relevantFiles: Type.Optional(NonNegativeIntegerSchema),
+  observedFacts: Type.Optional(NonNegativeIntegerSchema),
+  importantFindings: Type.Optional(NonNegativeIntegerSchema),
+  inferredImplementationAreas: Type.Optional(NonNegativeIntegerSchema),
+  unresolvedQuestions: Type.Optional(NonNegativeIntegerSchema),
+  toolUses: Type.Optional(NonNegativeIntegerSchema),
+  toolResults: Type.Optional(NonNegativeIntegerSchema),
+  toolUseSummaryBytes: Type.Optional(NonNegativeIntegerSchema),
+  toolResultSnippetBytes: Type.Optional(NonNegativeIntegerSchema),
+  importantFindingBytes: Type.Optional(NonNegativeIntegerSchema),
+  messageBytes: Type.Optional(NonNegativeIntegerSchema),
+  inferredImplementationAreaBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceNameBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourcePathBytes: Type.Optional(NonNegativeIntegerSchema),
+  buildIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  planSetNameBytes: Type.Optional(NonNegativeIntegerSchema),
+  runIdBytes: Type.Optional(NonNegativeIntegerSchema),
+  sourceSummaryBytes: Type.Optional(NonNegativeIntegerSchema),
+  buildGoalBytes: Type.Optional(NonNegativeIntegerSchema),
+  promptSourceSnippetBytes: Type.Optional(NonNegativeIntegerSchema),
+  relevantFileBytes: Type.Optional(NonNegativeIntegerSchema),
+  caveatBytes: Type.Optional(NonNegativeIntegerSchema),
+}, { additionalProperties: false });
 
 export const CompileRiskLevelSchema = Type.Union([
   Type.Literal('normal'),
@@ -119,6 +173,33 @@ export const CompileContextGuardDiagnosticsSchema = Type.Object({
   limits: CompileContextGuardLimitsSchema,
 });
 
+export const PlannerInspectionBudgetDiagnosticsSchema = Type.Object({
+  maxObservedInputTokens: NonNegativeIntegerSchema,
+  softInputTokenThreshold: NonNegativeIntegerSchema,
+  plannerMaxTurns: PositiveIntegerSchema,
+  inspectionTurnBudget: NonNegativeIntegerSchema,
+  softInputTokenRatio: Type.Number({ minimum: 0, maximum: 1 }),
+  softTurnRatio: Type.Number({ minimum: 0, maximum: 1 }),
+  guardDiagnostics: Type.Optional(CompileContextGuardDiagnosticsSchema),
+  observed: PlannerContextObservationSchema,
+  toolUseCount: NonNegativeIntegerSchema,
+  toolResultCount: NonNegativeIntegerSchema,
+});
+export const PlannerInspectionSummarySchema = Type.Object({
+  kind: Type.Literal('planner-inspection-handoff'),
+  version: Type.Literal(1),
+  source: PlannerInspectionIdentifiersSchema,
+  relevantFiles: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_RELEVANT_FILES }),
+  observedFacts: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_OBSERVED_FACTS }),
+  importantFindings: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS }),
+  inferredImplementationAreas: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS }),
+  unresolvedQuestions: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS }),
+  sourceBuildContext: PlannerInspectionSourceBuildContextSchema,
+  budgetDiagnostics: PlannerInspectionBudgetDiagnosticsSchema,
+  caveats: Type.Array(BoundedStringSchema, { maxItems: MAX_PLANNER_INSPECTION_CAVEATS }),
+  omittedCounts: PlannerInspectionOmittedCountsSchema,
+});
+
 export const CompileScopeContextFailureSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
@@ -177,5 +258,11 @@ export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsS
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
 export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
+export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
+export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
+export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;
+export type PlannerInspectionOmittedCounts = Static<typeof PlannerInspectionOmittedCountsSchema>;
+export type PlannerInspectionBudgetDiagnostics = Static<typeof PlannerInspectionBudgetDiagnosticsSchema>;
+export type PlannerInspectionSummary = Static<typeof PlannerInspectionSummarySchema>;
 export type BoundedDiagnosticOptions = Static<typeof BoundedDiagnosticOptionsSchema>;
 export type BoundedValidationDiagnostic = Static<typeof BoundedValidationDiagnosticSchema>;

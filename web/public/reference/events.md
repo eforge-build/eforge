@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 231
+Total variants: 232
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -74,6 +74,7 @@ Total variants: 231
 | `extension:validation-provider:timeout` | `command`, `extensionName`, `extensionPath`, `planId`, `providerName`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:preflight` | `risk` |
+| `planning:inspection-summary` | `artifactPath`, `summary` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |

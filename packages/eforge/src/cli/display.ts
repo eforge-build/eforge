@@ -4,7 +4,7 @@ import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
-import { renderCompilePreflightLines, renderCompileScopeContextFailureModel } from './compile-resilience-display.js';
+import { plannerContinuationReasonLabel, renderCompilePreflightLines, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from './compile-resilience-display.js';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -242,8 +242,16 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
       setSpinnerText('plan', event.message);
       return true;
     case 'planning:continuation':
-      setSpinnerText('plan', `Planning - continuing (attempt ${event.attempt}/${event.maxContinuations})`);
+      setSpinnerText('plan', `Planning - continuing via ${plannerContinuationReasonLabel(event.reason)} (attempt ${event.attempt}/${event.maxContinuations})`);
       return true;
+    case 'planning:inspection-summary': {
+      const model = renderPlannerInspectionSummaryModel(event.summary);
+      console.log(chalk.yellow(`  ⚠ ${model.headline}`));
+      if (event.artifactPath) console.log(chalk.dim(`    Artifact: ${event.artifactPath}`));
+      for (const detail of model.details) console.log(chalk.dim(`    ${detail}`));
+      setSpinnerText('plan', 'Planner compact inspection summary captured; resuming synthesis...');
+      return true;
+    }
     case 'planning:preflight': {
       const lines = renderCompilePreflightLines(event.risk, { verbose });
       for (const line of lines) console.log(chalk.yellow(`  ⚠ ${line}`));

@@ -2,6 +2,7 @@ import type {
   CompilePreflightRisk,
   CompileRecoveryAction,
   CompileScopeContextFailure,
+  PlannerInspectionSummary,
   RecoverySidecarRecoveryOption,
 } from '@eforge-build/client/browser';
 
@@ -98,6 +99,30 @@ function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   lines.push(`Guard: ${limitParts.join(', ')}`);
   if (guard.fallbackReason) lines.push(`Fallback: ${guard.fallbackReason}`);
   return lines;
+}
+
+export function plannerInspectionSummarySummary(summary: PlannerInspectionSummary): string {
+  const observed = summary.budgetDiagnostics.observed;
+  return `Planner compact inspection summary: ${summary.relevantFiles.length} file(s), ${summary.observedFacts.length} fact(s), ${summary.importantFindings.length} finding(s), ${observed.turns} turn(s)`;
+}
+
+export function plannerInspectionSummaryDetail(summary: PlannerInspectionSummary): string {
+  const observed = summary.budgetDiagnostics.observed;
+  const lines = [
+    `Observed: ${observed.inputTokens} input token(s), ${observed.outputTokens} output token(s), ${observed.turns} turn(s), ${formatBytes(observed.promptBytes)} prompt`,
+    `Budget: soft input ${summary.budgetDiagnostics.softInputTokenThreshold}/${summary.budgetDiagnostics.maxObservedInputTokens}; inspection turns ${summary.budgetDiagnostics.inspectionTurnBudget}/${summary.budgetDiagnostics.plannerMaxTurns}`,
+    `Tools: ${summary.budgetDiagnostics.toolUseCount} use(s), ${summary.budgetDiagnostics.toolResultCount} result(s)`,
+  ];
+  if (summary.source.sourceName) lines.push(`Source: ${summary.source.sourceName}`);
+  if (summary.relevantFiles.length > 0) lines.push(`Relevant files: ${summary.relevantFiles.join(', ')}`);
+  if (summary.observedFacts.length > 0) lines.push(`Observed facts: ${summary.observedFacts.join('; ')}`);
+  if (summary.importantFindings.length > 0) lines.push(`Important findings: ${summary.importantFindings.join('; ')}`);
+  if (summary.inferredImplementationAreas.length > 0) lines.push(`Implementation areas: ${summary.inferredImplementationAreas.join(', ')}`);
+  if (summary.unresolvedQuestions.length > 0) lines.push(`Unresolved questions: ${summary.unresolvedQuestions.join('; ')}`);
+  if (summary.caveats.length > 0) lines.push(`Caveats: ${summary.caveats.join('; ')}`);
+  const omitted = Object.entries(summary.omittedCounts).filter(([, count]) => count > 0);
+  if (omitted.length > 0) lines.push(`Omitted: ${omitted.map(([key, count]) => `${key}=${count}`).join(', ')}`);
+  return lines.join('\n');
 }
 
 export function compileScopeContextFailureSummary(failure: CompileScopeContextFailure): string {

@@ -501,6 +501,13 @@ export type {
   CompileRiskLevel,
   CompileScopeContextFailure,
   CompileScopeContextFailureEvent,
+  PlannerContextObservation,
+  PlannerInspectionBudgetDiagnostics,
+  PlannerInspectionIdentifiers,
+  PlannerInspectionOmittedCounts,
+  PlannerInspectionSourceBuildContext,
+  PlannerInspectionSummary,
+  PlannerInspectionSummaryEvent,
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, AgentTerminalSubtypeSchema, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
@@ -515,7 +522,13 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
   BoundedDiagnosticOptionsSchema, BoundedValidationDiagnosticSchema, CompileArtifactSummarySchema,
   CompileContextGuardDiagnosticsSchema, CompileContextGuardLimitsSchema, CompileContextGuardMetadataSourceSchema,
   CompilePipelineScopeSchema, CompilePreflightRiskSchema, CompileRecoveryActionSchema,
-  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema, MAX_COMPILE_RISK_LIST_ITEMS,
+  CompileRiskLevelSchema, CompileScopeContextFailureKindSchema, CompileScopeContextFailureSchema, CompileScopeContextSourceSchema,
+  PlannerContextObservationSchema, PlannerInspectionBudgetDiagnosticsSchema, PlannerInspectionIdentifiersSchema,
+  PlannerInspectionOmittedCountsSchema, PlannerInspectionSourceBuildContextSchema, PlannerInspectionSummarySchema, PlannerInspectionSourceContextTextSchema,
+  PlannerInspectionSummaryTextSchema, MAX_PLANNER_INSPECTION_CAVEATS, MAX_PLANNER_INSPECTION_IMPLEMENTATION_AREAS,
+  MAX_PLANNER_INSPECTION_IMPORTANT_FINDINGS, MAX_PLANNER_INSPECTION_OBSERVED_FACTS, MAX_PLANNER_INSPECTION_RELEVANT_FILES,
+  MAX_PLANNER_INSPECTION_SOURCE_CONTEXT_LENGTH, MAX_PLANNER_INSPECTION_UNRESOLVED_QUESTIONS,
+  MAX_COMPILE_RISK_LIST_ITEMS,
   MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH, MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.js';
 
