@@ -15,6 +15,20 @@ export interface PlanningDecompositionConfig {
   planningUnitMaxSplitAttemptsPerUnit: number;
 }
 
+export const PLANNING_DECOMPOSITION_CONFIG_MAXIMA: Readonly<PlanningDecompositionConfig> = Object.freeze({
+  planningUnitParallelism: 16,
+  planningUnitMaxDepth: 8,
+  planningUnitMaxPromptSourceBytes: 250_000,
+  planningUnitMaxPromptBytes: 500_000,
+  planningUnitMaxObservedInputTokens: 1_000_000,
+  planningUnitMaxObservedTurns: 200,
+  planningUnitMaxCompactHandoffBytes: 100_000,
+  planningUnitMaxLocalExplorationToolUses: 256,
+  planningUnitMaxCriteriaPerUnit: 64,
+  planningUnitMaxSubsystemsPerUnit: 32,
+  planningUnitMaxSplitAttemptsPerUnit: 8,
+});
+
 export const DEFAULT_PLANNING_DECOMPOSITION_CONFIG: Readonly<PlanningDecompositionConfig> = Object.freeze({
   planningUnitParallelism: 2,
   planningUnitMaxDepth: 3,

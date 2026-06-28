@@ -20,10 +20,10 @@ import {
   userEforgeConfigDir,
 } from '@eforge-build/scopes';
 import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime.js';
-import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG } from './compile-resilience/planning-decomposition-limits.js';
+import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA } from './compile-resilience/planning-decomposition-limits.js';
 import type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
-export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, resolvePlanningDecompositionLimits } from './compile-resilience/planning-decomposition-limits.js';
+export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolvePlanningDecompositionLimits } from './compile-resilience/planning-decomposition-limits.js';
 export type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export type { ShardScope } from './schemas.js';
 
@@ -69,20 +69,20 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 
 // --- eforge:region plan-01-contracts-config ---
-const positiveIntegerConfigSchema = z.number().int().positive();
+const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
 
 const compileConfigSchema = z.object({
-  planningUnitParallelism: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxDepth: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxPromptSourceBytes: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxPromptBytes: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxObservedInputTokens: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxObservedTurns: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxCompactHandoffBytes: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxLocalExplorationToolUses: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxCriteriaPerUnit: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxSubsystemsPerUnit: positiveIntegerConfigSchema.optional(),
-  planningUnitMaxSplitAttemptsPerUnit: positiveIntegerConfigSchema.optional(),
+  planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
+  planningUnitMaxDepth: boundedPositiveIntegerConfigSchema('planningUnitMaxDepth').optional(),
+  planningUnitMaxPromptSourceBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxPromptSourceBytes').optional(),
+  planningUnitMaxPromptBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxPromptBytes').optional(),
+  planningUnitMaxObservedInputTokens: boundedPositiveIntegerConfigSchema('planningUnitMaxObservedInputTokens').optional(),
+  planningUnitMaxObservedTurns: boundedPositiveIntegerConfigSchema('planningUnitMaxObservedTurns').optional(),
+  planningUnitMaxCompactHandoffBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxCompactHandoffBytes').optional(),
+  planningUnitMaxLocalExplorationToolUses: boundedPositiveIntegerConfigSchema('planningUnitMaxLocalExplorationToolUses').optional(),
+  planningUnitMaxCriteriaPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxCriteriaPerUnit').optional(),
+  planningUnitMaxSubsystemsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSubsystemsPerUnit').optional(),
+  planningUnitMaxSplitAttemptsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSplitAttemptsPerUnit').optional(),
 }).strict().describe('Context-managed compile planning-unit limits');
 // --- eforge:endregion plan-01-contracts-config ---
 

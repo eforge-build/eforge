@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  DecompositionFailureEvidenceSchema,
   RecoverySidecarCompileScopeContextActionSchema,
   RecoverySidecarCompileScopeContextOptionSchema,
   parseWithSchema,
@@ -319,7 +320,7 @@ function validateCompileScopeContextOption(obj: Record<string, unknown>, action:
   const attempt = requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId);
   const maxAttempts = requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId);
   if (attempt > maxAttempts) throw new Error(`recoveryOptions.attempt cannot exceed recoveryOptions.maxAttempts${suffix(prdId)}`);
-  return {
+  const option: RecoverySidecarRecoveryOption = {
     kind: 'compile-scope-context',
     action: compileAction,
     recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
@@ -330,7 +331,9 @@ function validateCompileScopeContextOption(obj: Record<string, unknown>, action:
     maxAttempts,
     source: requireCompileScopeContextSource(obj.source, prdId),
     failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
+    ...(obj.decompositionEvidence !== undefined ? { decompositionEvidence: requireDecompositionEvidence(obj.decompositionEvidence, prdId) } : {}),
   };
+  return option;
 }
 
 function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {
@@ -354,6 +357,14 @@ function requireCompileScopeContextFailureKind(value: unknown, prdId?: string): 
     return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.failureKind, value);
   } catch {
     throw new Error(`recoveryOptions.failureKind is invalid${suffix(prdId)}`);
+  }
+}
+
+function requireDecompositionEvidence(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['decompositionEvidence'] {
+  try {
+    return parseWithSchema(DecompositionFailureEvidenceSchema, value);
+  } catch {
+    throw new Error(`recoveryOptions.decompositionEvidence is invalid${suffix(prdId)}`);
   }
 }
 

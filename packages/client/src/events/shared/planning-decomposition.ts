@@ -9,6 +9,7 @@ export const PLANNING_DECOMPOSITION_MAX_UNITS = 128;
 export const PLANNING_DECOMPOSITION_MAX_DEPENDENCIES = 32;
 export const PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS = 64;
 export const PLANNING_DECOMPOSITION_MAX_SPLIT_ATTEMPTS = 8;
+export const PLANNING_DECOMPOSITION_MAX_COVERAGE_OMISSIONS = 10_000;
 
 const BoundedStringSchema = Type.String({ maxLength: PLANNING_DECOMPOSITION_MAX_STRING_LENGTH });
 const BoundedStringListSchema = Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_LIST_ITEMS });
@@ -53,7 +54,7 @@ export const PlanningDecompositionLimitsSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const PlanningUnitBudgetSchema = Type.Object({
-  maxRecursiveDepth: PositiveIntegerSchema,
+  maxRecursiveDepth: NonNegativeIntegerSchema,
   maxPromptSourceBytes: PositiveIntegerSchema,
   maxPromptBytes: PositiveIntegerSchema,
   maxObservedInputTokens: PositiveIntegerSchema,
@@ -102,6 +103,8 @@ export const PlanningUnresolvedCriterionSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const PlanningCoverageSummarySchema = Type.Object({
+  totalCriteria: Type.Optional(NonNegativeIntegerSchema),
+  omittedCriteriaCount: Type.Optional(Type.Integer({ minimum: 0, maximum: PLANNING_DECOMPOSITION_MAX_COVERAGE_OMISSIONS })),
   coveredCriteria: Type.Array(PlanningCriterionCoverageSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_CRITERIA }),
   unresolvedCriteria: Type.Array(PlanningUnresolvedCriterionSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA }),
 }, { additionalProperties: false });
@@ -131,10 +134,16 @@ export const PlanningScheduleBlockedPairSchema = Type.Object({
   reason: Type.Optional(BoundedStringSchema),
 }, { additionalProperties: false });
 
+export const PlanningScheduleWaitingReasonSchema = Type.Object({
+  unitId: BoundedStringSchema,
+  reasons: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_LIST_ITEMS }),
+}, { additionalProperties: false });
+
 export const PlanningScheduleDecisionSchema = Type.Object({
   readyUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
   runningUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
   waitingUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
+  waitingReasons: Type.Array(PlanningScheduleWaitingReasonSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
   selectedBatchUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
   parallelism: PositiveIntegerSchema,
   blockedPairs: Type.Array(PlanningScheduleBlockedPairSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS }),
@@ -158,6 +167,7 @@ export const PlanningDecompositionRiskEvidenceSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const PlanningSplitAttemptEvidenceSchema = Type.Object({
+  unitId: Type.Optional(BoundedStringSchema),
   attempt: PositiveIntegerSchema,
   reason: BoundedStringSchema,
   resultingUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
@@ -244,6 +254,7 @@ export type PlanningCoverageSummary = Static<typeof PlanningCoverageSummarySchem
 export type PlanningUnitConstraint = Static<typeof PlanningUnitConstraintSchema>;
 export type PlanningDecompositionUnitSummary = Static<typeof PlanningDecompositionUnitSummarySchema>;
 export type PlanningScheduleBlockedPair = Static<typeof PlanningScheduleBlockedPairSchema>;
+export type PlanningScheduleWaitingReason = Static<typeof PlanningScheduleWaitingReasonSchema>;
 export type PlanningScheduleDecision = Static<typeof PlanningScheduleDecisionSchema>;
 export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecompositionRiskEvidenceSchema>;
 export type PlanningSplitAttemptEvidence = Static<typeof PlanningSplitAttemptEvidenceSchema>;

@@ -187,6 +187,7 @@ export function compileScopeContextRecoveryOption(failure: CompileScopeContextFa
     maxAttempts: failure.recovery.maxAttempts,
     source: failure.source,
     failureKind: failure.failureKind,
+    ...(failure.decompositionEvidence ? { decompositionEvidence: failure.decompositionEvidence } : {}),
   };
 }
 

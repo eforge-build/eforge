@@ -11,6 +11,7 @@ import {
   PlanningDecompositionLimitsSchema,
   PlanningDecompositionUnitSummarySchema,
   PlanningScheduleBlockedPairSchema,
+  PlanningScheduleWaitingReasonSchema,
   PlanningSourceSliceSummarySchema,
   PlanningSplitAttemptEvidenceSchema,
   PlanningUnitConstraintSchema,
@@ -36,6 +37,7 @@ const observed = { promptSourceBytes: 1, promptBytes: 2, observedInputTokens: 3,
 const coverage = { coveredCriteria: [{ criterionId: 'AC-1', sourceHash: hash, coveredByUnitIds: ['unit-1'] }], unresolvedCriteria: [] };
 const unit = { unitId: 'unit-1', depth: 0, sourceSlices: [{ kind: 'prd', sourceHash: hash, criteriaIds: ['AC-1'], byteLength: 100 }], coverage, subsystemHints: ['engine'], dependencies: [], interfaceConstraints: [], sharedFileConstraints: [], budgets: budget, status: 'queued' };
 const evidence = { unitId: 'unit-1', depth: 0, budgets: budget, observed, assignedCriteriaIds: ['AC-1'], unresolvedCriteria: [], blockers: [], splitAttempts: [{ attempt: 1, reason: 'split', resultingUnitIds: ['unit-2'] }] };
+const maxDepthEvidence = { ...evidence, budgets: { ...budget, maxRecursiveDepth: 0 } };
 
 const events = [
   { type: 'planning:decomposition:start', limits },
@@ -45,7 +47,7 @@ const events = [
   { type: 'planning:decomposition:unit:completed', unit: { ...unit, status: 'completed' } },
   { type: 'planning:decomposition:unit:skipped', unitId: 'unit-1', reason: 'duplicate' },
   { type: 'planning:decomposition:unit:failed', unitId: 'unit-1', reason: 'exhausted', evidence },
-  { type: 'planning:decomposition:schedule', decision: { readyUnitIds: ['unit-1'], runningUnitIds: [], waitingUnitIds: [], selectedBatchUnitIds: ['unit-1'], parallelism: 2, blockedPairs: [] } },
+  { type: 'planning:decomposition:schedule', decision: { readyUnitIds: ['unit-1'], runningUnitIds: [], waitingUnitIds: [], waitingReasons: [], selectedBatchUnitIds: ['unit-1'], parallelism: 2, blockedPairs: [] } },
   { type: 'planning:decomposition:budget', limits, unitBudgets: [budget], observed },
   { type: 'planning:decomposition:compact-handoff', byteLength: 100, contentHash: hash, omittedUnitIds: [] },
   { type: 'planning:decomposition:synthesis:complete', unitCount: 1, coverage, artifactPaths: ['plans.md'] },
@@ -55,6 +57,16 @@ describe('planning decomposition event contracts', () => {
   it('accepts all decomposition event variants', () => {
     expect(events.map((event) => event.type)).toEqual([...PLANNING_DECOMPOSITION_EVENT_TYPES]);
     for (const event of events) expect(safeParseEforgeEvent({ timestamp, ...event }).success, event.type).toBe(true);
+  });
+
+  it('accepts bounded aggregate coverage metadata when criteria exceed inline entries', () => {
+    const largeCoverage = {
+      totalCriteria: 80,
+      omittedCriteriaCount: 16,
+      coveredCriteria: Array.from({ length: PLANNING_DECOMPOSITION_MAX_CRITERIA }, (_, index) => ({ criterionId: `AC-${index + 1}`, sourceHash: hash, coveredByUnitIds: ['unit-1'] })),
+      unresolvedCriteria: [],
+    };
+    expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:synthesis:complete', unitCount: 129, coverage: largeCoverage, artifactPaths: ['plans.md'] }).success).toBe(true);
   });
 
   it('rejects malformed bounds, statuses, source hashes, and missing required fields', () => {
@@ -102,7 +114,7 @@ describe('planning decomposition event contracts', () => {
     const result = safeParseEforgeEvent({
       timestamp,
       type: 'planning:decomposition:schedule',
-      decision: { readyUnitIds: ['unit-1', 'unit-2'], runningUnitIds: [], waitingUnitIds: [], selectedBatchUnitIds: ['unit-1', 'unit-2'], parallelism: 1, blockedPairs: [] },
+      decision: { readyUnitIds: ['unit-1', 'unit-2'], runningUnitIds: [], waitingUnitIds: [], waitingReasons: [], selectedBatchUnitIds: ['unit-1', 'unit-2'], parallelism: 1, blockedPairs: [] },
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.errors[0]?.path).toBe('/decision/selectedBatchUnitIds');
@@ -112,7 +124,7 @@ describe('planning decomposition event contracts', () => {
     const result = safeParseEforgeEvent({
       timestamp,
       type: 'planning:decomposition:schedule',
-      decision: { readyUnitIds: ['unit-2'], runningUnitIds: ['unit-1'], waitingUnitIds: [], selectedBatchUnitIds: ['unit-2'], parallelism: 1, blockedPairs: [] },
+      decision: { readyUnitIds: ['unit-2'], runningUnitIds: ['unit-1'], waitingUnitIds: [], waitingReasons: [], selectedBatchUnitIds: ['unit-2'], parallelism: 1, blockedPairs: [] },
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.errors[0]?.path).toBe('/decision/selectedBatchUnitIds');
@@ -137,6 +149,9 @@ describe('planning decomposition event contracts', () => {
     const option = { kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: false, reason: 'exhausted', attempted: true, attempt: 1, maxAttempts: 1, source: 'decomposition', failureKind: 'decomposition-exhausted', decompositionEvidence: evidence };
     expect(Value.Check(CompileScopeContextFailureSchema, failure)).toBe(true);
     expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, option)).toBe(true);
+    expect(Value.Check(DecompositionFailureEvidenceSchema, maxDepthEvidence)).toBe(true);
+    expect(Value.Check(CompileScopeContextFailureSchema, { ...failure, decompositionEvidence: maxDepthEvidence })).toBe(true);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, decompositionEvidence: maxDepthEvidence })).toBe(true);
     expect(Value.Check(DecompositionFailureEvidenceSchema, { ...evidence, splitAttempts: [{ attempt: 0, reason: 'bad', resultingUnitIds: [] }] })).toBe(false);
     expect(Value.Check(DecompositionFailureEvidenceSchema, { ...evidence, transcript: 'raw transcript' })).toBe(false);
     expect(safeParseEforgeEvent({ timestamp, type: 'planning:scope-context:failure', failure: { ...failure, decompositionEvidence: { ...evidence, rawSourceContent: 'raw source' } } }).success).toBe(false);
@@ -153,6 +168,7 @@ describe('planning decomposition event contracts', () => {
       PlanningUnresolvedCriterionSchema,
       PlanningUnitConstraintSchema,
       PlanningScheduleBlockedPairSchema,
+      PlanningScheduleWaitingReasonSchema,
       PlanningSplitAttemptEvidenceSchema,
       PLANNING_DECOMPOSITION_EVENT_TYPES,
       PLANNING_DECOMPOSITION_MAX_STRING_LENGTH,

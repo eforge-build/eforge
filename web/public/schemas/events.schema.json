@@ -5676,7 +5676,7 @@
                       ],
                       "properties": {
                         "maxRecursiveDepth": {
-                          "minimum": 1,
+                          "minimum": 0,
                           "type": "integer"
                         },
                         "maxPromptSourceBytes": {
@@ -5824,6 +5824,10 @@
                           "resultingUnitIds"
                         ],
                         "properties": {
+                          "unitId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
                           "attempt": {
                             "minimum": 1,
                             "type": "integer"
@@ -6300,6 +6304,15 @@
                         "unresolvedCriteria"
                       ],
                       "properties": {
+                        "totalCriteria": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "omittedCriteriaCount": {
+                          "minimum": 0,
+                          "maximum": 10000,
+                          "type": "integer"
+                        },
                         "coveredCriteria": {
                           "maxItems": 64,
                           "type": "array",
@@ -6432,7 +6445,7 @@
                       ],
                       "properties": {
                         "maxRecursiveDepth": {
-                          "minimum": 1,
+                          "minimum": 0,
                           "type": "integer"
                         },
                         "maxPromptSourceBytes": {
@@ -6733,6 +6746,15 @@
                         "unresolvedCriteria"
                       ],
                       "properties": {
+                        "totalCriteria": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "omittedCriteriaCount": {
+                          "minimum": 0,
+                          "maximum": 10000,
+                          "type": "integer"
+                        },
                         "coveredCriteria": {
                           "maxItems": 64,
                           "type": "array",
@@ -6865,7 +6887,7 @@
                       ],
                       "properties": {
                         "maxRecursiveDepth": {
-                          "minimum": 1,
+                          "minimum": 0,
                           "type": "integer"
                         },
                         "maxPromptSourceBytes": {
@@ -7083,6 +7105,15 @@
                         "unresolvedCriteria"
                       ],
                       "properties": {
+                        "totalCriteria": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "omittedCriteriaCount": {
+                          "minimum": 0,
+                          "maximum": 10000,
+                          "type": "integer"
+                        },
                         "coveredCriteria": {
                           "maxItems": 64,
                           "type": "array",
@@ -7215,7 +7246,7 @@
                       ],
                       "properties": {
                         "maxRecursiveDepth": {
-                          "minimum": 1,
+                          "minimum": 0,
                           "type": "integer"
                         },
                         "maxPromptSourceBytes": {
@@ -7361,7 +7392,7 @@
                   ],
                   "properties": {
                     "maxRecursiveDepth": {
-                      "minimum": 1,
+                      "minimum": 0,
                       "type": "integer"
                     },
                     "maxPromptSourceBytes": {
@@ -7509,6 +7540,10 @@
                       "resultingUnitIds"
                     ],
                     "properties": {
+                      "unitId": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
                       "attempt": {
                         "minimum": 1,
                         "type": "integer"
@@ -7603,6 +7638,7 @@
                 "readyUnitIds",
                 "runningUnitIds",
                 "waitingUnitIds",
+                "waitingReasons",
                 "selectedBatchUnitIds",
                 "parallelism",
                 "blockedPairs"
@@ -7630,6 +7666,32 @@
                   "items": {
                     "maxLength": 2000,
                     "type": "string"
+                  }
+                },
+                "waitingReasons": {
+                  "maxItems": 128,
+                  "type": "array",
+                  "items": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "unitId",
+                      "reasons"
+                    ],
+                    "properties": {
+                      "unitId": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "reasons": {
+                        "maxItems": 32,
+                        "type": "array",
+                        "items": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        }
+                      }
+                    }
                   }
                 },
                 "selectedBatchUnitIds": {
@@ -7767,7 +7829,7 @@
                 ],
                 "properties": {
                   "maxRecursiveDepth": {
-                    "minimum": 1,
+                    "minimum": 0,
                     "type": "integer"
                   },
                   "maxPromptSourceBytes": {
@@ -7928,6 +7990,15 @@
                 "unresolvedCriteria"
               ],
               "properties": {
+                "totalCriteria": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "omittedCriteriaCount": {
+                  "minimum": 0,
+                  "maximum": 10000,
+                  "type": "integer"
+                },
                 "coveredCriteria": {
                   "maxItems": 64,
                   "type": "array",
@@ -23480,7 +23551,7 @@
                                     ],
                                     "properties": {
                                       "maxRecursiveDepth": {
-                                        "minimum": 1,
+                                        "minimum": 0,
                                         "type": "integer"
                                       },
                                       "maxPromptSourceBytes": {
@@ -23628,6 +23699,10 @@
                                         "resultingUnitIds"
                                       ],
                                       "properties": {
+                                        "unitId": {
+                                          "maxLength": 2000,
+                                          "type": "string"
+                                        },
                                         "attempt": {
                                           "minimum": 1,
                                           "type": "integer"
@@ -24104,6 +24179,15 @@
                                       "unresolvedCriteria"
                                     ],
                                     "properties": {
+                                      "totalCriteria": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "omittedCriteriaCount": {
+                                        "minimum": 0,
+                                        "maximum": 10000,
+                                        "type": "integer"
+                                      },
                                       "coveredCriteria": {
                                         "maxItems": 64,
                                         "type": "array",
@@ -24236,7 +24320,7 @@
                                     ],
                                     "properties": {
                                       "maxRecursiveDepth": {
-                                        "minimum": 1,
+                                        "minimum": 0,
                                         "type": "integer"
                                       },
                                       "maxPromptSourceBytes": {
@@ -24537,6 +24621,15 @@
                                       "unresolvedCriteria"
                                     ],
                                     "properties": {
+                                      "totalCriteria": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "omittedCriteriaCount": {
+                                        "minimum": 0,
+                                        "maximum": 10000,
+                                        "type": "integer"
+                                      },
                                       "coveredCriteria": {
                                         "maxItems": 64,
                                         "type": "array",
@@ -24669,7 +24762,7 @@
                                     ],
                                     "properties": {
                                       "maxRecursiveDepth": {
-                                        "minimum": 1,
+                                        "minimum": 0,
                                         "type": "integer"
                                       },
                                       "maxPromptSourceBytes": {
@@ -24887,6 +24980,15 @@
                                       "unresolvedCriteria"
                                     ],
                                     "properties": {
+                                      "totalCriteria": {
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "omittedCriteriaCount": {
+                                        "minimum": 0,
+                                        "maximum": 10000,
+                                        "type": "integer"
+                                      },
                                       "coveredCriteria": {
                                         "maxItems": 64,
                                         "type": "array",
@@ -25019,7 +25121,7 @@
                                     ],
                                     "properties": {
                                       "maxRecursiveDepth": {
-                                        "minimum": 1,
+                                        "minimum": 0,
                                         "type": "integer"
                                       },
                                       "maxPromptSourceBytes": {
@@ -25165,7 +25267,7 @@
                                 ],
                                 "properties": {
                                   "maxRecursiveDepth": {
-                                    "minimum": 1,
+                                    "minimum": 0,
                                     "type": "integer"
                                   },
                                   "maxPromptSourceBytes": {
@@ -25313,6 +25415,10 @@
                                     "resultingUnitIds"
                                   ],
                                   "properties": {
+                                    "unitId": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
                                     "attempt": {
                                       "minimum": 1,
                                       "type": "integer"
@@ -25407,6 +25513,7 @@
                               "readyUnitIds",
                               "runningUnitIds",
                               "waitingUnitIds",
+                              "waitingReasons",
                               "selectedBatchUnitIds",
                               "parallelism",
                               "blockedPairs"
@@ -25434,6 +25541,32 @@
                                 "items": {
                                   "maxLength": 2000,
                                   "type": "string"
+                                }
+                              },
+                              "waitingReasons": {
+                                "maxItems": 128,
+                                "type": "array",
+                                "items": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "unitId",
+                                    "reasons"
+                                  ],
+                                  "properties": {
+                                    "unitId": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "reasons": {
+                                      "maxItems": 32,
+                                      "type": "array",
+                                      "items": {
+                                        "maxLength": 2000,
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
                                 }
                               },
                               "selectedBatchUnitIds": {
@@ -25571,7 +25704,7 @@
                               ],
                               "properties": {
                                 "maxRecursiveDepth": {
-                                  "minimum": 1,
+                                  "minimum": 0,
                                   "type": "integer"
                                 },
                                 "maxPromptSourceBytes": {
@@ -25732,6 +25865,15 @@
                               "unresolvedCriteria"
                             ],
                             "properties": {
+                              "totalCriteria": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "omittedCriteriaCount": {
+                                "minimum": 0,
+                                "maximum": 10000,
+                                "type": "integer"
+                              },
                               "coveredCriteria": {
                                 "maxItems": 64,
                                 "type": "array",

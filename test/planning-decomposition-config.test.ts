@@ -8,6 +8,7 @@ import {
   mergePartialConfigs,
   resolveConfig,
   resolvePlanningDecompositionLimits,
+  PLANNING_DECOMPOSITION_CONFIG_MAXIMA,
 } from '../packages/engine/src/config.js';
 
 const expectedDefaults = {
@@ -56,6 +57,12 @@ describe('planning decomposition compile config', () => {
       expect(configYamlSchema.safeParse({ compile: { [key]: 0 } }).success, `${key} rejects zero`).toBe(false);
       expect(configYamlSchema.safeParse({ compile: { [key]: -1 } }).success, `${key} rejects negative values`).toBe(false);
       expect(configYamlSchema.safeParse({ compile: { [key]: 1.5 } }).success, `${key} rejects fractions`).toBe(false);
+    }
+  });
+
+  it('rejects compile integers above operational maxima', () => {
+    for (const key of compileIntegerKeys) {
+      expect(configYamlSchema.safeParse({ compile: { [key]: PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key] + 1 } }).success, `${key} rejects oversized values`).toBe(false);
     }
   });
 
