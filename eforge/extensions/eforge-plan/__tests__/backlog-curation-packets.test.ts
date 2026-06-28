@@ -10,7 +10,9 @@ import {
   BACKLOG_CURATION_PACKET_MAX_BYTES,
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
   safeParseBacklogCurationMapReduceSourceBundle,
+  type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceGlobalContext,
+  type BacklogCurationMapReduceItemOutcome,
 } from '@eforge-build/client';
 import { buildBacklogCurationSource } from '../backlog-curation-source.js';
 import { buildBacklogCurationReducerInput, byteLength, computeBacklogCurationPacketSha256 } from '../backlog-curation-packets.js';
@@ -98,6 +100,94 @@ describe('backlog curation map/reduce packets', () => {
     expect(reducer.diagnostics.some((diagnostic) => diagnostic.code === 'reducer-input-global-context-truncated')).toBe(true);
   });
 
+  it('retains a late shipped terminal finding when lower-priority outcomes exceed the reducer cap', () => {
+    const outcomes = [...Array.from({ length: 180 }, (_, index) => findingOutcome(`low-${index}`, { verdict: 'still-needed', disposition: 'recheck' })), findingOutcome('late-shipped', { verdict: 'shipped', disposition: 'change' })];
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
+
+    expect(byteLength(reducer)).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    expect(reducer.outcomes.find((outcome) => outcome.itemId === 'late-shipped')).toMatchObject({ outcome: 'audited-finding', finding: { disposition: 'change', verdict: 'shipped' } });
+  });
+
+  it('retains a late superseded terminal finding when lower-priority outcomes exceed the reducer cap', () => {
+    const outcomes = [...Array.from({ length: 180 }, (_, index) => findingOutcome(`recheck-${index}`, { verdict: 'still-needed', disposition: 'recheck' })), findingOutcome('late-superseded', { verdict: 'superseded', disposition: 'change' })];
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
+
+    expect(byteLength(reducer)).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    expect(reducer.outcomes.find((outcome) => outcome.itemId === 'late-superseded')).toMatchObject({ outcome: 'audited-finding', finding: { disposition: 'change', verdict: 'superseded' } });
+  });
+
+  it('protects a late cache-hit terminal finding under reducer byte pressure', () => {
+    const terminal = { ...findingOutcome('late-cache-shipped', { verdict: 'shipped', disposition: 'change' }), outcome: 'cache-hit' as const };
+    const outcomes = [...Array.from({ length: 180 }, (_, index) => findingOutcome(`cache-low-${index}`, { verdict: 'still-needed', disposition: 'recheck' })), terminal];
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
+    const retainedIds = new Set(reducer.outcomes.map((outcome) => outcome.itemId));
+    const terminalDiagnostics = reducer.diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted');
+
+    expect(byteLength(reducer)).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    expect(retainedIds.has('late-cache-shipped') || terminalDiagnostics.some((diagnostic) => diagnostic.path === 'outcomes/late-cache-shipped/shipped')).toBe(true);
+  });
+
+  it('prioritizes protected terminal outcomes over lower-value outcomes under byte pressure', () => {
+    const lowerValue: BacklogCurationMapReduceItemOutcome[] = [
+      ...Array.from({ length: 120 }, (_, index) => findingOutcome(`partial-${index}`, { verdict: 'partial', disposition: 'recheck' })),
+      invalidOutcome('invalid-lower'),
+      failureOutcome('failure-lower'),
+      oversizedOutcome('oversized-lower'),
+    ];
+    const terminal = findingOutcome('terminal-priority', { verdict: 'shipped', disposition: 'change' });
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes([...lowerValue, terminal]), [...lowerValue, terminal]);
+
+    const retainedIds = new Set(reducer.outcomes.map((outcome) => outcome.itemId));
+
+    expect(byteLength(reducer)).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    expect(reducer.outcomes.length).toBeLessThan(lowerValue.length + 1);
+    expect(reducer.outcomes[0]).toMatchObject({ itemId: 'terminal-priority', finding: { verdict: 'shipped' } });
+    expect(retainedIds.has('terminal-priority')).toBe(true);
+    expect(lowerValue.some((outcome) => !retainedIds.has(outcome.itemId))).toBe(true);
+  });
+
+  it('keeps closure-critical fields on retained terminal findings after reducer compaction', () => {
+    const terminal = findingOutcome('compact-terminal', { verdict: 'superseded', disposition: 'change' });
+    const outcomes = [...Array.from({ length: 180 }, (_, index) => findingOutcome(`noise-${index}`, { verdict: 'still-needed', disposition: 'recheck' })), terminal];
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
+    const retained = reducer.outcomes.find((outcome) => outcome.itemId === 'compact-terminal') as Extract<BacklogCurationMapReduceItemOutcome, { finding: BacklogCurationMapReduceFinding }> | undefined;
+
+    expect(retained?.packetSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(retained?.bodySha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(retained?.finding).toMatchObject({ itemId: 'compact-terminal', disposition: 'change', verdict: 'superseded', closureEvidenceRoles: expect.arrayContaining(['replacement', 'product-surface']) });
+    expect(retained?.finding.summary.length).toBeGreaterThan(0);
+    expect(retained?.finding.rationale.length).toBeGreaterThan(0);
+    expect(retained?.finding.checkedPaths?.length).toBeGreaterThan(0);
+    expect(retained?.finding.citations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'product-surface' }),
+      expect.objectContaining({ kind: 'current-source', matchedBy: expect.arrayContaining(['replacement']) }),
+    ]));
+  });
+
+  it('emits named diagnostics when protected terminal findings cannot all fit', () => {
+    const outcomes = Array.from({ length: 60 }, (_, index) => findingOutcome(`terminal-${index}`, { verdict: index % 2 === 0 ? 'shipped' : 'superseded', disposition: 'change' }));
+
+    const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
+    const terminalDiagnostics = reducer.diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted');
+    const retainedIds = new Set(reducer.outcomes.map((outcome) => outcome.itemId));
+    const omitted = outcomes.filter((outcome) => !retainedIds.has(outcome.itemId));
+
+    expect(omitted.length).toBeGreaterThan(0);
+    expect(terminalDiagnostics.length).toBe(omitted.length);
+    for (const outcome of omitted) {
+      const verdict = outcome.outcome === 'audited-finding' ? outcome.finding.verdict : undefined;
+      expect(terminalDiagnostics).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining(`Protected terminal ${verdict} finding for ${outcome.itemId}`),
+        path: `outcomes/${outcome.itemId}/${verdict}`,
+      }));
+    }
+  });
+
   it('includes item preconditions with body and record hashes plus source fingerprint', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'precondition-item', status: 'candidate', body: '# Preconditions\n' });
@@ -123,3 +213,68 @@ describe('backlog curation map/reduce packets', () => {
     });
   });
 });
+
+const TEST_SHA = 'a'.repeat(64);
+const TEST_BODY_SHA = 'b'.repeat(64);
+
+function globalContextForOutcomes(outcomes: readonly BacklogCurationMapReduceItemOutcome[]): BacklogCurationMapReduceGlobalContext {
+  return {
+    schemaVersion: 1,
+    purpose: 'backlog-curation-map-reduce',
+    sourceFingerprint: TEST_SHA,
+    curationGuidance: ['Curate under byte caps.'],
+    caps: {},
+    itemCount: outcomes.length,
+    openItemIds: outcomes.map((outcome) => outcome.itemId),
+    roadmapSummaries: [],
+    dependencySummaries: [],
+    recommendationSummaries: [],
+    diagnostics: [],
+  };
+}
+
+function findingOutcome(itemId: string, options: { verdict: BacklogCurationMapReduceFinding['verdict']; disposition: BacklogCurationMapReduceFinding['disposition'] }): BacklogCurationMapReduceItemOutcome {
+  const finding: BacklogCurationMapReduceFinding = {
+    schemaVersion: 1,
+    itemId,
+    sourceFingerprint: TEST_SHA,
+    packetSha256: shaFor(`${itemId}:packet`),
+    bodySha256: TEST_BODY_SHA,
+    promptVersion: 'test-prompt',
+    runtimeIdentity: { provider: 'test', modelId: 'test-model' },
+    disposition: options.disposition,
+    verdict: options.verdict,
+    closureEvidenceRoles: options.verdict === 'superseded' ? ['replacement', 'product-surface', 'supporting'] : ['implementation', 'product-surface', 'supporting'],
+    checkedPaths: [{ path: `src/${itemId}.ts`, reason: 'current source checked ' + 'x'.repeat(220) }],
+    summary: `${itemId} summary. ${'s'.repeat(1_800)}`,
+    rationale: `${itemId} rationale. ${'r'.repeat(2_800)}`,
+    citations: options.verdict === 'superseded' ? [
+      ...Array.from({ length: 8 }, (_, index) => ({ kind: 'supporting' as const, source: 'current-source', confidence: 'medium', path: `test/${itemId}-${index}.test.ts`, excerpt: 'supporting '.repeat(80), matchedBy: ['supporting'] })),
+      { kind: 'product-surface', source: 'current-source', confidence: 'high', path: `docs/${itemId}.md`, excerpt: 'product surface '.repeat(80), matchedBy: ['product-surface'] },
+      { kind: 'current-source', source: 'current-source', confidence: 'high', path: `src/${itemId}-replacement.ts`, excerpt: 'replacement '.repeat(80), matchedBy: ['replacement'] },
+    ] : [
+      { kind: 'implementation', source: 'current-source', confidence: 'high', path: `src/${itemId}.ts`, excerpt: 'implementation '.repeat(80), matchedBy: ['implementation'] },
+      { kind: 'product-surface', source: 'current-source', confidence: 'high', path: `docs/${itemId}.md`, excerpt: 'product surface '.repeat(80), matchedBy: ['product-surface'] },
+      { kind: 'supporting', source: 'current-source', confidence: 'medium', path: `test/${itemId}.test.ts`, excerpt: 'supporting '.repeat(80), matchedBy: ['supporting'] },
+    ],
+    recommendationSignals: [{ source: 'recommendation', signal: 'Lower-value recommendation signal. '.repeat(20) }],
+    diagnostics: [{ code: 'finding-note', severity: 'info', message: 'diagnostic '.repeat(60) }],
+  };
+  return { schemaVersion: 1, outcome: 'audited-finding', itemId, sourceFingerprint: TEST_SHA, packetSha256: finding.packetSha256, bodySha256: finding.bodySha256, diagnostics: [], finding };
+}
+
+function invalidOutcome(itemId: string): BacklogCurationMapReduceItemOutcome {
+  return { schemaVersion: 1, outcome: 'invalid-finding', itemId, sourceFingerprint: TEST_SHA, packetSha256: shaFor(`${itemId}:packet`), bodySha256: TEST_BODY_SHA, diagnostics: [], validationErrors: ['invalid '.repeat(100)] };
+}
+
+function failureOutcome(itemId: string): BacklogCurationMapReduceItemOutcome {
+  return { schemaVersion: 1, outcome: 'item-agent-failure', itemId, sourceFingerprint: TEST_SHA, packetSha256: shaFor(`${itemId}:packet`), bodySha256: TEST_BODY_SHA, diagnostics: [], error: 'failure '.repeat(300) };
+}
+
+function oversizedOutcome(itemId: string): BacklogCurationMapReduceItemOutcome {
+  return { schemaVersion: 1, outcome: 'oversized-packet', itemId, sourceFingerprint: TEST_SHA, packetSha256: shaFor(`${itemId}:packet`), bodySha256: TEST_BODY_SHA, diagnostics: [], byteLength: BACKLOG_CURATION_PACKET_MAX_BYTES + 1, byteCap: BACKLOG_CURATION_PACKET_MAX_BYTES };
+}
+
+function shaFor(value: string): string {
+  return Buffer.from(value).toString('hex').padEnd(64, '0').slice(0, 64);
+}
