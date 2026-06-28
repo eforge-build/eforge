@@ -28,9 +28,10 @@ describe('backlog curation prompt evidence contract', () => {
     const prompt = await readFile(REDUCER_PROMPT_PATH, 'utf-8');
 
     expect(prompt).toContain('reducer-input-protected-terminal-omitted');
-    expect(prompt).toContain('reducer-input-protected-terminal-omitted-too-many');
-    expect(prompt).toMatch(/decision: "needs-input".*split guidance|split guidance.*decision: "needs-input"/s);
+    expect(prompt).not.toContain('reducer-input-protected-terminal-omitted-too-many');
+    expect(prompt).toMatch(/decision: "needs-input".*names every omitted item id and verdict|names every omitted item id and verdict.*decision: "needs-input"/s);
     expect(prompt).toMatch(/needsInput.*name every omitted item id and verdict/s);
+    expect(prompt).toMatch(/fully named/i);
   });
 
   it('compacts reducer prompt input while preserving protected terminal closure context and omission diagnostics', () => {
@@ -43,6 +44,7 @@ describe('backlog curation prompt evidence contract', () => {
       diagnostics: [
         { code: 'generic-diagnostic', severity: 'warning', message: 'generic '.repeat(100), path: 'generic' },
         { code: 'reducer-input-protected-terminal-omitted', severity: 'warning', message: 'Protected terminal shipped finding for terminal-item was omitted by reducer byte caps.', path: 'outcomes/terminal-item/shipped' },
+        { code: 'reducer-input-protected-terminal-omitted', severity: 'warning', message: 'Protected terminal superseded finding for terminal-item-2 was omitted by reducer byte caps.', path: 'outcomes/terminal-item-2/superseded' },
       ],
     };
 
@@ -51,7 +53,10 @@ describe('backlog curation prompt evidence contract', () => {
     const retained = compact.outcomes[0] as Extract<BacklogCurationMapReduceReducerInput['outcomes'][number], { finding: BacklogCurationMapReduceFinding }>;
 
     expect(Buffer.byteLength(resolved.variables.reducerInputJson, 'utf-8')).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
-    expect(compact.diagnostics[0]).toMatchObject({ code: 'reducer-input-protected-terminal-omitted', path: 'outcomes/terminal-item/shipped' });
+    expect(compact.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'reducer-input-protected-terminal-omitted', message: 'Protected terminal shipped finding for terminal-item was omitted by reducer byte caps.', path: 'outcomes/terminal-item/shipped' }),
+      expect.objectContaining({ code: 'reducer-input-protected-terminal-omitted', message: 'Protected terminal superseded finding for terminal-item-2 was omitted by reducer byte caps.', path: 'outcomes/terminal-item-2/superseded' }),
+    ]));
     expect(retained.finding).toMatchObject({ verdict: 'shipped', closureEvidenceRoles: expect.arrayContaining(['implementation', 'product-surface']) });
     expect(retained.finding.checkedPaths?.[0]?.path).toBe('src/terminal-item.ts');
     expect(retained.finding.citations.map((citation) => citation.kind)).toEqual(expect.arrayContaining(['implementation', 'product-surface']));

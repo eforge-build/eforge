@@ -224,40 +224,44 @@ describe('backlog curation map/reduce runner', () => {
     }
   });
 
-  it('fails closed when aggregate protected-terminal omission diagnostics cannot name every item', async () => {
+  it('derives named needs-input from full outcomes when legacy aggregate omission diagnostics appear', async () => {
     const harness = new MapReduceHarness();
     const result = await runBacklogCurationMapReduceTask(baseOptions({
       harness,
       providerHooks: {
-        readBacklogCurationItemAuditCache: async () => ({ hit: false }),
+        readBacklogCurationItemAuditCache: async (input) => ({ hit: true, finding: terminalAwareFinding(String(input.itemId), 'shipped') }),
         buildBacklogCurationReducerInput: (globalContext) => ({
           schemaVersion: 1,
           sourceFingerprint: globalContext.sourceFingerprint,
           globalContext,
           outcomes: [],
-          diagnostics: [{ code: 'reducer-input-protected-terminal-omitted-too-many', severity: 'warning', message: 'Reducer input omitted too many protected terminal findings to name under byte caps.', path: 'outcomes/protected-terminal-omissions-too-many' }],
+          diagnostics: [{ code: 'reducer-input-protected-terminal-omitted-too-many', severity: 'warning', message: 'Legacy aggregate omission diagnostic.', path: 'outcomes/protected-terminal-omissions-too-many' }],
         }),
       },
     }));
 
-    expect(result).toMatchObject({ decision: 'needs-input' });
-    expect(JSON.stringify(result)).toContain('without complete item names');
+    expect(JSON.stringify(result)).toContain('item-1');
+    expect(JSON.stringify(result)).toContain('shipped');
+    expect(JSON.stringify(result)).not.toContain('without complete item names');
   });
 
-  it('fails closed with top-level needs-input when omitted terminal diagnostics have no draft rows to append', async () => {
+  it('fails closed with top-level needs-input naming all omitted terminal candidates when no draft rows can be appended', async () => {
     const harness = new MapReduceHarness({ reducerResult: { summary: 'No draft.', assumptionsOpenQuestions: [], decision: 'draft', rationale: 'Missing backlog curation draft.' } });
-    const sourceBundle = multiPacketBundle(40);
+    const sourceBundle = multiPacketBundle(60);
     const result = await runBacklogCurationMapReduceTask(baseOptions({
       harness,
       sourceBundle,
       providerHooks: mapReduceProviderHooksForCachedFindings((itemId) => terminalAwareFinding(itemId, Number(itemId.replace('item-', '')) % 2 === 0 ? 'shipped' : 'superseded')),
     }));
 
-    const omission = terminalOmissionDiagnosticsForTest(harness.reducerInputs.at(0)?.diagnostics)[0];
-    expect(omission).toBeDefined();
+    const omissions = terminalOmissionDiagnosticsForTest(harness.reducerInputs.at(0)?.diagnostics);
+    const resultText = JSON.stringify(result);
+    expect(omissions.length).toBeGreaterThan(12);
     expect(result).toMatchObject({ decision: 'needs-input' });
-    expect(JSON.stringify(result)).toContain(omission!.itemId);
-    expect(JSON.stringify(result)).toContain(omission!.verdict);
+    for (const omission of omissions) {
+      expect(resultText).toContain(omission.itemId);
+      expect(resultText).toContain(omission.verdict);
+    }
   });
 
   it('cancels active item audits without starting queued work or invoking the reducer', async () => {
@@ -474,7 +478,15 @@ function multiPacketBundle(count: number): BacklogCurationMapReduceSourceBundle 
 function terminalOmissionDiagnosticsForTest(diagnostics: unknown): Array<{ itemId: string; verdict: 'shipped' | 'superseded' }> {
   if (!Array.isArray(diagnostics)) return [];
   return diagnostics.flatMap((entry) => {
-    if (!isRecordValue(entry) || entry.code !== 'reducer-input-protected-terminal-omitted' || typeof entry.path !== 'string') return [];
+    if (!isRecordValue(entry) || entry.code !== 'reducer-input-protected-terminal-omitted') return [];
+    if (typeof entry.message === 'string') {
+      const fromMessage = (entry.message.match(/[A-Za-z0-9_.:-]+:(?:shipped|superseded)/g) ?? []).map((match) => {
+        const separator = match.lastIndexOf(':');
+        return { itemId: match.slice(0, separator), verdict: match.slice(separator + 1) as 'shipped' | 'superseded' };
+      });
+      if (fromMessage.length > 0) return fromMessage;
+    }
+    if (typeof entry.path !== 'string') return [];
     const parts = entry.path.split('/');
     const verdict = parts.at(-1);
     const itemId = parts.length >= 3 ? parts.slice(1, -1).join('/') : '';

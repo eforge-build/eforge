@@ -9,6 +9,7 @@ import {
   BACKLOG_CURATION_HISTORICAL_HINTS_PER_ITEM_MAX,
   BACKLOG_CURATION_PACKET_MAX_BYTES,
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
+  safeParseBacklogCurationMapReduceReducerInput,
   safeParseBacklogCurationMapReduceSourceBundle,
   type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceGlobalContext,
@@ -169,22 +170,21 @@ describe('backlog curation map/reduce packets', () => {
     ]));
   });
 
-  it('emits named diagnostics when protected terminal findings cannot all fit', () => {
-    const outcomes = Array.from({ length: 60 }, (_, index) => findingOutcome(`terminal-${index}`, { verdict: index % 2 === 0 ? 'shipped' : 'superseded', disposition: 'change' }));
+  it('emits schema-valid named diagnostic chunks when more than 40 protected terminal findings cannot all fit', () => {
+    const outcomes = Array.from({ length: 120 }, (_, index) => findingOutcome(`terminal-${index}`, { verdict: index % 2 === 0 ? 'shipped' : 'superseded', disposition: 'change' }));
 
     const reducer = buildBacklogCurationReducerInput(globalContextForOutcomes(outcomes), outcomes);
     const terminalDiagnostics = reducer.diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted');
     const retainedIds = new Set(reducer.outcomes.map((outcome) => outcome.itemId));
     const omitted = outcomes.filter((outcome) => !retainedIds.has(outcome.itemId));
+    const diagnosticText = terminalDiagnostics.map((diagnostic) => diagnostic.message ?? '').join('\n');
 
-    expect(omitted.length).toBeGreaterThan(0);
-    expect(terminalDiagnostics.length).toBe(omitted.length);
+    expect(omitted.length).toBeGreaterThan(40);
+    expect(reducer.diagnostics.length).toBeLessThanOrEqual(40);
+    expect(safeParseBacklogCurationMapReduceReducerInput(reducer).success).toBe(true);
     for (const outcome of omitted) {
       const verdict = outcome.outcome === 'audited-finding' ? outcome.finding.verdict : undefined;
-      expect(terminalDiagnostics).toContainEqual(expect.objectContaining({
-        message: expect.stringContaining(`Protected terminal ${verdict} finding for ${outcome.itemId}`),
-        path: `outcomes/${outcome.itemId}/${verdict}`,
-      }));
+      expect(diagnosticText).toContain(`${outcome.itemId}:${verdict}`);
     }
   });
 

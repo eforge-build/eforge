@@ -364,13 +364,13 @@ function compactRecommendationSignals(value: unknown): unknown[] {
 function compactDiagnostics(value: unknown, maxItems: number): unknown[] {
   if (!Array.isArray(value)) return [];
   const diagnostics = value.filter(isRecord);
-  const terminalOmissions = diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted' || diagnostic.code === 'reducer-input-protected-terminal-omitted-too-many');
-  const others = diagnostics.filter((diagnostic) => diagnostic.code !== 'reducer-input-protected-terminal-omitted' && diagnostic.code !== 'reducer-input-protected-terminal-omitted-too-many');
-  return [...terminalOmissions, ...others].slice(0, maxItems).map((diagnostic) => ({
+  const terminalOmissions = diagnostics.filter((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted');
+  const others = diagnostics.filter((diagnostic) => diagnostic.code !== 'reducer-input-protected-terminal-omitted').slice(0, maxItems);
+  return [...terminalOmissions, ...others].map((diagnostic) => ({
     code: diagnostic.code,
     severity: diagnostic.severity,
-    message: typeof diagnostic.message === 'string' ? truncateText(diagnostic.message, 220) : diagnostic.message,
-    path: typeof diagnostic.path === 'string' ? truncateText(diagnostic.path, 180) : diagnostic.path,
+    message: typeof diagnostic.message === 'string' && diagnostic.code !== 'reducer-input-protected-terminal-omitted' ? truncateText(diagnostic.message, 220) : diagnostic.message,
+    path: typeof diagnostic.path === 'string' && diagnostic.code !== 'reducer-input-protected-terminal-omitted' ? truncateText(diagnostic.path, 180) : diagnostic.path,
   }));
 }
 

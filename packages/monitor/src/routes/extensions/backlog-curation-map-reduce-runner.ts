@@ -137,7 +137,7 @@ export async function runBacklogCurationMapReduceTask(options: BacklogCurationMa
   const reducerInput = buildReducerInput(options, bundle, outcomes);
   await emitActivity(options, 'Running backlog curation reducer');
   await emitActivity(options, 'Validating curation draft');
-  return await runReducer(options, reducerInput);
+  return await runReducer(options, reducerInput, outcomes);
 }
 
 type BacklogCurationProgressItem = ExtensionAgentTaskBacklogCurationProgress['items'][number];
@@ -294,18 +294,19 @@ function buildReducerInput(options: BacklogCurationMapReduceRunnerOptions, bundl
   return parsed.data;
 }
 
-async function runReducer(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput): Promise<EforgePlanPlanningDraftResult> {
-  const first = await runReducerAttempt(options, reducerInput, undefined, `${options.taskId}:reducer`);
+async function runReducer(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput, sourceOutcomes: readonly BacklogCurationMapReduceItemOutcome[]): Promise<EforgePlanPlanningDraftResult> {
+  const first = await runReducerAttempt(options, reducerInput, sourceOutcomes, undefined, `${options.taskId}:reducer`);
   if (first.errors.length === 0) return first.result;
   throwIfAborted(options.abortController.signal);
   const repairErrors = boundValidationErrors(first.errors);
   await emitActivity(options, 'Running reducer repair attempt');
-  const second = await runReducerAttempt(options, reducerInput, repairErrors, `${options.taskId}:reducer:repair`);
+  const second = await runReducerAttempt(options, reducerInput, sourceOutcomes, repairErrors, `${options.taskId}:reducer:repair`);
   if (second.errors.length === 0) return second.result;
-  return boundedNeedsInputPlanningResult([...terminalOmissionMessages(reducerInput), ...repairErrors, ...second.errors], 'Reducer repair submission failed validation.');
+  const omissions = terminalOmissionsForVisibility(reducerInput, sourceOutcomes);
+  return omissionNeedsInputPlanningResult(omissions, [...repairErrors, ...second.errors], 'Reducer repair submission failed validation.');
 }
 
-async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput, validationErrors: string[] | undefined, taskId: string): Promise<{ result: EforgePlanPlanningDraftResult; errors: string[] }> {
+async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput, sourceOutcomes: readonly BacklogCurationMapReduceItemOutcome[], validationErrors: string[] | undefined, taskId: string): Promise<{ result: EforgePlanPlanningDraftResult; errors: string[] }> {
   let result: EforgePlanPlanningDraftResult;
   try {
     const rawResult = await runRegisteredContributionTask({
@@ -317,11 +318,12 @@ async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions,
       taskId,
       stage: validationErrors === undefined ? 'extension-agent-task:reducer' : 'extension-agent-task:reducer-repair',
     });
-    result = ensureTerminalOmissionVisibility(parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(rawResult))), reducerInput);
+    result = ensureTerminalOmissionVisibility(parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(rawResult))), reducerInput, sourceOutcomes);
   } catch (err) {
     if (options.abortController.signal.aborted) throwIfAborted(options.abortController.signal);
     const message = errorMessage(err);
-    return { result: boundedNeedsInputPlanningResult([...terminalOmissionMessages(reducerInput), message], 'Reducer submission failed validation.'), errors: [message] };
+    const omissions = terminalOmissionsForVisibility(reducerInput, sourceOutcomes);
+    return { result: omissionNeedsInputPlanningResult(omissions, [message], 'Reducer submission failed validation.'), errors: [message] };
   }
 
   await emitActivity(options, validationErrors === undefined ? 'Validating reducer draft' : 'Validating repaired reducer draft');
@@ -332,23 +334,22 @@ async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions,
   } catch (err) {
     if (options.abortController.signal.aborted) throwIfAborted(options.abortController.signal);
     const message = errorMessage(err);
-    return { result: boundedNeedsInputPlanningResult([...terminalOmissionMessages(reducerInput), message], 'Reducer submission failed validation.'), errors: [message] };
+    const omissions = terminalOmissionsForVisibility(reducerInput, sourceOutcomes);
+    return { result: omissionNeedsInputPlanningResult(omissions, [message], 'Reducer submission failed validation.'), errors: [message] };
   }
 }
 
-// --- eforge:region plan-01-terminal-curation-byte-cap ---
-function ensureTerminalOmissionVisibility(result: EforgePlanPlanningDraftResult, reducerInput: BacklogCurationMapReduceReducerInput): EforgePlanPlanningDraftResult {
-  const omissions = terminalOmissionsFromReducerInput(reducerInput);
-  const messages = terminalOmissionMessages(reducerInput);
-  if (hasAggregateTerminalOmission(reducerInput)) return boundedNeedsInputPlanningResult(messages, 'Reducer input omitted protected terminal findings without complete item names.');
+// --- eforge:region backlog-curation-terminal-omissions ---
+function ensureTerminalOmissionVisibility(result: EforgePlanPlanningDraftResult, reducerInput: BacklogCurationMapReduceReducerInput, sourceOutcomes: readonly BacklogCurationMapReduceItemOutcome[]): EforgePlanPlanningDraftResult {
+  const omissions = terminalOmissionsForVisibility(reducerInput, sourceOutcomes);
+  const messages = chunkTerminalOmissionMessages(omissions);
   if (omissions.length === 0) return result;
   const draft = (result as { backlogCurationDraft?: { needsInput?: unknown[] } }).backlogCurationDraft;
-  if (draft === undefined || !Array.isArray(draft.needsInput)) return boundedNeedsInputPlanningResult(messages, 'Reducer input omitted protected terminal findings.');
+  if (draft === undefined || !Array.isArray(draft.needsInput)) return omissionNeedsInputPlanningResult(omissions, [], 'Reducer input omitted protected terminal findings.');
   const next = JSON.parse(JSON.stringify(result)) as EforgePlanPlanningDraftResult & { backlogCurationDraft: { needsInput: Array<Record<string, unknown>> }; assumptionsOpenQuestions: string[] };
   const existingKeys = new Set(next.backlogCurationDraft.needsInput.map((entry) => `${String(entry.id ?? '')}:${String(entry.reason ?? '')}`));
   for (const omission of omissions) {
-    const reason = `Protected terminal ${omission.verdict} finding omitted by reducer byte cap; split curation or rerun a smaller selection before applying closures.`;
-    const key = `${omission.itemId}:${reason}`;
+    const reason = `Protected terminal ${omission.verdict} finding omitted by reducer byte cap; split curation or rerun a smaller selection before applying closures.`, key = `${omission.itemId}:${reason}`;
     if (existingKeys.has(key)) continue;
     existingKeys.add(key);
     next.backlogCurationDraft.needsInput.push({ kind: 'item', id: omission.itemId, question: `Review omitted ${omission.verdict} terminal curation candidate for ${omission.itemId}.`, reason });
@@ -357,14 +358,34 @@ function ensureTerminalOmissionVisibility(result: EforgePlanPlanningDraftResult,
   return parseEforgePlanPlanningDraftResult(next);
 }
 
-function terminalOmissionMessages(reducerInput: BacklogCurationMapReduceReducerInput): string[] {
-  const named = terminalOmissionsFromReducerInput(reducerInput).map((omission) => `Protected terminal ${omission.verdict} finding for ${omission.itemId} was omitted by reducer byte caps; split curation or review before applying terminal closures.`);
-  const aggregate = hasAggregateTerminalOmission(reducerInput) ? ['Protected terminal findings were omitted by reducer byte caps without complete item names; split curation or rerun a smaller selection before applying terminal closures.'] : [];
-  return [...aggregate, ...named];
+function omissionNeedsInputPlanningResult(omissions: readonly { itemId: string; verdict: 'shipped' | 'superseded' }[], validationErrors: string[], rationale: string): EforgePlanPlanningDraftResult {
+  if (omissions.length === 0) return boundedNeedsInputPlanningResult(validationErrors, rationale);
+  const omissionMessages = chunkTerminalOmissionMessages(omissions), boundedErrors = validationErrors.length > 0 ? boundValidationErrors(validationErrors) : [], assumptionsOpenQuestions = [...omissionMessages, ...boundedErrors];
+  return { summary: 'Backlog curation reducer needs input before a safe draft can be produced.', assumptionsOpenQuestions, decision: 'needs-input', clarificationQuestions: [{ question: 'Review omitted protected terminal curation candidates before applying terminal closures.', why: omissionMessages[0] ?? 'Reducer byte caps omitted protected terminal findings.' }], rationale: `${rationale} ${omissionMessages[0] ?? 'Protected terminal findings were omitted by reducer byte caps.'}` };
 }
 
-function hasAggregateTerminalOmission(reducerInput: BacklogCurationMapReduceReducerInput): boolean {
-  return reducerInput.diagnostics.some((diagnostic) => diagnostic.code === 'reducer-input-protected-terminal-omitted-too-many');
+function chunkTerminalOmissionMessages(omissions: readonly { itemId: string; verdict: 'shipped' | 'superseded' }[]): string[] {
+  const prefix = 'Protected terminal findings omitted by reducer byte caps; split curation or review before applying terminal closures: ';
+  const chunks: string[] = [];
+  let names: string[] = [];
+  for (const omission of omissions) {
+    const candidateName = `${omission.itemId}:${omission.verdict}`;
+    const candidateNames = [...names, candidateName];
+    if (`${prefix}${candidateNames.join(', ')}`.length <= 1_800) names = candidateNames;
+    else {
+      if (names.length > 0) chunks.push(`${prefix}${names.join(', ')}`);
+      names = [candidateName];
+    }
+  }
+  if (names.length > 0) chunks.push(`${prefix}${names.join(', ')}`);
+  return chunks;
+}
+
+function terminalOmissionsForVisibility(reducerInput: BacklogCurationMapReduceReducerInput, sourceOutcomes: readonly BacklogCurationMapReduceItemOutcome[]): Array<{ itemId: string; verdict: 'shipped' | 'superseded' }> {
+  const retained = new Set(reducerInput.outcomes.map((outcome) => outcome.itemId));
+  const omissions = [...terminalOmissionsFromReducerInput(reducerInput), ...sourceOutcomes.flatMap((outcome) => protectedTerminalOmissionFromOutcome(outcome, retained) ?? [])];
+  const byKey = new Map(omissions.map((omission) => [`${omission.itemId}:${omission.verdict}`, omission]));
+  return [...byKey.values()].sort((left, right) => left.itemId.localeCompare(right.itemId) || left.verdict.localeCompare(right.verdict));
 }
 
 function terminalOmissionsFromReducerInput(reducerInput: BacklogCurationMapReduceReducerInput): Array<{ itemId: string; verdict: 'shipped' | 'superseded' }> {
@@ -372,22 +393,34 @@ function terminalOmissionsFromReducerInput(reducerInput: BacklogCurationMapReduc
     if (diagnostic.code !== 'reducer-input-protected-terminal-omitted') return [];
     const fromPath = parseTerminalOmissionPath(diagnostic.path);
     if (fromPath !== undefined) return [fromPath];
+    const fromChunk = parseTerminalOmissionMessage(diagnostic.message);
+    if (fromChunk.length > 0) return fromChunk;
     const message = diagnostic.message ?? '';
     const verdict = message.includes('superseded') ? 'superseded' : message.includes('shipped') ? 'shipped' : undefined;
-    const itemId = /(?:for|candidate)\s+([A-Za-z0-9_.:\-]+)/.exec(message)?.[1];
+    const itemId = /(?:for|candidate:?|:)\s+([A-Za-z0-9_.:\-]+)/.exec(message)?.[1];
     return verdict !== undefined && itemId !== undefined ? [{ itemId, verdict }] : [];
   });
 }
 
-function parseTerminalOmissionPath(path: string | undefined): { itemId: string; verdict: 'shipped' | 'superseded' } | undefined {
-  const parts = path?.split('/') ?? [];
-  const verdict = parts.at(-1);
-  const itemId = parts.length >= 3 ? parts.slice(1, -1).join('/') : undefined;
-  if ((verdict === 'shipped' || verdict === 'superseded') && itemId !== undefined && itemId.length > 0) return { itemId, verdict };
-  return undefined;
+function parseTerminalOmissionMessage(message: string | undefined): Array<{ itemId: string; verdict: 'shipped' | 'superseded' }> {
+  return (message?.match(/[A-Za-z0-9_.:-]+:(?:shipped|superseded)/g) ?? []).flatMap((entry) => {
+    const separator = entry.lastIndexOf(':'), itemId = entry.slice(0, separator), verdict = entry.slice(separator + 1);
+    return verdict === 'shipped' || verdict === 'superseded' ? [{ itemId, verdict }] : [];
+  });
 }
 
-// --- eforge:endregion plan-01-terminal-curation-byte-cap ---
+function protectedTerminalOmissionFromOutcome(outcome: BacklogCurationMapReduceItemOutcome, retained: Set<string>): { itemId: string; verdict: 'shipped' | 'superseded' } | undefined {
+  if (retained.has(outcome.itemId) || (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding')) return undefined;
+  const verdict = outcome.finding.verdict;
+  return outcome.finding.disposition === 'change' && (verdict === 'shipped' || verdict === 'superseded') ? { itemId: outcome.itemId, verdict } : undefined;
+}
+
+function parseTerminalOmissionPath(path: string | undefined): { itemId: string; verdict: 'shipped' | 'superseded' } | undefined {
+  const parts = path?.split('/') ?? [], verdict = parts.at(-1), itemId = parts.length >= 3 ? parts.slice(1, -1).join('/') : undefined;
+  return (verdict === 'shipped' || verdict === 'superseded') && itemId !== undefined && itemId.length > 0 ? { itemId, verdict } : undefined;
+}
+
+// --- eforge:endregion backlog-curation-terminal-omissions ---
 
 async function validateReducerResult(options: BacklogCurationMapReduceRunnerOptions, result: EforgePlanPlanningDraftResult): Promise<string[] | undefined> {
   const hook = options.providerHooks.validateBacklogCurationPlanningDraftResult;

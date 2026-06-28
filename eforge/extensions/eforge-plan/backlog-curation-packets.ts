@@ -112,18 +112,15 @@ function shrinkReducerGlobalContext(
   }
 }
 
-// --- eforge:region plan-01-terminal-curation-byte-cap ---
-interface PrioritizedReducerOutcome {
-  outcome: BacklogCurationMapReduceItemOutcome;
-  originalIndex: number;
-  priority: number;
-}
+// --- eforge:region backlog-curation-terminal-omissions ---
+interface PrioritizedReducerOutcome { outcome: BacklogCurationMapReduceItemOutcome; originalIndex: number; priority: number }
 
 const PROTECTED_TERMINAL_OMITTED_CODE = 'reducer-input-protected-terminal-omitted' as const;
-const PROTECTED_TERMINAL_OMITTED_TOO_MANY_CODE = 'reducer-input-protected-terminal-omitted-too-many' as const;
-const REDUCER_DIAGNOSTICS_MAX = 40;
+const REDUCER_DIAGNOSTICS_MAX = 40, REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH = 800;
 
 type TerminalVerdict = 'shipped' | 'superseded';
+
+interface NamedTerminalOmission { itemId: string; verdict: TerminalVerdict }
 
 function selectReducerOutcomesUnderCap(
   reducer: BacklogCurationMapReduceReducerInput,
@@ -138,9 +135,9 @@ function selectReducerOutcomesUnderCap(
   const maxAttempts = prioritized.length + 2;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     resetTerminalOmissionDiagnostics(diagnostics);
-    diagnostics.push(...terminalOmissionDiagnostics(prioritized, omittedTerminals));
+    diagnostics.push(...terminalOmissionDiagnostics(prioritized, omittedTerminals, REDUCER_DIAGNOSTICS_MAX - diagnostics.length));
     const selectedIndexes = fitPrioritizedOutcomes(reducer, prioritized);
-    if (!terminalOmissionDiagnosticsFit(reducer, diagnostics, prioritized)) break;
+    if (!terminalOmissionDiagnosticsFit(reducer, prioritized, omittedTerminals)) break;
     const nextOmittedTerminals = omittedProtectedTerminalKeys(prioritized, selectedIndexes);
     if (setsEqual(omittedTerminals, nextOmittedTerminals)) break;
     omittedTerminals = nextOmittedTerminals;
@@ -268,42 +265,58 @@ function omittedProtectedTerminalKeys(prioritized: readonly PrioritizedReducerOu
   return new Set(prioritized.filter((entry) => !selectedIndexes.has(entry.originalIndex) && isProtectedTerminalOutcome(entry.outcome)).map(terminalKey));
 }
 
-function terminalOmissionDiagnostics(prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>): BacklogCurationMapReduceDiagnostic[] {
+function terminalOmissionDiagnostics(prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>, availableSlots: number): BacklogCurationMapReduceDiagnostic[] {
+  const omissions = namedTerminalOmissions(prioritized, omitted);
+  if (omissions.length === 0) return [];
+  const chunks = chunkTerminalOmissionNames(omissions, availableSlots);
+  if (chunks === undefined) throwCannotFitTerminalOmissions(omissions);
+  return chunks.map((chunk, index) => ({ code: PROTECTED_TERMINAL_OMITTED_CODE, severity: 'warning' as const, message: `Protected terminal findings omitted by reducer byte caps: ${chunk.join(', ')}.`, path: `outcomes/protected-terminal-omissions/${index + 1}` }));
+}
+
+function namedTerminalOmissions(prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>): NamedTerminalOmission[] {
   return prioritized.flatMap((entry) => {
     const outcome = entry.outcome;
     if (!omitted.has(terminalKey(entry)) || (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding')) return [];
     const verdict = outcome.finding.verdict;
     if (outcome.finding.disposition !== 'change' || !isTerminalVerdict(verdict)) return [];
-    return [{
-      code: PROTECTED_TERMINAL_OMITTED_CODE,
-      severity: 'warning' as const,
-      message: `Protected terminal ${verdict} finding for ${outcome.itemId} was omitted by the reducer byte cap; split curation or raise focused needs-input before applying closures.`,
-      path: `outcomes/${outcome.itemId}/${verdict}`,
-    }];
+    return [{ itemId: outcome.itemId, verdict }];
   });
 }
 
-function terminalOmissionDiagnosticsFit(reducer: BacklogCurationMapReduceReducerInput, diagnostics: BacklogCurationMapReduceDiagnostic[], prioritized: readonly PrioritizedReducerOutcome[]): boolean {
-  if (byteLength(reducer) <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES && diagnostics.length <= REDUCER_DIAGNOSTICS_MAX) return true;
-  const omittedCount = diagnostics.filter((diagnostic) => diagnostic.code === PROTECTED_TERMINAL_OMITTED_CODE).length;
-  resetTerminalOmissionDiagnostics(diagnostics);
-  diagnostics.push({
-    code: PROTECTED_TERMINAL_OMITTED_TOO_MANY_CODE,
-    severity: 'warning',
-    message: `Reducer input omitted ${omittedCount} protected terminal findings, but naming each omitted item exceeded the byte cap; split curation before applying terminal closures.`,
-    path: 'outcomes/protected-terminal-omissions-too-many',
-  });
-  fitPrioritizedOutcomes(reducer, prioritized);
-  return false;
+function chunkTerminalOmissionNames(omissions: readonly NamedTerminalOmission[], availableSlots: number): string[][] | undefined {
+  if (availableSlots <= 0) return undefined;
+  const prefix = 'Protected terminal findings omitted by reducer byte caps: ';
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  for (const omission of omissions) {
+    const name = `${omission.itemId}:${omission.verdict}`;
+    const candidate = [...current, name];
+    if (`${prefix}${candidate.join(', ')}.`.length <= REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH) current = candidate;
+    else {
+      if (current.length === 0 || chunks.length >= availableSlots) return undefined;
+      chunks.push(current);
+      current = [name];
+      if (`${prefix}${name}.`.length > REDUCER_DIAGNOSTIC_MESSAGE_MAX_LENGTH) return undefined;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks.length <= availableSlots ? chunks : undefined;
 }
 
-function terminalKey(entry: PrioritizedReducerOutcome): string {
-  return `${entry.originalIndex}:${entry.outcome.itemId}`;
+function terminalOmissionDiagnosticsFit(reducer: BacklogCurationMapReduceReducerInput, prioritized: readonly PrioritizedReducerOutcome[], omitted: Set<string>): boolean {
+  if (byteLength(reducer) <= BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) return true;
+  throwCannotFitTerminalOmissions(namedTerminalOmissions(prioritized, omitted));
 }
+
+function throwCannotFitTerminalOmissions(omissions: readonly NamedTerminalOmission[]): never {
+  throw new Error(`Reducer input cannot fit named protected terminal omissions under ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES} bytes; omitted candidates: ${omissions.map((omission) => `${omission.itemId}:${omission.verdict}`).join(', ')}.`);
+}
+
+function terminalKey(entry: PrioritizedReducerOutcome): string { return `${entry.originalIndex}:${entry.outcome.itemId}`; }
 
 function resetTerminalOmissionDiagnostics(diagnostics: BacklogCurationMapReduceDiagnostic[]): void {
   for (let index = diagnostics.length - 1; index >= 0; index -= 1) {
-    if (diagnostics[index]?.code === PROTECTED_TERMINAL_OMITTED_CODE || diagnostics[index]?.code === PROTECTED_TERMINAL_OMITTED_TOO_MANY_CODE) diagnostics.splice(index, 1);
+    if (diagnostics[index]?.code === PROTECTED_TERMINAL_OMITTED_CODE) diagnostics.splice(index, 1);
   }
 }
 
@@ -312,7 +325,7 @@ function setsEqual(left: Set<string>, right: Set<string>): boolean {
   for (const entry of left) if (!right.has(entry)) return false;
   return true;
 }
-// --- eforge:endregion plan-01-terminal-curation-byte-cap ---
+// --- eforge:endregion backlog-curation-terminal-omissions ---
 
 export function buildBacklogCurationItemPacket(source: Record<string, unknown>, item: Record<string, unknown>, sourceFingerprint: string): PacketBuildResult {
   const itemId = stringValue(item.id) ?? 'unknown-item';
