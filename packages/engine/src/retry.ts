@@ -1405,14 +1405,12 @@ export async function* withRetry<Input, Result = void>(
       ...(planId !== undefined && { planId }),
       ...(shardId !== undefined && { shardId }),
     };
-
     // Emit any policy-specific domain continuation events (plan:continuation, etc.).
     if (policy.onRetry) {
       for (const ev of policy.onRetry(info)) {
         yield ev;
       }
     }
-
     currentInput = nextInput;
   }
 
