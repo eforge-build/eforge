@@ -32,6 +32,35 @@ describe('planning decomposition core', () => {
     expect(validatePlanningDecompositionGraph(graph).ok).toBe(true);
   });
 
+  it('uses preflight subsystem breadth when criterion text has no subsystem hints', () => {
+    const content = `# PRD\n\n## Acceptance Criteria\n- Implements first behavior\n- Implements second behavior\n- Implements third behavior\n- Implements fourth behavior`;
+    const graph = derivePlanningDecompositionGraph({
+      source: { content, hash: hash(content), path: 'prd.md' },
+      limits,
+      preflightRisk: {
+        level: 'elevated',
+        sourceBytes: content.length,
+        promptSourceBytes: content.length,
+        acceptanceCriteriaCount: 4,
+        score: 4,
+        generatedInventory: { detected: false, contentHashes: [], pathReferences: [], headings: [], blockCount: 0, sidecarCount: 0, omittedBytes: 0 },
+        subsystemBreadth: { count: 2, subsystems: ['engine', 'console'], evidence: ['preflight only'] },
+        reasons: [],
+        recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'broad' },
+      },
+      pipelineComposition: { scope: 'expedition', compile: [], defaultBuild: [], defaultReview: { strategy: 'single', perspectives: ['general'], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: 'broad work' },
+    });
+    expect(new Set(graph.units.flatMap((unit) => unit.subsystemHints))).toEqual(new Set(['console', 'engine']));
+  });
+
+  it('pre-splits a single criterion line that exceeds the source byte budget', () => {
+    const content = `# PRD\n\n## Acceptance Criteria\n- ${'x'.repeat(1200)}`;
+    const graph = graphFor(content, { ...limits, maxPromptSourceBytes: 500, maxCriteriaPerUnit: 10 });
+    expect(graph.units.length).toBeGreaterThan(1);
+    expect(validatePlanningDecompositionGraph(graph).ok).toBe(true);
+    expect(graph.units.every((unit) => unit.sourceSlices.reduce((sum, slice) => sum + slice.byteLength, 0) <= 500)).toBe(true);
+  });
+
   it('creates foundation unit for contract-heavy work and independent units for independent work', () => {
     const contract = graphFor(`# PRD\n\n## Acceptance Criteria\n- engine updates event schema for packages/client/src/events.ts\n- client updates route constant /api/runs for packages/client/src/routes.ts\n- console consumes config contract compile.planningUnitParallelism\n- cli renders engine behavior`);
     expect(contract.units.some((u) => u.unitId === 'unit-foundation-contracts')).toBe(true);
@@ -81,7 +110,8 @@ describe('planning decomposition core', () => {
       selectReadyPlanningBatch({ graph, parallelism: 1, runningUnitIds: graph.units.slice(0, 3).map((u) => u.unitId) }),
       selectReadyPlanningBatch({ graph, parallelism: 1 }),
     ]) {
-      expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:schedule', decision }).success).toBe(true);
+      const parsed = safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:schedule', decision });
+      expect(parsed.success).toBe(decision.runningUnitIds.length + decision.selectedBatchUnitIds.length <= decision.parallelism);
       expect(decision.readyUnitIds.length).toBeLessThanOrEqual(128);
       expect(decision.waitingUnitIds.length).toBeLessThanOrEqual(128);
     }
@@ -117,7 +147,7 @@ describe('planning decomposition core', () => {
     if (!('graph' in first)) return;
     const retry = splitOverBudgetPlanningUnit({ graph: first.graph, unit: parent, observedPressure: { criteriaCount: 5, triggeredLimitKeys: ['maxCriteriaPerUnit'] }, limits: { ...limits, maxSplitAttemptsPerUnit: 1 } });
     expect('kind' in retry && retry.kind).toBe('decomposition-exhausted');
-    if ('kind' in retry) expect(retry.evidence.blockers).toContain('max-split-attempts-reached');
+    if ('kind' in retry) expect(retry.evidence.blockers).toContain('unit-already-split');
   });
 
   it('returns typed exhaustion and validates bad graphs', () => {

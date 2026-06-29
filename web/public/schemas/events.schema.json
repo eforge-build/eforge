@@ -7741,6 +7741,7 @@
           "required": [
             "type",
             "limits",
+            "unitId",
             "unitBudgets"
           ],
           "properties": {
@@ -7810,6 +7811,10 @@
                 }
               }
             },
+            "unitId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
             "unitBudgets": {
               "maxItems": 128,
               "type": "array",
@@ -7817,56 +7822,70 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "maxRecursiveDepth",
-                  "maxPromptSourceBytes",
-                  "maxPromptBytes",
-                  "maxObservedInputTokens",
-                  "maxCompactHandoffBytes",
-                  "maxLocalExplorationToolUses",
-                  "maxCriteriaPerUnit",
-                  "maxSubsystemsPerUnit",
-                  "maxSplitAttemptsPerUnit"
+                  "unitId",
+                  "budget"
                 ],
                 "properties": {
-                  "maxRecursiveDepth": {
-                    "minimum": 0,
-                    "type": "integer"
+                  "unitId": {
+                    "maxLength": 2000,
+                    "type": "string"
                   },
-                  "maxPromptSourceBytes": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxPromptBytes": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxObservedInputTokens": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxObservedTurns": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxCompactHandoffBytes": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxLocalExplorationToolUses": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxCriteriaPerUnit": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxSubsystemsPerUnit": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "maxSplitAttemptsPerUnit": {
-                    "minimum": 1,
-                    "type": "integer"
+                  "budget": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "maxRecursiveDepth",
+                      "maxPromptSourceBytes",
+                      "maxPromptBytes",
+                      "maxObservedInputTokens",
+                      "maxCompactHandoffBytes",
+                      "maxLocalExplorationToolUses",
+                      "maxCriteriaPerUnit",
+                      "maxSubsystemsPerUnit",
+                      "maxSplitAttemptsPerUnit"
+                    ],
+                    "properties": {
+                      "maxRecursiveDepth": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "maxPromptSourceBytes": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxPromptBytes": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxObservedInputTokens": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxObservedTurns": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxCompactHandoffBytes": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxLocalExplorationToolUses": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxCriteriaPerUnit": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxSubsystemsPerUnit": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "maxSplitAttemptsPerUnit": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    }
                   }
                 }
               }
@@ -25616,6 +25635,7 @@
                         "required": [
                           "type",
                           "limits",
+                          "unitId",
                           "unitBudgets"
                         ],
                         "properties": {
@@ -25685,6 +25705,10 @@
                               }
                             }
                           },
+                          "unitId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
                           "unitBudgets": {
                             "maxItems": 128,
                             "type": "array",
@@ -25692,56 +25716,70 @@
                               "additionalProperties": false,
                               "type": "object",
                               "required": [
-                                "maxRecursiveDepth",
-                                "maxPromptSourceBytes",
-                                "maxPromptBytes",
-                                "maxObservedInputTokens",
-                                "maxCompactHandoffBytes",
-                                "maxLocalExplorationToolUses",
-                                "maxCriteriaPerUnit",
-                                "maxSubsystemsPerUnit",
-                                "maxSplitAttemptsPerUnit"
+                                "unitId",
+                                "budget"
                               ],
                               "properties": {
-                                "maxRecursiveDepth": {
-                                  "minimum": 0,
-                                  "type": "integer"
+                                "unitId": {
+                                  "maxLength": 2000,
+                                  "type": "string"
                                 },
-                                "maxPromptSourceBytes": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxPromptBytes": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxObservedInputTokens": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxObservedTurns": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxCompactHandoffBytes": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxLocalExplorationToolUses": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxCriteriaPerUnit": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxSubsystemsPerUnit": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                },
-                                "maxSplitAttemptsPerUnit": {
-                                  "minimum": 1,
-                                  "type": "integer"
+                                "budget": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "maxRecursiveDepth",
+                                    "maxPromptSourceBytes",
+                                    "maxPromptBytes",
+                                    "maxObservedInputTokens",
+                                    "maxCompactHandoffBytes",
+                                    "maxLocalExplorationToolUses",
+                                    "maxCriteriaPerUnit",
+                                    "maxSubsystemsPerUnit",
+                                    "maxSplitAttemptsPerUnit"
+                                  ],
+                                  "properties": {
+                                    "maxRecursiveDepth": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "maxPromptSourceBytes": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxPromptBytes": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxObservedInputTokens": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxObservedTurns": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxCompactHandoffBytes": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxLocalExplorationToolUses": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxCriteriaPerUnit": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxSubsystemsPerUnit": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "maxSplitAttemptsPerUnit": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  }
                                 }
                               }
                             }

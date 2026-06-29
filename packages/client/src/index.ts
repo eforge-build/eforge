@@ -583,7 +583,6 @@ export type {
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
 // --- eforge:endregion plan-01-contracts-config ---
-
 // --- eforge:region plan-01-contracts-config-event-aliases ---
 export type {
   PlanningDecompositionStartEvent,

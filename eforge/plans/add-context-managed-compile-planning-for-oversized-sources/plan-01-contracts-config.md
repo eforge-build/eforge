@@ -37,7 +37,7 @@ Key constraints from architecture:
 - Extend compile scope/context failure contracts with `source: 'decomposition'`, `failureKind: 'decomposition-exhausted'`, `stage: 'planning-decomposition'`, and optional bounded `decompositionEvidence`.
 - Extend recovery sidecar compile-scope-context option schema with optional bounded `decompositionEvidence`.
 - Add concise event-registry metadata and persistence settings for all new decomposition events.
-- Add semantic event validation that rejects raw source, prompt, and transcript fields on decomposition events.
+- Add semantic event validation that rejects raw source, content, prompt, and transcript fields on decomposition events.
 - Add `compile` config defaults, schema validation, partial-config merge support, and a resolver that returns `PlanningDecompositionLimits`.
 - Export new schemas, constants, and types through `@eforge-build/client`, `@eforge-build/client/events`, `@eforge-build/client/browser`, and the engine event/config facades used by later modules.
 - Update generated event/config reference artifacts and concise user-facing config documentation for the new `compile.*` keys.
@@ -66,7 +66,7 @@ Engine config gets a small config-owned limits resolver that imports the client-
 1. **Client owns the limit shape.** Define `PlanningDecompositionLimitsSchema` and `PlanningDecompositionLimits` in the client schema module, then have engine config resolve to that type. This gives downstream engine modules one contract to consume.
 2. **Event variants use flat fields.** Keep decomposition event fields at the event top level rather than nesting under `payload`, matching existing planning events and keeping generated event-reference fields visible.
 3. **Risk evidence is summarized, not imported as full preflight risk.** The new planning-decomposition schema module must not import `compile-resilience.ts`, because `compile-resilience.ts` imports `DecompositionFailureEvidenceSchema`. Define a bounded `PlanningDecompositionRiskEvidenceSchema` with risk level, score, source/prompt bytes, acceptance criteria count, subsystem summaries, recommendation action, and selected scope.
-4. **No raw source or transcript in events.** Source slice schemas record hashes, paths/headings/line ranges, criteria IDs, and byte counts. Semantic validation rejects decomposition events that include top-level or nested fields such as `sourceContent`, `prompt`, `transcript`, `rawSource`, or `rawTranscript`.
+4. **No raw source, content, or transcript in events.** Source slice schemas record hashes, paths/headings/line ranges, criteria IDs, and byte counts. Semantic validation rejects decomposition events that include top-level or nested fields such as `sourceContent`, `content`, `rawContent`, `prompt`, `transcript`, `rawSource`, or `rawTranscript`.
 5. **Failure evidence is optional for compatibility.** Existing `planning:scope-context:failure` events and recovery sidecars remain valid without `decompositionEvidence`; decomposition exhaustion events can attach bounded unit evidence when later modules emit it.
 6. **Invalid config fails validation.** `compile.planningUnitParallelism` and all numeric planning-unit limit overrides use positive integer validation. Non-positive and fractional values fail config parsing instead of being ignored.
 7. **Progress can be live-only.** Persist `start`, lifecycle terminal/state events, `schedule`, `budget`, `compact-handoff`, and `synthesis:complete`. Keep `planning:decomposition:unit:progress` non-persisted because replay can be reconstructed from persisted lifecycle and schedule events.
@@ -91,7 +91,7 @@ Engine config gets a small config-owned limits resolver that imports the client-
 - `packages/client/src/event-validation.ts` — add a decomposition-event semantic guard using the exported event type list and recursive forbidden-field detection.
 - `packages/client/src/routes/recovery.ts` — add optional `decompositionEvidence` to `RecoverySidecarCompileScopeContextOptionSchema` by importing the client-owned evidence schema.
 - `packages/client/src/__tests__/events-wire-parity-valid-fixtures.ts` — add representative valid payloads for each decomposition event variant.
-- `packages/client/src/__tests__/events-wire-parity-invalid-fixtures.ts` — add at least one invalid decomposition payload with a forbidden raw prompt/source/transcript field.
+- `packages/client/src/__tests__/events-wire-parity-invalid-fixtures.ts` — add invalid decomposition payloads with forbidden raw prompt/source/content/transcript fields.
 - `packages/engine/src/config.ts` — add `compile` zod schema fields, `EforgeConfig['compile']`, `DEFAULT_CONFIG.compile`, `resolveConfig()` defaults/overrides, `mergePartialConfigs()` shallow merge, and re-exports for planning-decomposition config defaults/resolver. Use bounded exact edits because this file is oversized.
 - `packages/engine/src/events.ts` — re-export new decomposition schemas/types from `@eforge-build/client` for later engine modules that import from `../events.js`.
 - `docs/config.md` — document the `compile` planning-unit budget keys and note that they only affect context-managed planning for overflow-risk compile inputs.
@@ -141,7 +141,7 @@ Use these raw config defaults unless implementation discovers an existing named 
 ## Testing Strategy
 
 ### Unit Tests
-- Client schema tests accept one valid event for each decomposition event type and reject malformed statuses, missing required fields, oversized bounded arrays, invalid hashes, and raw prompt/source/transcript fields.
+- Client schema tests accept one valid event for each decomposition event type and reject malformed statuses, missing required fields, oversized bounded arrays, invalid hashes, and raw prompt/source/content/transcript fields.
 - Client failure tests accept `planning:scope-context:failure` with `source: 'decomposition'`, `failureKind: 'decomposition-exhausted'`, `stage: 'planning-decomposition'`, and bounded `decompositionEvidence`.
 - Recovery route schema tests accept `RecoverySidecarCompileScopeContextOptionSchema` with optional `decompositionEvidence` and reject invalid decomposition evidence shapes.
 - Registry tests verify scope/persist settings and summaries for all new event types.

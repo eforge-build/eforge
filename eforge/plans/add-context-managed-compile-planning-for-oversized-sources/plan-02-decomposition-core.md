@@ -165,7 +165,7 @@ The public facade must expose these contracts using existing project naming conv
 - [ ] The split graph preserves the same active criterion ID set that existed before splitting.
 - [ ] The split graph marks the parent unit as `skipped` and gives every child `parentId` equal to the parent unit ID.
 - [ ] `splitOverBudgetPlanningUnit()` at maximum depth returns `kind: 'decomposition-exhausted'`.
-- [ ] Decomposition exhaustion evidence contains no raw source content, prompt text, transcript, or agent output fields.
+- [ ] Decomposition exhaustion evidence contains no raw source content, raw content, prompt text, transcript, or agent output fields.
 - [ ] `pnpm test -- planning-decomposition-core` exits 0.
 - [ ] `pnpm type-check` exits 0.
 - [ ] `pnpm test` exits 0.

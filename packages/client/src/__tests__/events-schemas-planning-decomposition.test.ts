@@ -48,15 +48,35 @@ const events = [
   { type: 'planning:decomposition:unit:skipped', unitId: 'unit-1', reason: 'duplicate' },
   { type: 'planning:decomposition:unit:failed', unitId: 'unit-1', reason: 'exhausted', evidence },
   { type: 'planning:decomposition:schedule', decision: { readyUnitIds: ['unit-1'], runningUnitIds: [], waitingUnitIds: [], waitingReasons: [], selectedBatchUnitIds: ['unit-1'], parallelism: 2, blockedPairs: [] } },
-  { type: 'planning:decomposition:budget', limits, unitBudgets: [budget], observed },
+  { type: 'planning:decomposition:budget', limits, unitId: 'unit-1', unitBudgets: [{ unitId: 'unit-1', budget }], observed },
   { type: 'planning:decomposition:compact-handoff', byteLength: 100, contentHash: hash, omittedUnitIds: [] },
   { type: 'planning:decomposition:synthesis:complete', unitCount: 1, coverage, artifactPaths: ['plans.md'] },
 ];
 
 describe('planning decomposition event contracts', () => {
-  it('accepts all decomposition event variants', () => {
+  it('accepts all decomposition event variants with envelope metadata', () => {
     expect(events.map((event) => event.type)).toEqual([...PLANNING_DECOMPOSITION_EVENT_TYPES]);
-    for (const event of events) expect(safeParseEforgeEvent({ timestamp, ...event }).success, event.type).toBe(true);
+    for (const event of events) expect(safeParseEforgeEvent({ timestamp, sessionId: 'sess-1', runId: 'run-1', ...event }).success, event.type).toBe(true);
+  });
+
+  it('allows only envelope and variant fields at the decomposition event top level before rejecting raw content fields', () => {
+    const payload = { timestamp, sessionId: 'sess-1', runId: 'run-1', type: 'planning:decomposition:unit:running', unitId: 'unit-1' };
+    expect(safeParseEforgeEvent(payload).success).toBe(true);
+
+    for (const [field, expectedPath] of [
+      ['rawContent', '/rawContent'],
+      ['sourceContent', '/sourceContent'],
+      ['promptText', '/promptText'],
+      ['transcriptText', '/transcriptText'],
+      ['context', '/context'],
+      ['payload', '/payload'],
+      ['agentOutput', '/agentOutput'],
+      ['typoField', '/typoField'],
+    ] as const) {
+      const result = safeParseEforgeEvent({ ...payload, [field]: 'raw provider data' });
+      expect(result.success, field).toBe(false);
+      if (!result.success) expect(result.error.errors[0]?.path).toBe(expectedPath);
+    }
   });
 
   it('accepts bounded aggregate coverage metadata when criteria exceed inline entries', () => {
@@ -101,13 +121,13 @@ describe('planning decomposition event contracts', () => {
     expect(sourceText.success).toBe(false);
     if (!sourceText.success) expect(sourceText.error.errors[0]?.path).toBe('/unit/sourceSlices/0/sourceText');
 
-    for (const field of ['source', 'rawSourceContent', 'promptSource', 'transcriptMessages']) {
-      const result = safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:unit:running', unitId: 'unit-1', [field]: 'raw' });
+    for (const field of ['source', 'rawSourceContent', 'promptSource', 'transcriptMessages', 'rawContent']) {
+      const result = safeParseEforgeEvent({ timestamp, sessionId: 'sess-1', runId: 'run-1', type: 'planning:decomposition:unit:running', unitId: 'unit-1', [field]: 'raw' });
       expect(result.success, field).toBe(false);
       if (!result.success) expect(result.error.errors[0]?.path).toBe(`/${field}`);
     }
 
-    expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:budget', limits, unitBudgets: [budget], observed: { ...observed, promptBytes: 10, promptSourceBytes: 20 } }).success).toBe(true);
+    expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:budget', limits, unitId: 'unit-1', unitBudgets: [{ unitId: 'unit-1', budget }], observed: { ...observed, promptBytes: 10, promptSourceBytes: 20 } }).success).toBe(true);
   });
 
   it('rejects schedule batches larger than the advertised parallelism', () => {

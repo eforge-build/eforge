@@ -87,7 +87,7 @@ Total variants: 243
 | `planning:decomposition:unit:skipped` | `reason`, `unit`, `unitId` |
 | `planning:decomposition:unit:failed` | `evidence`, `reason`, `unitId` |
 | `planning:decomposition:schedule` | `decision` |
-| `planning:decomposition:budget` | `limits`, `observed`, `unitBudgets` |
+| `planning:decomposition:budget` | `limits`, `observed`, `unitBudgets`, `unitId` |
 | `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `unitId` |
 | `planning:decomposition:synthesis:complete` | `artifactPaths`, `coverage`, `unitCount` |
 | `planning:clarification` | `questions` |

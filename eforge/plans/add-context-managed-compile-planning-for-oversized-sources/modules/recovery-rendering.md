@@ -9,7 +9,7 @@ Key constraints from architecture:
 - Context-managed decomposition is internal compile evidence only; recovery text and UI must not auto-author or auto-enqueue successor PRDs.
 - Recovery sidecars must distinguish `decomposition-exhausted` from provider `context-window`/`context-length` failures.
 - Recovery sidecars must include bounded unit evidence: unit ID, parent ID, depth, budgets, observed pressure, assigned/unresolved criteria, blockers, and split attempts.
-- CLI, Console timeline/activity, and sidecar markdown render decomposition progress from shared event types without raw source, raw prompts, transcripts, or unbounded agent output.
+- CLI, Console timeline/activity, and sidecar markdown render decomposition progress from shared event types without raw source, raw content, raw prompts, transcripts, or unbounded agent output.
 - `packages/engine/src/compile-resilience/context-recovery.ts` and `packages/console-ui/src/components/timeline/event-card.tsx` are shared files; edits must stay in this module's declared regions.
 - `packages/client/src/events/variants/session-planning.ts` remains contract-owned. This module must not add or edit TypeBox event variants there.
 
@@ -90,7 +90,7 @@ CLI and Console event rendering remain display-only. The run-state reducer ignor
 - `packages/console-ui/src/components/timeline/__tests__/event-card.test.ts` — add timeline card tests for start, schedule, unit running/completed/failed, budget, compact handoff, synthesis, and decomposition-exhausted failure details.
 - `packages/console-ui/src/__tests__/activity-selectors.test.ts` — add activity selector coverage for decomposition event family, attention classification for failed/budget events, and registry summary text.
 - `packages/console-ui/src/__tests__/compile-resilience-format.test.ts` — add `decomposition-exhausted` failure formatting tests with bounded evidence.
-- `test/cli-display-compile-resilience.test.ts` — add CLI compile failure model tests for decomposition evidence and ensure details omit raw source/prompt/transcript sentinel keys.
+- `test/cli-display-compile-resilience.test.ts` — add CLI compile failure model tests for decomposition evidence and ensure details omit raw source/content/prompt/transcript sentinel keys.
 - `test/cli-display-render-event.test.ts` — add top-level dispatcher tests for representative decomposition events.
 - `test/recovery-compile-scope-sidecar-rendering.test.ts` — add a compile-scope-context option fixture with `source: 'decomposition'`, `failureKind: 'decomposition-exhausted'`, and `decompositionEvidence`.
 - `test/recovery-sidecars.test.ts` — extend sidecar schema-version/read validation tests to accept and reject optional `decompositionEvidence`, and assert sidecar JSON/Markdown omit raw-source sentinel keys.
@@ -178,7 +178,7 @@ Recovery wording for this case must state:
 - [ ] `parseRecoverySidecarPayload()` preserves `recoveryOptions[0].decompositionEvidence.unitId` for a valid schemaVersion 4 sidecar.
 - [ ] `parseRecoverySidecarPayload()` rejects a compile-scope-context option whose `decompositionEvidence.depth` is negative.
 - [ ] `renderRecoverySidecarMarkdown()` contains `Decomposition evidence`, `Failed Unit: unit-overflow`, `Triggered limits: maxObservedInputTokens`, and `Unresolved criteria` for decomposition evidence.
-- [ ] `renderRecoverySidecarMarkdown()` does not contain raw source, prompt, or transcript sentinel strings from evidence-adjacent malformed input.
+- [ ] `renderRecoverySidecarMarkdown()` does not contain raw source, content, prompt, or transcript sentinel strings from evidence-adjacent malformed input.
 - [ ] `buildRecoverySidecarPayload()` adds a key evidence line containing `Decomposition exhausted: unit-overflow` when recovery options carry decomposition evidence.
 - [ ] `renderRecoveryGuidanceSection()` includes `Decomposition exhausted in unit unit-overflow` for sidecars with decomposition evidence.
 - [ ] `compileScopeContextFailureSummary()` returns text containing `decomposition-exhausted from decomposition at planning-decomposition`.

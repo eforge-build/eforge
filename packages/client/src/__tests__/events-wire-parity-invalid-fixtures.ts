@@ -28,7 +28,10 @@ export const wrongLiteralPayloads: InvalidEventWireParityFixture[] = [
   { label: 'extension:action:start with invalid requested-by host', payload: { type: 'extension:action:start', timestamp: '2025-01-01T00:00:00.000Z', invocationId: 'inv-1', actionId: 'x.echo', extensionName: 'x', extensionPath: '/x.js', requestedBy: { host: 'browser' } }, expectedErrorPath: '' },
   { label: 'extension:action:complete with forbidden raw payload field', payload: { type: 'extension:action:complete', timestamp: '2025-01-01T00:00:01.000Z', invocationId: 'inv-1', actionId: 'x.echo', extensionName: 'x', extensionPath: '/x.js', requestedBy: { host: 'console' }, durationMs: 12, payload: { raw: true } }, expectedErrorPath: '/payload' },
   // --- eforge:region plan-01-contracts-config ---
-  { label: 'planning decomposition event with forbidden raw transcript', payload: { type: 'planning:decomposition:unit:running', timestamp: '2025-01-01T00:00:00.000Z', unitId: 'unit-1', transcript: 'raw agent transcript' }, expectedErrorPath: '/transcript' },
+  { label: 'planning decomposition event with forbidden raw transcript', payload: { type: 'planning:decomposition:unit:running', timestamp: '2025-01-01T00:00:00.000Z', sessionId: 'sess-1', runId: 'run-1', unitId: 'unit-1', transcript: 'raw agent transcript' }, expectedErrorPath: '/transcript' },
+  { label: 'planning decomposition event with forbidden raw content', payload: { type: 'planning:decomposition:unit:running', timestamp: '2025-01-01T00:00:00.000Z', sessionId: 'sess-1', runId: 'run-1', unitId: 'unit-1', rawContent: 'raw content' }, expectedErrorPath: '/rawContent' },
+  { label: 'planning decomposition event with forbidden raw context alias', payload: { type: 'planning:decomposition:unit:running', timestamp: '2025-01-01T00:00:00.000Z', sessionId: 'sess-1', runId: 'run-1', unitId: 'unit-1', context: 'raw context' }, expectedErrorPath: '/context' },
+  { label: 'planning decomposition event with benign-looking unknown top-level field', payload: { type: 'planning:decomposition:unit:running', timestamp: '2025-01-01T00:00:00.000Z', sessionId: 'sess-1', runId: 'run-1', unitId: 'unit-1', payload: { summary: true } }, expectedErrorPath: '/payload' },
   // --- eforge:endregion plan-01-contracts-config ---
 ];
 

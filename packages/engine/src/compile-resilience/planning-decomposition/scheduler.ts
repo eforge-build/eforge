@@ -8,13 +8,17 @@ export function selectBatch(input: SelectReadyPlanningBatchInput): PlanningSched
   const skipped = lifecycleSet(input.graph.units, 'skipped', input.skippedUnitIds, completed, failed, running);
   const requestedParallelism = input.parallelism ?? input.graph.parallelism;
   const resolvedParallelism = Math.max(1, Math.min(Math.max(1, requestedParallelism), Math.max(1, input.graph.parallelism)));
-  const parallelism = Math.max(resolvedParallelism, running.size);
+  const parallelism = resolvedParallelism;
+  const oversubscribedRunning = running.size > parallelism;
+  const reportedRunning = [...running].sort().slice(0, parallelism);
+  const omittedRunning = oversubscribedRunning ? [...running].sort().slice(parallelism) : [];
   const capacity = Math.max(0, parallelism - running.size);
   const selected: string[] = [];
   const waiting = new Set<string>();
   const ready: string[] = [];
   const blockedPairs: Array<{ unitId: string; blockedByUnitId: string; reason?: string }> = [];
   const waitingReasons = new Map<string, string[]>();
+  for (const id of omittedRunning) addWaiting(id, `capacity:oversubscribed-running-${running.size}-of-${parallelism}`, waiting, waitingReasons);
   const units = input.graph.units.filter((u) => !completed.has(u.unitId) && !running.has(u.unitId) && !failed.has(u.unitId) && !skipped.has(u.unitId)).sort((a, b) => a.unitId.localeCompare(b.unitId));
   const byId = new Map(input.graph.units.map((u) => [u.unitId, u]));
 
@@ -28,6 +32,10 @@ export function selectBatch(input: SelectReadyPlanningBatchInput): PlanningSched
       blockedPairs.push({ unitId: unit.unitId, blockedByUnitId: blocker.blockedByUnitId, reason: blocker.reason });
       continue;
     }
+    if (oversubscribedRunning) {
+      addWaiting(unit.unitId, `capacity:oversubscribed-running-${running.size}-of-${parallelism}`, waiting, waitingReasons);
+      continue;
+    }
     if (selected.length >= capacity) {
       addWaiting(unit.unitId, `capacity:parallelism-${parallelism}`, waiting, waitingReasons);
       continue;
@@ -37,7 +45,7 @@ export function selectBatch(input: SelectReadyPlanningBatchInput): PlanningSched
 
   return {
     readyUnitIds: capList(ready),
-    runningUnitIds: capList([...running].sort()),
+    runningUnitIds: capList(reportedRunning),
     waitingUnitIds: capList([...waiting].sort()),
     waitingReasons: capList([...waitingReasons.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([unitId, reasons]) => ({ unitId, reasons: capList(reasons) }))),
     selectedBatchUnitIds: capList(selected),

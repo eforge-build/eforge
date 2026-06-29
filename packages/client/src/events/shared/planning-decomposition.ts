@@ -224,9 +224,15 @@ export const PlanningDecompositionUnitFailedFields = {
   evidence: DecompositionFailureEvidenceSchema,
 } as const;
 export const PlanningDecompositionScheduleFields = { decision: PlanningScheduleDecisionSchema } as const;
+export const PlanningUnitBudgetEntrySchema = Type.Object({
+  unitId: BoundedStringSchema,
+  budget: PlanningUnitBudgetSchema,
+}, { additionalProperties: false });
+
 export const PlanningDecompositionBudgetFields = {
   limits: PlanningDecompositionLimitsSchema,
-  unitBudgets: Type.Array(PlanningUnitBudgetSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
+  unitId: BoundedStringSchema,
+  unitBudgets: Type.Array(PlanningUnitBudgetEntrySchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
   observed: Type.Optional(PlanningObservedBudgetPressureSchema),
 } as const;
 export const PlanningDecompositionCompactHandoffFields = {
@@ -257,5 +263,6 @@ export type PlanningScheduleBlockedPair = Static<typeof PlanningScheduleBlockedP
 export type PlanningScheduleWaitingReason = Static<typeof PlanningScheduleWaitingReasonSchema>;
 export type PlanningScheduleDecision = Static<typeof PlanningScheduleDecisionSchema>;
 export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecompositionRiskEvidenceSchema>;
+export type PlanningUnitBudgetEntry = Static<typeof PlanningUnitBudgetEntrySchema>;
 export type PlanningSplitAttemptEvidence = Static<typeof PlanningSplitAttemptEvidenceSchema>;
 export type DecompositionFailureEvidence = Static<typeof DecompositionFailureEvidenceSchema>;

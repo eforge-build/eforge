@@ -5,7 +5,7 @@ import { analyzePlanningSource, hashText, stableSlug, type RequirementRecord } f
 const ROOT = 'unit-root';
 
 export function deriveGraph(input: DerivePlanningDecompositionGraphInput): PlanningDecompositionGraph {
-  const requirements = analyzePlanningSource(input.source.content);
+  const requirements = applyMetadataSubsystemHints(analyzePlanningSource(input.source.content), input);
   const foundation = foundationRequirements(requirements);
   const units: PlanningDecompositionUnit[] = [];
   const foundationChunks = chunkRequirements(foundation, input.limits);
@@ -41,6 +41,16 @@ function emptyRootUnit(input: DerivePlanningDecompositionGraphInput): PlanningDe
   return { unitId: ROOT, depth: 0, title: 'Root planning', sourceSlices: [{ kind: 'prd', sourceHash: input.source.hash, path: input.source.path, startLine: 1, endLine: 1, criteriaIds: [], byteLength: 0 }], criteriaIds: [], subsystemHints: ['general'], dependsOn: [], interfaceConstraints: [], sharedFileConstraints: [], budgets: deriveBudget(input.limits, 0), status: 'queued' };
 }
 
+function applyMetadataSubsystemHints(requirements: RequirementRecord[], input: DerivePlanningDecompositionGraphInput): RequirementRecord[] {
+  const preflightHints = input.preflightRisk?.subsystemBreadth.subsystems ?? [];
+  const pipelineHints = preflightHints.length === 0 && input.pipelineComposition?.scope === 'expedition' ? ['engine', 'client', 'console', 'cli'] : [];
+  const metadataHints = [...new Set([...preflightHints, ...pipelineHints].map((hint) => stableSlug(hint)).filter((hint) => hint && hint !== 'general'))].sort();
+  if (metadataHints.length === 0) return requirements;
+  return requirements.map((req, index) => req.subsystemHints.length === 0 || (req.subsystemHints.length === 1 && req.subsystemHints[0] === 'general')
+    ? { ...req, subsystemHints: [metadataHints[index % metadataHints.length]] }
+    : req);
+}
+
 function foundationRequirements(requirements: RequirementRecord[]): RequirementRecord[] {
   const contractReqs = requirements.filter((r) => r.interfaceKeys.length > 0 || r.sharedFileKeys.length > 0);
   const subsystems = new Set(contractReqs.flatMap((r) => r.subsystemHints));
@@ -50,7 +60,7 @@ function foundationRequirements(requirements: RequirementRecord[]): RequirementR
 
 function chunkRequirements(requirements: RequirementRecord[], limits: PlanningDecompositionLimits): RequirementRecord[][] {
   const bySubsystem = new Map<string, RequirementRecord[]>();
-  for (const req of requirements) {
+  for (const req of splitOversizedRequirements(requirements, limits)) {
     const key = req.subsystemHints[0] ?? 'general';
     bySubsystem.set(key, [...(bySubsystem.get(key) ?? []), req]);
   }
@@ -68,6 +78,14 @@ function chunkRequirements(requirements: RequirementRecord[], limits: PlanningDe
     if (current.length > 0) chunks.push(current);
   }
   return chunks;
+}
+
+function splitOversizedRequirements(requirements: RequirementRecord[], limits: PlanningDecompositionLimits): RequirementRecord[] {
+  return requirements.flatMap((req) => {
+    if (req.byteLength <= limits.maxPromptSourceBytes) return [req];
+    const partCount = Math.ceil(req.byteLength / limits.maxPromptSourceBytes);
+    return Array.from({ length: partCount }, (_, index) => ({ ...req, byteLength: index === partCount - 1 ? req.byteLength - (partCount - 1) * limits.maxPromptSourceBytes : limits.maxPromptSourceBytes }));
+  });
 }
 
 export function buildUnit(unitId: string, title: string, reqs: RequirementRecord[], input: DerivePlanningDecompositionGraphInput, depth: number, dependsOn: string[]): PlanningDecompositionUnit {
@@ -114,7 +132,7 @@ export function validateGraph(graph: PlanningDecompositionGraph): { ok: true; er
   const idSet = new Set(ids);
   if (idSet.size !== ids.length) errors.push('duplicate unit ID');
   for (const unit of graph.units) {
-    if (!unit.budgets) errors.push(`missing budgets:${unit.unitId}`);
+    validateUnitBudgets(unit, graph.limits, errors);
     if (unit.criteriaIds.length > graph.limits.maxCriteriaPerUnit) errors.push(`criteria budget exceeded:${unit.unitId}`);
     if (unit.subsystemHints.length > graph.limits.maxSubsystemsPerUnit) errors.push(`subsystem budget exceeded:${unit.unitId}`);
     if (unit.sourceSlices.reduce((sum, slice) => sum + slice.byteLength, 0) > graph.limits.maxPromptSourceBytes) errors.push(`source byte budget exceeded:${unit.unitId}`);
@@ -122,17 +140,66 @@ export function validateGraph(graph: PlanningDecompositionGraph): { ok: true; er
     for (const dep of unit.dependsOn) if (!idSet.has(dep)) errors.push(`missing dependency:${unit.unitId}->${dep}`);
     for (const slice of unit.sourceSlices) {
       if (slice.byteLength < 0) errors.push(`negative slice byte count:${unit.unitId}`);
-      if (slice.startLine !== undefined && slice.endLine !== undefined && slice.startLine > slice.endLine) errors.push(`invalid line range:${unit.unitId}`);
+      if (!validLineRange(slice.startLine, slice.endLine)) errors.push(`invalid line range:${unit.unitId}`);
     }
   }
   for (const [unitId, count] of splitAttemptCounts(graph)) if (count > graph.limits.maxSplitAttemptsPerUnit) errors.push(`split attempts budget exceeded:${unitId}`);
   for (const attempt of graph.splitAttempts) if (attempt.attempt > graph.limits.maxSplitAttemptsPerUnit) errors.push(`split attempt ordinal budget exceeded:${attempt.unitId ?? 'unknown'}`);
   for (const edge of graph.edges) if (!idSet.has(edge.fromUnitId) || !idSet.has(edge.toUnitId)) errors.push(`missing edge endpoint:${edge.fromUnitId}->${edge.toUnitId}`);
   for (const cycle of findCycle(graph.units)) errors.push(`dependency cycle:${cycle}`);
-  const activeCriteria = new Set(graph.units.filter((u) => u.status !== 'skipped').flatMap((u) => u.criteriaIds));
-  const covered = new Set([...graph.coverage.coveredCriteria.map((c) => c.criterionId), ...graph.coverage.unresolvedCriteria.map((c) => c.criterionId)]);
-  for (const id of activeCriteria) if (!covered.has(id)) errors.push(`coverage gap:${id}`);
+  validateCoverage(graph, errors);
   return errors.length === 0 ? { ok: true, errors: [] } : { ok: false, errors };
+}
+
+type BudgetLimitKey = 'maxPromptSourceBytes' | 'maxPromptBytes' | 'maxObservedInputTokens' | 'maxCompactHandoffBytes' | 'maxLocalExplorationToolUses' | 'maxCriteriaPerUnit' | 'maxSubsystemsPerUnit' | 'maxSplitAttemptsPerUnit';
+const REQUIRED_POSITIVE_BUDGET_KEYS: BudgetLimitKey[] = ['maxPromptSourceBytes', 'maxPromptBytes', 'maxObservedInputTokens', 'maxCompactHandoffBytes', 'maxLocalExplorationToolUses', 'maxCriteriaPerUnit', 'maxSubsystemsPerUnit', 'maxSplitAttemptsPerUnit'];
+
+function validateUnitBudgets(unit: PlanningDecompositionUnit, limits: PlanningDecompositionLimits, errors: string[]): void {
+  if (!unit.budgets) { errors.push(`missing budgets:${unit.unitId}`); return; }
+  if (!Number.isInteger(unit.budgets.maxRecursiveDepth) || unit.budgets.maxRecursiveDepth < 0) errors.push(`invalid budget:maxRecursiveDepth:${unit.unitId}`);
+  if (unit.budgets.maxRecursiveDepth !== Math.max(0, limits.maxDepth - unit.depth)) errors.push(`budget mismatch:maxRecursiveDepth:${unit.unitId}`);
+  for (const key of REQUIRED_POSITIVE_BUDGET_KEYS) {
+    if (!Number.isInteger(unit.budgets[key]) || (unit.budgets[key] as number) <= 0) errors.push(`invalid budget:${key}:${unit.unitId}`);
+    if (unit.budgets[key] !== limits[key]) errors.push(`budget mismatch:${key}:${unit.unitId}`);
+  }
+  if (limits.maxObservedTurns !== undefined && unit.budgets.maxObservedTurns !== limits.maxObservedTurns) errors.push(`budget mismatch:maxObservedTurns:${unit.unitId}`);
+  if (unit.budgets.maxObservedTurns !== undefined && (!Number.isInteger(unit.budgets.maxObservedTurns) || unit.budgets.maxObservedTurns <= 0)) errors.push(`invalid budget:maxObservedTurns:${unit.unitId}`);
+}
+
+function validLineRange(startLine?: number, endLine?: number): boolean {
+  if (startLine !== undefined && (!Number.isInteger(startLine) || startLine <= 0)) return false;
+  if (endLine !== undefined && (!Number.isInteger(endLine) || endLine <= 0)) return false;
+  return startLine === undefined || endLine === undefined || startLine <= endLine;
+}
+
+function validateCoverage(graph: PlanningDecompositionGraph, errors: string[]): void {
+  const activeUnits = graph.units.filter((u) => u.status !== 'skipped');
+  const expectedCoverageByUnit = Object.fromEntries(activeUnits.map((u) => [u.unitId, [...u.criteriaIds].sort()]).filter(([, criteriaIds]) => (criteriaIds as string[]).length > 0)) as Record<string, string[]>;
+  if (!sameStringRecord(graph.coverage.coverageByUnit, expectedCoverageByUnit)) errors.push('coverageByUnit mismatch');
+
+  const byCriterion = new Map<string, string[]>();
+  for (const unit of activeUnits) for (const id of unit.criteriaIds) byCriterion.set(id, [...(byCriterion.get(id) ?? []), unit.unitId].sort());
+  const coveredCriteria = new Map(graph.coverage.coveredCriteria.map((coverage) => [coverage.criterionId, [...coverage.coveredByUnitIds].sort()]));
+  for (const [criterionId, unitIds] of byCriterion) if (!sameStringList(coveredCriteria.get(criterionId) ?? [], unitIds)) errors.push(`coverage mismatch:${criterionId}`);
+  for (const criterionId of coveredCriteria.keys()) if (!byCriterion.has(criterionId)) errors.push(`coverage extra:${criterionId}`);
+
+  const coveredIds = new Set(graph.coverage.coveredCriteria.map((c) => c.criterionId));
+  const unresolvedIds = new Set(graph.coverage.unresolvedCriteria.map((c) => c.criterionId));
+  for (const id of unresolvedIds) if (coveredIds.has(id)) errors.push(`coverage overlap:${id}`);
+  const coveredOrUnresolved = new Set([...coveredIds, ...unresolvedIds]);
+  const activeCriteria = new Set(activeUnits.flatMap((u) => u.criteriaIds));
+  for (const id of activeCriteria) if (!coveredOrUnresolved.has(id)) errors.push(`coverage gap:${id}`);
+  if (graph.coverage.totalCriteria > coveredOrUnresolved.size) errors.push('coverage total exceeds covered and unresolved criteria');
+}
+
+function sameStringRecord(actual: Record<string, string[]>, expected: Record<string, string[]>): boolean {
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = Object.keys(expected).sort();
+  return sameStringList(actualKeys, expectedKeys) && expectedKeys.every((key) => sameStringList([...(actual[key] ?? [])].sort(), expected[key]));
+}
+
+function sameStringList(actual: string[], expected: string[]): boolean {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 }
 
 function splitAttemptCounts(graph: PlanningDecompositionGraph): Map<string, number> {

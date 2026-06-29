@@ -26,8 +26,13 @@ export function splitUnit(input: SplitOverBudgetPlanningUnitInput): { graph: Pla
 
 function exhaustionBlockers(graph: PlanningDecompositionGraph, unit: PlanningDecompositionUnit, _observed: PlanningObservedBudgetPressure, limits: PlanningDecompositionLimits): string[] {
   const blockers: string[] = [];
+  const current = graph.units.find((candidate) => candidate.unitId === unit.unitId);
+  const priorAttempts = splitAttemptsForUnit(graph, unit.unitId);
+  if (!current) blockers.push('unit-not-in-graph');
+  if (current && current.status !== 'queued' && current.status !== 'running') blockers.push(`unit-not-active:${current.status}`);
+  if (priorAttempts > 0) blockers.push('unit-already-split');
   if (unit.depth >= limits.maxDepth || unit.budgets.maxRecursiveDepth <= 0) blockers.push('max-depth-reached');
-  if (splitAttemptsForUnit(graph, unit.unitId) >= limits.maxSplitAttemptsPerUnit) blockers.push('max-split-attempts-reached');
+  if (priorAttempts >= limits.maxSplitAttemptsPerUnit) blockers.push('max-split-attempts-reached');
   return blockers;
 }
 
