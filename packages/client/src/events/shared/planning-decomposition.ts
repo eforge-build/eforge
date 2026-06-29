@@ -266,3 +266,52 @@ export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecomposit
 export type PlanningUnitBudgetEntry = Static<typeof PlanningUnitBudgetEntrySchema>;
 export type PlanningSplitAttemptEvidence = Static<typeof PlanningSplitAttemptEvidenceSchema>;
 export type DecompositionFailureEvidence = Static<typeof DecompositionFailureEvidenceSchema>;
+
+export function capPlanningDecompositionString(value: string, maxLength = PLANNING_DECOMPOSITION_MAX_STRING_LENGTH): string {
+  return value.length <= maxLength ? value : `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+export function projectPlanningCoverageSummaryForWire(coverage: PlanningCoverageSummary & { coverageByUnit?: unknown }): PlanningCoverageSummary {
+  const coveredCriteria = coverage.coveredCriteria.slice(0, PLANNING_DECOMPOSITION_MAX_CRITERIA).map((criterion) => ({
+    criterionId: capPlanningDecompositionString(criterion.criterionId),
+    ...(criterion.sourceHash ? { sourceHash: criterion.sourceHash } : {}),
+    coveredByUnitIds: criterion.coveredByUnitIds.slice(0, PLANNING_DECOMPOSITION_MAX_UNITS).map((unitId) => capPlanningDecompositionString(unitId)),
+  }));
+  const unresolvedCriteria = coverage.unresolvedCriteria.slice(0, PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA).map((criterion) => ({
+    criterionId: capPlanningDecompositionString(criterion.criterionId),
+    reason: capPlanningDecompositionString(criterion.reason),
+    ...(criterion.evidence ? { evidence: capPlanningDecompositionString(criterion.evidence) } : {}),
+  }));
+  const omitted = Math.max(0, coverage.coveredCriteria.length - coveredCriteria.length) + Math.max(0, coverage.unresolvedCriteria.length - unresolvedCriteria.length);
+  return {
+    ...(coverage.totalCriteria !== undefined ? { totalCriteria: coverage.totalCriteria } : {}),
+    ...(omitted > 0 ? { omittedCriteriaCount: Math.min(omitted, PLANNING_DECOMPOSITION_MAX_COVERAGE_OMISSIONS) } : {}),
+    coveredCriteria,
+    unresolvedCriteria,
+  };
+}
+
+export function projectPlanningDecompositionUnitSummaryForWire(unit: PlanningDecompositionUnitSummary): PlanningDecompositionUnitSummary {
+  return {
+    unitId: capPlanningDecompositionString(unit.unitId),
+    ...(unit.parentUnitId ? { parentUnitId: capPlanningDecompositionString(unit.parentUnitId) } : {}),
+    depth: unit.depth,
+    sourceSlices: unit.sourceSlices.slice(0, PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES).map((slice) => ({
+      kind: slice.kind,
+      sourceHash: slice.sourceHash,
+      ...(slice.path ? { path: capPlanningDecompositionString(slice.path) } : {}),
+      ...(slice.headingPath ? { headingPath: slice.headingPath.slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS).map((part) => capPlanningDecompositionString(part)) } : {}),
+      ...(slice.startLine ? { startLine: slice.startLine } : {}),
+      ...(slice.endLine ? { endLine: slice.endLine } : {}),
+      criteriaIds: slice.criteriaIds.slice(0, PLANNING_DECOMPOSITION_MAX_CRITERIA).map((id) => capPlanningDecompositionString(id)),
+      byteLength: slice.byteLength,
+    })),
+    coverage: projectPlanningCoverageSummaryForWire(unit.coverage),
+    subsystemHints: unit.subsystemHints.slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS).map((hint) => capPlanningDecompositionString(hint)),
+    dependencies: unit.dependencies.slice(0, PLANNING_DECOMPOSITION_MAX_DEPENDENCIES).map((dependency) => capPlanningDecompositionString(dependency)),
+    interfaceConstraints: unit.interfaceConstraints.slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS).map((constraint) => ({ ...(constraint.path ? { path: capPlanningDecompositionString(constraint.path) } : {}), description: capPlanningDecompositionString(constraint.description) })),
+    sharedFileConstraints: unit.sharedFileConstraints.slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS).map((constraint) => ({ ...(constraint.path ? { path: capPlanningDecompositionString(constraint.path) } : {}), description: capPlanningDecompositionString(constraint.description) })),
+    budgets: unit.budgets,
+    status: unit.status,
+  };
+}

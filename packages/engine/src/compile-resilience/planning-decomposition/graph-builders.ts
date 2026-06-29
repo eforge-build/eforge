@@ -189,7 +189,7 @@ function validateCoverage(graph: PlanningDecompositionGraph, errors: string[]): 
   const coveredOrUnresolved = new Set([...coveredIds, ...unresolvedIds]);
   const activeCriteria = new Set(activeUnits.flatMap((u) => u.criteriaIds));
   for (const id of activeCriteria) if (!coveredOrUnresolved.has(id)) errors.push(`coverage gap:${id}`);
-  if (graph.coverage.totalCriteria > coveredOrUnresolved.size) errors.push('coverage total exceeds covered and unresolved criteria');
+  if (graph.coverage.totalCriteria !== coveredOrUnresolved.size) errors.push('coverage total must equal covered and unresolved criteria');
 }
 
 function sameStringRecord(actual: Record<string, string[]>, expected: Record<string, string[]>): boolean {

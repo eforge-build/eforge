@@ -27,6 +27,7 @@ import {
   PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA,
   safeParseEforgeEvent,
 } from '../events.schemas.js';
+import { DAEMON_API_VERSION } from '../api-version-const.js';
 import { RecoverySidecarCompileScopeContextOptionSchema } from '../routes.js';
 
 const timestamp = '2025-01-01T00:00:00.000Z';
@@ -54,6 +55,10 @@ const events = [
 ];
 
 describe('planning decomposition event contracts', () => {
+  it('requires a daemon API version newer than pre-decomposition event unions', () => {
+    expect(DAEMON_API_VERSION).toBeGreaterThan(79);
+  });
+
   it('accepts all decomposition event variants with envelope metadata', () => {
     expect(events.map((event) => event.type)).toEqual([...PLANNING_DECOMPOSITION_EVENT_TYPES]);
     for (const event of events) expect(safeParseEforgeEvent({ timestamp, sessionId: 'sess-1', runId: 'run-1', ...event }).success, event.type).toBe(true);
@@ -87,6 +92,26 @@ describe('planning decomposition event contracts', () => {
       unresolvedCriteria: [],
     };
     expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:synthesis:complete', unitCount: 129, coverage: largeCoverage, artifactPaths: ['plans.md'] }).success).toBe(true);
+  });
+
+  it('projects default and max-sized internal decomposition data to public wire bounds', () => {
+    for (const count of [20, 64]) {
+      const internalUnit = {
+        ...unit,
+        sourceSlices: Array.from({ length: count }, (_, index) => ({ kind: 'criteria' as const, sourceHash: hash, criteriaIds: [`AC-${index}`], byteLength: 10 })),
+        coverage: {
+          totalCriteria: count + 1,
+          coverageByUnit: { 'unit-1': Array.from({ length: count }, (_, index) => `AC-${index}`) },
+          coveredCriteria: Array.from({ length: count }, (_, index) => ({ criterionId: `AC-${index}`, sourceHash: hash, coveredByUnitIds: ['unit-1'] })),
+          unresolvedCriteria: [],
+        },
+      };
+      const projected = eventsFacade.projectPlanningDecompositionUnitSummaryForWire(internalUnit as Parameters<typeof eventsFacade.projectPlanningDecompositionUnitSummaryForWire>[0]);
+      expect(projected.sourceSlices).toHaveLength(PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES);
+      expect('coverageByUnit' in projected.coverage).toBe(false);
+      expect(projected.coverage.coveredCriteria.length).toBeLessThanOrEqual(PLANNING_DECOMPOSITION_MAX_CRITERIA);
+      expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:unit:queued', unit: projected }).success).toBe(true);
+    }
   });
 
   it('rejects malformed bounds, statuses, source hashes, and missing required fields', () => {
@@ -200,6 +225,9 @@ describe('planning decomposition event contracts', () => {
       PLANNING_DECOMPOSITION_MAX_DEPENDENCIES,
       PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS,
       PLANNING_DECOMPOSITION_MAX_SPLIT_ATTEMPTS,
+      projectPlanningDecompositionUnitSummaryForWire: eventsFacade.projectPlanningDecompositionUnitSummaryForWire,
+      projectPlanningCoverageSummaryForWire: eventsFacade.projectPlanningCoverageSummaryForWire,
+      capPlanningDecompositionString: eventsFacade.capPlanningDecompositionString,
     };
     for (const [key, value] of Object.entries(expectedExports)) {
       expect(mainFacade[key as keyof typeof mainFacade]).toEqual(value);

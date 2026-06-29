@@ -208,6 +208,14 @@ graph LR
 | `cohesion-review-cycle` | Reviews cross-module plan cohesion for consistency and integration gaps |
 | `compile-expedition` | Validates expedition module files, then compiles module plans into final plan files and orchestration |
 
+### Context-managed planning-unit execution
+
+Context-managed planning invokes planner-family agents through a bounded planning-unit facade rather than through the direct root compile path. Each unit prompt contains only the unit source slice, covered acceptance criteria, subsystem hints, dependency and shared-file constraints, capped upstream handoff summaries or references, and the unit's own budgets. The prompt explicitly states that full root source, root transcripts, and prior raw tool results are unavailable by design.
+
+Bounded planner and module-planner runs use capture-only submission tools: planner submissions are validated with the existing plan-set or architecture schemas, while bounded module-planner runs capture `submit_module_plan` markdown. These captured payloads become `PlanningUnitOutput` suggestions for later synthesis; unit runs do not write root `orchestration.yaml`, `architecture.md`, module files, or root completion events. Direct planner and direct module-planner runs keep their existing file-writing behavior when bounded options are absent.
+
+Compact continuation is unit-local. If local exploration exceeds the unit budget, planner-inspection handoffs are written under the unit artifact directory and synthesis restarts from the unit source plus compact handoff markdown, not from an accumulated root planning transcript. The facade emits `planning:decomposition:unit:*`, `planning:decomposition:budget`, and `planning:decomposition:compact-handoff` events with bounded diagnostics and returns a `PlanningUnitOutput` carrying captured suggestions, discovered files, contract notes, unresolved requirements, compact handoff references, and observed budget pressure.
+
 ### Compile artifact validation
 
 Compile success is gated on persisted artifacts, not only on planner events. For non-skipped compile runs, `orchestration.yaml` must exist, parse successfully, contain the injected effective compile pipeline, and reference a valid plan set. Every referenced plan file must exist under the plan-set directory, parse as a `PlanFile`, match the orchestration entry's `id` and branch, and contain a non-empty body. The engine reloads `ctx.plans` from these validated persisted plan files before the no-review artifact commit path.

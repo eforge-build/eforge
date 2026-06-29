@@ -33,6 +33,7 @@ export interface CompileScopeContextFailureInput {
   stage: CompileScopeContextFailure['stage'];
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
+  decompositionEvidence?: CompileScopeContextFailure['decompositionEvidence'];
   risk?: CompilePreflightRisk;
   guardDiagnostics?: CompileContextGuardDiagnostics;
 }
@@ -53,6 +54,7 @@ export async function toCompileScopeContextError(
       stage: error.failure.stage ?? fallbackStage,
       explanation: error.failure.explanation,
       observed: error.failure.observed,
+      decompositionEvidence: error.failure.decompositionEvidence,
       risk: error.failure.risk ?? ctx.compilePreflight,
       guardDiagnostics: error.failure.guardDiagnostics ?? guardDiagnostics,
     }));
@@ -98,6 +100,7 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
     explanation: capUtf8(input.explanation, 1500),
     ...(input.risk ?? ctx.compilePreflight ? { risk: input.risk ?? ctx.compilePreflight } : {}),
     ...(input.observed ? { observed: input.observed } : {}),
+    ...(input.decompositionEvidence ? { decompositionEvidence: input.decompositionEvidence } : {}),
     ...(input.guardDiagnostics ? { guardDiagnostics: input.guardDiagnostics } : {}),
     recovery: {
       action,

@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { formatBoundedPlanningPromptContext, type BoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
 import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions, PlannerSubmissionError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
@@ -23,13 +24,15 @@ import {
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
 
+export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
+
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
-  /** Prompt-safe compacted source content. Defaults to resolved source content. */
-  promptSourceContent?: string;
-  /** Prompt/live context guardrails for planner-family runs. */
-  contextGuard?: CompileContextGuardOptions;
+  /** Prompt-safe compacted source content. Defaults to resolved source content. */ promptSourceContent?: string;
+  /** Prompt/live context guardrails for planner-family runs. */ contextGuard?: CompileContextGuardOptions;
   /** Soft-budget observer configuration for compact planner inspection continuation. */ plannerInspectionBudget?: PlannerInspectionBudget;
+  /** Called with each fully rendered planner prompt before harness execution. */ onPromptBuilt?: (prompt: string) => void;
+  /** Bounded planning-unit prompt/capture context. */ boundedUnit?: BoundedPlanningPromptContext; boundedCapture?: PlannerBoundedCaptureOptions;
   /** Run identifier used in compact planner inspection diagnostics. */ runId?: string;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Pre-determined scope from the pipeline composer (errand/excursion/expedition) */
@@ -225,7 +228,9 @@ function createArchitectureSubmissionTool(
 
 /**
  * Run the planner agent. Explores the codebase, asks clarifying questions
- * via <clarification> XML blocks, and writes plan files to disk.
+ * via <clarification> XML blocks, and in direct mode writes validated plan
+ * artifacts to disk. In bounded capture-only mode, validated submissions are
+ * captured through callbacks instead of writing root plan artifacts.
  *
  * Clarification flow: when the agent emits <clarification> blocks,
  * the planner pauses, collects answers via onClarification callback,
@@ -243,25 +248,31 @@ export async function* runPlanner(
   const { harness } = options;
   let contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'planner' });
 
-  // Resolve source: file path → read contents, otherwise use as inline string
+  // Resolve source: file path → read contents, otherwise use as inline string.
+  // Bounded capture/unit runs must treat the argument as an inline unit slice.
   let sourceContent: string;
   let sourceResolvedFromFile = false;
-  try {
-    const sourcePath = resolve(cwd, source);
-    const stats = await stat(sourcePath);
-    if (stats.isFile()) {
-      sourceContent = await readFile(sourcePath, 'utf-8');
-      sourceResolvedFromFile = true;
-    } else {
+  if (options.boundedUnit || options.boundedCapture) {
+    sourceContent = source;
+  } else {
+    try {
+      const sourcePath = resolve(cwd, source);
+      const stats = await stat(sourcePath);
+      if (stats.isFile()) {
+        sourceContent = await readFile(sourcePath, 'utf-8');
+        sourceResolvedFromFile = true;
+      } else {
+        sourceContent = source;
+      }
+    } catch {
       sourceContent = source;
     }
-  } catch {
-    sourceContent = source;
   }
 
   // Derive plan set name from options or source
   const planSetName = options.name ?? deriveNameFromSource(source);
-  const promptSourceContent = options.promptSourceContent ?? sourceContent;
+  const boundedUnitContextText = options.boundedUnit ? formatBoundedPlanningPromptContext(options.boundedUnit) : '';
+  const promptSourceContent = options.promptSourceContent ?? options.boundedUnit?.unitSourceContent ?? sourceContent;
   const initialMaxTurns = options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning;
   const inspectionBudget = options.plannerInspectionBudget ?? derivePlannerInspectionBudget({
     hardLimits: options.contextGuard?.limits,
@@ -319,6 +330,7 @@ ${existingPlans}`);
       outputDir: options.outputDir ?? 'eforge/plans',
       priorClarifications: formatPriorClarifications(allClarifications),
       continuation_context: continuationContextText,
+      bounded_unit_context: boundedUnitContextText,
       scope: options.scope ?? '',
       parallelLanes: '',
       profiles: '',
@@ -346,13 +358,13 @@ ${existingPlans}`);
   const alreadySubmitted = () => captured.planSet !== null || captured.architecture !== null;
 
   if (scope === 'expedition') {
-    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
+    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; options.boundedCapture?.onArchitectureSubmission?.(payload); return true; }));
   } else if (scope === 'errand' || scope === 'excursion') {
-    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; return true; }));
+    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; options.boundedCapture?.onPlanSetSubmission?.(payload); return true; }));
   } else {
     // Unknown scope (no pipeline composer) — inject both tools, let the agent choose
-    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; return true; }));
-    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; return true; }));
+    customTools.push(createPlanSetSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.planSet = payload; options.boundedCapture?.onPlanSetSubmission?.(payload); return true; }));
+    customTools.push(createArchitectureSubmissionTool((payload) => { if (alreadySubmitted()) return false; captured.architecture = payload; options.boundedCapture?.onArchitectureSubmission?.(payload); return true; }));
   }
 
   const outputDir = options.outputDir ?? 'eforge/plans';
@@ -373,6 +385,7 @@ ${existingPlans}`);
     iteration++;
 
     const prompt = await buildPrompt();
+    options.onPromptBuilt?.(prompt);
     contextGuard.assertPrompt(prompt);
     inspectionObserver?.setPrompt(prompt);
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
@@ -389,7 +402,7 @@ ${existingPlans}`);
 
     try {
       for await (const event of harness.run(
-        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: executionPhase === 'synthesis' ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? 'read-only' : (executionPhase === 'synthesis' ? 'read-only' : 'coding'), abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {
@@ -435,6 +448,7 @@ ${existingPlans}`);
         if (inspectionStatus?.shouldHandoff && !plannerBoundaryReached() && !compactInspectionUsed) {
           compactInspectionHandoff = inspectionObserver!.buildHandoff({
             source: {
+              sourceId: options.boundedCapture?.unitId,
               sourceName: sourceLabel ?? planSetName,
               ...(sourceResolvedFromFile ? { sourcePath: source } : {}),
               ...(options.runId ? { buildId: options.runId, runId: options.runId } : {}),
@@ -445,7 +459,7 @@ ${existingPlans}`);
             incompleteReason: inspectionStatus.reason,
             prompt,
           });
-          const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff });
+          const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff, artifactDir: options.boundedCapture?.artifactDir });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
           yield { timestamp: new Date().toISOString(), type: 'planning:continuation', attempt: 1, maxContinuations: 1, reason: 'compact_inspection' };
           compactInspectionUsed = true;
@@ -476,6 +490,8 @@ ${existingPlans}`);
       totalBodySize: planSetPayload.plans.reduce((sum: number, p) => sum + p.body.length, 0),
       hasMigrations: planSetPayload.plans.some(p => p.frontmatter.migrations && p.frontmatter.migrations.length > 0),
     };
+
+    if (options.boundedCapture?.mode === 'capture-only') return;
 
     await writePlanSet({
       cwd,
@@ -561,6 +577,8 @@ ${existingPlans}`);
       totalBodySize: architecturePayload.architecture.length,
       hasMigrations: false,
     };
+
+    if (options.boundedCapture?.mode === 'capture-only') return;
 
     await writeArchitecture({ cwd, outputDir, planSetName, payload: architecturePayload });
 

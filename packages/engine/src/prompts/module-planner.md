@@ -20,6 +20,8 @@ The following detailed plans have been completed by modules this module depends 
 
 {{dependencyPlans}}
 
+{{bounded_unit_context}}
+
 ### Module to Plan
 
 - **Module ID**: `{{moduleId}}`
@@ -34,7 +36,7 @@ The following detailed plans have been completed by modules this module depends 
 1. **Understand the module's role** within the architecture — what it owns, what it depends on, what depends on it
 2. **Explore the codebase** for existing code, patterns, and conventions relevant to this module
 3. **Plan the implementation** in detail — files to create/modify, key decisions, testing strategy
-4. **Write the module plan** to `{{outputDir}}/{{planSetName}}/modules/{{moduleId}}.md`
+4. **Write the module plan** to `{{outputDir}}/{{planSetName}}/modules/{{moduleId}}.md` in direct mode. In bounded mode, call `submit_module_plan` instead of writing files.
 
 ## Module Plan Format
 

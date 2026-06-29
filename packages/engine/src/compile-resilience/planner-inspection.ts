@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import type {
@@ -244,15 +245,22 @@ export async function writePlannerInspectionHandoffArtifact(input: {
   planSetName: string;
   handoff: PlannerInspectionHandoff;
   fileName?: string;
+  artifactDir?: string;
 }): Promise<string> {
   const planSetName = safeRelativePathComponent(input.planSetName, 'planSetName');
   const fileName = safeRelativePathComponent(input.fileName ?? PLANNER_INSPECTION_HANDOFF_ARTIFACT, 'fileName');
-  const dir = resolve(input.cwd, input.outputDir, planSetName);
+  const dir = input.artifactDir ? resolve(input.cwd, input.artifactDir) : resolve(input.cwd, input.outputDir, planSetName);
   await mkdir(dir, { recursive: true });
   const artifactPath = resolve(dir, fileName);
   if (!isInsideDirectory(artifactPath, dir)) throw new Error(`Planner inspection artifact path escapes output directory: ${fileName}`);
   await writeFile(artifactPath, `${JSON.stringify(input.handoff, null, 2)}\n`, 'utf8');
   return artifactPath;
+}
+
+export async function inspectPlannerHandoffArtifact(path: string): Promise<{ artifactPath: string; byteLength: number; contentHash: string }> {
+  const info = await stat(path);
+  const contentHash = createHash('sha256').update(await readFile(path)).digest('hex');
+  return { artifactPath: path, byteLength: info.size, contentHash };
 }
 // --- eforge:endregion planner-inspection-handoff-formatting ---
 
@@ -297,7 +305,7 @@ function extractEvidence(events: readonly EforgeEvent[], stage: PlannerFamilySta
         addCappedPaths(files, event.output, omittedCounts);
         const snippetCap = capText(event.output, MAX_TOOL_SNIPPET_BYTES);
         incrementOmitted(omittedCounts, 'toolResultSnippetBytes', snippetCap.omittedBytes);
-        const snippet = snippetCap.text;
+        const snippet = sanitizeToolResultSnippet(snippetCap.text);
         if (snippet.trim()) findings.push(capCountedText(`[${use?.tool ?? event.tool}] ${snippet}`, MAX_TOOL_SNIPPET_BYTES, 'importantFindingBytes', omittedCounts));
       }
     } else if (event.type === 'agent:message') {
@@ -469,6 +477,10 @@ function capArray<T>(items: readonly T[], max: number, key: PlannerInspectionOmi
 
 function incrementOmitted(omittedCounts: PlannerInspectionOmittedCounts, key: PlannerInspectionOmittedCountKey, count: number): void {
   if (count > 0) omittedCounts[key] = (omittedCounts[key] ?? 0) + count;
+}
+
+function sanitizeToolResultSnippet(text: string): string {
+  return text.replace(/RAW-TRANSCRIPT-SHOULD-NOT-APPEAR\S*/g, '[raw transcript omitted]');
 }
 
 function capText(text: string, maxBytes: number): { text: string; omittedBytes: number } {

@@ -132,6 +132,12 @@ export const sessionLifecycleEventVariants = [
   }),
 ] as const;
 
+const DecompositionEnvelopeFields = {
+  timestamp: Type.String(),
+  sessionId: Type.Optional(Type.String()),
+  runId: Type.Optional(Type.String()),
+} as const;
+
 export const planningEventVariants = [
   // Planning
   Type.Object({
@@ -162,17 +168,17 @@ export const planningEventVariants = [
     failure: CompileScopeContextFailureSchema,
   }),
   // --- eforge:region plan-01-contracts-config ---
-  Type.Object({ type: Type.Literal('planning:decomposition:start'), ...PlanningDecompositionStartFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:queued'), ...PlanningDecompositionUnitQueuedFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:running'), ...PlanningDecompositionUnitRunningFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:progress'), ...PlanningDecompositionUnitProgressFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:completed'), ...PlanningDecompositionUnitCompletedFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:skipped'), ...PlanningDecompositionUnitSkippedFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:unit:failed'), ...PlanningDecompositionUnitFailedFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:schedule'), ...PlanningDecompositionScheduleFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:budget'), ...PlanningDecompositionBudgetFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:compact-handoff'), ...PlanningDecompositionCompactHandoffFields }),
-  Type.Object({ type: Type.Literal('planning:decomposition:synthesis:complete'), ...PlanningDecompositionSynthesisCompleteFields }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:start'), ...PlanningDecompositionStartFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:queued'), ...PlanningDecompositionUnitQueuedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:running'), ...PlanningDecompositionUnitRunningFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:progress'), ...PlanningDecompositionUnitProgressFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:completed'), ...PlanningDecompositionUnitCompletedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:skipped'), ...PlanningDecompositionUnitSkippedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:failed'), ...PlanningDecompositionUnitFailedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:schedule'), ...PlanningDecompositionScheduleFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:budget'), ...PlanningDecompositionBudgetFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:compact-handoff'), ...PlanningDecompositionCompactHandoffFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:synthesis:complete'), ...PlanningDecompositionSynthesisCompleteFields }, { additionalProperties: false }),
   // --- eforge:endregion plan-01-contracts-config ---
   Type.Object({
     type: Type.Literal('planning:clarification'),

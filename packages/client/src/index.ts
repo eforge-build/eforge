@@ -551,7 +551,7 @@ export {
   PlanningSplitAttemptEvidenceSchema,
   PlanningUnitBudgetSchema,
   PlanningUnitConstraintSchema,
-  PlanningUnresolvedCriterionSchema,
+  PlanningUnresolvedCriterionSchema, capPlanningDecompositionString, projectPlanningCoverageSummaryForWire, projectPlanningDecompositionUnitSummaryForWire,
   PLANNING_DECOMPOSITION_EVENT_TYPES,
   PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS,
   PLANNING_DECOMPOSITION_MAX_CRITERIA,

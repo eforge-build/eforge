@@ -42,5 +42,7 @@
  * (v77 is a case 2 bump: first-party clients gate on extension agent task metadata activityLog entries.)
  * (v78 is a case 1 bump: recovery sidecar recoveryOptions can include compile-scope-context guidance variants.)
  * (v79 is a case 1 bump: removes the planning-task playbook draft wire field.)
+ * (v80 is a case 1 bump: adds closed-union planning:decomposition:* SSE
+ * event variants, so stale clients must be rejected before parsing sessions.)
  */
-export const DAEMON_API_VERSION = 79; // v79: removes the planning-task playbook draft wire field.
+export const DAEMON_API_VERSION = 80; // v80: adds planning:decomposition:* event variants.

@@ -9,7 +9,22 @@ export interface PlanningSourceSlice { kind: PlanningSourceSliceKind; sourceHash
 export interface PlanningCriterionCoverage { criterionId: string; sourceHash?: string; coveredByUnitIds: string[] }
 export interface PlanningUnresolvedCriterion { criterionId: string; reason: string; evidence?: string }
 export interface PlanningCoverageSummary { totalCriteria: number; coverageByUnit: Record<string, string[]>; coveredCriteria: PlanningCriterionCoverage[]; unresolvedCriteria: PlanningUnresolvedCriterion[] }
-export interface PlanningUnitOutput { unitId: string; artifactPath?: string; byteLength?: number; contentHash?: string }
+export interface PlanningUnitOutput {
+  unitId: string;
+  artifactPath?: string;
+  byteLength?: number;
+  contentHash?: string;
+  status?: 'completed' | 'failed' | 'skipped';
+  coveredCriteria?: string[];
+  discoveredFiles?: string[];
+  sharedContractNotes?: string[];
+  moduleSuggestions?: Array<{ id: string; description: string; dependsOn: string[]; architecture?: string }>;
+  planSuggestions?: Array<{ id: string; name?: string; markdown: string; dependsOn?: string[]; buildConfigBlock?: string }>;
+  unresolvedRequirements?: PlanningUnresolvedCriterion[];
+  compactHandoffRef?: string;
+  synthesisNotes?: string[];
+  observedBudget?: PlanningObservedBudgetPressure;
+}
 export interface PlanningDecompositionEdge { fromUnitId: string; toUnitId: string; reason: string }
 export interface PlanningDecompositionUnit {
   unitId: string;

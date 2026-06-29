@@ -35,7 +35,8 @@ function parseRecoverySidecar(jsonContent: string, prdId: string, statusForInval
     const { applied: _applied, ...withoutApplied } = parsed;
     return { ...withoutApplied, ...(applied !== undefined ? { applied } : {}) };
   } catch (err) {
-    throw new HttpRouteError(statusForInvalid, `Recovery sidecar v3 contract is invalid for prdId: ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
+    const version = typeof (raw as { schemaVersion?: unknown })?.schemaVersion === 'number' ? ` schemaVersion ${(raw as { schemaVersion: number }).schemaVersion}` : '';
+    throw new HttpRouteError(statusForInvalid, `Supported recovery sidecar contract is invalid${version} for prdId: ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
