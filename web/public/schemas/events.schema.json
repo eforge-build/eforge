@@ -16793,6 +16793,49 @@
           "required": [
             "type",
             "prdId",
+            "previousStatus"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:removed",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "previousStatus": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "waiting",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                }
+              ]
+            },
+            "removedSidecars": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
             "title",
             "verdict",
             "justification"
@@ -35962,6 +36005,49 @@
                           },
                           "reason": {
                             "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "previousStatus"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "queue:prd:removed",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "previousStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "waiting",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "skipped",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "removedSidecars": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         }
                       },
