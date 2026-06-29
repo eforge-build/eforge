@@ -264,7 +264,7 @@ describe('bounded planning unit execution', () => {
       { events: [{ kind: 'tool_call', tool: 'Read', toolUseId: 'read-1', input: { file_path: 'packages/engine/src/contracts.ts' }, output: rawSentinel }, usage(90, 2)], text: 'inspection only' },
       { events: [{ kind: 'tool_call', tool: 'submit_plan_set', toolUseId: 'submit-1', input: planSet(), output: '' }], text: 'submitted from compact handoff' },
     ]);
-    const budgets = budget({ maxLocalExplorationToolUses: 1, maxObservedInputTokens: 10_000 });
+    const budgets = budget({ maxLocalExplorationToolUses: 1, maxObservedInputTokens: 10_000, maxCompactHandoffBytes: 4_000 });
     const { output, events, artifactDir } = await run({ harness, budgets, source: 'Unit source for compact continuation.' });
 
     expect(harness.calls).toHaveLength(2);
@@ -275,6 +275,7 @@ describe('bounded planning unit execution', () => {
     const compactEvent = events.find((event): event is Extract<EforgeEvent, { type: 'planning:decomposition:compact-handoff' }> => event.type === 'planning:decomposition:compact-handoff');
     expect(compactEvent?.artifactPath).toContain('/.decomposition/units/unit-engine-contracts/');
     expect(compactEvent?.byteLength).toBeGreaterThan(0);
+    expect(compactEvent?.byteLength).toBeLessThanOrEqual(budgets.maxCompactHandoffBytes);
     expect(compactEvent?.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(harness.prompts[1]).toContain('Planner Inspection Handoff');
     expect(harness.prompts[1]).toContain('Unit source for compact continuation.');

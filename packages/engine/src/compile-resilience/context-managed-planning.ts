@@ -54,7 +54,7 @@ export async function* runContextManagedCompilePlanning(ctx: PipelineContext): A
       if (output.status === 'completed') { unit.status = 'completed'; completed.add(unit.unitId); failed.delete(unit.unitId); continue; }
       if (output.status === 'skipped') { unit.status = 'skipped'; completed.add(unit.unitId); failed.delete(unit.unitId); continue; }
       if (!output.observedBudget?.triggeredLimitKeys.length) throw await toCompileScopeError(ctx, terminalError(graph, unit, output));
-      const split = splitOverBudgetPlanningUnit({ graph, unit, observedPressure: output.observedBudget, limits });
+      const split = splitOverBudgetPlanningUnit({ graph, unit, observedPressure: output.observedBudget, limits, failedOutput: output });
       if ('kind' in split) throw await toCompileScopeError(ctx, split);
       graph = split.graph;
       skipped.add(unit.unitId);

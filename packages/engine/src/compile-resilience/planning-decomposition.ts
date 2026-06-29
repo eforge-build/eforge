@@ -55,7 +55,7 @@ export interface DecompositionPlanningError { kind: 'decomposition-exhausted'; s
 
 export interface DerivePlanningDecompositionGraphInput { source: { content: string; hash: string; path?: string }; preflightRisk?: CompilePreflightRisk; pipelineComposition?: PipelineComposition; limits: PlanningDecompositionLimits }
 export interface SelectReadyPlanningBatchInput { graph: PlanningDecompositionGraph; completedUnitIds?: Iterable<string>; failedUnitIds?: Iterable<string>; runningUnitIds?: Iterable<string>; skippedUnitIds?: Iterable<string>; parallelism?: number }
-export interface SplitOverBudgetPlanningUnitInput { graph: PlanningDecompositionGraph; unit: PlanningDecompositionUnit; observedPressure: PlanningObservedBudgetPressure; limits?: PlanningDecompositionLimits }
+export interface SplitOverBudgetPlanningUnitInput { graph: PlanningDecompositionGraph; unit: PlanningDecompositionUnit; observedPressure: PlanningObservedBudgetPressure; limits?: PlanningDecompositionLimits; failedOutput?: PlanningUnitOutput }
 export interface EvaluatePlanningUnitBudgetPressureInput { unit: PlanningDecompositionUnit; observed?: Partial<Omit<PlanningObservedBudgetPressure, 'triggeredLimitKeys'>> }
 
 export function derivePlanningDecompositionGraph(input: DerivePlanningDecompositionGraphInput): PlanningDecompositionGraph { return deriveGraph(input); }

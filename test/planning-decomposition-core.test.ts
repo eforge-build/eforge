@@ -145,6 +145,36 @@ describe('planning decomposition core', () => {
     expect(result.graph.units.find((u) => u.unitId === downstream.unitId)?.dependsOn).toEqual(result.childUnitIds);
   });
 
+  it('splits single-criterion compact-pressure units by discovered evidence paths', () => {
+    const graph = graphFor(`# PRD\n\n## Acceptance Criteria\n- \`packages/engine/src/config.ts\` supports schema, merge defaults, and path-specific validation errors.`, { ...limits, maxDepth: 3 });
+    const parent = graph.units[0];
+    const result = splitOverBudgetPlanningUnit({
+      graph,
+      unit: parent,
+      observedPressure: { compactHandoffBytes: 500, criteriaCount: 1, subsystemCount: 1, triggeredLimitKeys: ['maxCompactHandoffBytes'] },
+      limits: { ...limits, maxDepth: 3 },
+      failedOutput: {
+        unitId: parent.unitId,
+        status: 'failed',
+        discoveredFiles: [
+          'packages/engine/src/config.ts',
+          'packages/engine/src/agent-runtime-registry.ts',
+          'packages/engine/src/pipeline/agent-config.ts',
+          'test/config-schema.test.ts',
+        ],
+      },
+    });
+
+    expect('graph' in result).toBe(true);
+    if (!('graph' in result)) return;
+    expect(result.childUnitIds.length).toBeGreaterThanOrEqual(2);
+    const children = result.childUnitIds.map((id) => result.graph.units.find((unit) => unit.unitId === id)!);
+    expect(children.every((child) => child.criteriaIds.includes(parent.criteriaIds[0]))).toBe(true);
+    expect(new Set(result.graph.coverage.coveredCriteria.find((criterion) => criterion.criterionId === parent.criteriaIds[0])?.coveredByUnitIds)).toEqual(new Set(result.childUnitIds));
+    expect(children.flatMap((child) => child.sharedFileConstraints)).toContain('packages/engine/src/config.ts');
+    expect(validatePlanningDecompositionGraph(result.graph).ok).toBe(true);
+  });
+
   it('enforces split attempts per unit from graph evidence', () => {
     const graph = graphFor(source(['engine'], 5), { ...limits, maxCriteriaPerUnit: 10, maxSplitAttemptsPerUnit: 1 });
     const parent = graph.units[0];

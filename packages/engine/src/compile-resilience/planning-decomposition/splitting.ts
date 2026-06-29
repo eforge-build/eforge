@@ -1,15 +1,16 @@
 import { PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA, type PlanningDecompositionLimits, type PlanningObservedBudgetPressure, type PlanningSplitAttemptEvidence } from '@eforge-build/client';
 import { evaluatePlanningUnitBudgetPressure, type DecompositionPlanningError, type SplitOverBudgetPlanningUnitInput, type PlanningDecompositionGraph, type PlanningDecompositionUnit, type PlanningUnresolvedCriterion } from '../planning-decomposition.js';
 import { buildEdges, deriveBudget, recomputeCoverage } from './graph-builders.js';
+import { inferSubsystemHints, stableSlug } from './source-analysis.js';
 
 export function splitUnit(input: SplitOverBudgetPlanningUnitInput): { graph: PlanningDecompositionGraph; childUnitIds: string[] } | DecompositionPlanningError {
   const limits = input.limits ?? input.graph.limits;
   const blockers = exhaustionBlockers(input.graph, input.unit, input.observedPressure, limits);
   if (blockers.length > 0) return exhausted(input, blockers);
-  const groups = splitGroups(input.unit, limits);
+  const groups = splitGroups(input, limits);
   if (groups.length < 2) return exhausted(input, ['no-smaller-child-graph']);
   const children = groups.map((group, index) => childUnit(input.unit, group, index + 1, limits));
-  if (!children.every((child) => hasProgress(input.unit, child, input.observedPressure))) return exhausted(input, ['split-does-not-reduce-triggered-pressure']);
+  if (!children.every((child, index) => hasProgress(input.unit, child, input.observedPressure, groups[index]?.pressureRatio))) return exhausted(input, ['split-does-not-reduce-triggered-pressure']);
   const childIds = children.map((c) => c.unitId);
   const parentSkipped = { ...input.unit, status: 'skipped' as const };
   const replaced = input.graph.units.map((unit) => {
@@ -36,13 +37,15 @@ function exhaustionBlockers(graph: PlanningDecompositionGraph, unit: PlanningDec
   return blockers;
 }
 
-interface SplitGroup { criteriaIds: string[]; subsystemHints: string[]; sourceSlices: PlanningDecompositionUnit['sourceSlices'] }
+interface SplitGroup { criteriaIds: string[]; subsystemHints: string[]; sourceSlices: PlanningDecompositionUnit['sourceSlices']; interfaceConstraints?: string[]; sharedFileConstraints?: string[]; titleSuffix?: string; pressureRatio?: number }
 
-function splitGroups(unit: PlanningDecompositionUnit, limits: PlanningDecompositionLimits): SplitGroup[] {
+function splitGroups(input: SplitOverBudgetPlanningUnitInput, limits: PlanningDecompositionLimits): SplitGroup[] {
+  const unit = input.unit;
   const strategies: Array<() => SplitGroup[]> = [
     () => unit.criteriaIds.length > 1 ? chunk(unit.criteriaIds, Math.max(1, limits.maxCriteriaPerUnit)).map((criteriaIds) => groupForCriteria(unit, criteriaIds)) : [],
     () => unit.subsystemHints.length > 1 ? unit.subsystemHints.map((hint) => ({ criteriaIds: unit.criteriaIds, subsystemHints: [hint], sourceSlices: unit.sourceSlices })) : [],
     () => unit.sourceSlices.length > 1 ? unit.sourceSlices.map((slice) => ({ criteriaIds: slice.criteriaIds, subsystemHints: unit.subsystemHints, sourceSlices: [{ ...slice }] })).filter((group) => group.criteriaIds.length > 0) : [],
+    () => evidenceSplitGroups(input, limits),
     () => splitOversizedSourceSlice(unit, limits),
   ];
   for (const strategy of strategies) {
@@ -70,6 +73,62 @@ function splitOversizedSourceSlice(unit: PlanningDecompositionUnit, limits: Plan
     .map(([byteStart, byteEnd]) => ({ criteriaIds: slice.criteriaIds, subsystemHints: unit.subsystemHints, sourceSlices: [{ ...slice, byteStart, byteEnd, byteLength: byteEnd - byteStart }] }));
 }
 
+function evidenceSplitGroups(input: SplitOverBudgetPlanningUnitInput, limits: PlanningDecompositionLimits): SplitGroup[] {
+  if (!shouldSplitByEvidence(input)) return [];
+  const groups = evidencePaths(input).map((path) => evidenceGroup(input.unit, path));
+  const unique = uniqueGroups(groups).slice(0, Math.max(2, Math.min(6, limits.maxCriteriaPerUnit)));
+  if (unique.length < 2) return [];
+  const ratio = 1 / unique.length;
+  return unique.map((group) => ({ ...group, pressureRatio: ratio }));
+}
+
+function shouldSplitByEvidence(input: SplitOverBudgetPlanningUnitInput): boolean {
+  return input.unit.criteriaIds.length <= 1 && input.observedPressure.triggeredLimitKeys.some((key) => key === 'maxCompactHandoffBytes' || key === 'maxLocalExplorationToolUses' || key === 'maxObservedInputTokens');
+}
+
+function evidencePaths(input: SplitOverBudgetPlanningUnitInput): string[] {
+  const candidates = [
+    ...(input.failedOutput?.discoveredFiles ?? []),
+    ...input.unit.sharedFileConstraints,
+    ...input.unit.interfaceConstraints,
+  ];
+  return candidates.map(normalizeEvidencePath).filter((path): path is string => Boolean(path));
+}
+
+function evidenceGroup(unit: PlanningDecompositionUnit, path: string): SplitGroup {
+  const hints = inferSubsystemHints(path).filter((hint) => hint !== 'general');
+  const subsystemHints = hints.length > 0 ? hints : unit.subsystemHints;
+  return {
+    criteriaIds: unit.criteriaIds,
+    subsystemHints,
+    sourceSlices: unit.sourceSlices.map((slice) => ({ ...slice })),
+    interfaceConstraints: unit.interfaceConstraints.filter((constraint) => constraint === path || path.includes(stableSlug(constraint))).slice(0, 1),
+    sharedFileConstraints: [path],
+    titleSuffix: stableSlug(path).slice(0, 36),
+  };
+}
+
+function uniqueGroups(groups: SplitGroup[]): SplitGroup[] {
+  const seen = new Set<string>();
+  const unique: SplitGroup[] = [];
+  for (const group of groups) {
+    const key = group.sharedFileConstraints?.[0] ?? group.titleSuffix ?? group.subsystemHints.join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(group);
+  }
+  return unique;
+}
+
+function normalizeEvidencePath(value: string): string | undefined {
+  const cleaned = value.trim().replace(/^['"`]+|['"`),:;]+$/g, '');
+  if (!cleaned || cleaned.includes('[omitted ')) return undefined;
+  if (/^(?:read|find|grep|ls|bash) called$/i.test(cleaned)) return undefined;
+  if (cleaned.includes('/')) return cleaned;
+  if (/^[A-Za-z0-9_.-]+\.[A-Za-z0-9_.-]+$/.test(cleaned)) return cleaned;
+  return undefined;
+}
+
 function childUnit(parent: PlanningDecompositionUnit, group: SplitGroup, ordinal: number, limits: PlanningDecompositionLimits): PlanningDecompositionUnit {
   const childId = `${parent.unitId}-child-${String(ordinal).padStart(2, '0')}`;
   return {
@@ -77,20 +136,22 @@ function childUnit(parent: PlanningDecompositionUnit, group: SplitGroup, ordinal
     unitId: childId,
     parentId: parent.unitId,
     depth: parent.depth + 1,
-    title: `${parent.title} child ${ordinal}`,
+    title: group.titleSuffix ? `${parent.title} — ${group.titleSuffix}` : `${parent.title} child ${ordinal}`,
     sourceSlices: group.sourceSlices,
     criteriaIds: [...group.criteriaIds].sort(),
     subsystemHints: [...group.subsystemHints].sort(),
     dependsOn: parent.dependsOn,
+    interfaceConstraints: group.interfaceConstraints ?? parent.interfaceConstraints,
+    sharedFileConstraints: group.sharedFileConstraints ?? parent.sharedFileConstraints,
     budgets: deriveBudget(limits, parent.depth + 1),
     status: 'queued',
   };
 }
 
-function hasProgress(parent: PlanningDecompositionUnit, child: PlanningDecompositionUnit, observed: PlanningObservedBudgetPressure): boolean {
+function hasProgress(parent: PlanningDecompositionUnit, child: PlanningDecompositionUnit, observed: PlanningObservedBudgetPressure, pressureRatio?: number): boolean {
   const keys = observed.triggeredLimitKeys.length > 0 ? observed.triggeredLimitKeys : ['maxCriteriaPerUnit'];
   const parentPressure = pressureValues(parent, observed, parent);
-  const childPressure = pressureValues(child, observed, parent);
+  const childPressure = pressureValues(child, observed, parent, pressureRatio);
   return keys.some((key) => {
     const parentValue = parentPressure.get(key);
     const childValue = childPressure.get(key);
@@ -98,11 +159,11 @@ function hasProgress(parent: PlanningDecompositionUnit, child: PlanningDecomposi
   });
 }
 
-function pressureValues(unit: PlanningDecompositionUnit, observed: PlanningObservedBudgetPressure, parent: PlanningDecompositionUnit): Map<string, number | undefined> {
+function pressureValues(unit: PlanningDecompositionUnit, observed: PlanningObservedBudgetPressure, parent: PlanningDecompositionUnit, pressureRatio?: number): Map<string, number | undefined> {
   const sourceBytes = unit.sourceSlices.reduce((sum, slice) => sum + slice.byteLength, 0);
   const parentSourceBytes = Math.max(1, parent.sourceSlices.reduce((sum, slice) => sum + slice.byteLength, 0));
-  const criteriaRatio = parent.criteriaIds.length > 0 ? unit.criteriaIds.length / parent.criteriaIds.length : sourceBytes / parentSourceBytes;
-  const sourceRatio = sourceBytes / parentSourceBytes;
+  const criteriaRatio = pressureRatio ?? (parent.criteriaIds.length > 0 ? unit.criteriaIds.length / parent.criteriaIds.length : sourceBytes / parentSourceBytes);
+  const sourceRatio = pressureRatio ?? sourceBytes / parentSourceBytes;
   const pressure = evaluatePlanningUnitBudgetPressure({ unit });
   return new Map<string, number | undefined>([
     ['maxPromptSourceBytes', pressure.promptSourceBytes ?? sourceBytes],

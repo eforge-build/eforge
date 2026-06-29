@@ -25,6 +25,7 @@ import {
   type PlannerContextObservation,
   type PlannerFamilyStage,
 } from './context-guard.js';
+export { compactPlannerInspectionHandoffToBudget, plannerInspectionHandoffByteLength } from './planner-inspection-compaction.js';
 
 // --- eforge:region planner-inspection-contracts ---
 export const PLANNER_INSPECTION_HANDOFF_ARTIFACT = 'planner-inspection-handoff.json';
@@ -45,6 +46,7 @@ const MAX_PATH_BYTES = 500;
 const MAX_CAVEAT_BYTES = 1_000;
 const MAX_TOOL_SUMMARY_BYTES = 700;
 const MAX_PATH_SCAN_CHARS = 4_000;
+const ELLIPSIS_BYTES = Buffer.byteLength('…', 'utf8');
 const PATH_PATTERN = /(?:^|[\s"'`(])((?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@-]+(?:\.[A-Za-z0-9_.-]+)?)/g;
 
 export interface PlannerInspectionToolUseCaps {
@@ -262,6 +264,7 @@ export async function inspectPlannerHandoffArtifact(path: string): Promise<{ art
   const contentHash = createHash('sha256').update(await readFile(path)).digest('hex');
   return { artifactPath: path, byteLength: info.size, contentHash };
 }
+
 // --- eforge:endregion planner-inspection-handoff-formatting ---
 
 // --- eforge:region planner-inspection-evidence-helpers ---
@@ -486,8 +489,8 @@ function sanitizeToolResultSnippet(text: string): string {
 function capText(text: string, maxBytes: number): { text: string; omittedBytes: number } {
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes <= maxBytes) return { text, omittedBytes: 0 };
-  let end = Math.max(0, maxBytes - Buffer.byteLength('…', 'utf8'));
-  while (Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes - Buffer.byteLength('…', 'utf8')) end--;
+  let end = Math.max(0, maxBytes - ELLIPSIS_BYTES);
+  while (Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes - ELLIPSIS_BYTES) end--;
   return { text: `${text.slice(0, end)}…`, omittedBytes: bytes - Buffer.byteLength(text.slice(0, end), 'utf8') };
 }
 

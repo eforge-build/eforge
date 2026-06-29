@@ -14,10 +14,10 @@ import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } fr
 import { emitPlanningDecision } from '../decisions.js';
 import { formatPlannerToolSchemaValidationError, formatPlannerToolSemanticValidationError } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
-import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
+import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
 import { createLinkedAbortController } from './linked-abort-controller.js';
 
-export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
+export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; maxCompactHandoffBytes?: number; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
   /** Prompt-safe compacted source content. Defaults to resolved source content. */ promptSourceContent?: string;
@@ -440,6 +440,7 @@ ${existingPlans}`);
             incompleteReason: inspectionStatus.reason,
             prompt,
           });
+          compactInspectionHandoff = compactPlannerInspectionHandoffToBudget(compactInspectionHandoff, options.boundedCapture?.maxCompactHandoffBytes);
           const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff, artifactDir: options.boundedCapture?.artifactDir });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
           const stopEvent = syntheticStopForRestart(); if (stopEvent) yield stopEvent;

@@ -9,13 +9,14 @@ import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import type { BoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
 import { formatBoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
-import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
+import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
 import { createLinkedAbortController } from './linked-abort-controller.js';
 
 export interface ModulePlannerBoundedCaptureOptions {
   mode: 'capture-only';
   unitId: string;
   artifactDir: string;
+  maxCompactHandoffBytes?: number;
   submitToolName?: 'submit_module_plan';
   onModulePlanSubmission: (payload: { markdown: string; buildConfigBlock?: string }) => void;
 }
@@ -148,6 +149,7 @@ export async function* runModulePlanner(
         }
         if (status?.shouldHandoff && options.boundedCapture && !compactUsed) {
           compactHandoff = observer!.buildHandoff({ source: { sourceId: options.boundedCapture.unitId, sourceName: options.moduleId, planSetName: options.planSetName }, sourceBuildContext: { sourceSummary: options.moduleDescription, buildGoal: options.moduleDescription, promptSourceSnippet: promptSourceContent }, stage: 'module-planner', incompleteReason: status.reason, prompt });
+          compactHandoff = compactPlannerInspectionHandoffToBudget(compactHandoff, options.boundedCapture.maxCompactHandoffBytes);
           const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd: options.cwd, outputDir: options.outputDir ?? 'eforge/plans', planSetName: options.planSetName, artifactDir: options.boundedCapture.artifactDir, handoff: compactHandoff });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactHandoff, artifactPath };
           compactUsed = true;

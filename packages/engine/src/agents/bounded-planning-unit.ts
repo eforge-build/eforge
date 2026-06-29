@@ -103,7 +103,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
         contextGuard,
         onPromptBuilt: recordPrompt,
         boundedUnit: promptContext,
-        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, onPlanSetSubmission: p => { captures.planSet = p; }, onArchitectureSubmission: a => { captures.architecture = a; } },
+        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, maxCompactHandoffBytes: input.budgets.maxCompactHandoffBytes, onPlanSetSubmission: p => { captures.planSet = p; }, onArchitectureSubmission: a => { captures.architecture = a; } },
         plannerInspectionBudget: derivePlannerInspectionBudget({ hardLimits: contextGuard.limits, guardDiagnostics: contextGuard.guardDiagnostics, plannerMaxTurns: input.agentOptions.maxTurns, toolUseCaps: { maxToolUses: input.budgets.maxLocalExplorationToolUses } }),
       })
       : runModulePlanner({
@@ -125,7 +125,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
         contextGuard,
         onPromptBuilt: recordPrompt,
         boundedUnit: promptContext,
-        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, submitToolName: 'submit_module_plan', onModulePlanSubmission: p => { captures.modulePlan = p; } },
+        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, maxCompactHandoffBytes: input.budgets.maxCompactHandoffBytes, submitToolName: 'submit_module_plan', onModulePlanSubmission: p => { captures.modulePlan = p; } },
       });
 
     let budgetEmitted = false;
