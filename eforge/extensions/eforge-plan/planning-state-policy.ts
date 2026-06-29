@@ -52,7 +52,6 @@ export function isTerminalBuildStatus(status: string | undefined | null): boolea
   return normalized !== undefined && TERMINAL_BUILD_STATUSES.has(normalized);
 }
 
-// --- eforge:region plan-02-eforge-plan-cleanup ---
 export function isTerminalQueuePrdStatus(status: string | undefined | null): boolean {
   const normalized = normalizePlanningStatus(status);
   return normalized !== undefined && TERMINAL_QUEUE_PRD_STATUSES.has(normalized);
@@ -61,7 +60,6 @@ export function isTerminalQueuePrdStatus(status: string | undefined | null): boo
 export function isLiveQueuePrdStatus(status: string | undefined | null): boolean {
   return !isTerminalQueuePrdStatus(status);
 }
-// --- eforge:endregion plan-02-eforge-plan-cleanup ---
 
 export function isCurrentResultLifecycleState(state: string | undefined | null): state is 'failed' | 'partial' | 'shipped' | 'merged' {
   return typeof state === 'string' && CURRENT_RESULT_STATES.has(state);

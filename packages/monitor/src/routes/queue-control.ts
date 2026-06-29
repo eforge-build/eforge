@@ -71,14 +71,12 @@ export function createQueueControlRoutes(context: MonitorContext): RouteDefiniti
       if (!isValidPathSegment(prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
       try {
         const result = await removeQueuedPrd({ cwd: context.cwd, queueDir: queueDir(context), prdId });
-        // --- eforge:region plan-01-queue-removal-signal ---
         await emitQueueRemovedEvent(context, {
           type: 'queue:prd:removed',
           prdId: result.id,
           previousStatus: result.previousStatus,
           removedSidecars: result.removedSidecars,
         });
-        // --- eforge:endregion plan-01-queue-removal-signal ---
         context.notifyQueueMutation('external');
         sendJson(ctx.res, result);
       } catch (err) {

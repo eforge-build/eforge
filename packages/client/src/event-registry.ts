@@ -1727,9 +1727,7 @@ const eventRegistry = {
     project: projectQueueDependencyOverridden,
   },
 
-  // --- eforge:region plan-01-queue-removal-signal ---
   'queue:prd:removed': { scope: 'daemon', persist: true, summary: (e) => `PRD ${e.prdId} removed from queue (was ${e.previousStatus})`, project: (event, state) => state.queue.some((item) => item.id === event.prdId) ? { queue: state.queue.filter((item) => item.id !== event.prdId) } : undefined },
-  // --- eforge:endregion plan-01-queue-removal-signal ---
 
   'queue:prd:stale': {
     scope: 'daemon',

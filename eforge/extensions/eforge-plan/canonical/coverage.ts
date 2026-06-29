@@ -48,14 +48,12 @@ function planningTaskCoverage(store: EforgePlanStore, itemRef: string, includeTe
 }
 
 function queueBuildCoverage(store: EforgePlanStore, itemRef: string, includeTerminal: boolean): CoverageEntry[] {
-  // --- eforge:region plan-02-eforge-plan-cleanup ---
   const rows = all(store, `SELECT le.lifecycle_state, le.queue_prd_id, le.run_id, le.build_session_id, le.status, qp.status AS queue_status, br.status AS run_status, bs.status AS build_session_status FROM lifecycle_evidence le LEFT JOIN queue_prds qp ON qp.prd_id = le.queue_prd_id LEFT JOIN build_runs br ON br.run_id = le.run_id LEFT JOIN build_sessions bs ON bs.build_session_id = le.build_session_id WHERE le.is_current = 1 AND (le.item_ref = ? OR le.item_id = ?) AND (le.queue_prd_id IS NOT NULL OR le.run_id IS NOT NULL OR le.build_session_id IS NOT NULL)`, itemRef, itemRef);
   return rows.filter((row) => includeTerminal || isLiveCanonicalQueueBuildCoverage(row)).map((row) => {
     const state = String(row.lifecycle_state);
     const reason = isCurrentResultLifecycleState(state) ? resultReasonCode(state) : row.run_id || row.build_session_id ? 'active-build' : 'queued-build';
     return { itemRef, reasonCode: reason, lifecycleState: stringValue(row.lifecycle_state), associatedLinks: [{ kind: row.run_id ? 'build' : 'queue', label: String(row.run_id ?? row.build_session_id ?? row.queue_prd_id), queuePrdId: stringValue(row.queue_prd_id), runId: stringValue(row.run_id), buildSessionId: stringValue(row.build_session_id), status: stringValue(row.status) }] };
   });
-  // --- eforge:endregion plan-02-eforge-plan-cleanup ---
 }
 
 function lifecycleCoverage(store: EforgePlanStore, itemRef: string, includeTerminal: boolean): CoverageEntry[] {
@@ -66,7 +64,6 @@ function lifecycleCoverage(store: EforgePlanStore, itemRef: string, includeTermi
   });
 }
 
-// --- eforge:region plan-02-eforge-plan-cleanup ---
 function isLiveCanonicalQueueBuildCoverage(row: Record<string, unknown>): boolean {
   const state = String(row.lifecycle_state);
   if (isCurrentResultLifecycleState(state)) return true;
@@ -74,7 +71,6 @@ function isLiveCanonicalQueueBuildCoverage(row: Record<string, unknown>): boolea
   if (row.build_session_id !== null && row.build_session_id !== undefined) return !isTerminalBuildStatus(stringValue(row.build_session_status) ?? stringValue(row.status));
   return isLiveQueuePrdStatus(stringValue(row.queue_status) ?? stringValue(row.status));
 }
-// --- eforge:endregion plan-02-eforge-plan-cleanup ---
 
 function all(store: EforgePlanStore, sql: string, ...params: unknown[]): Record<string, unknown>[] { return getDatabase(store).prepare(sql).all(...(params as never[])) as Record<string, unknown>[]; }
 function stringValue(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }

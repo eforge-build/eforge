@@ -31,7 +31,6 @@ export const queueEventVariants = [
     currentDependsOn: Type.Array(Type.String()),
     reason: Type.Optional(Type.String()),
   }),
-  // --- eforge:region plan-01-queue-removal-signal ---
   Type.Object({
     type: Type.Literal('queue:prd:removed'),
     prdId: Type.String(),
@@ -43,7 +42,6 @@ export const queueEventVariants = [
     ]),
     removedSidecars: Type.Optional(Type.Array(Type.String())),
   }),
-  // --- eforge:endregion plan-01-queue-removal-signal ---
   Type.Object({
     type: Type.Literal('queue:prd:stale'),
     prdId: Type.String(),

@@ -18,9 +18,7 @@ function durableQueueBuildEvidence(store: EforgePlanStore, itemId: string, sessi
   const hasSubmittedEvidence = existingEvidence.some((e) => e.lifecycleState === 'submitted');
   return queueBuildLinks.flatMap((row): ProjectionLifecycleEvidenceRow[] => {
     if (row.itemId !== itemId && (!row.session || !sessions.has(row.session))) return [];
-    // --- eforge:region plan-02-eforge-plan-cleanup ---
     if (row.kind === 'queue-prd' && !isLiveQueuePrdStatus(row.status)) return [];
-    // --- eforge:endregion plan-02-eforge-plan-cleanup ---
     if (row.kind === 'queue-prd' && hasSubmittedEvidence) return [];
     const status = row.status?.toLowerCase();
     const state = row.kind === 'landing' ? (status === 'shipped' ? 'shipped' : status === 'merged' ? 'merged' : status && !isTerminalProjectionStatus(status) ? 'pr-open' : undefined) : status === 'failed' ? 'failed' : isTerminalProjectionStatus(status) ? undefined : row.kind === 'queue-prd' ? 'queued' : 'build';

@@ -344,9 +344,7 @@ export const IGNORED_EVENT_TYPES = [
   'stack:sync:failed',
   'stack:sync:deferred',
   'stack:sync:skipped',
-  // --- eforge:region plan-01-queue-removal-signal ---
   'queue:prd:removed',
-  // --- eforge:endregion plan-01-queue-removal-signal ---
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
