@@ -24,7 +24,7 @@ import { EforgeEngine, type SchedulerControl, type SchedulerInputEvent, type Pro
 import { withHooks } from '@eforge-build/engine/hooks';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
-import { withRecording } from './recorder.js';
+import { buildAndPersistRunUpsert, withRecording } from './recorder.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
@@ -204,10 +204,10 @@ export { writeDaemonEvent };
  * This runs exactly once at daemon startup. The periodic orphan-detection
  * loop still handles live-running daemons.
  *
- * Returns a structured report of what was cleaned up. Emits no events itself —
- * all daemon:recovery:* event emission is the caller's responsibility.
- * The existing synthetic `phase:end` event per failed run is preserved here
- * for backward compatibility with session-scoped event streams.
+ * Returns a structured report of what was cleaned up. Emits no daemon recovery
+ * events itself — all daemon:recovery:* event emission is the caller's responsibility.
+ * The existing synthetic `phase:end` event and `daemon:run:upsert` per failed run
+ * are preserved here for backward compatibility with session-scoped event streams.
  */
 export function reconcileOrphanedState(db: MonitorDB, cwd: string): ReconciliationReport {
   const startedAt = Date.now();
@@ -222,6 +222,7 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): Reconciliati
       if (run.pid && !isPidAlive(run.pid)) {
         const reason = 'reconciled: process not alive at daemon startup';
         db.updateRunStatus(run.id, 'failed', now);
+        buildAndPersistRunUpsert(db, run.id, run.id);
         // Preserve backward-compatible synthetic phase:end event for session-scoped streams.
         try {
           db.insertEvent({
@@ -454,6 +455,7 @@ async function main(): Promise<void> {
               data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
               timestamp: now,
             });
+            buildAndPersistRunUpsert(db, run.id, run.id);
           }
           db.insertDaemonEvent({
             type: 'session:end',
@@ -484,6 +486,7 @@ async function main(): Promise<void> {
               data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
               timestamp: now,
             });
+            buildAndPersistRunUpsert(db, run.id, run.id);
           }
           db.insertDaemonEvent({
             type: 'session:end',
@@ -876,7 +879,20 @@ async function main(): Promise<void> {
       const runningRuns = db.getRunningRuns();
       for (const run of runningRuns) {
         if (run.pid && !isPidAlive(run.pid)) {
-          db.updateRunStatus(run.id, 'killed');
+          const now = new Date().toISOString();
+          db.updateRunStatus(run.id, 'killed', now);
+          db.insertEvent({
+            runId: run.id,
+            type: 'phase:end',
+            data: JSON.stringify({
+              type: 'phase:end',
+              runId: run.id,
+              result: { status: 'failed', summary: 'Orphaned worker process is no longer alive' },
+              timestamp: now,
+            }),
+            timestamp: now,
+          });
+          buildAndPersistRunUpsert(db, run.id, run.id);
           // Only emit orphan:reaped when a run is actually marked killed (not on every tick).
           writeDaemonEvent(db, {
             type: 'daemon:orphan:reaped',

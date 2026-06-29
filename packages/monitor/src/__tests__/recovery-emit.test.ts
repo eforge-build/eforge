@@ -74,6 +74,12 @@ describe('reconcileOrphanedState returns structured report', () => {
     expect(typeof report.durationMs).toBe('number');
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
 
+    const runUpserts = db.getDaemonEventsAfter(0).filter((e) => e.type === 'daemon:run:upsert');
+    expect(runUpserts).toHaveLength(1);
+    const payload = JSON.parse(runUpserts[0].data) as { run: { id: string; status: string; completedAt?: string } };
+    expect(payload.run).toMatchObject({ id: 'run-dead', status: 'failed' });
+    expect(payload.run.completedAt).toBeDefined();
+
     db.close();
   });
 

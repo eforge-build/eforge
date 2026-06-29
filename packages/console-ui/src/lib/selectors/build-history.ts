@@ -8,7 +8,7 @@
  *
  * No React imports. No DOM imports.
  */
-import type { RunInfo } from '@eforge-build/client/browser';
+import { classifyRunStatus, type RunInfo, type RunStatusClass } from '@eforge-build/client/browser';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 
 /** Newest-first comparator on the ISO `startedAt` timestamp. */
@@ -81,23 +81,13 @@ export interface NowBuildItem {
 }
 
 /** The three build-level outcomes the Build history surfaces. */
-export type BuildStatusClass = 'running' | 'failed' | 'completed';
+export type BuildStatusClass = RunStatusClass;
 
 /**
  * Classify any raw run/build status string into one of the three build-level
- * outcomes. This is the single source of truth for status classification,
- * shared by the rollup here and the row presentation in `build-history/shared`.
- *
- * Substring matching keeps it tolerant of the daemon's status vocabulary
- * variants (failed/failure/error, completed/complete/success/succeeded); any
- * status that matches neither is treated as still in flight.
+ * outcomes. Re-exported here to keep existing console selector imports stable.
  */
-export function classifyBuildStatus(status: string): BuildStatusClass {
-  const s = status.toLowerCase();
-  if (s.includes('fail') || s.includes('error')) return 'failed';
-  if (s.includes('complete') || s.includes('success') || s.includes('succeed')) return 'completed';
-  return 'running';
-}
+export const classifyBuildStatus = classifyRunStatus;
 
 /**
  * Roll a session's phase runs up into a single build, or `null` when the session
@@ -126,7 +116,7 @@ function rollupBuild(runs: RunInfo[], now: number): NowBuildItem | null {
   );
 
   const startMs = new Date(startedAt).getTime();
-  const anyLive = window.some((r) => !r.completedAt);
+  const anyLive = window.some((r) => !r.completedAt && classifyBuildStatus(r.status) === 'running');
   let durationMs: number | null = null;
   if (!isNaN(startMs)) {
     if (anyLive) {
@@ -142,13 +132,14 @@ function rollupBuild(runs: RunInfo[], now: number): NowBuildItem | null {
 
   let status: string;
   let phase: string | null;
-  if (!rep.completedAt) {
+  const repStatus = classifyBuildStatus(rep.status);
+  if (repStatus === 'failed') {
+    // Failed: report the phase it broke in, even for historical rows missing completedAt.
+    status = 'failed';
+    phase = rep.command;
+  } else if (!rep.completedAt) {
     // Still in flight: report the phase it's currently working through.
     status = 'running';
-    phase = rep.command;
-  } else if (classifyBuildStatus(rep.status) === 'failed') {
-    // Failed: report the phase it broke in.
-    status = 'failed';
     phase = rep.command;
   } else {
     status = 'completed';

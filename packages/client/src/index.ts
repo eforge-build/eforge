@@ -417,6 +417,8 @@ export type {
 } from './session-stream.js';
 
 export { aggregateSessionSummary } from './aggregate-session-summary.js';
+export { classifyRunStatus, isFailedRunStatus } from './run-status.js';
+export type { RunStatusClass } from './run-status.js';
 
 export {
   eventRegistry,

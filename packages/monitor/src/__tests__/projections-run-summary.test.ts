@@ -50,6 +50,13 @@ describe('run summary projection', () => {
     expect(projectionBuildRunSummary(db, 's1').plans).toEqual([{ id: 'p1', status: 'running', branch: null, dependsOn: [] }]);
     db.close();
   });
+
+  it('treats forced-termination statuses as failed in the session summary', () => {
+    const db = openDatabase(':memory:');
+    db.insertRun({ id: 'r1', sessionId: 's1', planSet: 'set', command: 'build', status: 'killed', startedAt: ts, cwd: process.cwd() });
+    expect(projectionBuildRunSummary(db, 's1').status).toBe('failed');
+    db.close();
+  });
   it('uses the latest planning event and reports current phase, active agent, and error counts', () => {
     const db = openDatabase(':memory:');
     db.insertRun({ id: 'r1', sessionId: 's1', planSet: 'set', command: 'build', status: 'running', startedAt: ts, cwd: process.cwd() });
