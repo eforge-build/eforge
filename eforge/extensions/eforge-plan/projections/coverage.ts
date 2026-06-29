@@ -1,6 +1,7 @@
 import { withProjectionStore } from './store.js';
 import { listLifecycleEvidenceForItems, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems, type ProjectionLifecycleEvidenceRow } from '../sqlite/repositories/projections/lifecycle.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
+import { isLiveQueuePrdStatus } from '../planning-state-policy.js';
 import { blockersFromLifecycleInput, isTerminalProjectionStatus, reasonForEvidence } from './lifecycle.js';
 import type { EforgePlanStore } from '../sqlite/index.js';
 import type { CoverageEntry, CoverageResult } from './types.js';
@@ -15,6 +16,7 @@ function queueBuildEvidenceForItems(store: EforgePlanStore, itemIds: readonly st
     sessionItemIds.set(row.session, ids);
   }
   return listProjectionQueueBuildLinks(store).flatMap((row): ProjectionLifecycleEvidenceRow[] => {
+    if (row.kind === 'queue-prd' && !isLiveQueuePrdStatus(row.status)) return [];
     const status = row.status?.toLowerCase();
     const state = row.kind === 'landing'
       ? status === 'shipped' ? 'shipped' : status === 'merged' ? 'merged' : status && !isTerminalProjectionStatus(status) ? 'pr-open' : undefined

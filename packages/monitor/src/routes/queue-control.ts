@@ -1,9 +1,12 @@
 import { resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
 import { API_ROUTES } from '@eforge-build/client';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { isQueueControlError, removeQueuedPrd, updateQueuedPrdPriority,
   overrideQueuedPrdDependency,
 } from '@eforge-build/engine/queue/control';
+import { getConfigDir, getConventionalConfigDir, loadConfig } from '@eforge-build/engine/config';
+import { loadNativeExtensions, withNativeEventHooks } from '@eforge-build/engine/extensions/index';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
@@ -68,6 +71,12 @@ export function createQueueControlRoutes(context: MonitorContext): RouteDefiniti
       if (!isValidPathSegment(prdId)) return sendJsonError(ctx.res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
       try {
         const result = await removeQueuedPrd({ cwd: context.cwd, queueDir: queueDir(context), prdId });
+        await emitQueueRemovedEvent(context, {
+          type: 'queue:prd:removed',
+          prdId: result.id,
+          previousStatus: result.previousStatus,
+          removedSidecars: result.removedSidecars,
+        });
         context.notifyQueueMutation('external');
         sendJson(ctx.res, result);
       } catch (err) {
@@ -79,6 +88,37 @@ export function createQueueControlRoutes(context: MonitorContext): RouteDefiniti
 
 export function queueDir(context: MonitorContext): string {
   return context.queuePaths?.queueDir ?? resolve(context.cwd!, context.options.queueDir ?? context.options.config?.prdQueue?.dir ?? '.eforge/queue');
+}
+
+type QueueRemovedEventPayload = Omit<Extract<EforgeEvent, { type: 'queue:prd:removed' }>, 'timestamp' | 'sessionId' | 'runId'>;
+
+async function emitQueueRemovedEvent(
+  context: MonitorContext,
+  event: QueueRemovedEventPayload,
+): Promise<void> {
+  if (!context.cwd) {
+    writeDaemonEvent(context.db, event, context.daemonSessionId);
+    return;
+  }
+  try {
+    const { config } = await loadConfig(context.cwd);
+    const configDir = await getConfigDir(context.cwd) ?? getConventionalConfigDir(context.cwd);
+    const { registry } = await loadNativeExtensions({ cwd: context.cwd, configDir, config: config.extensions });
+    const timestamped = { ...event, sessionId: context.daemonSessionId, timestamp: new Date().toISOString() } as EforgeEvent;
+    for await (const emitted of withNativeEventHooks(singleEvent(timestamped), registry, {
+      cwd: context.cwd,
+      configDir,
+      timeoutMs: config.extensions.eventHookTimeoutMs,
+    })) {
+      writeDaemonEvent(context.db, emitted as { type: string } & Record<string, unknown>, context.daemonSessionId);
+    }
+  } catch {
+    writeDaemonEvent(context.db, event, context.daemonSessionId);
+  }
+}
+
+async function* singleEvent(event: EforgeEvent): AsyncGenerator<EforgeEvent> {
+  yield event;
 }
 
 export function sendQueueControlError(res: ServerResponse, err: unknown): void {

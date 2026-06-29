@@ -15,10 +15,11 @@ export interface PlanEligibilityProjection {
   planEligibilityLinks?: AssociatedPlanBuildLink[];
 }
 
-export const TERMINAL_SESSION_STATUSES = ['abandoned', 'canceled', 'cancelled', 'complete', 'completed', 'deleted', 'done', 'merged', 'shipped', 'superseded'] as const;
+export const TERMINAL_SESSION_STATUSES = ['abandoned', 'canceled', 'cancelled', 'complete', 'completed', 'deleted', 'done', 'merged', 'removed', 'shipped', 'superseded'] as const;
 const TERMINAL_SESSION_STATUS_SET = new Set<string>(TERMINAL_SESSION_STATUSES);
 const TERMINAL_PLANNING_TASK_STATUSES = new Set(['applied', 'dismissed', 'failed', 'cancelled', 'canceled', 'completed', 'done']);
-const TERMINAL_BUILD_STATUSES = new Set(['completed', 'cancelled', 'canceled', 'skipped']);
+const TERMINAL_BUILD_STATUSES = new Set(['completed', 'cancelled', 'canceled', 'removed', 'skipped']);
+const TERMINAL_QUEUE_PRD_STATUSES = new Set(['cancelled', 'canceled', 'complete', 'completed', 'deleted', 'done', 'failed', 'removed', 'skipped']);
 const CURRENT_RESULT_STATES = new Set(['failed', 'partial', 'shipped', 'merged']);
 const ACTIVE_PLANNING_TASK_STATUSES = new Set(['queued', 'running', 'active', 'in-progress']);
 
@@ -49,6 +50,15 @@ export function isActivePlanningTaskStatus(status: string | undefined | null): b
 export function isTerminalBuildStatus(status: string | undefined | null): boolean {
   const normalized = normalizePlanningStatus(status);
   return normalized !== undefined && TERMINAL_BUILD_STATUSES.has(normalized);
+}
+
+export function isTerminalQueuePrdStatus(status: string | undefined | null): boolean {
+  const normalized = normalizePlanningStatus(status);
+  return normalized !== undefined && TERMINAL_QUEUE_PRD_STATUSES.has(normalized);
+}
+
+export function isLiveQueuePrdStatus(status: string | undefined | null): boolean {
+  return !isTerminalQueuePrdStatus(status);
 }
 
 export function isCurrentResultLifecycleState(state: string | undefined | null): state is 'failed' | 'partial' | 'shipped' | 'merged' {

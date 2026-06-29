@@ -1,7 +1,7 @@
 import type { EforgePlanStore } from '../sqlite/index.js';
 import { getDatabase } from '../sqlite/store-internal.js';
 import { userActionError } from '../action-errors.js';
-import { isCurrentResultLifecycleState, isTerminalBuildStatus, isTerminalPlanningTaskStatus, isTerminalSessionPlanStatus, resultReasonCode } from '../planning-state-policy.js';
+import { isCurrentResultLifecycleState, isLiveQueuePrdStatus, isTerminalBuildStatus, isTerminalPlanningTaskStatus, isTerminalSessionPlanStatus, resultReasonCode } from '../planning-state-policy.js';
 import { withCanonicalTransaction } from './store.js';
 
 export interface CoverageAssociatedLink { kind: 'session-plan' | 'planning-task' | 'queue' | 'build' | 'landing' | 'lifecycle-evidence'; label: string; session?: string; taskId?: string; queuePrdId?: string; runId?: string; buildSessionId?: string; landingId?: string; path?: string; prUrl?: string; status?: string }
@@ -48,8 +48,8 @@ function planningTaskCoverage(store: EforgePlanStore, itemRef: string, includeTe
 }
 
 function queueBuildCoverage(store: EforgePlanStore, itemRef: string, includeTerminal: boolean): CoverageEntry[] {
-  const rows = all(store, `SELECT le.lifecycle_state, le.queue_prd_id, le.run_id, le.build_session_id, le.status FROM lifecycle_evidence le WHERE le.is_current = 1 AND (le.item_ref = ? OR le.item_id = ?) AND (le.queue_prd_id IS NOT NULL OR le.run_id IS NOT NULL OR le.build_session_id IS NOT NULL)`, itemRef, itemRef);
-  return rows.filter((row) => includeTerminal || isCurrentResultLifecycleState(String(row.lifecycle_state)) || !isTerminalBuildStatus(stringValue(row.status))).map((row) => {
+  const rows = all(store, `SELECT le.lifecycle_state, le.queue_prd_id, le.run_id, le.build_session_id, le.status, qp.status AS queue_status, br.status AS run_status, bs.status AS build_session_status FROM lifecycle_evidence le LEFT JOIN queue_prds qp ON qp.prd_id = le.queue_prd_id LEFT JOIN build_runs br ON br.run_id = le.run_id LEFT JOIN build_sessions bs ON bs.build_session_id = le.build_session_id WHERE le.is_current = 1 AND (le.item_ref = ? OR le.item_id = ?) AND (le.queue_prd_id IS NOT NULL OR le.run_id IS NOT NULL OR le.build_session_id IS NOT NULL)`, itemRef, itemRef);
+  return rows.filter((row) => includeTerminal || isLiveCanonicalQueueBuildCoverage(row)).map((row) => {
     const state = String(row.lifecycle_state);
     const reason = isCurrentResultLifecycleState(state) ? resultReasonCode(state) : row.run_id || row.build_session_id ? 'active-build' : 'queued-build';
     return { itemRef, reasonCode: reason, lifecycleState: stringValue(row.lifecycle_state), associatedLinks: [{ kind: row.run_id ? 'build' : 'queue', label: String(row.run_id ?? row.build_session_id ?? row.queue_prd_id), queuePrdId: stringValue(row.queue_prd_id), runId: stringValue(row.run_id), buildSessionId: stringValue(row.build_session_id), status: stringValue(row.status) }] };
@@ -62,6 +62,14 @@ function lifecycleCoverage(store: EforgePlanStore, itemRef: string, includeTermi
     const state = String(row.lifecycle_state);
     return { itemRef, reasonCode: isCurrentResultLifecycleState(state) ? resultReasonCode(state) : reasonCode(state), lifecycleState: stringValue(row.lifecycle_state), associatedLinks: [{ kind: row.landing_id ? 'landing' : 'lifecycle-evidence', label: String(row.lifecycle_state), session: stringValue(row.session), landingId: stringValue(row.landing_id), status: stringValue(row.status) }] };
   });
+}
+
+function isLiveCanonicalQueueBuildCoverage(row: Record<string, unknown>): boolean {
+  const state = String(row.lifecycle_state);
+  if (isCurrentResultLifecycleState(state)) return true;
+  if (row.run_id !== null && row.run_id !== undefined) return !isTerminalBuildStatus(stringValue(row.run_status) ?? stringValue(row.status));
+  if (row.build_session_id !== null && row.build_session_id !== undefined) return !isTerminalBuildStatus(stringValue(row.build_session_status) ?? stringValue(row.status));
+  return isLiveQueuePrdStatus(stringValue(row.queue_status) ?? stringValue(row.status));
 }
 
 function all(store: EforgePlanStore, sql: string, ...params: unknown[]): Record<string, unknown>[] { return getDatabase(store).prepare(sql).all(...(params as never[])) as Record<string, unknown>[]; }

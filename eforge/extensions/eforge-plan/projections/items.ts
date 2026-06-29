@@ -4,6 +4,7 @@ import type { EforgePlanStore } from '../sqlite/index.js';
 import { getProjectionEpic, getProjectionItem, listProjectionDependencies, listProjectionEpicSections, listProjectionEpics, listProjectionItemSections, listProjectionItems, type ProjectionEpicRow, type ProjectionItemRow } from '../sqlite/repositories/projections/items.js';
 import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems, type ProjectionLifecycleEvidenceRow } from '../sqlite/repositories/projections/lifecycle.js';
 import { withProjectionStore } from './store.js';
+import { isLiveQueuePrdStatus } from '../planning-state-policy.js';
 import { computeEffectiveLifecycle, isTerminalProjectionStatus } from './lifecycle.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 import { paginateProjection, uniqueStrings } from './pagination.js';
@@ -17,6 +18,7 @@ function durableQueueBuildEvidence(store: EforgePlanStore, itemId: string, sessi
   const hasSubmittedEvidence = existingEvidence.some((e) => e.lifecycleState === 'submitted');
   return queueBuildLinks.flatMap((row): ProjectionLifecycleEvidenceRow[] => {
     if (row.itemId !== itemId && (!row.session || !sessions.has(row.session))) return [];
+    if (row.kind === 'queue-prd' && !isLiveQueuePrdStatus(row.status)) return [];
     if (row.kind === 'queue-prd' && hasSubmittedEvidence) return [];
     const status = row.status?.toLowerCase();
     const state = row.kind === 'landing' ? (status === 'shipped' ? 'shipped' : status === 'merged' ? 'merged' : status && !isTerminalProjectionStatus(status) ? 'pr-open' : undefined) : status === 'failed' ? 'failed' : isTerminalProjectionStatus(status) ? undefined : row.kind === 'queue-prd' ? 'queued' : 'build';

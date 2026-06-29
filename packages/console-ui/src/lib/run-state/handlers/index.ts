@@ -344,6 +344,7 @@ export const IGNORED_EVENT_TYPES = [
   'stack:sync:failed',
   'stack:sync:deferred',
   'stack:sync:skipped',
+  'queue:prd:removed',
   'landing:auto-merge:start',
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',

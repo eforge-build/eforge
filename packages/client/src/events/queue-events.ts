@@ -32,6 +32,17 @@ export const queueEventVariants = [
     reason: Type.Optional(Type.String()),
   }),
   Type.Object({
+    type: Type.Literal('queue:prd:removed'),
+    prdId: Type.String(),
+    previousStatus: Type.Union([
+      Type.Literal('pending'),
+      Type.Literal('waiting'),
+      Type.Literal('failed'),
+      Type.Literal('skipped'),
+    ]),
+    removedSidecars: Type.Optional(Type.Array(Type.String())),
+  }),
+  Type.Object({
     type: Type.Literal('queue:prd:stale'),
     prdId: Type.String(),
     title: Type.String(),

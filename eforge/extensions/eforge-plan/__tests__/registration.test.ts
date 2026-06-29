@@ -540,7 +540,7 @@ describe('eforge-plan extension registration', () => {
     });
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['open-planning-entry', 'promote-item', 'promote-selection', 'render-board-markdown']);
     expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['open-planning-entry', 'promote-item', 'promote-selection', 'render-board-markdown']);
-    expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);
+    expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:removed', 'queue:prd:start', 'session:end', 'session:start']);
   });
 
   it('runs lifecycle hooks with event contexts that do not expose cwd', async () => {

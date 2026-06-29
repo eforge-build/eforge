@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 243
+Total variants: 244
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -237,6 +237,7 @@ Total variants: 243
 | `queue:prd:start` | `prdId`, `title` |
 | `queue:prd:discovered` | `dependsOn`, `prdId`, `title` |
 | `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
+| `queue:prd:removed` | `prdId`, `previousStatus`, `removedSidecars` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
 | `queue:prd:dispatch-failed` | `prdId`, `reason`, `stage`, `title` |

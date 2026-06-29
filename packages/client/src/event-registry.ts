@@ -1727,6 +1727,8 @@ const eventRegistry = {
     project: projectQueueDependencyOverridden,
   },
 
+  'queue:prd:removed': { scope: 'daemon', persist: true, summary: (e) => `PRD ${e.prdId} removed from queue (was ${e.previousStatus})`, project: (event, state) => state.queue.some((item) => item.id === event.prdId) ? { queue: state.queue.filter((item) => item.id !== event.prdId) } : undefined },
+
   'queue:prd:stale': {
     scope: 'daemon',
     persist: true,
