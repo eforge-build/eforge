@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { classifyEvidenceCandidate, derivePlanningAtomGraph, deriveSourceInventory, extractEvidenceCandidatesFromText, normalizeEvidenceValue, rankEvidenceCandidates } from '@eforge-build/engine/compile-resilience/planning-decomposition';
+import { classifyEvidenceCandidate, derivePlanningAtomGraph, deriveSourceInventory, extractEvidenceCandidatesFromText, normalizeEvidenceValue, rankEvidenceCandidates } from '@eforge-build/engine/planner-compiler';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 500, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 2, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const hash = (value: string) => `h${value.length}`.padEnd(64, '0');

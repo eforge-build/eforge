@@ -1,5 +1,5 @@
 import type { PlanningDecompositionLimits, PlanningUnitBudget } from '@eforge-build/client';
-import { deriveBudget } from './graph-builders.js';
+import { derivePlanningAtomBudget } from './budgets.js';
 import { evidenceSlug } from './evidence-hygiene.js';
 import { deriveSourceInventory, type SourceInventory, type SourceInventoryCriterion, type SourceInventoryInput } from './source-inventory.js';
 import { hashText, stableSlug } from './source-analysis.js';
@@ -97,7 +97,7 @@ function atomForCriteria(atomId: string, title: string, reason: PlanningAtomReas
     interfaceKeys: [...new Set(criteria.flatMap((criterion) => criterion.interfaceKeys))].sort(),
     dependencyHints: [...new Set(criteria.flatMap((criterion) => criterion.dependencyHints))].sort(),
     sourceSlices: criteria.map((criterion) => ({ sourceHash: inventory.sourceHash, ...(inventory.sourcePath ? { sourcePath: inventory.sourcePath } : {}), headingPath: criterion.headingPath, startLine: criterion.line, endLine: criterion.line, byteStart: criterion.byteStart, byteEnd: criterion.byteEnd, criteriaIds: [criterion.id], byteLength: criterion.byteLength })),
-    budget: deriveBudget(limits, 0),
+    budget: derivePlanningAtomBudget(limits),
     estimate: { sourceBytes, criteriaCount: criteria.length, subsystemCount: subsystemHints.length, evidencePathCount: evidencePaths.length, estimatedPromptBytes: Math.ceil(sourceBytes * 1.8) + 4_000 },
   };
 }
@@ -108,7 +108,7 @@ function facetsForCriterion(criterion: SourceInventoryCriterion): string[] {
 }
 
 function emptyAtom(inventory: SourceInventory, limits: PlanningDecompositionLimits): PlanningAtom {
-  return { atomId: 'atom-root', title: 'Root planning', reason: 'general', criterionIds: [], facetIds: [], subsystemHints: ['general'], evidencePaths: [], interfaceKeys: [], dependencyHints: [], sourceSlices: [], budget: deriveBudget(limits, 0), estimate: { sourceBytes: inventory.byteLength, criteriaCount: 0, subsystemCount: 1, evidencePathCount: 0, estimatedPromptBytes: Math.ceil(inventory.byteLength * 1.8) + 4_000 } };
+  return { atomId: 'atom-root', title: 'Root planning', reason: 'general', criterionIds: [], facetIds: [], subsystemHints: ['general'], evidencePaths: [], interfaceKeys: [], dependencyHints: [], sourceSlices: [], budget: derivePlanningAtomBudget(limits), estimate: { sourceBytes: inventory.byteLength, criteriaCount: 0, subsystemCount: 1, evidencePathCount: 0, estimatedPromptBytes: Math.ceil(inventory.byteLength * 1.8) + 4_000 } };
 }
 
 function buildAtomEdges(atoms: PlanningAtom[]): PlanningAtomEdge[] {

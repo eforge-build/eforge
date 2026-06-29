@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../../validation/acceptance-criteria.js';
+import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../validation/acceptance-criteria.js';
 
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
 export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }

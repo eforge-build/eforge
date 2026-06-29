@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { derivePlanningAspectCoverage, derivePlanningAtomGraph, deriveSourceInventory, type PlanningAspectCoverageUpdate, type PlanningCriterionAspect } from '@eforge-build/engine/compile-resilience/planning-decomposition';
+import { derivePlanningAspectCoverage, derivePlanningAtomGraph, deriveSourceInventory, type PlanningAspectCoverageUpdate, type PlanningCriterionAspect } from '@eforge-build/engine/planner-compiler';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 2_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 4, maxSubsystemsPerUnit: 4, maxSplitAttemptsPerUnit: 2 };
 const hash = (value: string) => `h${value.length}`.padEnd(64, '0');

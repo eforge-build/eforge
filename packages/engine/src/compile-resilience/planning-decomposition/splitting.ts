@@ -1,7 +1,7 @@
 import { PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA, type PlanningDecompositionLimits, type PlanningObservedBudgetPressure, type PlanningSplitAttemptEvidence } from '@eforge-build/client';
 import { evaluatePlanningUnitBudgetPressure, type DecompositionPlanningError, type SplitOverBudgetPlanningUnitInput, type PlanningDecompositionGraph, type PlanningDecompositionUnit, type PlanningUnresolvedCriterion } from '../planning-decomposition.js';
 import { buildEdges, deriveBudget, recomputeCoverage } from './graph-builders.js';
-import { inferSubsystemHints, stableSlug } from './source-analysis.js';
+import { inferSubsystemHints, stableSlug } from '../../planner-compiler/source-analysis.js';
 
 export function splitUnit(input: SplitOverBudgetPlanningUnitInput): { graph: PlanningDecompositionGraph; childUnitIds: string[] } | DecompositionPlanningError {
   const limits = input.limits ?? input.graph.limits;

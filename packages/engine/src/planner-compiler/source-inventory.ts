@@ -1,6 +1,6 @@
 import type { CompilePreflightRisk } from '@eforge-build/client';
-import type { PipelineComposition } from '../../schemas.js';
-import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../../validation/acceptance-criteria.js';
+import type { PipelineComposition } from '../schemas.js';
+import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../validation/acceptance-criteria.js';
 import { actionableEvidencePaths, extractEvidenceCandidatesFromText, rankEvidenceCandidates, type PlanningEvidenceCandidate } from './evidence-hygiene.js';
 import { boundEvidence, hashText, inferInterfaceKeys, inferSubsystemHints, parseMarkdownLines, stableSlug, utf8ByteLength, type MarkdownLine } from './source-analysis.js';
 

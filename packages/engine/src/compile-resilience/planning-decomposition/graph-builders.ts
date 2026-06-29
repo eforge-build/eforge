@@ -1,6 +1,6 @@
 import type { PlanningDecompositionLimits, PlanningUnitBudget } from '@eforge-build/client';
 import type { DerivePlanningDecompositionGraphInput, PlanningCoverageSummary, PlanningDecompositionEdge, PlanningDecompositionGraph, PlanningDecompositionUnit } from '../planning-decomposition.js';
-import { analyzePlanningSource, hashText, stableSlug, type RequirementRecord } from './source-analysis.js';
+import { analyzePlanningSource, hashText, stableSlug, type RequirementRecord } from '../../planner-compiler/source-analysis.js';
 
 const ROOT = 'unit-root';
 
