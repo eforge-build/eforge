@@ -4,6 +4,7 @@ import { deriveGraph, recomputeCoverage, validateGraph } from './planning-decomp
 import { selectBatch } from './planning-decomposition/scheduler.js';
 import { splitUnit } from './planning-decomposition/splitting.js';
 export { derivePlanningAtomGraph, type DerivePlanningAtomGraphInput, type PlanningAtom, type PlanningAtomBudgetEstimate, type PlanningAtomEdge, type PlanningAtomGraph, type PlanningAtomReason, type PlanningAtomSourceSlice } from './planning-decomposition/atom-graph.js';
+export { derivePlanningAspectCoverage, derivePlanningCriterionAspects, type DerivePlanningAspectCoverageInput, type PlanningAspectCoverageRecord, type PlanningAspectCoverageStatus, type PlanningAspectCoverageSummary, type PlanningAspectCoverageUpdate, type PlanningAspectRepresentation, type PlanningAspectRepresentationKind, type PlanningAspectSource, type PlanningAspectSourceKind, type PlanningCriterionAspect, type PlanningCriterionAspectCoverage, type PlanningRawCriterionCoverage } from './planning-decomposition/coverage-accounting.js';
 export { actionableEvidencePaths, classifyEvidenceCandidate, evidenceSlug, extractEvidenceCandidatesFromText, isGeneratedPlanningArtifactPath, normalizeEvidenceValue, rankEvidenceCandidates, type PlanningEvidenceCandidate, type PlanningEvidenceKind } from './planning-decomposition/evidence-hygiene.js';
 export { deriveSourceInventory, type SourceInventory, type SourceInventoryCriterion, type SourceInventoryHeading, type SourceInventoryInput, type SourceInventorySummary } from './planning-decomposition/source-inventory.js';
 
