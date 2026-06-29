@@ -437,8 +437,8 @@ export class ExtensionAgentTaskService {
       const updated = { ...next, updatedAt: now } as StoredExtensionAgentTaskRecord;
       if (metadata === undefined) delete updated.metadata;
       else updated.metadata = metadata;
-      await writeAgentTaskRecord(cwd, updated);
       options.emit(updated);
+      await writeAgentTaskRecord(cwd, updated);
       return updated;
     });
   }
