@@ -9,7 +9,7 @@ import type { ArchitectureSubmission, PlanSetSubmission } from '../schemas.js';
 import { CompileScopeContextError, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import { sha256Hex } from '../compile-resilience/bounded-planning-context.js';
 import { evaluatePlanningUnitBudgetPressure, type PlanningDecompositionUnit, type PlanningUnitOutput } from '../compile-resilience/planning-decomposition.js';
-import { derivePlannerInspectionBudget, inspectPlannerHandoffArtifact } from '../compile-resilience/planner-inspection.js';
+import { derivePlannerInspectionBudget, inspectPlannerHandoffArtifact, reservePlannerSynthesisToolBudget } from '../compile-resilience/planner-inspection.js';
 
 export type BoundedPlanningUnitAgentMode = 'planner' | 'module-planner';
 
@@ -103,8 +103,8 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
         contextGuard,
         onPromptBuilt: recordPrompt,
         boundedUnit: promptContext,
-        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, onPlanSetSubmission: p => { captures.planSet = p; }, onArchitectureSubmission: a => { captures.architecture = a; } },
-        plannerInspectionBudget: derivePlannerInspectionBudget({ hardLimits: contextGuard.limits, guardDiagnostics: contextGuard.guardDiagnostics, plannerMaxTurns: input.agentOptions.maxTurns, toolUseCaps: { maxToolUses: input.budgets.maxLocalExplorationToolUses } }),
+        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, maxCompactHandoffBytes: input.budgets.maxCompactHandoffBytes, onPlanSetSubmission: p => { captures.planSet = p; }, onArchitectureSubmission: a => { captures.architecture = a; } },
+        plannerInspectionBudget: derivePlannerInspectionBudget({ hardLimits: contextGuard.limits, guardDiagnostics: contextGuard.guardDiagnostics, plannerMaxTurns: input.agentOptions.maxTurns, toolUseCaps: { maxToolUses: reservePlannerSynthesisToolBudget(input.budgets.maxLocalExplorationToolUses) } }),
       })
       : runModulePlanner({
         ...input.agentOptions,
@@ -125,7 +125,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
         contextGuard,
         onPromptBuilt: recordPrompt,
         boundedUnit: promptContext,
-        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, submitToolName: 'submit_module_plan', onModulePlanSubmission: p => { captures.modulePlan = p; } },
+        boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, maxCompactHandoffBytes: input.budgets.maxCompactHandoffBytes, submitToolName: 'submit_module_plan', onModulePlanSubmission: p => { captures.modulePlan = p; } },
       });
 
     let budgetEmitted = false;
@@ -149,6 +149,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
       } else if (event.type === 'agent:tool_use' && isCaptureTool(event.tool)) {
         await emit(input, { timestamp: now(), type: 'planning:decomposition:unit:progress', unitId: input.unit.unitId, message: `Captured bounded submission via ${event.tool}`, observed: pressure(input, observed) });
       }
+      throwIfBudgetExceeded(input, observed);
       if (shouldForwardAgentEvent(event)) await emit(input, event);
     }
 
@@ -224,6 +225,12 @@ function pressure(input: BoundedPlanningUnitInput, observed: Partial<PlanningObs
 
 function budgetEvent(input: BoundedPlanningUnitInput, observed: Partial<PlanningObservedBudgetPressure>): EforgeEvent {
   return { timestamp: now(), type: 'planning:decomposition:budget', limits: limits(input.budgets), unitId: input.unit.unitId, unitBudgets: [{ unitId: input.unit.unitId, budget: input.budgets }], observed: pressure(input, observed) };
+}
+
+function throwIfBudgetExceeded(input: BoundedPlanningUnitInput, observed: Partial<PlanningObservedBudgetPressure>): void {
+  const current = pressure(input, observed);
+  if (current.triggeredLimitKeys.length === 0) return;
+  throw new Error(`Bounded planning unit budget exceeded: ${current.triggeredLimitKeys.join(', ')}`);
 }
 
 async function emitCompact(input: BoundedPlanningUnitInput, artifactPath: string, observed: Partial<PlanningObservedBudgetPressure>): Promise<void> {

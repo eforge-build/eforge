@@ -14,9 +14,10 @@ import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } fr
 import { emitPlanningDecision } from '../decisions.js';
 import { formatPlannerToolSchemaValidationError, formatPlannerToolSemanticValidationError } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
-import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
+import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
+import { createLinkedAbortController } from './linked-abort-controller.js';
 
-export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
+export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; maxCompactHandoffBytes?: number; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
   /** Prompt-safe compacted source content. Defaults to resolved source content. */ promptSourceContent?: string;
@@ -44,19 +45,6 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   defaultReview?: ReviewProfileConfig;
 }
 
-function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
-  const controller = new AbortController() as AbortController & { dispose: () => void };
-  const abortChild = () => controller.abort();
-  if (parentSignal?.aborted) {
-    controller.abort();
-    controller.dispose = () => {};
-  } else {
-    parentSignal?.addEventListener('abort', abortChild, { once: true });
-    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
-  }
-  return controller;
-}
-
 type PlannerExecutionPhase = 'inspection' | 'synthesis';
 
 function synthesisMaxTurns(initialMaxTurns: number): number { return initialMaxTurns <= 1 ? 1 : Math.max(1, Math.min(initialMaxTurns - 1, Math.floor(initialMaxTurns * 0.4))); }
@@ -74,7 +62,7 @@ Automatic compact-inspection continuation 1 of 1 is active. The prior inspection
 
 ### Required synthesis objective
 
-Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. Perform only targeted read-only checks if absolutely necessary, then call ${submitTool}. Reasoning text alone does not submit plans.
+Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. No further exploration tools are available; call ${submitTool} from existing evidence. Reasoning text alone does not submit plans.
 
 ${formatPlannerInspectionHandoffMarkdown(handoff)}`;
 }
@@ -392,7 +380,7 @@ ${existingPlans}`);
 
     try {
       for await (const event of harness.run(
-        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? 'read-only' : (executionPhase === 'synthesis' ? 'none' : 'coding'), abortSignal: attemptAbort.signal, customTools },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? (executionPhase === 'synthesis' ? 'none' : 'read-only') : (executionPhase === 'synthesis' ? 'none' : 'coding'), abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {
@@ -452,6 +440,7 @@ ${existingPlans}`);
             incompleteReason: inspectionStatus.reason,
             prompt,
           });
+          compactInspectionHandoff = compactPlannerInspectionHandoffToBudget(compactInspectionHandoff, options.boundedCapture?.maxCompactHandoffBytes);
           const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff, artifactDir: options.boundedCapture?.artifactDir });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
           const stopEvent = syntheticStopForRestart(); if (stopEvent) yield stopEvent;
@@ -465,6 +454,7 @@ ${existingPlans}`);
         }
       }
     } finally {
+      attemptAbort.abort();
       attemptAbort.dispose();
     }
 

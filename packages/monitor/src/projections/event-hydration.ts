@@ -1,4 +1,4 @@
-import { safeParseEforgeEvent, type EforgeEvent, type RunInfo, type DaemonStreamSnapshot } from '@eforge-build/client';
+import { isFailedRunStatus, safeParseEforgeEvent, type EforgeEvent, type RunInfo, type DaemonStreamSnapshot } from '@eforge-build/client';
 import type { EventRecord } from '../db.js';
 
 export function parseEventRow(eventData: string, dbTimestamp: string, dbType: string, rowId?: number): EforgeEvent | null {
@@ -45,13 +45,13 @@ export function hydrateRecentDaemonActivity(rows: EventRecord[], helloCursor: nu
 export function deriveSessionStreamStatus(sessionRuns: RunInfo[]): 'pending' | 'running' | 'failed' | 'completed' {
   if (sessionRuns.length === 0) return 'pending';
   if (sessionRuns.some((r) => r.status === 'running')) return 'running';
-  if (sessionRuns.some((r) => r.status === 'failed')) return 'failed';
+  if (sessionRuns.some((r) => isFailedRunStatus(r.status))) return 'failed';
   return 'completed';
 }
 
 export function deriveRunStateStatus(sessionRuns: RunInfo[]): 'unknown' | 'running' | 'failed' | 'completed' {
   if (sessionRuns.length === 0) return 'unknown';
   if (sessionRuns.some((r) => r.status === 'running')) return 'running';
-  if (sessionRuns.some((r) => r.status === 'failed')) return 'failed';
+  if (sessionRuns.some((r) => isFailedRunStatus(r.status))) return 'failed';
   return 'completed';
 }

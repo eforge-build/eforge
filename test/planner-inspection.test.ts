@@ -7,10 +7,13 @@ import { describe, expect, it } from 'vitest';
 import type { EforgeEvent, AgentRole, CompileContextGuardDiagnostics } from '@eforge-build/engine/events';
 import {
   buildPlannerInspectionHandoff,
+  compactPlannerInspectionHandoffToBudget,
   createPlannerInspectionObserver,
   derivePlannerInspectionBudget,
   formatPlannerInspectionHandoffMarkdown,
+  plannerInspectionHandoffByteLength,
   writePlannerInspectionHandoffArtifact,
+  type PlannerInspectionHandoff,
 } from '@eforge-build/engine/compile-resilience/planner-inspection';
 
 const USAGE = { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 };
@@ -151,6 +154,26 @@ describe('planner inspection budget and handoff foundation', () => {
     expect(handoff.omittedCounts.caveatBytes).toBeGreaterThan(0);
   });
 
+  it('compacts handoffs to byte budget and preserves dropped-evidence omission counts', () => {
+    const handoff = largePlannerInspectionHandoff();
+    const targetBytes = 2_000;
+    const compacted = compactPlannerInspectionHandoffToBudget(handoff, targetBytes);
+
+    expect(plannerInspectionHandoffByteLength(handoff)).toBeGreaterThan(targetBytes);
+    expect(plannerInspectionHandoffByteLength(compacted)).toBeLessThanOrEqual(targetBytes);
+    expect(compacted.importantFindings).toHaveLength(0);
+    expect(compacted.observedFacts).toHaveLength(0);
+    expect(compacted.sourceBuildContext).toEqual({});
+    expect(compacted.omittedCounts.importantFindings).toBeGreaterThan(0);
+    expect(compacted.omittedCounts.importantFindingBytes).toBeGreaterThan(0);
+    expect(compacted.omittedCounts.observedFacts).toBeGreaterThan(0);
+    expect(compacted.omittedCounts.sourceSummaryBytes).toBeGreaterThan(0);
+  });
+
+  it('throws an explicit error when even the minimum handoff cannot fit the byte budget', () => {
+    expect(() => compactPlannerInspectionHandoffToBudget(largePlannerInspectionHandoff(), 32)).toThrow(/minimum byte length .* maxCompactHandoffBytes 32/);
+  });
+
   it('writes the compact JSON artifact under the plan-set output directory', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-planner-inspection-'));
     try {
@@ -167,6 +190,38 @@ describe('planner inspection budget and handoff foundation', () => {
     }
   });
 });
+
+function largePlannerInspectionHandoff(): PlannerInspectionHandoff {
+  const long = (label: string, index: number) => `${label}-${index}-${'x'.repeat(240)}`;
+  return {
+    kind: 'planner-inspection-handoff',
+    version: 1,
+    source: { sourceId: 'prd-large', sourceName: 'Large planner inspection', buildId: 'build-large', planSetName: 'set-large' },
+    relevantFiles: Array.from({ length: 12 }, (_, index) => `packages/engine/src/feature-${index}/implementation.ts`),
+    observedFacts: Array.from({ length: 8 }, (_, index) => long('observed fact', index)),
+    importantFindings: Array.from({ length: 6 }, (_, index) => long('important finding', index)),
+    inferredImplementationAreas: Array.from({ length: 8 }, (_, index) => `packages/engine/src/feature-${index}`),
+    unresolvedQuestions: Array.from({ length: 4 }, (_, index) => long('unresolved question?', index)),
+    sourceBuildContext: {
+      sourceSummary: long('source summary', 1),
+      buildGoal: long('build goal', 1),
+      promptSourceSnippet: long('prompt snippet', 1),
+    },
+    budgetDiagnostics: {
+      maxObservedInputTokens: 100,
+      softInputTokenThreshold: 72,
+      plannerMaxTurns: 80,
+      inspectionTurnBudget: 60,
+      softInputTokenRatio: 0.72,
+      softTurnRatio: 0.75,
+      observed: { inputTokens: 72, outputTokens: 0, turns: 4, promptBytes: 1_200 },
+      toolUseCount: 8,
+      toolResultCount: 8,
+    },
+    caveats: Array.from({ length: 4 }, (_, index) => long('caveat', index)),
+    omittedCounts: {},
+  };
+}
 
 function usageEvent(agent: AgentRole, usage: { input: number; total: number }, final: boolean, numTurns = 1): EforgeEvent {
   return {

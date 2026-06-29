@@ -9,12 +9,14 @@ import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import type { BoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
 import { formatBoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
-import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
+import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, reservePlannerSynthesisToolBudget, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
+import { createLinkedAbortController } from './linked-abort-controller.js';
 
 export interface ModulePlannerBoundedCaptureOptions {
   mode: 'capture-only';
   unitId: string;
   artifactDir: string;
+  maxCompactHandoffBytes?: number;
   submitToolName?: 'submit_module_plan';
   onModulePlanSubmission: (payload: { markdown: string; buildConfigBlock?: string }) => void;
 }
@@ -75,20 +77,7 @@ function createModulePlanSubmissionTool(options: ModulePlannerBoundedCaptureOpti
 }
 
 function formatModulePlannerContinuation(handoff: PlannerInspectionHandoff, submitTool: string): string {
-  return `## Compact Inspection Continuation\n\nAutomatic bounded module-planner compact continuation is active. Use the unit source and compact handoff below; the root transcript is unavailable by design. Call ${submitTool} when done.\n\n${formatPlannerInspectionHandoffMarkdown(handoff)}`;
-}
-
-function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
-  const controller = new AbortController() as AbortController & { dispose: () => void };
-  const abortChild = () => controller.abort();
-  if (parentSignal?.aborted) {
-    controller.abort();
-    controller.dispose = () => {};
-  } else {
-    parentSignal?.addEventListener('abort', abortChild, { once: true });
-    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
-  }
-  return controller;
+  return `## Compact Inspection Continuation\n\nAutomatic bounded module-planner compact continuation is active. Use the unit source and compact handoff below; the root transcript is unavailable by design. No further exploration tools are available; call ${submitTool} from existing evidence.\n\n${formatPlannerInspectionHandoffMarkdown(handoff)}`;
 }
 
 function formatBoundedDependencySummary(options: ModulePlannerOptions): string {
@@ -112,7 +101,7 @@ export async function* runModulePlanner(
   let boundedSubmissionCaptured = false;
   const customTools = options.boundedCapture ? [createModulePlanSubmissionTool(options.boundedCapture, () => { boundedSubmissionCaptured = true; })] : undefined;
   const effectiveSubmitTool = options.boundedCapture ? options.harness.effectiveCustomToolName(options.boundedCapture.submitToolName ?? 'submit_module_plan') : '';
-  const inspectionBudget = derivePlannerInspectionBudget({ hardLimits: options.contextGuard?.limits, guardDiagnostics: options.contextGuard?.guardDiagnostics, plannerMaxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, toolUseCaps: { maxToolUses: options.boundedUnit?.budgets.maxLocalExplorationToolUses } });
+  const inspectionBudget = derivePlannerInspectionBudget({ hardLimits: options.contextGuard?.limits, guardDiagnostics: options.contextGuard?.guardDiagnostics, plannerMaxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, toolUseCaps: { maxToolUses: reservePlannerSynthesisToolBudget(options.boundedUnit?.budgets.maxLocalExplorationToolUses) } });
   const observer = options.boundedCapture ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'module-planner' }) : undefined;
   let compactHandoff: PlannerInspectionHandoff | undefined;
   let compactUsed = false;
@@ -136,62 +125,59 @@ export async function* runModulePlanner(
   let prompt = await buildPrompt();
   options.onPromptBuilt?.(prompt);
   observer?.setPrompt(prompt);
-  const attemptAbort = createLinkedAbortController(options.abortController?.signal);
-  try {
-    contextGuard.assertPrompt(prompt);
-  } catch (err) {
-    attemptAbort.abort();
-    attemptAbort.dispose();
-    throw err;
-  }
+  contextGuard.assertPrompt(prompt);
 
-  try {
   while (true) {
-  for await (const event of options.harness.run(
-    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
-    'module-planner',
-    options.lane,
-  )) {
+    const attemptAbort = createLinkedAbortController(options.abortController?.signal);
     try {
-      contextGuard.observe(event);
-    } catch (err) {
-      attemptAbort.abort();
-      throw err;
-    }
-    const isSubmissionTool = options.boundedCapture ? isModuleSubmissionToolUse(event, options.boundedCapture.submitToolName ?? 'submit_module_plan', effectiveSubmitTool) : false;
-    const status = phase === 'inspection' && observer && !boundedSubmissionCaptured && !isSubmissionTool ? observer.observe(event) : undefined;
-    // Always yield agent:result + tool events for tracing; gate streaming text on verbose
-    if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
-      yield event;
-    }
-    if (status?.shouldHandoff && options.boundedCapture && !compactUsed) {
-      compactHandoff = observer!.buildHandoff({ source: { sourceId: options.boundedCapture.unitId, sourceName: options.moduleId, planSetName: options.planSetName }, sourceBuildContext: { sourceSummary: options.moduleDescription, buildGoal: options.moduleDescription, promptSourceSnippet: promptSourceContent }, stage: 'module-planner', incompleteReason: status.reason, prompt });
-      const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd: options.cwd, outputDir: options.outputDir ?? 'eforge/plans', planSetName: options.planSetName, artifactDir: options.boundedCapture.artifactDir, handoff: compactHandoff });
-      yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactHandoff, artifactPath };
-      compactUsed = true;
-      restartedForCompact = true;
-      phase = 'synthesis';
-      prompt = await buildPrompt();
-      options.onPromptBuilt?.(prompt);
-      observer?.setPrompt(prompt);
-      contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'module-planner' });
-      try {
-        contextGuard.assertPrompt(prompt);
-      } catch (err) {
-        attemptAbort.abort();
-        throw err;
+      for await (const event of options.harness.run(
+        { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? (phase === 'synthesis' ? 'none' : 'read-only') : 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        'module-planner',
+        options.lane,
+      )) {
+        try {
+          contextGuard.observe(event);
+        } catch (err) {
+          attemptAbort.abort();
+          throw err;
+        }
+        const isSubmissionTool = options.boundedCapture ? isModuleSubmissionToolUse(event, options.boundedCapture.submitToolName ?? 'submit_module_plan', effectiveSubmitTool) : false;
+        const status = phase === 'inspection' && observer && !boundedSubmissionCaptured && !isSubmissionTool ? observer.observe(event) : undefined;
+        // Always yield agent:result + tool events for tracing; gate streaming text on verbose
+        if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
+          yield event;
+        }
+        if (status?.shouldHandoff && options.boundedCapture && !compactUsed) {
+          compactHandoff = observer!.buildHandoff({ source: { sourceId: options.boundedCapture.unitId, sourceName: options.moduleId, planSetName: options.planSetName }, sourceBuildContext: { sourceSummary: options.moduleDescription, buildGoal: options.moduleDescription, promptSourceSnippet: promptSourceContent }, stage: 'module-planner', incompleteReason: status.reason, prompt });
+          compactHandoff = compactPlannerInspectionHandoffToBudget(compactHandoff, options.boundedCapture.maxCompactHandoffBytes);
+          const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd: options.cwd, outputDir: options.outputDir ?? 'eforge/plans', planSetName: options.planSetName, artifactDir: options.boundedCapture.artifactDir, handoff: compactHandoff });
+          yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactHandoff, artifactPath };
+          compactUsed = true;
+          restartedForCompact = true;
+          phase = 'synthesis';
+          prompt = await buildPrompt();
+          options.onPromptBuilt?.(prompt);
+          observer?.setPrompt(prompt);
+          contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'module-planner' });
+          try {
+            contextGuard.assertPrompt(prompt);
+          } catch (err) {
+            attemptAbort.abort();
+            throw err;
+          }
+          attemptAbort.abort();
+          break;
+        }
       }
-      break;
+    } finally {
+      attemptAbort.abort();
+      attemptAbort.dispose();
     }
-  }
-  if (restartedForCompact) { restartedForCompact = false; continue; }
-  break;
+    if (restartedForCompact) { restartedForCompact = false; continue; }
+    break;
   }
 
   if (options.boundedCapture && !boundedSubmissionCaptured) throw new Error(`Bounded module planner did not call ${effectiveSubmitTool || (options.boundedCapture.submitToolName ?? 'submit_module_plan')}`);
-  } finally {
-    attemptAbort.dispose();
-  }
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:module:complete', moduleId: options.moduleId };
 }

@@ -1,4 +1,4 @@
-import type { RunInfo, RunSummary } from '@eforge-build/client';
+import { isFailedRunStatus, type RunInfo, type RunSummary } from '@eforge-build/client';
 import type { MonitorDB, EventRecord } from '../db.js';
 import { parseEventRow } from './event-hydration.js';
 
@@ -7,7 +7,7 @@ type PlanStatus = RunSummary['plans'][number];
 function deriveStatus(runs: RunInfo[]): RunSummary['status'] {
   if (runs.length === 0) return 'unknown';
   if (runs.some((r) => r.status === 'running')) return 'running';
-  if (runs.some((r) => r.status === 'failed')) return 'failed';
+  if (runs.some((r) => isFailedRunStatus(r.status))) return 'failed';
   return 'completed';
 }
 

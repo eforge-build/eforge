@@ -36,6 +36,12 @@ describe('event hydration and run state projections', () => {
     expect(buildRunState(db, 's1').status).toBe('running');
     db.close();
   });
+  it('treats forced-termination run statuses as failed', () => {
+    const db = openDatabase(':memory:');
+    db.insertRun({ id: 'killed', sessionId: 's-killed', planSet: 'set', command: 'build', status: 'killed', startedAt: ts, cwd: process.cwd() });
+    expect(buildRunState(db, 's-killed').status).toBe('failed');
+    db.close();
+  });
   it('trims recent daemon activity to the hello cursor', () => {
     const rows = [
       { id: 1, runId: null, origin: 'daemon' as const, type: 'phase:start', data: JSON.stringify({ type: 'phase:start', timestamp: ts, runId: 'r', planSet: 's', command: 'build' }), timestamp: ts },
