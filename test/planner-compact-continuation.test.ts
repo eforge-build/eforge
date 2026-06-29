@@ -68,11 +68,16 @@ describe('runPlanner compact inspection continuation', () => {
     expect(findEvent(events, 'planning:inspection-summary')).toBeDefined();
     expect(findEvent(events, 'planning:continuation')?.reason).toBe('compact_inspection');
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    const plannerStarts = filterEvents(events, 'agent:start').filter((event) => event.agent === 'planner');
+    const plannerStops = filterEvents(events, 'agent:stop').filter((event) => event.agent === 'planner');
+    expect(plannerStarts).toHaveLength(2);
+    expect(plannerStops.map((event) => event.agentId)).toEqual(plannerStarts.map((event) => event.agentId));
+    expect(events.findIndex((event) => event.type === 'agent:stop' && event.agentId === plannerStarts[0].agentId)).toBeLessThan(events.findIndex((event) => event.type === 'planning:continuation'));
     const planContent = await readFile(resolve(cwd, 'eforge/plans/build-compact-planner-continuation/plan-01-compact.md'), 'utf8');
     expect(planContent).toContain('id: plan-01-compact');
     expect(planContent).toContain('Use compact inspection evidence to finish planning.');
     expect(backend.calls[0].tools).toBe('coding');
-    expect(backend.calls[1].tools).toBe('read-only');
+    expect(backend.calls[1].tools).toBe('none');
     expect(backend.customToolSets[1]?.map((tool) => tool.name)).toContain('submit_plan_set');
     expect(backend.calls[1].maxTurns).toBeLessThan(backend.calls[0].maxTurns);
   });

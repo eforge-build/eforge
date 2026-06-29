@@ -20,7 +20,7 @@ export const PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS = 16_384;
 // very large generation limits do not consume the entire live input budget.
 export const PI_COMPILE_CONTEXT_PLANNER_OUTPUT_RESERVE_TOKEN_CAP = 64 * 1024;
 export const PI_COMPILE_CONTEXT_OVERHEAD_RESERVE_TOKENS = 8_192;
-export const PI_COMPILE_CONTEXT_SAFETY_MARGIN = 0.9;
+export const PI_COMPILE_CONTEXT_SAFETY_MARGIN = 0.95;
 
 type PiAuthStorage = ReturnType<typeof AuthStorage.create>;
 type PiModelRegistry = ReturnType<typeof ModelRegistry.create>;
