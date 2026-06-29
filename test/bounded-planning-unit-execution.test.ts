@@ -165,6 +165,21 @@ describe('bounded planning unit execution', () => {
     await expect(stat(resolve(cwd, 'eforge/plans/bounded/modules/unit-engine-contracts.md'))).rejects.toThrow();
   });
 
+  it('restarts bounded module planning from compact inspection handoff', async () => {
+    const harness = new StubHarness([
+      { events: [{ kind: 'tool_call', tool: 'Read', toolUseId: 'read-1', input: { file_path: 'packages/engine/src/module.ts' }, output: 'module evidence' }], text: 'inspection only' },
+      { events: [{ kind: 'tool_call', tool: 'submit_module_plan', toolUseId: 'submit-module-1', input: { markdown: '# Module\n\nPlan from handoff.' }, output: '' }], text: 'module submitted' },
+    ]);
+    const budgets = budget({ maxLocalExplorationToolUses: 1, maxObservedInputTokens: 10_000 });
+    const { output, events } = await run({ harness, budgets, source: 'Module source for compact continuation.', pipelineScope: 'expedition', agentMode: 'module-planner' });
+
+    expect(harness.calls).toHaveLength(2);
+    expect(harness.prompts[1]).toContain('Planner Inspection Handoff');
+    expect(output.status).toBe('completed');
+    expect(output.planSuggestions?.[0]?.markdown).toContain('Plan from handoff');
+    expect(eventTypes(events)).toContain('planning:decomposition:compact-handoff');
+  });
+
   it('emits lifecycle events without forwarding raw agent events', async () => {
     const { events } = await run();
     const types = eventTypes(events);
@@ -186,6 +201,24 @@ describe('bounded planning unit execution', () => {
 
     expect(output.status).toBe('failed');
     expect(output.observedBudget?.triggeredLimitKeys).toContain('maxObservedInputTokens');
+    expect(eventTypes(events)).toContain('planning:decomposition:unit:failed');
+  });
+
+  it('stops bounded unit execution when compact continuation keeps exceeding local tool budget', async () => {
+    const harness = new StubHarness([
+      { events: [{ kind: 'tool_call', tool: 'Read', toolUseId: 'read-1', input: { file_path: 'packages/engine/src/contracts.ts' }, output: 'contract evidence' }], text: 'inspection only' },
+      { events: [{ kind: 'tool_call', tool: 'Read', toolUseId: 'read-2', input: { file_path: 'packages/engine/src/more.ts' }, output: 'more evidence' }, { kind: 'tool_call', tool: 'submit_plan_set', toolUseId: 'submit-1', input: planSet(), output: '' }], text: 'should not submit' },
+    ]);
+    const budgets = budget({ maxLocalExplorationToolUses: 1, maxObservedInputTokens: 10_000 });
+
+    const { output, events } = await run({ harness, budgets, source: 'Unit source for runaway compact continuation.' });
+
+    expect(harness.calls).toHaveLength(2);
+    expect(output.status).toBe('failed');
+    expect(output.observedBudget?.localExplorationToolUses).toBe(2);
+    expect(output.observedBudget?.triggeredLimitKeys).toContain('maxLocalExplorationToolUses');
+    expect(output.planSuggestions).toEqual([]);
+    expect(eventTypes(events)).toContain('planning:decomposition:compact-handoff');
     expect(eventTypes(events)).toContain('planning:decomposition:unit:failed');
   });
 

@@ -15,6 +15,7 @@ import { emitPlanningDecision } from '../decisions.js';
 import { formatPlannerToolSchemaValidationError, formatPlannerToolSemanticValidationError } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
+import { createLinkedAbortController } from './linked-abort-controller.js';
 
 export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
@@ -42,19 +43,6 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   defaultBuild?: BuildStageSpec[];
   /** Default review profile from the pipeline composer, used as context for decision emission. */
   defaultReview?: ReviewProfileConfig;
-}
-
-function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
-  const controller = new AbortController() as AbortController & { dispose: () => void };
-  const abortChild = () => controller.abort();
-  if (parentSignal?.aborted) {
-    controller.abort();
-    controller.dispose = () => {};
-  } else {
-    parentSignal?.addEventListener('abort', abortChild, { once: true });
-    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
-  }
-  return controller;
 }
 
 type PlannerExecutionPhase = 'inspection' | 'synthesis';
@@ -465,6 +453,7 @@ ${existingPlans}`);
         }
       }
     } finally {
+      attemptAbort.abort();
       attemptAbort.dispose();
     }
 
