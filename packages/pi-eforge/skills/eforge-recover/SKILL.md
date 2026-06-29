@@ -64,9 +64,11 @@ Inspect sidecar-provided continue-and-repair fields. If `continueRepairEligibili
 
 If `continueRepairEligibility.eligible === false`, show the bounded reason and do not recommend continue-and-repair. The mutating `eforge_continue_repair` tool validates eligibility server-side if the user explicitly asks to try after reviewing the warning.
 
-If `recoveryOptions` contains `kind: "compile-scope-context"`, treat it as non-mutating guidance: summarize its action, eligibility, source/failure kind, and reason, but do not map it to `eforge_apply_recovery` or `eforge_continue_repair`.
+If `recoveryOptions` contains `kind: "compile-scope-context"`, treat it as non-mutating guidance: summarize its action, eligibility, source/failure kind, reason, and any bounded decomposition evidence summary, but do not map it to `eforge_apply_recovery` or `eforge_continue_repair`.
 
-Do not author replacement PRD content from the recovery sidecar. If the verdict is `manual`, render the full report and use the manual guidance below.
+When a compile-scope-context option includes `decompositionEvidence`, render it as read-only context-managed planning evidence. Summarize only bounded fields such as failed unit ID, parent unit, depth, triggered limits, blockers, unresolved criteria counts, and split attempts. State that `decomposition-exhausted` is decomposition exhaustion, not a provider context-window rejection. Do not paste raw source, prompts, transcripts, or agent output, and do not infer an automated recovery action from the evidence.
+
+Do not author replacement PRD content from the recovery sidecar. If decomposition evidence suggests a smaller follow-up scope, tell the user to inspect the bounded evidence and deliberately write or enqueue any replacement PRD outside this recovery action. The engine does not auto-author or auto-enqueue successor PRDs. If the verdict is `manual`, render the full report and use the manual guidance below.
 
 ### Step 4: Confirm the Action
 

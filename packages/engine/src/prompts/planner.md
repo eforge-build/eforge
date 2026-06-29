@@ -8,6 +8,8 @@ The user wants you to plan the following:
 
 {{source}}
 
+{{bounded_unit_context}}
+
 {{priorClarifications}}
 
 {{continuation_context}}

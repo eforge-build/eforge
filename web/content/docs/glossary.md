@@ -31,7 +31,7 @@ A typed `planning:preflight` diagnostic emitted during compile before planner-fa
 
 ## Compile scope/context failure
 
-A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason; older events omit those fields without placeholders.
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason, or bounded decomposition evidence for `decomposition-exhausted`; older events omit those fields without placeholders.
 
 ## Daemon
 
@@ -39,7 +39,7 @@ The long-running background process that watches the queue, runs builds, exposes
 
 ## Errand, Excursion, Expedition
 
-Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible.
+Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible, or surface bounded-decomposition guidance for context-managed planning units.
 
 ## Evaluator
 
@@ -111,7 +111,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. When a compile scope/context option includes `decompositionEvidence`, sidecar markdown and Console render bounded failed-unit evidence as read-only decomposition context, not provider context-window evidence or generated successor PRD content. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 

@@ -56,7 +56,8 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
   const featureBranch = options.featureBranch ?? `eforge/${options.setName}`;
   const mergeWorktreePath = join(computeWorktreeBase(options.cwd, options.setName), '__merge__');
   const terminalFailure = options.failureSummary?.terminalFailure;
-  const compileScopeOption = terminalFailure?.scope === 'compile' && terminalFailure.terminalSubtype === 'error_context_window'
+  const compileScopeOption = terminalFailure?.scope === 'compile'
+    && (terminalFailure.terminalSubtype === 'error_context_window' || terminalFailure.stage === 'planning-decomposition')
     ? readCompileScopeContextRecoveryOptionFromDb({ dbPath: options.dbPath, setName: options.setName })
     : undefined;
 

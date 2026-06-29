@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
+  DecompositionFailureEvidenceSchema,
   RecoverySidecarCompileScopeContextActionSchema,
   RecoverySidecarCompileScopeContextOptionSchema,
   parseWithSchema,
@@ -12,7 +13,7 @@ import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
 
-const SUPPORTED_SCHEMA_VERSIONS = [3, 4] as const;
+const SUPPORTED_SCHEMA_VERSIONS = [3, 4, 5] as const;
 type SupportedRecoverySidecarSchemaVersion = typeof SUPPORTED_SCHEMA_VERSIONS[number];
 
 export interface RecoverySidecarProjection {
@@ -297,8 +298,8 @@ function validateRecoveryOptions(value: unknown, schemaVersion: SupportedRecover
     if (kind === 'compiled-build-resume' || action === 'eforge_' + 'resume_build') throw new Error(`recoveryOptions contains a legacy repair action${suffix(prdId)}`);
     if (kind === 'continue-repair') return validateContinueRepairOption(obj, action, prdId);
     if (kind === 'compile-scope-context') {
-      if (schemaVersion !== 4) throw new Error(`recoveryOptions compile-scope-context requires schemaVersion 4${suffix(prdId)}`);
-      return validateCompileScopeContextOption(obj, action, prdId);
+      if (schemaVersion !== 4 && schemaVersion !== 5) throw new Error(`recoveryOptions compile-scope-context requires schemaVersion 4 or 5${suffix(prdId)}`);
+      return validateCompileScopeContextOption(obj, action, schemaVersion, prdId);
     }
     throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
   });
@@ -314,13 +315,13 @@ function validateContinueRepairOption(obj: Record<string, unknown>, action: stri
   };
 }
 
-function validateCompileScopeContextOption(obj: Record<string, unknown>, action: string, prdId?: string): RecoverySidecarRecoveryOption {
+function validateCompileScopeContextOption(obj: Record<string, unknown>, action: string, schemaVersion: SupportedRecoverySidecarSchemaVersion, prdId?: string): RecoverySidecarRecoveryOption {
   const compileAction = requireCompileRecoveryGuidanceAction(action, prdId);
   const attempt = requireNonNegativeInteger(obj.attempt, 'recoveryOptions.attempt', prdId);
   const maxAttempts = requirePositiveInteger(obj.maxAttempts, 'recoveryOptions.maxAttempts', prdId);
   if (attempt > maxAttempts) throw new Error(`recoveryOptions.attempt cannot exceed recoveryOptions.maxAttempts${suffix(prdId)}`);
-  return {
-    kind: 'compile-scope-context',
+  const base = {
+    kind: 'compile-scope-context' as const,
     action: compileAction,
     recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
     eligible: requireBoolean(obj.eligible, 'recoveryOptions.eligible', prdId),
@@ -328,9 +329,24 @@ function validateCompileScopeContextOption(obj: Record<string, unknown>, action:
     attempted: requireBoolean(obj.attempted, 'recoveryOptions.attempted', prdId),
     attempt,
     maxAttempts,
-    source: requireCompileScopeContextSource(obj.source, prdId),
-    failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
   };
+  const source = requireCompileScopeContextSource(obj.source, prdId);
+  const failureKind = requireCompileScopeContextFailureKind(obj.failureKind, prdId);
+  const decompositionEvidence = obj.decompositionEvidence !== undefined ? requireDecompositionEvidence(obj.decompositionEvidence, prdId) : undefined;
+  if (decompositionEvidence !== undefined && (source !== 'decomposition' || failureKind !== 'decomposition-exhausted')) {
+    throw new Error(`recoveryOptions.decompositionEvidence is only valid for decomposition-exhausted failures${suffix(prdId)}`);
+  }
+  if ((source === 'decomposition') !== (failureKind === 'decomposition-exhausted')) {
+    throw new Error(`recoveryOptions compile-scope-context classification is invalid${suffix(prdId)}`);
+  }
+  const option = source === 'decomposition'
+    ? { ...base, source, failureKind: 'decomposition-exhausted' as const, decompositionEvidence: decompositionEvidence ?? requireDecompositionEvidence(undefined, prdId) }
+    : { ...base, source, failureKind };
+  try {
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema, option) as RecoverySidecarRecoveryOption;
+  } catch {
+    throw new Error(`recoveryOptions compile-scope-context classification is invalid${suffix(prdId)}`);
+  }
 }
 
 function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {
@@ -354,6 +370,14 @@ function requireCompileScopeContextFailureKind(value: unknown, prdId?: string): 
     return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema.properties.failureKind, value);
   } catch {
     throw new Error(`recoveryOptions.failureKind is invalid${suffix(prdId)}`);
+  }
+}
+
+function requireDecompositionEvidence(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['decompositionEvidence'] {
+  try {
+    return parseWithSchema(DecompositionFailureEvidenceSchema, value);
+  } catch {
+    throw new Error(`recoveryOptions.decompositionEvidence is invalid${suffix(prdId)}`);
   }
 }
 

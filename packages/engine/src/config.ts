@@ -20,7 +20,11 @@ import {
   userEforgeConfigDir,
 } from '@eforge-build/scopes';
 import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime.js';
+import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA } from './compile-resilience/planning-decomposition-limits.js';
+import type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
+export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolvePlanningDecompositionLimits } from './compile-resilience/planning-decomposition-limits.js';
+export type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export type { ShardScope } from './schemas.js';
 
 // Re-export shared types from @eforge-build/client so engine-internal callers
@@ -63,6 +67,22 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
 });
 
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
+
+const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
+
+const compileConfigSchema = z.object({
+  planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
+  planningUnitMaxDepth: boundedPositiveIntegerConfigSchema('planningUnitMaxDepth').optional(),
+  planningUnitMaxPromptSourceBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxPromptSourceBytes').optional(),
+  planningUnitMaxPromptBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxPromptBytes').optional(),
+  planningUnitMaxObservedInputTokens: boundedPositiveIntegerConfigSchema('planningUnitMaxObservedInputTokens').optional(),
+  planningUnitMaxObservedTurns: boundedPositiveIntegerConfigSchema('planningUnitMaxObservedTurns').optional(),
+  planningUnitMaxCompactHandoffBytes: boundedPositiveIntegerConfigSchema('planningUnitMaxCompactHandoffBytes').optional(),
+  planningUnitMaxLocalExplorationToolUses: boundedPositiveIntegerConfigSchema('planningUnitMaxLocalExplorationToolUses').optional(),
+  planningUnitMaxCriteriaPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxCriteriaPerUnit').optional(),
+  planningUnitMaxSubsystemsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSubsystemsPerUnit').optional(),
+  planningUnitMaxSplitAttemptsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSplitAttemptsPerUnit').optional(),
+}).strict().describe('Context-managed compile planning-unit limits');
 
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas
@@ -429,6 +449,7 @@ const eforgeConfigBaseSchema = z.object({
     tiers: z.record(z.string(), tierConfigSchema).optional().describe('Tier recipes — every tier referenced by any role must be declared'),
     roles: z.record(agentRoleSchema, roleOverrideSchema.optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
+  compile: compileConfigSchema.optional(),
   build: z.object({
     worktreeDir: z.string().optional(),
     postMergeCommands: z.array(z.string()).optional(),
@@ -632,6 +653,7 @@ export interface EforgeConfig {
     tiers: Partial<Record<AgentTier, TierConfig>>;
     roles?: Partial<Record<AgentRole, z.output<typeof roleOverrideSchema>>>;
   };
+  compile: PlanningDecompositionConfig;
   build: {
     worktreeDir?: string;
     postMergeCommands?: string[];
@@ -820,6 +842,7 @@ const DEFAULT_TIER_RECIPES: Partial<Record<AgentTier, TierConfig>> = Object.free
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   maxConcurrentBuilds: 2,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
+  compile: DEFAULT_PLANNING_DECOMPOSITION_CONFIG,
   agents: Object.freeze({
     maxTurns: DEFAULT_AGENT_MAX_TURNS,
     maxContinuations: 3,
@@ -941,6 +964,10 @@ export function resolveConfig(
       publicKey: langfusePublicKey,
       secretKey: langfuseSecretKey,
       host: langfuseHost,
+    }),
+    compile: Object.freeze({
+      ...DEFAULT_CONFIG.compile,
+      ...fileConfig.compile,
     }),
     agents: Object.freeze({
       maxTurns: fileConfig.agents?.maxTurns ?? DEFAULT_CONFIG.agents.maxTurns,
@@ -1236,6 +1263,9 @@ export function mergePartialConfigs(
     }
 
     result.agents = mergedAgents as PartialEforgeConfig['agents'];
+  }
+  if (global.compile || project.compile) {
+    result.compile = { ...global.compile, ...project.compile };
   }
   if (global.build || project.build) {
     const mergedValidation = (global.build?.validation || project.build?.validation)

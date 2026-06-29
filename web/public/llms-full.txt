@@ -89,7 +89,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
-3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation.
+3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Overflow-risk inputs may use bounded context-managed planning units governed by the `compile.planningUnit*` limits.
 4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry context metadata and effective output reserves when available, while prompt byte defaults remain static byte guards. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
@@ -137,7 +137,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once, or use context-managed planning units governed by `compile.planningUnit*` limits, when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -172,7 +172,7 @@ The pipeline-composer selects one of three workflow profiles based on scope comp
 
 **Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
 
-You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation before planning continues.
+You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation or bounded planning-unit decomposition before planning continues.
 
 ## Separation of Concerns
 
@@ -630,6 +630,27 @@ build:
 `build.postMergeCommands` run in order after the merge. Queued PRD `postMerge` metadata, when present, is appended after the configured commands for that build. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
+
+## Compile Planning Limits
+
+The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning. These values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
+
+```yaml
+compile:
+  planningUnitParallelism: 2
+  planningUnitMaxDepth: 3
+  planningUnitMaxPromptSourceBytes: 40000
+  planningUnitMaxPromptBytes: 80000
+  planningUnitMaxObservedInputTokens: 120000
+  # planningUnitMaxObservedTurns is optional and unset by default
+  planningUnitMaxCompactHandoffBytes: 12000
+  planningUnitMaxLocalExplorationToolUses: 24
+  planningUnitMaxCriteriaPerUnit: 20
+  planningUnitMaxSubsystemsPerUnit: 2
+  planningUnitMaxSplitAttemptsPerUnit: 2
+```
+
+All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit.
 
 ## Landing Action
 
@@ -3711,7 +3732,7 @@ Console shows:
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console Needs attention strip for failed builds, compile scope/context failure banners with optional guard diagnostics, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
+- Console Needs attention strip for failed builds, compile scope/context failure banners with optional guard diagnostics or decomposition-exhaustion evidence, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
@@ -3841,16 +3862,16 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 **What to look for:**
 
 - `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
-- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason.
+- `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason, plus bounded decomposition evidence for `decomposition-exhausted` failures.
 
 **How to interpret recovery guidance:**
 
 - `retry-as-expedition` means eforge determined the compile may fit after escalating from errand/excursion to expedition decomposition. If a retry was attempted, Console and CLI show it as recovery progress; if not attempted or terminal, treat it as guidance for the next build attempt.
-- `bounded-decomposition` means the input should be split into smaller, independently reviewable PRDs or modules before retrying.
+- `bounded-decomposition` means eforge should use bounded context-managed planning units when eligible, or the operator should deliberately reduce/decompose the source before retrying. Context-managed planning-unit budgets come from the top-level `compile.planningUnit*` config keys; exhausted decomposition evidence is read-only and does not mean eforge auto-authored successor PRDs or queue items.
 - `manual-reduce-scope` means a human should remove generated bulk, duplicate context, or unrelated requirements and enqueue a reduced source.
 - `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
 
-Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue the revised source.
+Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. When `decompositionEvidence` is present, CLI, Console, and sidecar markdown show bounded fields such as failed unit, depth, triggered limits, blockers, unresolved criteria, and split attempts, without raw source, prompts, transcripts, or agent output. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue any revised source deliberately.
 
 When guard diagnostics are present, inspect the rendered `limits`, `outputReserveTokens`, and any `fallbackReason` before deciding how to retry. `outputReserveTokens` is the effective output reserve used in the input-budget calculation; for planner-family Pi guards it can be capped below the model's raw output-token metadata. `metadataSource` can be `registry` (Pi ModelRegistry metadata), `builtin` (Pi built-in metadata), `synthetic` (provider sibling transport metadata for an unknown model), or `fallback` (conservative defaults after missing or unusable metadata). Registry, built-in, and synthetic metadata can still be incomplete or caveated; `fallbackReason` is the authoritative caveat text whenever it appears. If the reported `maxObservedInputTokens` is too low for the build source, reduce scope or choose/add a profile/model with complete context metadata before retrying.
 
@@ -3880,7 +3901,7 @@ The recovery flow:
    - `continue-repair` - prepare root-plan `## Recovery Guidance`, then queue the failed PRD through the compiled-artifact repair path, preserving existing queue controls and reactivating skipped descendants whose dependency chain reaches the parent
    - `abandon` - remove the failed PRD and recovery sidecars from the queue because the work should not continue
    - `manual` - make no queue changes; a human must inspect the recovery report and decide whether bounded manual replanning or a deliberately authored follow-up PRD is appropriate
-4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence. Other `recoveryOptions` entries, such as `compile-scope-context`, are non-mutating guidance; surface their reason/action but keep the primary action tied to the verdict or continue-and-repair eligibility.
+4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence. Other `recoveryOptions` entries, such as `compile-scope-context`, are non-mutating guidance; surface their reason/action and any bounded `decompositionEvidence`, but keep the primary action tied to the verdict or continue-and-repair eligibility.
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` / `eforge apply-recovery <prdId>` for `retry` and `abandon`. For `continue-repair`, call `eforge_continue_repair` (Pi), `mcp__eforge__eforge_continue_repair` (Claude Code), or `eforge continue-repair <prdId> [--set-name <name>] [--profile <name>]` (CLI). These commands require current root-plan `## Recovery Guidance` before queueing the continued build and return queued metadata rather than a local worker session.
 
@@ -3980,7 +4001,7 @@ A typed `planning:preflight` diagnostic emitted during compile before planner-fa
 
 ## Compile scope/context failure
 
-A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason; older events omit those fields without placeholders.
+A typed `planning:scope-context:failure` diagnostic for compile-stage context exhaustion or guard failures. It records source, failure kind, stage, bounded explanation, observed metrics, artifact summary, and recovery action so CLI, Console, and recovery sidecars can distinguish compile guidance from ordinary plan-build failures. Newer events may include optional guard diagnostics for provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason, or bounded decomposition evidence for `decomposition-exhausted`; older events omit those fields without placeholders.
 
 ## Daemon
 
@@ -3988,7 +4009,7 @@ The long-running background process that watches the queue, runs builds, exposes
 
 ## Errand, Excursion, Expedition
 
-Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible.
+Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible, or surface bounded-decomposition guidance for context-managed planning units.
 
 ## Evaluator
 
@@ -4060,7 +4081,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. When a compile scope/context option includes `decompositionEvidence`, sidecar markdown and Console render bounded failed-unit evidence as read-only decomposition context, not provider context-window evidence or generated successor PRD content. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 
@@ -4861,7 +4882,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 232
+Total variants: 243
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -4924,6 +4945,17 @@ Total variants: 232
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
+| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `riskEvidence`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
+| `planning:decomposition:unit:queued` | `runId`, `sessionId`, `timestamp`, `unit` |
+| `planning:decomposition:unit:running` | `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:unit:progress` | `message`, `observed`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:unit:completed` | `runId`, `sessionId`, `timestamp`, `unit` |
+| `planning:decomposition:unit:skipped` | `reason`, `runId`, `sessionId`, `timestamp`, `unit`, `unitId` |
+| `planning:decomposition:unit:failed` | `evidence`, `reason`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:schedule` | `decision`, `runId`, `sessionId`, `timestamp` |
+| `planning:decomposition:budget` | `limits`, `observed`, `runId`, `sessionId`, `timestamp`, `unitBudgets`, `unitId` |
+| `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:synthesis:complete` | `artifactPaths`, `completedUnitCount`, `coverage`, `failedUnitCount`, `runId`, `sessionId`, `skippedUnitCount`, `timestamp`, `unitCount` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |
@@ -5123,6 +5155,7 @@ eforge merges configuration from three tiers (highest precedence first):
 |-------|-------------|
 | `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
 | `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
+| `compile` | Context-managed compile planning-unit limits |
 | `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
 | `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |
@@ -5135,6 +5168,24 @@ eforge merges configuration from three tiers (highest precedence first):
 | `prdQueue` | Queue directory, auto-build, and watcher polling settings for queued PRDs. |
 | `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
 | `tools` | Toolbelt configuration for named project MCP server bundles. |
+
+## Compile
+
+`compile` tunes context-managed planning units for overflow-risk compile inputs. Ordinary direct planning does not use these limits. All `compile.planningUnit*` values are positive integers capped by documented operational maxima.
+
+| Field | Default | Max | Description |
+|-------|---------|-----|-------------|
+| `compile.planningUnitParallelism` | `2` | `16` | Maximum planning units processed concurrently. |
+| `compile.planningUnitMaxDepth` | `3` | `8` | Maximum recursive split depth for planning units. |
+| `compile.planningUnitMaxPromptSourceBytes` | `40000` | `250000` | Maximum source bytes packed into a single planning-unit prompt. |
+| `compile.planningUnitMaxPromptBytes` | `80000` | `500000` | Maximum total prompt bytes for a single planning unit. |
+| `compile.planningUnitMaxObservedInputTokens` | `120000` | `1000000` | Maximum observed input-token budget per planning unit. |
+| `compile.planningUnitMaxObservedTurns` | unset | `200` | Optional observed turn limit per planning unit. |
+| `compile.planningUnitMaxCompactHandoffBytes` | `12000` | `100000` | Maximum compact handoff size carried between planning-unit steps. |
+| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | `256` | Maximum local exploration tool uses per planning unit. |
+| `compile.planningUnitMaxCriteriaPerUnit` | `20` | `64` | Maximum acceptance criteria assigned to one planning unit. |
+| `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
+| `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
 
 ## Toolbelts
 

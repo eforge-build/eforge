@@ -409,6 +409,68 @@
       },
       "additionalProperties": false
     },
+    "compile": {
+      "type": "object",
+      "properties": {
+        "planningUnitParallelism": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16
+        },
+        "planningUnitMaxDepth": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 8
+        },
+        "planningUnitMaxPromptSourceBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 250000
+        },
+        "planningUnitMaxPromptBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 500000
+        },
+        "planningUnitMaxObservedInputTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "planningUnitMaxObservedTurns": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 200
+        },
+        "planningUnitMaxCompactHandoffBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 100000
+        },
+        "planningUnitMaxLocalExplorationToolUses": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "planningUnitMaxCriteriaPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "planningUnitMaxSubsystemsPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 32
+        },
+        "planningUnitMaxSplitAttemptsPerUnit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 8
+        }
+      },
+      "additionalProperties": false,
+      "description": "Context-managed compile planning-unit limits"
+    },
     "build": {
       "type": "object",
       "properties": {

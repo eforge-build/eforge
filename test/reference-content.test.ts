@@ -29,11 +29,15 @@ describe('plan-01 reference and raw mirror content', () => {
     }
   });
 
-  it('generates config reference sections for toolbelts and hooks in both rendered and raw targets', () => {
+  it('generates config reference sections for compile, toolbelts, and hooks in both rendered and raw targets', () => {
     for (const path of ['web/content/reference/config.md', 'web/public/reference/config.md']) {
       const raw = readRepoFile(path);
+      expect(raw).toContain('## Compile');
       expect(raw).toContain('## Toolbelts');
       expect(raw).toContain('## Hooks');
+
+      const compileSection = raw.split('## Compile')[1]?.split('## Toolbelts')[0] ?? '';
+      expect(compileSection).toContain('compile.planningUnitParallelism');
 
       const toolbeltsSection = raw.split('## Toolbelts')[1]?.split('## Hooks')[0] ?? '';
       for (const expected of ['tools.toolbelts', 'toolbelt: none', 'omitted', '.mcp.json', 'Validation']) {

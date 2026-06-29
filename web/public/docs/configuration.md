@@ -368,6 +368,27 @@ build:
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 
+## Compile Planning Limits
+
+The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning. These values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
+
+```yaml
+compile:
+  planningUnitParallelism: 2
+  planningUnitMaxDepth: 3
+  planningUnitMaxPromptSourceBytes: 40000
+  planningUnitMaxPromptBytes: 80000
+  planningUnitMaxObservedInputTokens: 120000
+  # planningUnitMaxObservedTurns is optional and unset by default
+  planningUnitMaxCompactHandoffBytes: 12000
+  planningUnitMaxLocalExplorationToolUses: 24
+  planningUnitMaxCriteriaPerUnit: 20
+  planningUnitMaxSubsystemsPerUnit: 2
+  planningUnitMaxSplitAttemptsPerUnit: 2
+```
+
+All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit.
+
 ## Landing Action
 
 `landing.action` controls what happens when a build completes successfully.

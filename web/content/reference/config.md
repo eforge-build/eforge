@@ -15,6 +15,7 @@ eforge merges configuration from three tiers (highest precedence first):
 |-------|-------------|
 | `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
 | `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
+| `compile` | Context-managed compile planning-unit limits |
 | `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
 | `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |
@@ -27,6 +28,24 @@ eforge merges configuration from three tiers (highest precedence first):
 | `prdQueue` | Queue directory, auto-build, and watcher polling settings for queued PRDs. |
 | `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
 | `tools` | Toolbelt configuration for named project MCP server bundles. |
+
+## Compile
+
+`compile` tunes context-managed planning units for overflow-risk compile inputs. Ordinary direct planning does not use these limits. All `compile.planningUnit*` values are positive integers capped by documented operational maxima.
+
+| Field | Default | Max | Description |
+|-------|---------|-----|-------------|
+| `compile.planningUnitParallelism` | `2` | `16` | Maximum planning units processed concurrently. |
+| `compile.planningUnitMaxDepth` | `3` | `8` | Maximum recursive split depth for planning units. |
+| `compile.planningUnitMaxPromptSourceBytes` | `40000` | `250000` | Maximum source bytes packed into a single planning-unit prompt. |
+| `compile.planningUnitMaxPromptBytes` | `80000` | `500000` | Maximum total prompt bytes for a single planning unit. |
+| `compile.planningUnitMaxObservedInputTokens` | `120000` | `1000000` | Maximum observed input-token budget per planning unit. |
+| `compile.planningUnitMaxObservedTurns` | unset | `200` | Optional observed turn limit per planning unit. |
+| `compile.planningUnitMaxCompactHandoffBytes` | `12000` | `100000` | Maximum compact handoff size carried between planning-unit steps. |
+| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | `256` | Maximum local exploration tool uses per planning unit. |
+| `compile.planningUnitMaxCriteriaPerUnit` | `20` | `64` | Maximum acceptance criteria assigned to one planning unit. |
+| `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
+| `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
 
 ## Toolbelts
 

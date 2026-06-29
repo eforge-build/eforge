@@ -1,4 +1,5 @@
 import { FormatRegistry, Type, type Static } from '@sinclair/typebox';
+import { DecompositionFailureEvidenceSchema } from './planning-decomposition.js';
 
 export const MAX_COMPILE_RISK_LIST_ITEMS = 12;
 export const MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH = 2000;
@@ -99,6 +100,7 @@ export const CompileScopeContextSourceSchema = Type.Union([
   Type.Literal('preflight'),
   Type.Literal('live-context-guard'),
   Type.Literal('provider'),
+  Type.Literal('decomposition'),
 ]);
 
 export const CompileScopeContextFailureKindSchema = Type.Union([
@@ -106,6 +108,7 @@ export const CompileScopeContextFailureKindSchema = Type.Union([
   Type.Literal('context-window'),
   Type.Literal('context-length'),
   Type.Literal('scope-too-broad'),
+  Type.Literal('decomposition-exhausted'),
 ]);
 
 export const CompilePreflightRiskSchema = Type.Object({
@@ -200,7 +203,7 @@ export const PlannerInspectionSummarySchema = Type.Object({
   omittedCounts: PlannerInspectionOmittedCountsSchema,
 });
 
-export const CompileScopeContextFailureSchema = Type.Object({
+const CompileScopeContextFailureBaseSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
   stage: Type.Union([
@@ -209,6 +212,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     Type.Literal('module-planner'),
     Type.Literal('compile-expedition'),
     Type.Literal('compile'),
+    Type.Literal('planning-decomposition'),
   ]),
   explanation: BoundedStringSchema,
   risk: Type.Optional(CompilePreflightRiskSchema),
@@ -219,6 +223,7 @@ export const CompileScopeContextFailureSchema = Type.Object({
     promptBytes: Type.Optional(NonNegativeIntegerSchema),
   })),
   guardDiagnostics: Type.Optional(CompileContextGuardDiagnosticsSchema),
+  decompositionEvidence: Type.Optional(DecompositionFailureEvidenceSchema),
   recovery: Type.Object({
     action: CompileRecoveryActionSchema,
     eligible: Type.Boolean(),
@@ -229,6 +234,29 @@ export const CompileScopeContextFailureSchema = Type.Object({
   }),
   artifacts: CompileArtifactSummarySchema,
 });
+
+const NonDecompositionCompileScopeContextSourceSchema = Type.Union([
+  Type.Literal('preflight'),
+  Type.Literal('live-context-guard'),
+  Type.Literal('provider'),
+]);
+
+const NonExhaustedCompileScopeContextFailureKindSchema = Type.Union([
+  Type.Literal('context-budget'),
+  Type.Literal('context-window'),
+  Type.Literal('context-length'),
+  Type.Literal('scope-too-broad'),
+]);
+
+export const CompileScopeContextFailureSchema: typeof CompileScopeContextFailureBaseSchema = Type.Intersect([
+  CompileScopeContextFailureBaseSchema,
+  Type.Union([
+    Type.Object({ source: Type.Literal('decomposition'), failureKind: Type.Literal('decomposition-exhausted'), stage: Type.Literal('planning-decomposition'), decompositionEvidence: DecompositionFailureEvidenceSchema }),
+    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema, decompositionEvidence: Type.Optional(Type.Never()) }),
+  ]),
+]) as unknown as typeof CompileScopeContextFailureBaseSchema;
+
+Object.assign(CompileScopeContextFailureSchema, { properties: CompileScopeContextFailureBaseSchema.properties });
 
 export const BoundedDiagnosticOptionsSchema = Type.Object({
   maxMessageBytes: Type.Integer({ minimum: 1 }),
@@ -257,7 +285,19 @@ export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>
 export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
-export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
+type CompileScopeContextFailureBase = Static<typeof CompileScopeContextFailureBaseSchema>;
+export type CompileScopeContextFailure =
+  | (Omit<CompileScopeContextFailureBase, 'source' | 'failureKind' | 'stage' | 'decompositionEvidence'> & {
+      source: 'decomposition';
+      failureKind: 'decomposition-exhausted';
+      stage: 'planning-decomposition';
+      decompositionEvidence: Static<typeof DecompositionFailureEvidenceSchema>;
+    })
+  | (Omit<CompileScopeContextFailureBase, 'source' | 'failureKind' | 'decompositionEvidence'> & {
+      source: Static<typeof NonDecompositionCompileScopeContextSourceSchema>;
+      failureKind: Static<typeof NonExhaustedCompileScopeContextFailureKindSchema>;
+      decompositionEvidence?: never;
+    });
 export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
 export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
 export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;

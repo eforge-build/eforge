@@ -5,6 +5,7 @@ import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
 import { plannerContinuationReasonLabel, renderCompilePreflightLines, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from './compile-resilience-display.js';
+import { renderPlanningDecompositionEventModel } from './planning-decomposition-display.js';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -216,6 +217,15 @@ function renderPhaseEvent(event: EforgeEvent): boolean {
   }
 }
 function renderPlanningEvent(event: EforgeEvent): boolean {
+  if (event.type.startsWith('planning:decomposition:')) {
+    const model = renderPlanningDecompositionEventModel(event as Parameters<typeof renderPlanningDecompositionEventModel>[0]);
+    const failed = event.type === 'planning:decomposition:unit:failed';
+    const warning = event.type === 'planning:decomposition:budget' && 'observed' in event && event.observed?.triggeredLimitKeys.length;
+    console.log((failed ? chalk.red : warning ? chalk.yellow : chalk.dim)(`  ${failed ? '✗' : warning ? '⚠' : '•'} ${model.headline}`));
+    for (const detail of model.details) console.log(chalk.dim(`    ${detail}`));
+    setSpinnerText('plan', model.headline);
+    return true;
+  }
   switch (event.type) {
     case 'planning:start':
       startSpinner('plan', `Planning from ${chalk.cyan(event.label ?? event.source)}...`);

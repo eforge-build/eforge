@@ -8,6 +8,7 @@ import type {
 import type { RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
+import { decompositionEvidenceSummary } from './decomposition-evidence-render.js';
 
 const SCHEMA_VERSION = 3;
 const SCHEMA_VERSION_COMPILE_SCOPE_CONTEXT = 4;
@@ -58,7 +59,7 @@ function buildReport(
     operatorSummary: truncateText(verdict.rationale, BULLET_CHARS * 2, 'operator summary').text,
     recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : (recommendedCompileScopeContextOption(recoveryOptions)?.reason ?? recommendedAction(verdict)),
     ...(rootFailure ? { rootFailure } : {}),
-    keyEvidence: keyEvidence(summary, evidence),
+    keyEvidence: keyEvidence(summary, evidence, recoveryOptions),
     completedWork: boundedStrings(verdict.completedWork, 'completed work'),
     remainingWork: boundedStrings(verdict.remainingWork, 'remaining work'),
     risks: boundedStrings(verdict.risks, 'risk'),
@@ -169,11 +170,14 @@ function compactRootFailure(summary: BuildFailureSummary): RecoverySidecarReport
   return Object.keys(root).length > 0 ? root : undefined;
 }
 
-function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoundedEvidence): string[] {
+function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoundedEvidence, recoveryOptions?: RecoverySidecarRecoveryOption[]): string[] {
   const lines: string[] = [];
   if (evidence.failingPlan.planId !== 'unknown') lines.push(`Failing plan: ${evidence.failingPlan.planId}`);
   if (summary.terminalFailure?.scope) lines.push(`Terminal failure scope: ${summary.terminalFailure.scope}${summary.terminalFailure.stage ? ` (${summary.terminalFailure.stage})` : ''}`);
   if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure.terminalSubtype === 'error_context_window') lines.push('Compile scope/context failure evidence is present; use recoveryOptions for bounded retry/decomposition guidance.');
+  for (const option of recoveryOptions ?? []) {
+    if (option.kind === 'compile-scope-context' && option.decompositionEvidence) lines.push(decompositionEvidenceSummary(option.decompositionEvidence));
+  }
   if (summary.acceptanceValidation) {
     lines.push(`Acceptance validation: ${summary.acceptanceValidation.pass}/${summary.acceptanceValidation.total} pass, ${summary.acceptanceValidation.fail} fail, ${summary.acceptanceValidation.unknown} unknown`);
     if (isAllUnknownAcceptanceFailure(summary.acceptanceValidation)) {

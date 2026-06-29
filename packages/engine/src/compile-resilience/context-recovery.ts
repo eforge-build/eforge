@@ -17,6 +17,7 @@ import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
 import { validateCompileArtifacts } from './artifact-validation.js';
 import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
+import type { DecompositionPlanningError } from './planning-decomposition.js';
 export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
 
 export interface CompileScopeRecoveryState {
@@ -27,15 +28,29 @@ export interface CompileScopeRecoveryState {
   lastFailure?: CompileScopeContextFailure;
 }
 
-export interface CompileScopeContextFailureInput {
-  source: CompileScopeContextFailure['source'];
-  failureKind: CompileScopeContextFailure['failureKind'];
-  stage: CompileScopeContextFailure['stage'];
+type DecompositionCompileScopeContextFailure = Extract<CompileScopeContextFailure, { source: 'decomposition' }>;
+type NonDecompositionCompileScopeContextFailure = Exclude<CompileScopeContextFailure, { source: 'decomposition' }>;
+
+type CompileScopeContextFailureInputBase = {
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
   risk?: CompilePreflightRisk;
   guardDiagnostics?: CompileContextGuardDiagnostics;
-}
+};
+
+export type CompileScopeContextFailureInput =
+  | (CompileScopeContextFailureInputBase & {
+      source: DecompositionCompileScopeContextFailure['source'];
+      failureKind: DecompositionCompileScopeContextFailure['failureKind'];
+      stage: DecompositionCompileScopeContextFailure['stage'];
+      decompositionEvidence: DecompositionCompileScopeContextFailure['decompositionEvidence'];
+    })
+  | (CompileScopeContextFailureInputBase & {
+      source: NonDecompositionCompileScopeContextFailure['source'];
+      failureKind: NonDecompositionCompileScopeContextFailure['failureKind'];
+      stage: NonDecompositionCompileScopeContextFailure['stage'];
+      decompositionEvidence?: never;
+    });
 
 const MAX_REASON_BYTES = RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES;
 const EXPEDITION_COMPILE = ['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
@@ -53,9 +68,10 @@ export async function toCompileScopeContextError(
       stage: error.failure.stage ?? fallbackStage,
       explanation: error.failure.explanation,
       observed: error.failure.observed,
+      decompositionEvidence: error.failure.decompositionEvidence,
       risk: error.failure.risk ?? ctx.compilePreflight,
       guardDiagnostics: error.failure.guardDiagnostics ?? guardDiagnostics,
-    }));
+    } as CompileScopeContextFailureInput));
   }
   const provider = classifyProviderContextError(error) ?? (error instanceof AgentTerminalError && error.subtype === 'error_context_window'
     ? { failureKind: 'context-window' as const, explanation: boundProviderContextExplanation(error.message) }
@@ -87,14 +103,22 @@ export async function buildPreflightEscalationDecision(
   return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
 }
 
+export async function toDecompositionCompileScopeFailure(ctx: PipelineContext, error: DecompositionPlanningError): Promise<CompileScopeContextFailure> {
+  return buildCompileScopeContextFailure(ctx, {
+    source: error.source,
+    failureKind: error.kind,
+    stage: error.stage,
+    explanation: error.message,
+    decompositionEvidence: error.evidence,
+    risk: ctx.compilePreflight,
+  });
+}
+
 export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
   const state = ensureCompileScopeRecoveryState(ctx);
   const artifacts = await summarizeCompileArtifactsForRecovery(ctx);
   const action = chooseRecoveryAction(ctx, input, state, artifacts);
-  const failure: CompileScopeContextFailure = {
-    source: input.source,
-    failureKind: input.failureKind,
-    stage: input.stage,
+  const common = {
     explanation: capUtf8(input.explanation, 1500),
     ...(input.risk ?? ctx.compilePreflight ? { risk: input.risk ?? ctx.compilePreflight } : {}),
     ...(input.observed ? { observed: input.observed } : {}),
@@ -109,6 +133,9 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
     },
     artifacts,
   };
+  const failure: CompileScopeContextFailure = input.source === 'decomposition'
+    ? { ...common, source: input.source, failureKind: input.failureKind, stage: input.stage, decompositionEvidence: input.decompositionEvidence }
+    : { ...common, source: input.source, failureKind: input.failureKind, stage: input.stage };
   state.lastFailure = failure;
   return failure;
 }
@@ -158,7 +185,7 @@ export function compileScopeTerminalFailureEvent(input: { runId: string; failure
       stage: input.failure.stage,
       message: input.failure.explanation,
       authoritative: true,
-      terminalSubtype: 'error_context_window',
+      ...(input.failure.failureKind !== 'decomposition-exhausted' ? { terminalSubtype: 'error_context_window' } : {}),
     },
   };
 }
@@ -176,8 +203,8 @@ export async function summarizeCompileArtifactsForRecovery(ctx: PipelineContext)
 
 export function compileScopeContextRecoveryOption(failure: CompileScopeContextFailure): RecoverySidecarRecoveryOption | undefined {
   if (failure.recovery.action === 'none' || failure.recovery.action === 'repair-existing-artifacts') return undefined;
-  return {
-    kind: 'compile-scope-context',
+  const base = {
+    kind: 'compile-scope-context' as const,
     action: failure.recovery.action,
     recommended: true,
     eligible: failure.recovery.eligible,
@@ -185,9 +212,10 @@ export function compileScopeContextRecoveryOption(failure: CompileScopeContextFa
     attempted: failure.recovery.attempted,
     attempt: failure.recovery.attempt,
     maxAttempts: failure.recovery.maxAttempts,
-    source: failure.source,
-    failureKind: failure.failureKind,
   };
+  return failure.source === 'decomposition'
+    ? { ...base, source: failure.source, failureKind: failure.failureKind, decompositionEvidence: failure.decompositionEvidence }
+    : { ...base, source: failure.source, failureKind: failure.failureKind };
 }
 
 export function readCompileScopeContextRecoveryOptionFromDb(input: { dbPath?: string; runId?: string; setName?: string }): RecoverySidecarRecoveryOption | undefined {
@@ -223,7 +251,10 @@ function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, inp
   if (action === 'repair-existing-artifacts') return `Valid compile artifacts exist (${artifacts.validPlanCount} plan file(s)); prefer continue/repair over retrying compile.`;
   const compactGuidance = plannerCompactInspectionGuidance(ctx, input, artifacts);
   if (action === 'retry-as-expedition') return withCompactGuidance(`Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`, compactGuidance);
-  if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); decompose the source into bounded follow-up PRDs.`, compactGuidance);
+  if (action === 'bounded-decomposition' && input.failureKind === 'decomposition-exhausted' && input.decompositionEvidence) {
+    return withCompactGuidance(`Context-managed decomposition exhausted in unit ${input.decompositionEvidence.unitId}; this is decomposition exhaustion, not a provider context rejection. Existing direct retry/apply-recovery actions do not mutate compile decomposition state. Operators can inspect bounded evidence and choose a manual reduced source or deliberate follow-up PRD outside the engine. The engine does not auto-author and does not auto-enqueue successor PRDs.`, compactGuidance);
+  }
+  if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); inspect bounded decomposition evidence or manually reduce source before choosing deliberate follow-up work outside the engine.`, compactGuidance);
   if (action === 'manual-reduce-scope') return withCompactGuidance('Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.', compactGuidance);
   return input.explanation;
 }

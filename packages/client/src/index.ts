@@ -533,3 +533,56 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
 } from './events.js';
 
 export type * from './types.js';
+
+export {
+  DecompositionFailureEvidenceSchema,
+  PlanningCoverageSummarySchema,
+  PlanningCriterionCoverageSchema,
+  PlanningDecompositionLimitsSchema,
+  PlanningDecompositionRiskEvidenceSchema,
+  PlanningDecompositionUnitStatusSchema,
+  PlanningDecompositionUnitSummarySchema,
+  PlanningObservedBudgetPressureSchema,
+  PlanningScheduleBlockedPairSchema,
+  PlanningScheduleDecisionSchema,
+  PlanningScheduleWaitingReasonSchema,
+  PlanningSourceSliceSummarySchema,
+  PlanningSplitAttemptEvidenceSchema,
+  PlanningUnitBudgetSchema, PlanningUnitBudgetEntrySchema, PlanningUnitConstraintSchema,
+  PlanningUnresolvedCriterionSchema, capPlanningDecompositionString, projectPlanningCoverageSummaryForWire, projectPlanningDecompositionUnitSummaryForWire,
+  PLANNING_DECOMPOSITION_EVENT_TYPES, PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS, PLANNING_DECOMPOSITION_MAX_COVERAGE_OMISSIONS,
+  PLANNING_DECOMPOSITION_MAX_CRITERIA, PLANNING_DECOMPOSITION_MAX_DEPENDENCIES, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS,
+  PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES, PLANNING_DECOMPOSITION_MAX_SPLIT_ATTEMPTS, PLANNING_DECOMPOSITION_MAX_STRING_LENGTH,
+  PLANNING_DECOMPOSITION_MAX_UNITS, PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA,
+} from './events/shared/planning-decomposition.js';
+export type {
+  DecompositionFailureEvidence,
+  PlanningCoverageSummary,
+  PlanningCriterionCoverage,
+  PlanningDecompositionEventType,
+  PlanningDecompositionLimits,
+  PlanningDecompositionRiskEvidence,
+  PlanningDecompositionUnitStatus,
+  PlanningDecompositionUnitSummary,
+  PlanningObservedBudgetPressure,
+  PlanningScheduleBlockedPair,
+  PlanningScheduleDecision,
+  PlanningScheduleWaitingReason,
+  PlanningSourceSliceSummary,
+  PlanningSplitAttemptEvidence,
+  PlanningUnitBudget, PlanningUnitBudgetEntry, PlanningUnitConstraint,
+  PlanningUnresolvedCriterion,
+} from './events/shared/planning-decomposition.js';
+export type {
+  PlanningDecompositionStartEvent,
+  PlanningDecompositionUnitQueuedEvent,
+  PlanningDecompositionUnitRunningEvent,
+  PlanningDecompositionUnitProgressEvent,
+  PlanningDecompositionUnitCompletedEvent,
+  PlanningDecompositionUnitSkippedEvent,
+  PlanningDecompositionUnitFailedEvent,
+  PlanningDecompositionScheduleEvent,
+  PlanningDecompositionBudgetEvent,
+  PlanningDecompositionCompactHandoffEvent,
+  PlanningDecompositionSynthesisCompleteEvent,
+} from './events.js';

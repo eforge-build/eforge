@@ -46,6 +46,19 @@ import {
   CompileScopeContextFailureSchema,
   PlannerInspectionSummarySchema,
 } from '../shared/compile-resilience.js';
+import {
+  PlanningDecompositionBudgetFields,
+  PlanningDecompositionCompactHandoffFields,
+  PlanningDecompositionScheduleFields,
+  PlanningDecompositionStartFields,
+  PlanningDecompositionSynthesisCompleteFields,
+  PlanningDecompositionUnitCompletedFields,
+  PlanningDecompositionUnitFailedFields,
+  PlanningDecompositionUnitProgressFields,
+  PlanningDecompositionUnitQueuedFields,
+  PlanningDecompositionUnitRunningFields,
+  PlanningDecompositionUnitSkippedFields,
+} from '../shared/planning-decomposition.js';
 import { agentStartFields } from '../shared/agent-fields.js';
 import {
   ExtensionActionEventBaseFields,
@@ -119,6 +132,12 @@ export const sessionLifecycleEventVariants = [
   }),
 ] as const;
 
+const DecompositionEnvelopeFields = {
+  timestamp: Type.String(),
+  sessionId: Type.Optional(Type.String()),
+  runId: Type.Optional(Type.String()),
+} as const;
+
 export const planningEventVariants = [
   // Planning
   Type.Object({
@@ -148,6 +167,17 @@ export const planningEventVariants = [
     runId: Type.Optional(Type.String()),
     failure: CompileScopeContextFailureSchema,
   }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:start'), ...PlanningDecompositionStartFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:queued'), ...PlanningDecompositionUnitQueuedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:running'), ...PlanningDecompositionUnitRunningFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:progress'), ...PlanningDecompositionUnitProgressFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:completed'), ...PlanningDecompositionUnitCompletedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:skipped'), ...PlanningDecompositionUnitSkippedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:failed'), ...PlanningDecompositionUnitFailedFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:schedule'), ...PlanningDecompositionScheduleFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:budget'), ...PlanningDecompositionBudgetFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:compact-handoff'), ...PlanningDecompositionCompactHandoffFields }, { additionalProperties: false }),
+  Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:synthesis:complete'), ...PlanningDecompositionSynthesisCompleteFields }, { additionalProperties: false }),
   Type.Object({
     type: Type.Literal('planning:clarification'),
     questions: Type.Array(ClarificationQuestionSchema),

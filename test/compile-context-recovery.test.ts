@@ -138,6 +138,8 @@ describe('compile context recovery', () => {
     const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'expedition' } });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'module-planner', explanation: 'context window exceeded' });
     expect(compileScopeTerminalFailureEvent({ runId: 'run', failure })).toMatchObject({ type: 'build:terminal-failure', failure: { scope: 'compile', terminalSubtype: 'error_context_window', stage: 'module-planner' } });
+    expect(compileScopeTerminalFailureEvent({ runId: 'run', failure: { ...failure, source: 'decomposition', failureKind: 'decomposition-exhausted', stage: 'planning-decomposition', decompositionEvidence: decompositionEvidence() } })).toMatchObject({ type: 'build:terminal-failure', failure: { scope: 'compile', stage: 'planning-decomposition' } });
+    expect(compileScopeTerminalFailureEvent({ runId: 'run', failure: { ...failure, source: 'decomposition', failureKind: 'decomposition-exhausted', stage: 'planning-decomposition', decompositionEvidence: decompositionEvidence() } }).failure).not.toHaveProperty('terminalSubtype');
     expect(compileScopeContextRecoveryOption(failure)).toMatchObject({ kind: 'compile-scope-context', action: failure.recovery.action });
     expect(compileScopeContextRecoveryOption({ ...failure, recovery: { ...failure.recovery, action: 'none' } })).toBeUndefined();
   });
@@ -145,9 +147,10 @@ describe('compile context recovery', () => {
   it('accepts compile-scope-context sidecars, rejects action none, and recommends compile rationale', async () => {
     const payload = sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'decompose', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }]);
     expect(parseRecoverySidecarPayload(JSON.stringify(payload)).recoveryOptions?.[0]).toMatchObject({ kind: 'compile-scope-context', attempt: 0 });
-    expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'decompose', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }], 3)))).toThrow(/schemaVersion 4/);
+    expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'decompose', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }], 3)))).toThrow(/schemaVersion 4 or 5/);
     expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'none', recommended: true, eligible: true, reason: 'invalid', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }])))).toThrow(/recoveryOptions\.action/);
     expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'invalid', attempted: false, attempt: 2, maxAttempts: 1, source: 'provider', failureKind: 'context-window' }])))).toThrow(/attempt cannot exceed/);
+    expect(() => parseRecoverySidecarPayload(JSON.stringify(sidecarPayload([{ kind: 'compile-scope-context', action: 'bounded-decomposition', recommended: true, eligible: true, reason: 'invalid evidence', attempted: false, attempt: 0, maxAttempts: 1, source: 'provider', failureKind: 'context-window', decompositionEvidence: decompositionEvidence() }], 5)))).toThrow(/decompositionEvidence is only valid/);
     const rec = determineRecoveryRecommendation({ prdId: 'p', setName: 's', featureBranch: 'f', baseBranch: 'main', plans: [], failingPlan: { planId: 'compile' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(), terminalFailure: { scope: 'compile', terminalSubtype: 'error_context_window', stage: 'planner' } });
     expect(rec.rationale).toContain('Compile scope/context failure');
     expect(rec.rationale).not.toContain('No failingPlans data');
@@ -208,8 +211,13 @@ function retryRisk(): CompilePreflightRisk {
   };
 }
 
-function sidecarPayload(recoveryOptions: unknown[], schemaVersion: 3 | 4 = 4) {
+function sidecarPayload(recoveryOptions: unknown[], schemaVersion: 3 | 4 | 5 = 4) {
   return { schemaVersion, generatedAt: new Date().toISOString(), prdId: 'p', setName: 's', verdict: { verdict: 'manual', confidence: 'medium', rationale: 'r', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'r', recommendedAction: 'manual', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'p', setName: 's', featureBranch: 'f', baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'compile' }, landedCommits: [], modelsUsed: [] }, recoveryOptions };
+}
+
+function decompositionEvidence() {
+  const budget = { maxRecursiveDepth: 0, maxPromptSourceBytes: 100, maxPromptBytes: 200, maxObservedInputTokens: 300, maxCompactHandoffBytes: 100, maxLocalExplorationToolUses: 5, maxCriteriaPerUnit: 2, maxSubsystemsPerUnit: 1, maxSplitAttemptsPerUnit: 1 };
+  return { unitId: 'unit-1', depth: 0, budgets: budget, observed: { triggeredLimitKeys: ['maxPromptBytes'] }, assignedCriteriaIds: ['AC-1'], unresolvedCriteria: [{ criterionId: 'AC-1', reason: 'too broad' }], blockers: ['too broad'], splitAttempts: [] };
 }
 
 async function tempDir(): Promise<string> {

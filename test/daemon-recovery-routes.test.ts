@@ -188,8 +188,8 @@ describe('GET /api/recovery/sidecar', () => {
   });
 
   it.each([
-    ['boundedEvidence', { boundedEvidence: { identity: { prdId: 'invalid-summary' } } }, 'Recovery sidecar v3 contract is invalid for prdId: invalid-summary'],
-    ['verdict', { verdict: { verdict: 'unknown', confidence: 'low', rationale: 'bad', completedWork: [], remainingWork: [], risks: [] } }, 'Recovery sidecar v3 contract is invalid for prdId: invalid-verdict'],
+    ['boundedEvidence', { boundedEvidence: { identity: { prdId: 'invalid-summary' } } }, 'Supported recovery sidecar contract is invalid schemaVersion 3 for prdId: invalid-summary'],
+    ['verdict', { verdict: { verdict: 'unknown', confidence: 'low', rationale: 'bad', completedWork: [], remainingWork: [], risks: [] } }, 'Supported recovery sidecar contract is invalid schemaVersion 3 for prdId: invalid-verdict'],
   ])('returns 500 for schema-invalid sidecar %s and remains usable', async (_field, overrides, expectedError) => {
     const prdId = expectedError.includes('invalid-summary') ? 'invalid-summary' : 'invalid-verdict';
     const sidecar = { ...makeV3Sidecar(prdId), ...overrides };
