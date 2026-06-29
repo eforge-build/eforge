@@ -74,7 +74,6 @@ export {
 export { BuildDecisionSchema, PlanningDecisionEventSchema, PlanningDecisionSchema } from './events/decisions.js';
 export { QueueDispatchFailureStageSchema } from './events/queue-events.js';
 
-// --- eforge:region plan-01-contracts-config ---
 export {
   DecompositionFailureEvidenceSchema,
   PlanningCoverageSummarySchema,
@@ -125,7 +124,6 @@ export type {
   PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
-// --- eforge:endregion plan-01-contracts-config ---
 export { EventEnvelopeSchema } from './events/envelope.js';
 export { EforgeEventSchema } from './events/root.js';
 export { EforgeEventVariantsSchema } from './events/variants.js';

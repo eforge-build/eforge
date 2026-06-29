@@ -105,12 +105,10 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     }
   }
 
-  // --- eforge:region plan-01-contracts-config ---
   if (DECOMPOSITION_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
     const rawFieldError = findForbiddenDecompositionEventField(event, '', event.type);
     if (rawFieldError) return rawFieldError;
   }
-  // --- eforge:endregion plan-01-contracts-config ---
 
   // --- eforge:region extension-agent-task-contracts ---
   if (TASK_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
@@ -249,7 +247,6 @@ function findForbiddenTaskEventField(value: unknown, path: string): SchemaError 
 }
 // --- eforge:endregion extension-agent-task-contracts ---
 
-// --- eforge:region plan-01-contracts-config ---
 function findForbiddenDecompositionEventField(value: unknown, path: string, eventType: string): SchemaError | undefined {
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
@@ -289,7 +286,6 @@ function decompositionRawFieldError(fieldPath: string): SchemaError {
 function decompositionUnknownFieldError(fieldPath: string): SchemaError {
   return validationError(fieldPath, 'planning decomposition events must not include unknown top-level fields');
 }
-// --- eforge:endregion plan-01-contracts-config ---
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

@@ -68,7 +68,6 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
 
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 
-// --- eforge:region plan-01-contracts-config ---
 const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
 
 const compileConfigSchema = z.object({
@@ -84,7 +83,6 @@ const compileConfigSchema = z.object({
   planningUnitMaxSubsystemsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSubsystemsPerUnit').optional(),
   planningUnitMaxSplitAttemptsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSplitAttemptsPerUnit').optional(),
 }).strict().describe('Context-managed compile planning-unit limits');
-// --- eforge:endregion plan-01-contracts-config ---
 
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas

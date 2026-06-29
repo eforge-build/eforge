@@ -167,7 +167,6 @@ export const planningEventVariants = [
     runId: Type.Optional(Type.String()),
     failure: CompileScopeContextFailureSchema,
   }),
-  // --- eforge:region plan-01-contracts-config ---
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:start'), ...PlanningDecompositionStartFields }, { additionalProperties: false }),
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:queued'), ...PlanningDecompositionUnitQueuedFields }, { additionalProperties: false }),
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:unit:running'), ...PlanningDecompositionUnitRunningFields }, { additionalProperties: false }),
@@ -179,7 +178,6 @@ export const planningEventVariants = [
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:budget'), ...PlanningDecompositionBudgetFields }, { additionalProperties: false }),
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:compact-handoff'), ...PlanningDecompositionCompactHandoffFields }, { additionalProperties: false }),
   Type.Object({ ...DecompositionEnvelopeFields, type: Type.Literal('planning:decomposition:synthesis:complete'), ...PlanningDecompositionSynthesisCompleteFields }, { additionalProperties: false }),
-  // --- eforge:endregion plan-01-contracts-config ---
   Type.Object({
     type: Type.Literal('planning:clarification'),
     questions: Type.Array(ClarificationQuestionSchema),

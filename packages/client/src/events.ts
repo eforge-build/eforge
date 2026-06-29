@@ -181,7 +181,6 @@ export {
 
 export { DaemonStreamSnapshotSchema, EforgeEventSchema } from './events.schemas.js';
 
-// --- eforge:region plan-01-contracts-config ---
 export {
   DecompositionFailureEvidenceSchema,
   PlanningCoverageSummarySchema,
@@ -235,4 +234,3 @@ export type {
   PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
-// --- eforge:endregion plan-01-contracts-config ---

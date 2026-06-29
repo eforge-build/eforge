@@ -488,7 +488,6 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_
   MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH, MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH, MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
 } from './events.js';
 
-// --- eforge:region plan-01-contracts-config ---
 export {
   DecompositionFailureEvidenceSchema,
   PlanningCoverageSummarySchema,
@@ -542,9 +541,7 @@ export type {
   PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
-// --- eforge:endregion plan-01-contracts-config ---
 
-// --- eforge:region plan-01-contracts-config-event-aliases ---
 export type {
   PlanningDecompositionStartEvent,
   PlanningDecompositionUnitQueuedEvent,
@@ -558,4 +555,3 @@ export type {
   PlanningDecompositionCompactHandoffEvent,
   PlanningDecompositionSynthesisCompleteEvent,
 } from './events.js';
-// --- eforge:endregion plan-01-contracts-config-event-aliases ---

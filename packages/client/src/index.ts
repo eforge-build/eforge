@@ -534,7 +534,6 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
 
 export type * from './types.js';
 
-// --- eforge:region plan-01-contracts-config ---
 export {
   DecompositionFailureEvidenceSchema,
   PlanningCoverageSummarySchema,
@@ -574,8 +573,6 @@ export type {
   PlanningUnitBudget, PlanningUnitBudgetEntry, PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
-// --- eforge:endregion plan-01-contracts-config ---
-// --- eforge:region plan-01-contracts-config-event-aliases ---
 export type {
   PlanningDecompositionStartEvent,
   PlanningDecompositionUnitQueuedEvent,
@@ -589,4 +586,3 @@ export type {
   PlanningDecompositionCompactHandoffEvent,
   PlanningDecompositionSynthesisCompleteEvent,
 } from './events.js';
-// --- eforge:endregion plan-01-contracts-config-event-aliases ---

@@ -17,9 +17,7 @@ import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
 import { validateCompileArtifacts } from './artifact-validation.js';
 import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
-// --- eforge:region plan-04-compile-orchestration-synthesis ---
 import type { DecompositionPlanningError } from './planning-decomposition.js';
-// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
 
 export interface CompileScopeRecoveryState {
@@ -105,7 +103,6 @@ export async function buildPreflightEscalationDecision(
   return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
 }
 
-// --- eforge:region plan-04-compile-orchestration-synthesis ---
 export async function toDecompositionCompileScopeFailure(ctx: PipelineContext, error: DecompositionPlanningError): Promise<CompileScopeContextFailure> {
   return buildCompileScopeContextFailure(ctx, {
     source: error.source,
@@ -116,7 +113,6 @@ export async function toDecompositionCompileScopeFailure(ctx: PipelineContext, e
     risk: ctx.compilePreflight,
   });
 }
-// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 
 export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
   const state = ensureCompileScopeRecoveryState(ctx);
@@ -255,12 +251,10 @@ function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, inp
   if (action === 'repair-existing-artifacts') return `Valid compile artifacts exist (${artifacts.validPlanCount} plan file(s)); prefer continue/repair over retrying compile.`;
   const compactGuidance = plannerCompactInspectionGuidance(ctx, input, artifacts);
   if (action === 'retry-as-expedition') return withCompactGuidance(`Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`, compactGuidance);
-  // --- eforge:region plan-05-recovery-rendering ---
   if (action === 'bounded-decomposition' && input.failureKind === 'decomposition-exhausted' && input.decompositionEvidence) {
     return withCompactGuidance(`Context-managed decomposition exhausted in unit ${input.decompositionEvidence.unitId}; this is decomposition exhaustion, not a provider context rejection. Existing direct retry/apply-recovery actions do not mutate compile decomposition state. Operators can inspect bounded evidence and choose a manual reduced source or deliberate follow-up PRD outside the engine. The engine does not auto-author and does not auto-enqueue successor PRDs.`, compactGuidance);
   }
   if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); inspect bounded decomposition evidence or manually reduce source before choosing deliberate follow-up work outside the engine.`, compactGuidance);
-  // --- eforge:endregion plan-05-recovery-rendering ---
   if (action === 'manual-reduce-scope') return withCompactGuidance('Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.', compactGuidance);
   return input.explanation;
 }
