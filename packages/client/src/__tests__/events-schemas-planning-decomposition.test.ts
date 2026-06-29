@@ -41,7 +41,7 @@ const evidence = { unitId: 'unit-1', depth: 0, budgets: budget, observed, assign
 const maxDepthEvidence = { ...evidence, budgets: { ...budget, maxRecursiveDepth: 0 } };
 
 const events = [
-  { type: 'planning:decomposition:start', limits },
+  { type: 'planning:decomposition:start', graphId: 'graph-1', rootUnitId: 'unit-1', unitCount: 1, edgeCount: 0, limits },
   { type: 'planning:decomposition:unit:queued', unit },
   { type: 'planning:decomposition:unit:running', unitId: 'unit-1' },
   { type: 'planning:decomposition:unit:progress', unitId: 'unit-1', message: 'working', observed },
@@ -50,8 +50,8 @@ const events = [
   { type: 'planning:decomposition:unit:failed', unitId: 'unit-1', reason: 'exhausted', evidence },
   { type: 'planning:decomposition:schedule', decision: { readyUnitIds: ['unit-1'], runningUnitIds: [], waitingUnitIds: [], waitingReasons: [], selectedBatchUnitIds: ['unit-1'], parallelism: 2, blockedPairs: [] } },
   { type: 'planning:decomposition:budget', limits, unitId: 'unit-1', unitBudgets: [{ unitId: 'unit-1', budget }], observed },
-  { type: 'planning:decomposition:compact-handoff', byteLength: 100, contentHash: hash, omittedUnitIds: [] },
-  { type: 'planning:decomposition:synthesis:complete', unitCount: 1, coverage, artifactPaths: ['plans.md'] },
+  { type: 'planning:decomposition:compact-handoff', unitId: 'unit-1', artifactPath: '.decomposition/unit-1/handoff.json', byteLength: 100, contentHash: hash, omittedUnitIds: [] },
+  { type: 'planning:decomposition:synthesis:complete', unitCount: 1, completedUnitCount: 1, failedUnitCount: 0, skippedUnitCount: 0, coverage, artifactPaths: ['plans.md'] },
 ];
 
 describe('planning decomposition event contracts', () => {
@@ -91,7 +91,7 @@ describe('planning decomposition event contracts', () => {
       coveredCriteria: Array.from({ length: PLANNING_DECOMPOSITION_MAX_CRITERIA }, (_, index) => ({ criterionId: `AC-${index + 1}`, sourceHash: hash, coveredByUnitIds: ['unit-1'] })),
       unresolvedCriteria: [],
     };
-    expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:synthesis:complete', unitCount: 129, coverage: largeCoverage, artifactPaths: ['plans.md'] }).success).toBe(true);
+    expect(safeParseEforgeEvent({ timestamp, type: 'planning:decomposition:synthesis:complete', unitCount: 129, completedUnitCount: 127, failedUnitCount: 1, skippedUnitCount: 1, coverage: largeCoverage, artifactPaths: ['plans.md'] }).success).toBe(true);
   });
 
   it('projects default and max-sized internal decomposition data to public wire bounds', () => {
@@ -205,6 +205,8 @@ describe('planning decomposition event contracts', () => {
     expect(Value.Check(CompileScopeContextFailureSchema, { ...failure, stage: 'planner' })).toBe(false);
     expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, failureKind: 'context-window' })).toBe(false);
     expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, source: 'provider' })).toBe(false);
+    expect(Value.Check(CompileScopeContextFailureSchema, { ...failure, source: 'provider', failureKind: 'context-window', stage: 'planner' })).toBe(false);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, source: 'provider', failureKind: 'context-window' })).toBe(false);
   });
 
   it('registers persistence metadata and public exports', () => {

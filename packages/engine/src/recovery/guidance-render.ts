@@ -1,5 +1,6 @@
 import type { RecoveryVerdictSidecar } from '@eforge-build/client';
 import { redactSecretLikeValues } from '../secret-redaction.js';
+import { decompositionEvidenceSummary, renderDecompositionEvidenceMarkdownLines } from './decomposition-evidence-render.js';
 
 const HEADING = '## Recovery Guidance';
 
@@ -25,6 +26,16 @@ export function renderRecoveryGuidanceSection(options: RenderRecoveryGuidanceSec
   const remainingWork = sidecar.report.remainingWork.length > 0
     ? sidecar.report.remainingWork.map(formatSidecarEvidence)
     : ['Review the preserved compiled artifacts and complete the remaining dependency-satisfied work.'];
+  const decompositionGuidance = sidecar.recoveryOptions
+    ?.flatMap((option) => {
+      if (option.kind !== 'compile-scope-context' || !option.decompositionEvidence) return [];
+      return [
+        `- Decomposition exhausted in unit ${formatSidecarEvidenceText(option.decompositionEvidence.unitId)}`,
+        `- Decomposition evidence: ${formatSidecarEvidenceText(decompositionEvidenceSummary(option.decompositionEvidence))}`,
+        ...renderDecompositionEvidenceMarkdownLines(option.decompositionEvidence).map((line) => `  ${formatSidecarEvidenceText(line)}`),
+        '- Decomposition recovery note: existing direct retry/apply-recovery actions do not mutate compile decomposition state; the engine does not auto-author or auto-enqueue successor PRDs.',
+      ];
+    }) ?? [];
 
   return ensureSingleTrailingNewline([
     HEADING,
@@ -34,6 +45,7 @@ export function renderRecoveryGuidanceSection(options: RenderRecoveryGuidanceSec
     `- Failure summary: ${formatSidecarEvidence(sidecar.report.operatorSummary)}`,
     ...failureDetails.map((detail) => `- Failure detail: ${formatSidecarEvidence(detail)}`),
     `- Recommended action: ${formatSidecarEvidence(sidecar.report.recommendedAction)}`,
+    ...decompositionGuidance,
     '- Remaining work:',
     ...remainingWork.map((item) => `  - ${item}`),
     `- Retry/resume guidance: Continue ${formatSidecarEvidenceText(planId)} for failed PRD ${formatSidecarEvidenceText(prdId)} from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.`,

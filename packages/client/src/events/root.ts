@@ -18,6 +18,7 @@ import {
   PlannerInspectionSummarySchema,
   BoundedDiagnosticOptionsSchema,
   BoundedValidationDiagnosticSchema,
+  type CompileScopeContextFailure as SharedCompileScopeContextFailure,
 } from './shared/compile-resilience.js';
 import {
   DecompositionFailureEvidenceSchema,
@@ -137,7 +138,7 @@ export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>
 export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
-export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
+export type CompileScopeContextFailure = SharedCompileScopeContextFailure;
 export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
 export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
 export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;

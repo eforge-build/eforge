@@ -151,14 +151,14 @@ function formatUpstreamOutputs(outputs: PlanningUnitOutput[]): string {
   }).join('\n');
 }
 
-function unresolvedCriteriaIds(outputs: PlanningUnitOutput[], unitId: string): string[] {
+function unresolvedCriteriaIds(outputs: PlanningUnitOutput[], _unitId: string): string[] {
   const ids = new Set<string>();
   for (const output of outputs as Array<PlanningUnitOutput & Record<string, unknown>>) {
     const unresolved = output.unresolvedRequirements;
     if (!Array.isArray(unresolved)) continue;
     for (const item of unresolved as Array<{ criterionId?: string }>) if (item.criterionId) ids.add(item.criterionId);
   }
-  return [...ids].filter(id => id.startsWith(unitId) || true);
+  return [...ids];
 }
 
 function formatInlineList(items: readonly string[] | undefined): string {

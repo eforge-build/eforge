@@ -190,6 +190,10 @@ export const DecompositionFailureEvidenceSchema = Type.Object({
 
 export const PlanningDecompositionStartFields = {
   runId: Type.Optional(Type.String()),
+  graphId: BoundedStringSchema,
+  rootUnitId: BoundedStringSchema,
+  unitCount: NonNegativeIntegerSchema,
+  edgeCount: NonNegativeIntegerSchema,
   limits: PlanningDecompositionLimitsSchema,
   riskEvidence: Type.Optional(PlanningDecompositionRiskEvidenceSchema),
 } as const;
@@ -238,14 +242,17 @@ export const PlanningDecompositionBudgetFields = {
   observed: Type.Optional(PlanningObservedBudgetPressureSchema),
 } as const;
 export const PlanningDecompositionCompactHandoffFields = {
-  unitId: Type.Optional(BoundedStringSchema),
-  artifactPath: Type.Optional(BoundedStringSchema),
+  unitId: BoundedStringSchema,
+  artifactPath: BoundedStringSchema,
   byteLength: NonNegativeIntegerSchema,
   contentHash: Sha256HexSchema,
   omittedUnitIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_UNITS }),
 } as const;
 export const PlanningDecompositionSynthesisCompleteFields = {
   unitCount: NonNegativeIntegerSchema,
+  completedUnitCount: NonNegativeIntegerSchema,
+  failedUnitCount: NonNegativeIntegerSchema,
+  skippedUnitCount: NonNegativeIntegerSchema,
   coverage: PlanningCoverageSummarySchema,
   artifactPaths: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_LIST_ITEMS }),
 } as const;

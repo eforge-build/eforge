@@ -252,7 +252,7 @@ export const CompileScopeContextFailureSchema: typeof CompileScopeContextFailure
   CompileScopeContextFailureBaseSchema,
   Type.Union([
     Type.Object({ source: Type.Literal('decomposition'), failureKind: Type.Literal('decomposition-exhausted'), stage: Type.Literal('planning-decomposition'), decompositionEvidence: DecompositionFailureEvidenceSchema }),
-    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema }),
+    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema, decompositionEvidence: Type.Optional(Type.Never()) }),
   ]),
 ]) as unknown as typeof CompileScopeContextFailureBaseSchema;
 
@@ -285,7 +285,19 @@ export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>
 export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
 export type CompileContextGuardDiagnostics = Static<typeof CompileContextGuardDiagnosticsSchema>;
-export type CompileScopeContextFailure = Static<typeof CompileScopeContextFailureSchema>;
+type CompileScopeContextFailureBase = Static<typeof CompileScopeContextFailureBaseSchema>;
+export type CompileScopeContextFailure =
+  | (Omit<CompileScopeContextFailureBase, 'source' | 'failureKind' | 'stage' | 'decompositionEvidence'> & {
+      source: 'decomposition';
+      failureKind: 'decomposition-exhausted';
+      stage: 'planning-decomposition';
+      decompositionEvidence: Static<typeof DecompositionFailureEvidenceSchema>;
+    })
+  | (Omit<CompileScopeContextFailureBase, 'source' | 'failureKind' | 'decompositionEvidence'> & {
+      source: Static<typeof NonDecompositionCompileScopeContextSourceSchema>;
+      failureKind: Static<typeof NonExhaustedCompileScopeContextFailureKindSchema>;
+      decompositionEvidence?: never;
+    });
 export type PlannerContextObservation = Static<typeof PlannerContextObservationSchema>;
 export type PlannerInspectionIdentifiers = Static<typeof PlannerInspectionIdentifiersSchema>;
 export type PlannerInspectionSourceBuildContext = Static<typeof PlannerInspectionSourceBuildContextSchema>;

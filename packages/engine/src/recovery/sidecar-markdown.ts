@@ -1,5 +1,6 @@
 import type { RecoveryVerdictSidecar } from '@eforge-build/client';
 import type { AcceptanceCriterionVerdict } from '../events.js';
+import { renderDecompositionEvidenceMarkdownLines } from './decomposition-evidence-render.js';
 import type { RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 
 function escapeTableCell(s: string): string {
@@ -50,6 +51,16 @@ function renderCompileScopeContextSection(payload: RecoveryVerdictSidecar & Part
       `**Reason:** ${escapeTableCell(option.reason)}`,
       '',
     );
+    if (option.decompositionEvidence) {
+      lines.push(
+        '#### Decomposition evidence',
+        '',
+        'This is read-only context-managed decomposition evidence. Existing direct retry or apply-recovery actions do not mutate compile decomposition state; the engine does not auto-author or auto-enqueue successor PRDs.',
+        '',
+        ...renderDecompositionEvidenceMarkdownLines(option.decompositionEvidence),
+        '',
+      );
+    }
   }
   return lines;
 }

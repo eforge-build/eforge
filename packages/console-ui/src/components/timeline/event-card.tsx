@@ -18,6 +18,7 @@ import {
   type RecoveryVerdictValue,
   type RecoveryConfidenceValue,
 } from '@/components/recovery/verdict-chip';
+import { planningDecompositionEventDetail, planningDecompositionEventSummary } from '@/lib/planning-decomposition-format';
 
 interface EventCardProps {
   event: EforgeEvent;
@@ -37,6 +38,17 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   }
   if (type === 'planning:scope-context:failure') return { cls: 'failed', label: type };
   if (type === 'planning:inspection-summary') return { cls: 'warning', label: type };
+  // --- eforge:region plan-05-recovery-rendering ---
+  if (type.startsWith('planning:decomposition:')) {
+    if (type === 'planning:decomposition:unit:failed') return { cls: 'failed', label: type };
+    if (type === 'planning:decomposition:budget') return { cls: event.type === 'planning:decomposition:budget' && event.observed?.triggeredLimitKeys.length ? 'warning' : 'info', label: type };
+    if (type === 'planning:decomposition:schedule') return { cls: event.type === 'planning:decomposition:schedule' && (event.decision.blockedPairs.length > 0 || event.decision.waitingReasons.length > 0) ? 'warning' : 'progress', label: type };
+    if (type === 'planning:decomposition:synthesis:complete' || type === 'planning:decomposition:unit:completed') return { cls: 'complete', label: type };
+    if (type === 'planning:decomposition:start' || type === 'planning:decomposition:unit:queued' || type === 'planning:decomposition:unit:running') return { cls: type.endsWith(':running') ? 'progress' : 'start', label: type };
+    if (type === 'planning:decomposition:unit:skipped') return { cls: 'info', label: type };
+    return { cls: 'info', label: type };
+  }
+  // --- eforge:endregion plan-05-recovery-rendering ---
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
@@ -98,6 +110,20 @@ function eventSummary(event: EforgeEvent): string {
     case 'planning:preflight': return compilePreflightSummary(event.risk);
     case 'planning:scope-context:failure': return compileScopeContextFailureSummary(event.failure);
     case 'planning:inspection-summary': return plannerInspectionSummarySummary(event.summary);
+    // --- eforge:region plan-05-recovery-rendering ---
+    case 'planning:decomposition:start':
+    case 'planning:decomposition:unit:queued':
+    case 'planning:decomposition:unit:running':
+    case 'planning:decomposition:unit:progress':
+    case 'planning:decomposition:unit:completed':
+    case 'planning:decomposition:unit:skipped':
+    case 'planning:decomposition:unit:failed':
+    case 'planning:decomposition:schedule':
+    case 'planning:decomposition:budget':
+    case 'planning:decomposition:compact-handoff':
+    case 'planning:decomposition:synthesis:complete':
+      return planningDecompositionEventSummary(event);
+    // --- eforge:endregion plan-05-recovery-rendering ---
     case 'planning:complete': return `${event.plans?.length || 0} plan(s) generated`;
     case 'planning:review:start': return 'Plan review started';
     case 'planning:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
@@ -225,6 +251,20 @@ function eventDetail(event: EforgeEvent): string | null {
       const detail = plannerInspectionSummaryDetail(event.summary);
       return event.artifactPath ? `${detail}\nArtifact: ${event.artifactPath}` : detail;
     }
+    // --- eforge:region plan-05-recovery-rendering ---
+    case 'planning:decomposition:start':
+    case 'planning:decomposition:unit:queued':
+    case 'planning:decomposition:unit:running':
+    case 'planning:decomposition:unit:progress':
+    case 'planning:decomposition:unit:completed':
+    case 'planning:decomposition:unit:skipped':
+    case 'planning:decomposition:unit:failed':
+    case 'planning:decomposition:schedule':
+    case 'planning:decomposition:budget':
+    case 'planning:decomposition:compact-handoff':
+    case 'planning:decomposition:synthesis:complete':
+      return planningDecompositionEventDetail(event);
+    // --- eforge:endregion plan-05-recovery-rendering ---
     case 'planning:review:complete':
     case 'planning:architecture:review:complete':
     case 'plan:build:review:complete':

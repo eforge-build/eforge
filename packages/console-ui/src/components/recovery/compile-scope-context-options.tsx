@@ -1,9 +1,14 @@
 import type { RecoverySidecarRecoveryOption } from '@eforge-build/client/browser';
 import { compileScopeContextOptions, recoveryActionLabel } from '@/lib/compile-resilience-format';
+import { decompositionFailureEvidenceSummary } from '@/lib/planning-decomposition-format';
 
 interface CompileScopeContextOptionsProps {
   options: RecoverySidecarRecoveryOption[] | undefined;
 }
+
+const EVIDENCE_LIST_MAX = 5;
+function capText(value: string, max = 180): string { return value.length <= max ? value : `${value.slice(0, max - 1)}…`; }
+function joinIds(items: readonly string[]): string { return items.length > 0 ? items.slice(0, EVIDENCE_LIST_MAX).map((item) => capText(item)).join(', ') + (items.length > EVIDENCE_LIST_MAX ? ` (+${items.length - EVIDENCE_LIST_MAX} more)` : '') : 'none'; }
 
 export function CompileScopeContextOptions({ options }: CompileScopeContextOptionsProps) {
   const compileOptions = compileScopeContextOptions(options);
@@ -29,6 +34,41 @@ export function CompileScopeContextOptions({ options }: CompileScopeContextOptio
               <dt>Failure kind</dt><dd>{option.failureKind}</dd>
             </dl>
             <p className="mt-1 text-muted-foreground">{option.reason}</p>
+            {option.decompositionEvidence ? (
+              <div className="mt-2 rounded border border-yellow/20 bg-yellow/5 p-2 text-muted-foreground">
+                <div className="font-medium text-foreground">Decomposition evidence</div>
+                <p>{decompositionFailureEvidenceSummary(option.decompositionEvidence)}</p>
+                <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+                  <dt>Failed unit</dt><dd>{option.decompositionEvidence.unitId}</dd>
+                  {option.decompositionEvidence.parentUnitId ? <><dt>Parent unit</dt><dd>{option.decompositionEvidence.parentUnitId}</dd></> : null}
+                  <dt>Depth</dt><dd>{option.decompositionEvidence.depth}</dd>
+                  <dt>Triggered limits</dt><dd>{option.decompositionEvidence.observed.triggeredLimitKeys.join(', ') || 'none'}</dd>
+                  <dt>Unresolved criteria</dt><dd>{option.decompositionEvidence.unresolvedCriteria.length}</dd>
+                </dl>
+                {option.decompositionEvidence.blockers.length > 0 ? (
+                  <div className="mt-2">
+                    <div className="font-medium text-foreground">Blockers ({option.decompositionEvidence.blockers.length})</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-4">
+                      {option.decompositionEvidence.blockers.slice(0, EVIDENCE_LIST_MAX).map((blocker, blockerIndex) => <li key={blockerIndex}>{capText(blocker)}</li>)}
+                      {option.decompositionEvidence.blockers.length > EVIDENCE_LIST_MAX ? <li>[omitted {option.decompositionEvidence.blockers.length - EVIDENCE_LIST_MAX} blocker(s)]</li> : null}
+                    </ul>
+                  </div>
+                ) : null}
+                {option.decompositionEvidence.splitAttempts.length > 0 ? (
+                  <div className="mt-2">
+                    <div className="font-medium text-foreground">Split attempts ({option.decompositionEvidence.splitAttempts.length})</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-4">
+                      {option.decompositionEvidence.splitAttempts.slice(0, EVIDENCE_LIST_MAX).map((attempt) => (
+                        <li key={`${attempt.unitId ?? option.decompositionEvidence?.unitId}-${attempt.attempt}`}>
+                          attempt {attempt.attempt}{attempt.unitId ? ` (${attempt.unitId})` : ''}: {capText(attempt.reason)} → {joinIds(attempt.resultingUnitIds)}
+                        </li>
+                      ))}
+                      {option.decompositionEvidence.splitAttempts.length > EVIDENCE_LIST_MAX ? <li>[omitted {option.decompositionEvidence.splitAttempts.length - EVIDENCE_LIST_MAX} split attempt(s)]</li> : null}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

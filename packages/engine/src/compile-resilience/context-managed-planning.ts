@@ -52,7 +52,7 @@ export async function* runContextManagedCompilePlanning(ctx: PipelineContext): A
       const unit = graph.units.find(item => item.unitId === output.unitId);
       if (!unit) continue;
       if (output.status === 'completed') { unit.status = 'completed'; completed.add(unit.unitId); failed.delete(unit.unitId); continue; }
-      if (output.status === 'skipped') { unit.status = 'skipped'; skipped.add(unit.unitId); failed.delete(unit.unitId); continue; }
+      if (output.status === 'skipped') { unit.status = 'skipped'; completed.add(unit.unitId); failed.delete(unit.unitId); continue; }
       if (!output.observedBudget?.triggeredLimitKeys.length) throw await toCompileScopeError(ctx, terminalError(graph, unit, output));
       const split = splitOverBudgetPlanningUnit({ graph, unit, observedPressure: output.observedBudget, limits });
       if ('kind' in split) throw await toCompileScopeError(ctx, split);
@@ -87,7 +87,7 @@ export async function* runContextManagedCompilePlanning(ctx: PipelineContext): A
     await writeGraphArtifact(ctx, graph);
   }
 
-  if (outputs.every(output => output.status === 'skipped') && graph.units.length > 0 && graph.units.every(unit => skipped.has(unit.unitId))) {
+  if (outputs.every(output => output.status === 'skipped') && graph.units.length > 0 && graph.units.every(unit => completed.has(unit.unitId) || skipped.has(unit.unitId))) {
     ctx.skipped = true;
     yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: 'All bounded planning units reported the work is already implemented.' };
     return { plans: [], expeditionModules: [], artifactPaths: [], unitToModuleMap: {}, graph, unitOutputs: outputs, decompositionArtifactDir };
@@ -95,7 +95,7 @@ export async function* runContextManagedCompilePlanning(ctx: PipelineContext): A
 
   const synthesis = await synthesizeContextManagedPlanning({ ctx, graph, outputs });
   ctx.contextManagedPlanning = { decompositionArtifactDir, graphId: graph.graphId, unitOutputs: outputs, unitToModuleMap: synthesis.unitToModuleMap, planningParallelism: limits.parallelism };
-  yield synthesisCompleteEvent({ graph, artifactPaths: synthesis.artifactPaths, unitIds: outputs.map(output => output.unitId) });
+  yield synthesisCompleteEvent({ graph, artifactPaths: synthesis.artifactPaths });
   if (ctx.pipeline.scope !== 'expedition') yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans: synthesis.plans, ...(synthesis.planConfigs && { planConfigs: synthesis.planConfigs }) };
   else yield { timestamp: new Date().toISOString(), type: 'expedition:architecture:complete', modules: synthesis.expeditionModules };
   return { ...synthesis, graph, unitOutputs: outputs, decompositionArtifactDir };

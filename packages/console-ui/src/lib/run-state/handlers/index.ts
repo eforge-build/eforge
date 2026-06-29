@@ -351,6 +351,7 @@ export const IGNORED_EVENT_TYPES = [
   'planning:preflight',
   'planning:inspection-summary',
   'planning:scope-context:failure',
+  // Decomposition events are display-only; synthesis emits planning/architecture state changes.
   // --- eforge:region plan-01-contracts-config ---
   'planning:decomposition:start',
   'planning:decomposition:unit:queued',

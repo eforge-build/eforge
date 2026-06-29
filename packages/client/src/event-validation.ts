@@ -50,7 +50,7 @@ export function validateDecompositionRawFieldsForEvent(value: unknown): SchemaEr
 const ACTION_EVENT_FORBIDDEN_FIELDS = new Set(['input', 'output', 'rawInput', 'rawOutput', 'payload']);
 const DECOMPOSITION_EVENT_ALLOWED_METADATA_SUFFIX = /(bytes|hash|count|length)$/;
 const DECOMPOSITION_EVENT_TOP_LEVEL_FIELDS_BY_TYPE = new Map<string, Set<string>>([
-  ['planning:decomposition:start', new Set(['limits', 'riskEvidence'])],
+  ['planning:decomposition:start', new Set(['graphId', 'rootUnitId', 'unitCount', 'edgeCount', 'limits', 'riskEvidence'])],
   ['planning:decomposition:unit:queued', new Set(['unit'])],
   ['planning:decomposition:unit:running', new Set(['unitId'])],
   ['planning:decomposition:unit:progress', new Set(['unitId', 'message', 'observed'])],
@@ -60,7 +60,7 @@ const DECOMPOSITION_EVENT_TOP_LEVEL_FIELDS_BY_TYPE = new Map<string, Set<string>
   ['planning:decomposition:schedule', new Set(['decision'])],
   ['planning:decomposition:budget', new Set(['limits', 'unitId', 'unitBudgets', 'observed'])],
   ['planning:decomposition:compact-handoff', new Set(['unitId', 'artifactPath', 'byteLength', 'contentHash', 'omittedUnitIds'])],
-  ['planning:decomposition:synthesis:complete', new Set(['unitCount', 'coverage', 'artifactPaths'])],
+  ['planning:decomposition:synthesis:complete', new Set(['unitCount', 'completedUnitCount', 'failedUnitCount', 'skippedUnitCount', 'coverage', 'artifactPaths'])],
 ]);
 const DECOMPOSITION_EVENT_ENVELOPE_FIELDS = new Set(['type', 'sessionId', 'runId', 'timestamp']);
 const DECOMPOSITION_EVENT_FORBIDDEN_FIELD_KEYS = new Set([

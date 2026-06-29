@@ -1,5 +1,5 @@
-import type { PlanningDecompositionLimits, PlanningObservedBudgetPressure, PlanningSplitAttemptEvidence } from '@eforge-build/client';
-import { evaluatePlanningUnitBudgetPressure, type DecompositionPlanningError, type SplitOverBudgetPlanningUnitInput, type PlanningDecompositionGraph, type PlanningDecompositionUnit } from '../planning-decomposition.js';
+import { PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA, type PlanningDecompositionLimits, type PlanningObservedBudgetPressure, type PlanningSplitAttemptEvidence } from '@eforge-build/client';
+import { evaluatePlanningUnitBudgetPressure, type DecompositionPlanningError, type SplitOverBudgetPlanningUnitInput, type PlanningDecompositionGraph, type PlanningDecompositionUnit, type PlanningUnresolvedCriterion } from '../planning-decomposition.js';
 import { buildEdges, deriveBudget, recomputeCoverage } from './graph-builders.js';
 
 export function splitUnit(input: SplitOverBudgetPlanningUnitInput): { graph: PlanningDecompositionGraph; childUnitIds: string[] } | DecompositionPlanningError {
@@ -137,11 +137,23 @@ function exhausted(input: SplitOverBudgetPlanningUnitInput, blockers: string[]):
       budgets: input.unit.budgets,
       observed: input.observedPressure,
       assignedCriteriaIds: input.unit.criteriaIds,
-      unresolvedCriteria: input.graph.coverage.unresolvedCriteria,
+      unresolvedCriteria: unresolvedCriteriaForExhaustedUnit(input, blockers),
       blockers,
       splitAttempts: input.graph.splitAttempts.filter((attempt) => attempt.unitId === input.unit.unitId).slice(-8),
     },
   };
+}
+
+function unresolvedCriteriaForExhaustedUnit(input: SplitOverBudgetPlanningUnitInput, blockers: string[]): PlanningUnresolvedCriterion[] {
+  const assignedIds = new Set(input.unit.criteriaIds);
+  const coveredIds = new Set(input.graph.coverage.coveredCriteria.map((criterion) => criterion.criterionId));
+  const unitUnresolved = input.graph.coverage.unresolvedCriteria.filter((criterion) => assignedIds.has(criterion.criterionId));
+  const existingIds = new Set(unitUnresolved.map((criterion) => criterion.criterionId));
+  const reason = blockers[0] ?? 'decomposition-exhausted';
+  const synthesized = input.unit.criteriaIds
+    .filter((criterionId) => !coveredIds.has(criterionId) && !existingIds.has(criterionId))
+    .map((criterionId) => ({ criterionId, reason, evidence: input.unit.unitId }));
+  return [...unitUnresolved, ...synthesized].slice(0, PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA);
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

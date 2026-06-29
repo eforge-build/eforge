@@ -6011,11 +6011,21 @@
                       "type": "object",
                       "required": [
                         "source",
+                        "failureKind",
+                        "stage",
                         "decompositionEvidence"
                       ],
                       "properties": {
                         "source": {
                           "const": "decomposition",
+                          "type": "string"
+                        },
+                        "failureKind": {
+                          "const": "decomposition-exhausted",
+                          "type": "string"
+                        },
+                        "stage": {
+                          "const": "planning-decomposition",
                           "type": "string"
                         },
                         "decompositionEvidence": {
@@ -6330,6 +6340,9 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        "decompositionEvidence": {
+                          "not": {}
                         }
                       }
                     }
@@ -7102,6 +7115,10 @@
           "required": [
             "timestamp",
             "type",
+            "graphId",
+            "rootUnitId",
+            "unitCount",
+            "edgeCount",
             "limits"
           ],
           "properties": {
@@ -7117,6 +7134,22 @@
             "type": {
               "const": "planning:decomposition:start",
               "type": "string"
+            },
+            "graphId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "rootUnitId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "unitCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "edgeCount": {
+              "minimum": 0,
+              "type": "integer"
             },
             "limits": {
               "additionalProperties": false,
@@ -9162,6 +9195,8 @@
           "required": [
             "timestamp",
             "type",
+            "unitId",
+            "artifactPath",
             "byteLength",
             "contentHash",
             "omittedUnitIds"
@@ -9213,6 +9248,9 @@
             "timestamp",
             "type",
             "unitCount",
+            "completedUnitCount",
+            "failedUnitCount",
+            "skippedUnitCount",
             "coverage",
             "artifactPaths"
           ],
@@ -9231,6 +9269,18 @@
               "type": "string"
             },
             "unitCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "completedUnitCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failedUnitCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "skippedUnitCount": {
               "minimum": 0,
               "type": "integer"
             },
@@ -25138,11 +25188,21 @@
                                     "type": "object",
                                     "required": [
                                       "source",
+                                      "failureKind",
+                                      "stage",
                                       "decompositionEvidence"
                                     ],
                                     "properties": {
                                       "source": {
                                         "const": "decomposition",
+                                        "type": "string"
+                                      },
+                                      "failureKind": {
+                                        "const": "decomposition-exhausted",
+                                        "type": "string"
+                                      },
+                                      "stage": {
+                                        "const": "planning-decomposition",
                                         "type": "string"
                                       },
                                       "decompositionEvidence": {
@@ -25457,6 +25517,9 @@
                                             "type": "string"
                                           }
                                         ]
+                                      },
+                                      "decompositionEvidence": {
+                                        "not": {}
                                       }
                                     }
                                   }
@@ -26229,6 +26292,10 @@
                         "required": [
                           "timestamp",
                           "type",
+                          "graphId",
+                          "rootUnitId",
+                          "unitCount",
+                          "edgeCount",
                           "limits"
                         ],
                         "properties": {
@@ -26244,6 +26311,22 @@
                           "type": {
                             "const": "planning:decomposition:start",
                             "type": "string"
+                          },
+                          "graphId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "rootUnitId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "unitCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "edgeCount": {
+                            "minimum": 0,
+                            "type": "integer"
                           },
                           "limits": {
                             "additionalProperties": false,
@@ -28289,6 +28372,8 @@
                         "required": [
                           "timestamp",
                           "type",
+                          "unitId",
+                          "artifactPath",
                           "byteLength",
                           "contentHash",
                           "omittedUnitIds"
@@ -28340,6 +28425,9 @@
                           "timestamp",
                           "type",
                           "unitCount",
+                          "completedUnitCount",
+                          "failedUnitCount",
+                          "skippedUnitCount",
                           "coverage",
                           "artifactPaths"
                         ],
@@ -28358,6 +28446,18 @@
                             "type": "string"
                           },
                           "unitCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "completedUnitCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "failedUnitCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "skippedUnitCount": {
                             "minimum": 0,
                             "type": "integer"
                           },

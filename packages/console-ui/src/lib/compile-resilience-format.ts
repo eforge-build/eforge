@@ -2,9 +2,11 @@ import type {
   CompilePreflightRisk,
   CompileRecoveryAction,
   CompileScopeContextFailure,
+  EforgeEvent,
   PlannerInspectionSummary,
   RecoverySidecarRecoveryOption,
 } from '@eforge-build/client/browser';
+import { decompositionFailureEvidenceDetail, decompositionFailureEvidenceSummary } from './planning-decomposition-format';
 
 export interface CompileFailureBannerModel {
   title: string;
@@ -12,6 +14,8 @@ export interface CompileFailureBannerModel {
   details: string[];
 }
 
+type EventCompileScopeContextFailure = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>['failure'];
+type DisplayCompileScopeContextFailure = CompileScopeContextFailure | EventCompileScopeContextFailure;
 export type CompileScopeContextOption = Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>;
 
 export function formatBytes(bytes: number): string {
@@ -59,7 +63,7 @@ export function compilePreflightDetail(risk: CompilePreflightRisk): string {
   return lines.join('\n');
 }
 
-function artifactSummary(failure: CompileScopeContextFailure): string {
+function artifactSummary(failure: DisplayCompileScopeContextFailure): string {
   const a = failure.artifacts;
   const parts = [
     `orchestration ${a.orchestrationExists ? 'present' : 'missing'}`,
@@ -72,7 +76,7 @@ function artifactSummary(failure: CompileScopeContextFailure): string {
   return parts.join('; ');
 }
 
-function observedSummary(failure: CompileScopeContextFailure): string | undefined {
+function observedSummary(failure: DisplayCompileScopeContextFailure): string | undefined {
   const observed = failure.observed;
   if (!observed) return undefined;
   const parts: string[] = [];
@@ -83,7 +87,7 @@ function observedSummary(failure: CompileScopeContextFailure): string | undefine
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
+function guardDiagnosticLines(failure: DisplayCompileScopeContextFailure): string[] {
   const guard = failure.guardDiagnostics;
   if (!guard) return [];
   const lines: string[] = [];
@@ -125,11 +129,11 @@ export function plannerInspectionSummaryDetail(summary: PlannerInspectionSummary
   return lines.join('\n');
 }
 
-export function compileScopeContextFailureSummary(failure: CompileScopeContextFailure): string {
+export function compileScopeContextFailureSummary(failure: DisplayCompileScopeContextFailure): string {
   return `Compile scope/context failure: ${failure.failureKind} from ${failure.source} at ${failure.stage} — ${recoveryActionLabel(failure.recovery.action)}`;
 }
 
-export function compileScopeContextFailureDetail(failure: CompileScopeContextFailure): string {
+export function compileScopeContextFailureDetail(failure: DisplayCompileScopeContextFailure): string {
   const lines = [
     `Explanation: ${failure.explanation}`,
     `Recovery: ${recoveryActionLabel(failure.recovery.action)}; eligible ${failure.recovery.eligible ? 'yes' : 'no'}; attempted ${failure.recovery.attempted ? 'yes' : 'no'}; attempt ${failure.recovery.attempt}/${failure.recovery.maxAttempts}`,
@@ -140,6 +144,10 @@ export function compileScopeContextFailureDetail(failure: CompileScopeContextFai
   if (observed) lines.push(`Observed: ${observed}`);
   lines.push(...guardDiagnosticLines(failure));
   if (failure.risk) lines.push(`Preflight: ${compilePreflightSummary(failure.risk)}`);
+  if (failure.decompositionEvidence) {
+    lines.push(decompositionFailureEvidenceSummary(failure.decompositionEvidence));
+    lines.push(decompositionFailureEvidenceDetail(failure.decompositionEvidence));
+  }
   return lines.join('\n');
 }
 

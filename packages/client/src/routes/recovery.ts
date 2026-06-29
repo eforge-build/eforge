@@ -103,7 +103,7 @@ export interface RecoverySidecarBoundedEvidence {
   evidenceOmissions?: string[];
 }
 
-export type RecoverySidecarSchemaVersion = 3 | 4;
+export type RecoverySidecarSchemaVersion = 3 | 4 | 5;
 
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
@@ -111,7 +111,8 @@ export type RecoverySidecarSchemaVersion = 3 | 4;
  * bounded evidence, generated timestamp, optional read-only continue-and-repair
  * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
  * durable `applied` marker. Version 4 is used when compile-scope-context
- * recovery guidance is present; schemaVersion 3 sidecars must not contain
+ * recovery guidance is present; version 5 is required when that guidance
+ * carries decomposition evidence. schemaVersion 3 sidecars must not contain
  * compile-scope-context recovery options.
  */
 export interface RecoveryVerdictSidecar {
@@ -246,7 +247,7 @@ export const RecoverySidecarCompileScopeContextOptionSchema: typeof RecoverySide
   RecoverySidecarCompileScopeContextOptionBaseSchema,
   Type.Union([
     Type.Object({ source: Type.Literal('decomposition'), failureKind: Type.Literal('decomposition-exhausted'), decompositionEvidence: DecompositionFailureEvidenceSchema }),
-    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema }),
+    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema, decompositionEvidence: Type.Optional(Type.Never()) }),
   ]),
 ]) as unknown as typeof RecoverySidecarCompileScopeContextOptionBaseSchema;
 
@@ -259,12 +260,19 @@ export const RecoverySidecarRecoveryOptionSchema = Type.Union([
 
 export type RecoverySidecarContinueRepairOption = Static<typeof RecoverySidecarContinueRepairOptionSchema>;
 export type RecoverySidecarCompileScopeContextAction = typeof RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS[number];
-export type RecoverySidecarCompileScopeContextOption = Static<typeof RecoverySidecarCompileScopeContextOptionSchema> & {
-  source: CompileScopeContextFailure['source'];
-  failureKind: CompileScopeContextFailure['failureKind'];
-  decompositionEvidence?: CompileScopeContextFailure['decompositionEvidence'];
-};
-export type RecoverySidecarRecoveryOption = Static<typeof RecoverySidecarRecoveryOptionSchema>;
+type RecoverySidecarCompileScopeContextOptionBase = Static<typeof RecoverySidecarCompileScopeContextOptionBaseSchema>;
+export type RecoverySidecarCompileScopeContextOption =
+  | (Omit<RecoverySidecarCompileScopeContextOptionBase, 'source' | 'failureKind' | 'decompositionEvidence'> & {
+      source: 'decomposition';
+      failureKind: 'decomposition-exhausted';
+      decompositionEvidence: NonNullable<CompileScopeContextFailure['decompositionEvidence']>;
+    })
+  | (Omit<RecoverySidecarCompileScopeContextOptionBase, 'source' | 'failureKind' | 'decompositionEvidence'> & {
+      source: Static<typeof NonDecompositionCompileScopeContextSourceSchema>;
+      failureKind: Static<typeof NonExhaustedCompileScopeContextFailureKindSchema>;
+      decompositionEvidence?: never;
+    });
+export type RecoverySidecarRecoveryOption = RecoverySidecarContinueRepairOption | RecoverySidecarCompileScopeContextOption;
 
 interface ContinueRepairEligibilityIdentity {
   prdId: string;

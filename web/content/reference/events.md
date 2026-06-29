@@ -79,7 +79,7 @@ Total variants: 243
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
-| `planning:decomposition:start` | `limits`, `riskEvidence`, `runId`, `sessionId`, `timestamp` |
+| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `riskEvidence`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
 | `planning:decomposition:unit:queued` | `runId`, `sessionId`, `timestamp`, `unit` |
 | `planning:decomposition:unit:running` | `runId`, `sessionId`, `timestamp`, `unitId` |
 | `planning:decomposition:unit:progress` | `message`, `observed`, `runId`, `sessionId`, `timestamp`, `unitId` |
@@ -89,7 +89,7 @@ Total variants: 243
 | `planning:decomposition:schedule` | `decision`, `runId`, `sessionId`, `timestamp` |
 | `planning:decomposition:budget` | `limits`, `observed`, `runId`, `sessionId`, `timestamp`, `unitBudgets`, `unitId` |
 | `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `runId`, `sessionId`, `timestamp`, `unitId` |
-| `planning:decomposition:synthesis:complete` | `artifactPaths`, `coverage`, `runId`, `sessionId`, `timestamp`, `unitCount` |
+| `planning:decomposition:synthesis:complete` | `artifactPaths`, `completedUnitCount`, `coverage`, `failedUnitCount`, `runId`, `sessionId`, `skippedUnitCount`, `timestamp`, `unitCount` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

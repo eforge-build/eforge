@@ -1,8 +1,12 @@
 import type { CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
+import { renderDecompositionEvidenceLines } from './planning-decomposition-display.js';
 
 export interface CompilePreflightRenderOptions {
   verbose?: boolean;
 }
+
+type EventCompileScopeContextFailure = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>['failure'];
+type DisplayCompileScopeContextFailure = CompileScopeContextFailure | EventCompileScopeContextFailure;
 
 export interface CompileScopeContextFailureRenderModel {
   attempted: boolean;
@@ -69,12 +73,12 @@ export function renderCompilePreflightLines(risk: CompilePreflightRisk, options:
   return lines;
 }
 
-function artifactSummary(failure: CompileScopeContextFailure): string {
+function artifactSummary(failure: DisplayCompileScopeContextFailure): string {
   const a = failure.artifacts;
   return `${a.validPlanCount} valid plan(s), ${a.invalidPlanCount} invalid plan(s), ${a.missingPlanFileCount} missing plan file(s), orchestration ${a.orchestrationExists ? 'present' : 'missing'}`;
 }
 
-function observedSummary(failure: CompileScopeContextFailure): string | undefined {
+function observedSummary(failure: DisplayCompileScopeContextFailure): string | undefined {
   const observed = failure.observed;
   if (!observed) return undefined;
   const parts: string[] = [];
@@ -100,7 +104,7 @@ export function renderPlannerInspectionSummaryModel(summary: PlannerInspectionSu
   return { headline, details };
 }
 
-function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
+function guardDiagnosticLines(failure: DisplayCompileScopeContextFailure): string[] {
   const guard = failure.guardDiagnostics;
   if (!guard) return [];
   const lines: string[] = [];
@@ -118,11 +122,11 @@ function guardDiagnosticLines(failure: CompileScopeContextFailure): string[] {
   return lines;
 }
 
-export function renderCompileScopeContextFailureModel(failure: CompileScopeContextFailure): CompileScopeContextFailureRenderModel {
+export function renderCompileScopeContextFailureModel(failure: DisplayCompileScopeContextFailure): CompileScopeContextFailureRenderModel {
   const action = recoveryActionLabel(failure.recovery.action);
   const attempted = failure.recovery.attempted === true;
   const headline = attempted
-    ? `Compile context guard: ${action}`
+    ? `Compile context guard: ${action} (${failure.failureKind} from ${failure.source} at ${failure.stage})`
     : `Compile scope/context failure: ${failure.failureKind} from ${failure.source} at ${failure.stage} — ${action}`;
   const details = [
     `Failure: ${failure.failureKind} from ${failure.source} at ${failure.stage}`,
@@ -134,5 +138,9 @@ export function renderCompileScopeContextFailureModel(failure: CompileScopeConte
   details.push(...guardDiagnosticLines(failure));
   if (failure.explanation) details.push(`Explanation: ${failure.explanation}`);
   if (failure.recovery.reason) details.push(`Reason: ${failure.recovery.reason}`);
+  if (failure.decompositionEvidence) {
+    details.push('Decomposition evidence:');
+    details.push(...renderDecompositionEvidenceLines(failure.decompositionEvidence));
+  }
   return { attempted, headline, details };
 }

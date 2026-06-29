@@ -137,6 +137,10 @@ const ATTENTION_STATUSES = new Set([
 ]);
 
 export function classifyAttention(event: EforgeEvent): boolean {
+  if (event.type === 'planning:decomposition:budget') {
+    return (event.observed?.triggeredLimitKeys?.length ?? 0) > 0;
+  }
+
   const t = event.type.toLowerCase();
   for (const keyword of ATTENTION_TYPE_KEYWORDS) {
     if (t.includes(keyword)) return true;

@@ -6,6 +6,10 @@ export function decompositionStartEvent(input: { graph: PlanningDecompositionGra
   return {
     timestamp: now(),
     type: 'planning:decomposition:start',
+    graphId: input.graph.graphId,
+    rootUnitId: input.graph.rootUnitId,
+    unitCount: input.graph.units.length,
+    edgeCount: input.graph.edges.length,
     limits: input.graph.limits,
     ...(input.riskEvidence ? { riskEvidence: input.riskEvidence } : {}),
     ...(input.runId ? { runId: input.runId } : {}),
@@ -24,11 +28,14 @@ export function scheduleEvent(decision: PlanningScheduleDecision): EforgeEvent {
   return { timestamp: now(), type: 'planning:decomposition:schedule', decision } as EforgeEvent;
 }
 
-export function synthesisCompleteEvent(input: { graph: PlanningDecompositionGraph; artifactPaths: string[]; unitIds: string[] }): EforgeEvent {
+export function synthesisCompleteEvent(input: { graph: PlanningDecompositionGraph; artifactPaths: string[] }): EforgeEvent {
   return {
     timestamp: now(),
     type: 'planning:decomposition:synthesis:complete',
-    unitCount: input.unitIds.length,
+    unitCount: input.graph.units.length,
+    completedUnitCount: input.graph.units.filter(unit => unit.status === 'completed').length,
+    failedUnitCount: input.graph.units.filter(unit => unit.status === 'failed').length,
+    skippedUnitCount: input.graph.units.filter(unit => unit.status === 'skipped').length,
     coverage: projectPlanningCoverageSummaryForWire(input.graph.coverage),
     artifactPaths: input.artifactPaths.slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS).map(path => capPlanningDecompositionString(path)),
   } as EforgeEvent;
