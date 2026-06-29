@@ -9,7 +9,7 @@ import type { ArchitectureSubmission, PlanSetSubmission } from '../schemas.js';
 import { CompileScopeContextError, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import { sha256Hex } from '../compile-resilience/bounded-planning-context.js';
 import { evaluatePlanningUnitBudgetPressure, type PlanningDecompositionUnit, type PlanningUnitOutput } from '../compile-resilience/planning-decomposition.js';
-import { derivePlannerInspectionBudget, inspectPlannerHandoffArtifact } from '../compile-resilience/planner-inspection.js';
+import { derivePlannerInspectionBudget, inspectPlannerHandoffArtifact, reservePlannerSynthesisToolBudget } from '../compile-resilience/planner-inspection.js';
 
 export type BoundedPlanningUnitAgentMode = 'planner' | 'module-planner';
 
@@ -104,7 +104,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
         onPromptBuilt: recordPrompt,
         boundedUnit: promptContext,
         boundedCapture: { mode: 'capture-only', unitId: input.unit.unitId, artifactDir: input.artifactDir, maxCompactHandoffBytes: input.budgets.maxCompactHandoffBytes, onPlanSetSubmission: p => { captures.planSet = p; }, onArchitectureSubmission: a => { captures.architecture = a; } },
-        plannerInspectionBudget: derivePlannerInspectionBudget({ hardLimits: contextGuard.limits, guardDiagnostics: contextGuard.guardDiagnostics, plannerMaxTurns: input.agentOptions.maxTurns, toolUseCaps: { maxToolUses: input.budgets.maxLocalExplorationToolUses } }),
+        plannerInspectionBudget: derivePlannerInspectionBudget({ hardLimits: contextGuard.limits, guardDiagnostics: contextGuard.guardDiagnostics, plannerMaxTurns: input.agentOptions.maxTurns, toolUseCaps: { maxToolUses: reservePlannerSynthesisToolBudget(input.budgets.maxLocalExplorationToolUses) } }),
       })
       : runModulePlanner({
         ...input.agentOptions,

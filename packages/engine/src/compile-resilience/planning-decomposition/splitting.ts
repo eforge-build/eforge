@@ -124,9 +124,14 @@ function normalizeEvidencePath(value: string): string | undefined {
   const cleaned = value.trim().replace(/^['"`]+|['"`),:;]+$/g, '');
   if (!cleaned || cleaned.includes('[omitted ')) return undefined;
   if (/^(?:read|find|grep|ls|bash) called$/i.test(cleaned)) return undefined;
+  if (isGeneratedPlanningArtifactPath(cleaned)) return undefined;
   if (cleaned.includes('/')) return cleaned;
   if (/^[A-Za-z0-9_.-]+\.[A-Za-z0-9_.-]+$/.test(cleaned)) return cleaned;
   return undefined;
+}
+
+function isGeneratedPlanningArtifactPath(path: string): boolean {
+  return path.startsWith('eforge/plans/') || path.includes('/.decomposition/') || /(?:^|\/)(?:planner-inspection-handoff\.json|output\.json|orchestration\.ya?ml)$/.test(path);
 }
 
 function childUnit(parent: PlanningDecompositionUnit, group: SplitGroup, ordinal: number, limits: PlanningDecompositionLimits): PlanningDecompositionUnit {

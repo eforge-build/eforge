@@ -9,7 +9,7 @@ import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import type { BoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
 import { formatBoundedPlanningPromptContext } from '../compile-resilience/bounded-planning-context.js';
-import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
+import { compactPlannerInspectionHandoffToBudget, createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, reservePlannerSynthesisToolBudget, writePlannerInspectionHandoffArtifact, type PlannerInspectionHandoff } from '../compile-resilience/planner-inspection.js';
 import { createLinkedAbortController } from './linked-abort-controller.js';
 
 export interface ModulePlannerBoundedCaptureOptions {
@@ -77,7 +77,7 @@ function createModulePlanSubmissionTool(options: ModulePlannerBoundedCaptureOpti
 }
 
 function formatModulePlannerContinuation(handoff: PlannerInspectionHandoff, submitTool: string): string {
-  return `## Compact Inspection Continuation\n\nAutomatic bounded module-planner compact continuation is active. Use the unit source and compact handoff below; the root transcript is unavailable by design. Call ${submitTool} when done.\n\n${formatPlannerInspectionHandoffMarkdown(handoff)}`;
+  return `## Compact Inspection Continuation\n\nAutomatic bounded module-planner compact continuation is active. Use the unit source and compact handoff below; the root transcript is unavailable by design. No further exploration tools are available; call ${submitTool} from existing evidence.\n\n${formatPlannerInspectionHandoffMarkdown(handoff)}`;
 }
 
 function formatBoundedDependencySummary(options: ModulePlannerOptions): string {
@@ -101,7 +101,7 @@ export async function* runModulePlanner(
   let boundedSubmissionCaptured = false;
   const customTools = options.boundedCapture ? [createModulePlanSubmissionTool(options.boundedCapture, () => { boundedSubmissionCaptured = true; })] : undefined;
   const effectiveSubmitTool = options.boundedCapture ? options.harness.effectiveCustomToolName(options.boundedCapture.submitToolName ?? 'submit_module_plan') : '';
-  const inspectionBudget = derivePlannerInspectionBudget({ hardLimits: options.contextGuard?.limits, guardDiagnostics: options.contextGuard?.guardDiagnostics, plannerMaxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, toolUseCaps: { maxToolUses: options.boundedUnit?.budgets.maxLocalExplorationToolUses } });
+  const inspectionBudget = derivePlannerInspectionBudget({ hardLimits: options.contextGuard?.limits, guardDiagnostics: options.contextGuard?.guardDiagnostics, plannerMaxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, toolUseCaps: { maxToolUses: reservePlannerSynthesisToolBudget(options.boundedUnit?.budgets.maxLocalExplorationToolUses) } });
   const observer = options.boundedCapture ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'module-planner' }) : undefined;
   let compactHandoff: PlannerInspectionHandoff | undefined;
   let compactUsed = false;
@@ -131,7 +131,7 @@ export async function* runModulePlanner(
     const attemptAbort = createLinkedAbortController(options.abortController?.signal);
     try {
       for await (const event of options.harness.run(
-        { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
+        { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? (phase === 'synthesis' ? 'none' : 'read-only') : 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
         'module-planner',
         options.lane,
       )) {

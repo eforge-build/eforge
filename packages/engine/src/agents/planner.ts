@@ -62,7 +62,7 @@ Automatic compact-inspection continuation 1 of 1 is active. The prior inspection
 
 ### Required synthesis objective
 
-Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. Perform only targeted read-only checks if absolutely necessary, then call ${submitTool}. Reasoning text alone does not submit plans.
+Use the original Source section in this prompt plus the compact inspection summary below. Do NOT replay or depend on the full inspection tool transcript; it is intentionally unavailable. No further exploration tools are available; call ${submitTool} from existing evidence. Reasoning text alone does not submit plans.
 
 ${formatPlannerInspectionHandoffMarkdown(handoff)}`;
 }
@@ -380,7 +380,7 @@ ${existingPlans}`);
 
     try {
       for await (const event of harness.run(
-        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? 'read-only' : (executionPhase === 'synthesis' ? 'none' : 'coding'), abortSignal: attemptAbort.signal, customTools },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? (executionPhase === 'synthesis' ? 'none' : 'read-only') : (executionPhase === 'synthesis' ? 'none' : 'coding'), abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {

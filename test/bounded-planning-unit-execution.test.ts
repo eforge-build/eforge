@@ -174,6 +174,7 @@ describe('bounded planning unit execution', () => {
     const { output, events } = await run({ harness, budgets, source: 'Module source for compact continuation.', pipelineScope: 'expedition', agentMode: 'module-planner' });
 
     expect(harness.calls).toHaveLength(2);
+    expect(harness.calls[1].tools).toBe('none');
     expect(harness.prompts[1]).toContain('Planner Inspection Handoff');
     expect(output.status).toBe('completed');
     expect(output.planSuggestions?.[0]?.markdown).toContain('Plan from handoff');
@@ -269,7 +270,7 @@ describe('bounded planning unit execution', () => {
 
     expect(harness.calls).toHaveLength(2);
     expect(harness.calls[0].tools).toBe('read-only');
-    expect(harness.calls[1].tools).toBe('read-only');
+    expect(harness.calls[1].tools).toBe('none');
     expect(output.compactHandoffRef).toContain(artifactDir);
     expect(eventTypes(events)).toContain('planning:decomposition:compact-handoff');
     const compactEvent = events.find((event): event is Extract<EforgeEvent, { type: 'planning:decomposition:compact-handoff' }> => event.type === 'planning:decomposition:compact-handoff');

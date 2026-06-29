@@ -157,6 +157,8 @@ describe('planning decomposition core', () => {
         unitId: parent.unitId,
         status: 'failed',
         discoveredFiles: [
+          'eforge/plans/per-invocation-runtime-choice-routing/architecture.md',
+          'eforge/plans/per-invocation-runtime-choice-routing/.decomposition/graph.json',
           'packages/engine/src/config.ts',
           'packages/engine/src/agent-runtime-registry.ts',
           'packages/engine/src/pipeline/agent-config.ts',
@@ -171,7 +173,10 @@ describe('planning decomposition core', () => {
     const children = result.childUnitIds.map((id) => result.graph.units.find((unit) => unit.unitId === id)!);
     expect(children.every((child) => child.criteriaIds.includes(parent.criteriaIds[0]))).toBe(true);
     expect(new Set(result.graph.coverage.coveredCriteria.find((criterion) => criterion.criterionId === parent.criteriaIds[0])?.coveredByUnitIds)).toEqual(new Set(result.childUnitIds));
-    expect(children.flatMap((child) => child.sharedFileConstraints)).toContain('packages/engine/src/config.ts');
+    const splitPaths = children.flatMap((child) => child.sharedFileConstraints);
+    expect(splitPaths).toContain('packages/engine/src/config.ts');
+    expect(splitPaths).not.toContain('eforge/plans/per-invocation-runtime-choice-routing/architecture.md');
+    expect(splitPaths).not.toContain('eforge/plans/per-invocation-runtime-choice-routing/.decomposition/graph.json');
     expect(validatePlanningDecompositionGraph(result.graph).ok).toBe(true);
   });
 

@@ -100,6 +100,10 @@ export interface BuildPlannerInspectionHandoffInput {
 // --- eforge:endregion planner-inspection-contracts ---
 
 // --- eforge:region planner-inspection-budget-observer ---
+export function reservePlannerSynthesisToolBudget(maxToolUses: number | undefined): number | undefined {
+  return maxToolUses === undefined || maxToolUses <= 1 ? maxToolUses : maxToolUses - 1;
+}
+
 export function derivePlannerInspectionBudget(input: {
   hardLimits?: Partial<CompileContextGuardLimits>;
   guardDiagnostics?: CompileContextGuardDiagnostics;
