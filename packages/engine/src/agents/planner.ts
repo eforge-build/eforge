@@ -336,13 +336,11 @@ ${existingPlans}`);
 
   let skipEmitted = false;
 
-  // Mutable container for submission payloads — set by custom tool handlers via closure
   const captured: { planSet: PlanSetSubmission | null; architecture: ArchitectureSubmission | null } = {
     planSet: null,
     architecture: null,
   };
 
-  // Create submission tools based on scope
   const customTools: CustomTool[] = [];
   const scope = options.scope;
 
@@ -361,20 +359,21 @@ ${existingPlans}`);
   const outputDir = options.outputDir ?? 'eforge/plans';
   const submissionToolNames = new Set(customTools.flatMap((tool) => [tool.name, harness.effectiveCustomToolName(tool.name)]));
 
-  // Main loop: run agent, collect clarifications, restart with answers baked in
   let iteration = 0;
   const maxIterations = 5; // prevent infinite loops
-  const inspectionObserver = compactInspectionEnabled(options)
-    ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'planner' })
-    : undefined;
+  const inspectionObserver = compactInspectionEnabled(options) ? createPlannerInspectionObserver({ budget: inspectionBudget, stage: 'planner' }) : undefined;
   let executionPhase: PlannerExecutionPhase = 'inspection';
   let compactInspectionUsed = false;
   let sawSubmissionToolUse = false;
+  let activePlannerStart: Extract<EforgeEvent, { type: 'agent:start' }> | undefined;
   const plannerBoundaryReached = () => skipEmitted || sawSubmissionToolUse || alreadySubmitted();
+  const syntheticStopForRestart = (): EforgeEvent | undefined => {
+    if (!activePlannerStart) return undefined;
+    const event: EforgeEvent = { timestamp: new Date().toISOString(), type: 'agent:stop', planId: activePlannerStart.planId, agentId: activePlannerStart.agentId, agent: activePlannerStart.agent }; activePlannerStart = undefined; return event;
+  };
 
   while (iteration < maxIterations) {
     iteration++;
-
     const prompt = await buildPrompt();
     options.onPromptBuilt?.(prompt);
     contextGuard.assertPrompt(prompt);
@@ -393,10 +392,12 @@ ${existingPlans}`);
 
     try {
       for await (const event of harness.run(
-        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? 'read-only' : (executionPhase === 'synthesis' ? 'read-only' : 'coding'), abortSignal: attemptAbort.signal, customTools },
+        { ...pickSdkOptions(options), prompt, cwd, maxTurns: executionPhase === 'synthesis' ? synthesisMaxTurns(initialMaxTurns) : initialMaxTurns, tools: options.boundedCapture ? 'read-only' : (executionPhase === 'synthesis' ? 'none' : 'coding'), abortSignal: attemptAbort.signal, customTools },
         'planner',
         options.lane,
       )) {
+        if (event.type === 'agent:start' && event.agent === 'planner') activePlannerStart = event;
+        else if (event.type === 'agent:stop' && event.agent === 'planner') activePlannerStart = undefined;
         try {
           contextGuard.observe(event);
         } catch (err) {
@@ -425,6 +426,7 @@ ${existingPlans}`);
               yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
               allClarifications.push({ questions, answers });
               // Restart agent with answers baked into prompt
+              const stopEvent = syntheticStopForRestart(); if (stopEvent) yield stopEvent;
               needsRestart = true;
               break;
             }
@@ -452,6 +454,7 @@ ${existingPlans}`);
           });
           const artifactPath = await writePlannerInspectionHandoffArtifact({ cwd, outputDir, planSetName, handoff: compactInspectionHandoff, artifactDir: options.boundedCapture?.artifactDir });
           yield { timestamp: new Date().toISOString(), type: 'planning:inspection-summary', summary: compactInspectionHandoff, artifactPath };
+          const stopEvent = syntheticStopForRestart(); if (stopEvent) yield stopEvent;
           yield { timestamp: new Date().toISOString(), type: 'planning:continuation', attempt: 1, maxContinuations: 1, reason: 'compact_inspection' };
           compactInspectionUsed = true;
           executionPhase = 'synthesis';

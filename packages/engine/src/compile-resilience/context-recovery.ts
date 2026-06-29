@@ -243,8 +243,13 @@ function chooseRecoveryAction(ctx: PipelineContext, input: CompileScopeContextFa
     && input.risk?.recommendation.action === 'retry-as-expedition'
     && input.risk.recommendation.eligible;
   if (ctx.pipeline.scope !== 'expedition' && wantsRetry && state.retryAsExpeditionAttempts < state.maxRetryAsExpeditionAttempts && !alreadyAttempted) return 'retry-as-expedition';
+  if (isPlannerRuntimeContextFailure(input)) return 'bounded-decomposition';
   if (ctx.pipeline.scope === 'expedition' || state.retryAsExpeditionAttempts >= state.maxRetryAsExpeditionAttempts || alreadyAttempted || input.risk?.recommendation.action === 'bounded-decomposition') return 'bounded-decomposition';
   return 'manual-reduce-scope';
+}
+
+function isPlannerRuntimeContextFailure(input: CompileScopeContextFailureInput): boolean {
+  return input.stage === 'planner' && input.source === 'live-context-guard';
 }
 
 function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): string {
@@ -254,6 +259,7 @@ function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, inp
   if (action === 'bounded-decomposition' && input.failureKind === 'decomposition-exhausted' && input.decompositionEvidence) {
     return withCompactGuidance(`Context-managed decomposition exhausted in unit ${input.decompositionEvidence.unitId}; this is decomposition exhaustion, not a provider context rejection. Existing direct retry/apply-recovery actions do not mutate compile decomposition state. Operators can inspect bounded evidence and choose a manual reduced source or deliberate follow-up PRD outside the engine. The engine does not auto-author and does not auto-enqueue successor PRDs.`, compactGuidance);
   }
+  if (action === 'bounded-decomposition' && isPlannerRuntimeContextFailure(input)) return withCompactGuidance('Planner runtime context pressure exceeded the direct planning budget; fall back to context-managed decomposition rather than failing the compile terminally.', compactGuidance);
   if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); inspect bounded decomposition evidence or manually reduce source before choosing deliberate follow-up work outside the engine.`, compactGuidance);
   if (action === 'manual-reduce-scope') return withCompactGuidance('Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.', compactGuidance);
   return input.explanation;

@@ -35,6 +35,10 @@ function normalRisk(): CompilePreflightRisk {
   return { ...boundedRisk(), level: 'normal', score: 10, recommendation: { action: 'none', eligible: false, reason: 'normal' } };
 }
 
+function elevatedRisk(): CompilePreflightRisk {
+  return { ...boundedRisk(), level: 'elevated', score: 60, recommendation: { action: 'none', eligible: false, reason: 'advisory only' } };
+}
+
 function source(): string {
   return [`# Compile Source`, '', sentinel, '', '## Acceptance Criteria', '- engine implements unit one', '- client implements unit two', '- console implements unit three', '- cli implements unit four'].join('\n');
 }
@@ -96,6 +100,32 @@ describe('compile planner stage context-managed orchestration branch', () => {
     expect(harness.prompts[0]).toContain(sentinel);
     expect(harness.prompts.slice(1).every((prompt) => prompt.includes('unit-') && !prompt.includes(sentinel))).toBe(true);
     expect(ctx.contextManagedPlanning).toMatchObject({ planningParallelism: 2 });
+  });
+
+  it('falls back to context-managed decomposition when an elevated direct planner run trips the live guard', async () => {
+    const harness = new StubHarness([
+      composer(),
+      { events: [{ kind: 'usage', usage: { input: 101, total: 101 }, numTurns: 1 }] },
+      ...Array.from({ length: 8 }, (_, index) => unitResponse(`fallback-${index + 1}`)),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd: makeTempDir(),
+      sourceContent: source(),
+      compilePreflight: elevatedRisk(),
+      compileContextGuardLimits: { maxObservedInputTokens: 100 },
+      config: config(),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      agentRuntimes: singletonRegistry(harness),
+    });
+
+    const events = await collect(getCompileStage('planner')(ctx));
+
+    expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
+    expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(true);
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    expect(ctx.contextManagedPlanning).toBeDefined();
+    expect(harness.prompts[1]).toContain(sentinel);
+    expect(harness.prompts.slice(2).every((prompt) => prompt.includes('unit-') && !prompt.includes(sentinel))).toBe(true);
   });
 
   it('leaves normal-risk planner-stage runs on the existing direct planner path', async () => {

@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import type { EforgeEvent, ExpeditionModule } from '../../events.js';
+import type { EforgeEvent, ExpeditionModule, CompileScopeContextFailure } from '../../events.js';
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
@@ -32,10 +32,7 @@ import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker, createStageSpanWiring } from '../span-wiring.js';
 import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
 import { runReviewCycle } from '../runners.js';
-import {
-  runArchitectureReviewCycleStage,
-  runCohesionReviewCycleStage,
-} from './compile-review-cycles.js';
+import { runArchitectureReviewCycleStage, runCohesionReviewCycleStage } from './compile-review-cycles.js';
 import { estimateCompilePreflightRisk, formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
 import { compileContextGuardOptions, CompileScopeContextError, type CompileContextGuardOptions } from '../../compile-resilience/context-guard.js';
 import { derivePlannerInspectionBudget } from '../../compile-resilience/planner-inspection.js';
@@ -51,6 +48,8 @@ import { selectCompilePlanningStrategy } from '../../compile-resilience/planning
 function mergePromptAppend(configured: string | undefined, preflightAppend: string | undefined): string {
   return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
 }
+
+function shouldFallbackToContextManagedPlanning(ctx: PipelineContext, f: CompileScopeContextFailure): boolean { return !ctx.contextManagedPlanning && f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
 
 async function resolveModelAwareCompileContextGuardOptions(
   ctx: PipelineContext,
@@ -377,7 +376,14 @@ registerCompileStage({
     yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
   } catch (err) {
     const contextError = await toCompileScopeContextError(ctx, err, 'planner');
-    if (!contextError || contextError.failure.recovery.action !== 'retry-as-expedition' || !contextError.failure.recovery.eligible) throw contextError ?? err;
+    if (!contextError) throw err;
+    if (shouldFallbackToContextManagedPlanning(ctx, contextError.failure)) {
+      yield scopeContextFailureEvent(contextError.failure, ctx.runId);
+      yield* runContextManagedCompilePlanning(ctx);
+      if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(`Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`);
+      return;
+    }
+    if (contextError.failure.recovery.action !== 'retry-as-expedition' || !contextError.failure.recovery.eligible) throw contextError;
     markRetryAsExpeditionStarted(ctx, contextError.failure);
     const attempted = ctx.compileScopeRecovery?.lastFailure ?? contextError.failure;
     yield scopeContextFailureEvent(attempted, ctx.runId);

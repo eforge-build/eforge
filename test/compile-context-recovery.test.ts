@@ -69,11 +69,12 @@ describe('compile context recovery', () => {
     expect(ctx.compileScopeRecovery?.attemptedSourceHashes).toEqual([]);
   });
 
-  it('does not retry-as-expedition for live guard failures when preflight did not recommend expedition', async () => {
+  it('routes direct planner live guard failures to bounded decomposition even when preflight was advisory', async () => {
     const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: advisoryRisk() });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'live-context-guard', failureKind: 'context-budget', stage: 'planner', explanation: 'single turn too large', risk: advisoryRisk() });
-    expect(failure.recovery.action).toBe('manual-reduce-scope');
-    expect(failure.recovery.eligible).toBe(false);
+    expect(failure.recovery.action).toBe('bounded-decomposition');
+    expect(failure.recovery.eligible).toBe(true);
+    expect(failure.recovery.reason).toContain('context-managed decomposition');
   });
 
   it('carries optional guard diagnostics without changing legacy recovery classification', async () => {
