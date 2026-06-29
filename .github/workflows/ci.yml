@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 10 * * *"
 
 jobs:
   test:
@@ -26,7 +30,11 @@ jobs:
 
       - run: pnpm type-check
 
-      - run: pnpm test
+      # PRs are normally validated by eForge locally before the branch is pushed.
+      # Keep the GitHub PR gate fast, but allow an explicit full run by adding the
+      # `full-ci` label. Full tests still run on main, nightly, and manual runs.
+      - if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: pnpm test
 
       # pnpm build already builds @eforge-build/docs-gen and the web docs site.
       # Run the generated docs drift/link check directly to avoid rebuilding the
