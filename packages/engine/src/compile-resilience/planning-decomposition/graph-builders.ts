@@ -84,7 +84,11 @@ function splitOversizedRequirements(requirements: RequirementRecord[], limits: P
   return requirements.flatMap((req) => {
     if (req.byteLength <= limits.maxPromptSourceBytes) return [req];
     const partCount = Math.ceil(req.byteLength / limits.maxPromptSourceBytes);
-    return Array.from({ length: partCount }, (_, index) => ({ ...req, byteLength: index === partCount - 1 ? req.byteLength - (partCount - 1) * limits.maxPromptSourceBytes : limits.maxPromptSourceBytes }));
+    return Array.from({ length: partCount }, (_, index) => {
+      const byteStart = req.byteStart + index * limits.maxPromptSourceBytes;
+      const byteEnd = Math.min(req.byteEnd, byteStart + limits.maxPromptSourceBytes);
+      return { ...req, byteStart, byteEnd, byteLength: Math.max(0, byteEnd - byteStart) };
+    });
   });
 }
 
@@ -93,7 +97,7 @@ export function buildUnit(unitId: string, title: string, reqs: RequirementRecord
     unitId,
     depth,
     title,
-    sourceSlices: reqs.map((req) => ({ kind: 'criteria', sourceHash: input.source.hash, path: input.source.path, headingPath: req.headingPath, startLine: req.line, endLine: req.line, criteriaIds: [req.id], byteLength: req.byteLength })),
+    sourceSlices: reqs.map((req) => ({ kind: 'criteria', sourceHash: input.source.hash, path: input.source.path, headingPath: req.headingPath, startLine: req.line, endLine: req.line, byteStart: req.byteStart, byteEnd: req.byteEnd, criteriaIds: [req.id], byteLength: req.byteLength })),
     criteriaIds: reqs.map((r) => r.id).sort(),
     subsystemHints: [...new Set(reqs.flatMap((r) => r.subsystemHints))].sort().slice(0, input.limits.maxSubsystemsPerUnit),
     dependsOn: [...new Set(dependsOn)].sort(),

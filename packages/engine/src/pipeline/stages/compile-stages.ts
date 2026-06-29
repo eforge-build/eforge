@@ -42,6 +42,9 @@ import { derivePlannerInspectionBudget } from '../../compile-resilience/planner-
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
 import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
 import { derivePiCompileContextGuard } from '../../harnesses/pi-model-resolution.js';
+// --- eforge:region plan-04-compile-orchestration-synthesis ---
+import { selectCompilePlanningStrategy } from '../../compile-resilience/planning-strategy.js'; import { runContextManagedCompilePlanning } from '../../compile-resilience/context-managed-planning.js';
+// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -352,6 +355,16 @@ registerCompileStage({
     return;
   }
 
+  // --- eforge:region plan-04-compile-orchestration-synthesis ---
+  if (selectCompilePlanningStrategy({ risk: ctx.compilePreflight, selectedScope: ctx.pipeline.scope }) === 'context-managed-decomposition') {
+    yield* runContextManagedCompilePlanning(ctx);
+    if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(
+      `Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`,
+    );
+    return;
+  }
+  // --- eforge:endregion plan-04-compile-orchestration-synthesis ---
+
   const { toolbeltSummary: plannerTbStage } = ctx.agentRuntimes.forRoleResolved('planner');
   const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, plannerTbStage);
   const initialInput: PlannerContinuationInput = {
@@ -374,6 +387,9 @@ registerCompileStage({
     yield scopeContextFailureEvent(attempted, ctx.runId);
     applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
     yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
+    if (selectCompilePlanningStrategy({ risk: ctx.compilePreflight, selectedScope: ctx.pipeline.scope }) === 'context-managed-decomposition') {
+      yield* runContextManagedCompilePlanning(ctx); if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(`Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`);
+      return; }
     yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
   }
 
@@ -521,7 +537,9 @@ registerCompileStage({
       run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig, contextGuard),
     }));
 
-    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });
+    // --- eforge:region plan-04-compile-orchestration-synthesis ---
+    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError, ...(ctx.contextManagedPlanning ? { parallelism: ctx.contextManagedPlanning.planningParallelism } : {}) });
+    // --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 
     // Read completed module plan files for this wave (context for later waves)
     for (const modId of waveModuleIds) {

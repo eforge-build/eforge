@@ -5,7 +5,7 @@ import { selectBatch } from './planning-decomposition/scheduler.js';
 import { splitUnit } from './planning-decomposition/splitting.js';
 
 export type PlanningSourceSliceKind = 'prd' | 'artifact' | 'file' | 'criteria' | 'other';
-export interface PlanningSourceSlice { kind: PlanningSourceSliceKind; sourceHash: string; path?: string; headingPath?: string[]; startLine?: number; endLine?: number; criteriaIds: string[]; byteLength: number }
+export interface PlanningSourceSlice { kind: PlanningSourceSliceKind; sourceHash: string; path?: string; headingPath?: string[]; startLine?: number; endLine?: number; byteStart?: number; byteEnd?: number; criteriaIds: string[]; byteLength: number }
 export interface PlanningCriterionCoverage { criterionId: string; sourceHash?: string; coveredByUnitIds: string[] }
 export interface PlanningUnresolvedCriterion { criterionId: string; reason: string; evidence?: string }
 export interface PlanningCoverageSummary { totalCriteria: number; coverageByUnit: Record<string, string[]>; coveredCriteria: PlanningCriterionCoverage[]; unresolvedCriteria: PlanningUnresolvedCriterion[] }

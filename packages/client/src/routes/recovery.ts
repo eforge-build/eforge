@@ -211,7 +211,7 @@ export const RecoverySidecarCompileScopeContextActionSchema = Type.Union([
   Type.Literal('manual-reduce-scope'),
 ]);
 
-export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
+const RecoverySidecarCompileScopeContextOptionBaseSchema = Type.Object({
   kind: Type.Literal('compile-scope-context'),
   action: RecoverySidecarCompileScopeContextActionSchema,
   recommended: Type.Boolean(),
@@ -228,6 +228,29 @@ export const RecoverySidecarCompileScopeContextOptionSchema = Type.Object({
   failureKind: CompileScopeContextFailureKindSchema,
   decompositionEvidence: Type.Optional(DecompositionFailureEvidenceSchema),
 });
+
+const NonDecompositionCompileScopeContextSourceSchema = Type.Union([
+  Type.Literal('preflight'),
+  Type.Literal('live-context-guard'),
+  Type.Literal('provider'),
+]);
+
+const NonExhaustedCompileScopeContextFailureKindSchema = Type.Union([
+  Type.Literal('context-budget'),
+  Type.Literal('context-window'),
+  Type.Literal('context-length'),
+  Type.Literal('scope-too-broad'),
+]);
+
+export const RecoverySidecarCompileScopeContextOptionSchema: typeof RecoverySidecarCompileScopeContextOptionBaseSchema = Type.Intersect([
+  RecoverySidecarCompileScopeContextOptionBaseSchema,
+  Type.Union([
+    Type.Object({ source: Type.Literal('decomposition'), failureKind: Type.Literal('decomposition-exhausted'), decompositionEvidence: DecompositionFailureEvidenceSchema }),
+    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema }),
+  ]),
+]) as unknown as typeof RecoverySidecarCompileScopeContextOptionBaseSchema;
+
+Object.assign(RecoverySidecarCompileScopeContextOptionSchema, { properties: RecoverySidecarCompileScopeContextOptionBaseSchema.properties });
 
 export const RecoverySidecarRecoveryOptionSchema = Type.Union([
   RecoverySidecarContinueRepairOptionSchema,

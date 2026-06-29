@@ -78,6 +78,19 @@ function formatModulePlannerContinuation(handoff: PlannerInspectionHandoff, subm
   return `## Compact Inspection Continuation\n\nAutomatic bounded module-planner compact continuation is active. Use the unit source and compact handoff below; the root transcript is unavailable by design. Call ${submitTool} when done.\n\n${formatPlannerInspectionHandoffMarkdown(handoff)}`;
 }
 
+function createLinkedAbortController(parentSignal?: AbortSignal): AbortController & { dispose: () => void } {
+  const controller = new AbortController() as AbortController & { dispose: () => void };
+  const abortChild = () => controller.abort();
+  if (parentSignal?.aborted) {
+    controller.abort();
+    controller.dispose = () => {};
+  } else {
+    parentSignal?.addEventListener('abort', abortChild, { once: true });
+    controller.dispose = () => parentSignal?.removeEventListener('abort', abortChild);
+  }
+  return controller;
+}
+
 function formatBoundedDependencySummary(options: ModulePlannerOptions): string {
   if (!options.boundedUnit?.upstreamOutputs.length) return 'No upstream bounded unit dependencies for this module.';
   return options.boundedUnit.upstreamOutputs.map((output) => [
@@ -123,23 +136,26 @@ export async function* runModulePlanner(
   let prompt = await buildPrompt();
   options.onPromptBuilt?.(prompt);
   observer?.setPrompt(prompt);
+  const attemptAbort = createLinkedAbortController(options.abortController?.signal);
   try {
     contextGuard.assertPrompt(prompt);
   } catch (err) {
-    options.abortController?.abort();
+    attemptAbort.abort();
+    attemptAbort.dispose();
     throw err;
   }
 
+  try {
   while (true) {
   for await (const event of options.harness.run(
-    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? 'read-only' : 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
+    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: options.boundedCapture ? 'read-only' : 'coding', abortSignal: attemptAbort.signal, customTools, ...pickSdkOptions(options) },
     'module-planner',
     options.lane,
   )) {
     try {
       contextGuard.observe(event);
     } catch (err) {
-      options.abortController?.abort();
+      attemptAbort.abort();
       throw err;
     }
     const isSubmissionTool = options.boundedCapture ? isModuleSubmissionToolUse(event, options.boundedCapture.submitToolName ?? 'submit_module_plan', effectiveSubmitTool) : false;
@@ -159,7 +175,12 @@ export async function* runModulePlanner(
       options.onPromptBuilt?.(prompt);
       observer?.setPrompt(prompt);
       contextGuard = createCompileContextGuard(options.contextGuard ?? { stage: 'module-planner' });
-      contextGuard.assertPrompt(prompt);
+      try {
+        contextGuard.assertPrompt(prompt);
+      } catch (err) {
+        attemptAbort.abort();
+        throw err;
+      }
       break;
     }
   }
@@ -168,6 +189,9 @@ export async function* runModulePlanner(
   }
 
   if (options.boundedCapture && !boundedSubmissionCaptured) throw new Error(`Bounded module planner did not call ${effectiveSubmitTool || (options.boundedCapture.submitToolName ?? 'submit_module_plan')}`);
+  } finally {
+    attemptAbort.dispose();
+  }
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:module:complete', moduleId: options.moduleId };
 }

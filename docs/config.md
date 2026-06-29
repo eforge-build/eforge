@@ -206,7 +206,7 @@ Each command in `postMergeCommands`, queued PRD `postMerge` metadata, and the pl
 
 ## Compile planning limits
 
-The top-level `compile` block controls budgets for context-managed planning when compile inputs are too large or risky for direct planning. These limits do not change normal direct planning; they only bound decomposition into planning units for overflow-risk compile inputs.
+The top-level `compile` block controls budgets for context-managed planning when overflow-risk compile inputs receive a bounded-decomposition recommendation. These limits do not change normal direct planning; they only bound decomposition into planning units for that context-managed path.
 
 All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default.
 

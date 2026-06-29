@@ -8,24 +8,15 @@ import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { deriveNameFromSource, extractPlanTitle, parsePlanFile, writePlanSet, writeArchitecture } from '../plan.js';
-import {
-  getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml,
-  planSetSubmissionSchema, architectureSubmissionSchema,
-  validatePlanSetSubmission, validateArchitectureSubmission,
-  type PlanSetSubmission, type ArchitectureSubmission,
-} from '../schemas.js';
+import { getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml, planSetSubmissionSchema, architectureSubmissionSchema, validatePlanSetSubmission, validateArchitectureSubmission, type PlanSetSubmission, type ArchitectureSubmission } from '../schemas.js';
 import { safeParseWithSchema, type ValueError } from '@eforge-build/client';
 import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
 import { emitPlanningDecision } from '../decisions.js';
-import {
-  formatPlannerToolSchemaValidationError,
-  formatPlannerToolSemanticValidationError,
-} from '../compile-resilience/diagnostics.js';
+import { formatPlannerToolSchemaValidationError, formatPlannerToolSemanticValidationError } from '../compile-resilience/diagnostics.js';
 import { createCompileContextGuard, type CompileContextGuardOptions } from '../compile-resilience/context-guard.js';
 import { createPlannerInspectionObserver, derivePlannerInspectionBudget, formatPlannerInspectionHandoffMarkdown, writePlannerInspectionHandoffArtifact, type PlannerInspectionBudget, type PlannerInspectionHandoff, type PlannerInspectionSourceContext } from '../compile-resilience/planner-inspection.js';
 
 export interface PlannerBoundedCaptureOptions { mode: 'capture-only'; unitId: string; artifactDir: string; onPlanSetSubmission?: (payload: PlanSetSubmission) => void; onArchitectureSubmission?: (payload: ArchitectureSubmission) => void }
-
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
   /** Prompt-safe compacted source content. Defaults to resolved source content. */ promptSourceContent?: string;

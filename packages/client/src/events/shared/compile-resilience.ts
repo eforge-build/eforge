@@ -203,7 +203,7 @@ export const PlannerInspectionSummarySchema = Type.Object({
   omittedCounts: PlannerInspectionOmittedCountsSchema,
 });
 
-export const CompileScopeContextFailureSchema = Type.Object({
+const CompileScopeContextFailureBaseSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
   stage: Type.Union([
@@ -234,6 +234,29 @@ export const CompileScopeContextFailureSchema = Type.Object({
   }),
   artifacts: CompileArtifactSummarySchema,
 });
+
+const NonDecompositionCompileScopeContextSourceSchema = Type.Union([
+  Type.Literal('preflight'),
+  Type.Literal('live-context-guard'),
+  Type.Literal('provider'),
+]);
+
+const NonExhaustedCompileScopeContextFailureKindSchema = Type.Union([
+  Type.Literal('context-budget'),
+  Type.Literal('context-window'),
+  Type.Literal('context-length'),
+  Type.Literal('scope-too-broad'),
+]);
+
+export const CompileScopeContextFailureSchema: typeof CompileScopeContextFailureBaseSchema = Type.Intersect([
+  CompileScopeContextFailureBaseSchema,
+  Type.Union([
+    Type.Object({ source: Type.Literal('decomposition'), failureKind: Type.Literal('decomposition-exhausted'), stage: Type.Literal('planning-decomposition'), decompositionEvidence: DecompositionFailureEvidenceSchema }),
+    Type.Object({ source: NonDecompositionCompileScopeContextSourceSchema, failureKind: NonExhaustedCompileScopeContextFailureKindSchema }),
+  ]),
+]) as unknown as typeof CompileScopeContextFailureBaseSchema;
+
+Object.assign(CompileScopeContextFailureSchema, { properties: CompileScopeContextFailureBaseSchema.properties });
 
 export const BoundedDiagnosticOptionsSchema = Type.Object({
   maxMessageBytes: Type.Integer({ minimum: 1 }),

@@ -178,11 +178,15 @@ describe('bounded planning unit execution', () => {
     expect(types).toContain('planning:decomposition:budget');
   });
 
-  it('aborts bounded runs on live input-token budget pressure', async () => {
+  it('returns failed bounded-unit evidence on live input-token budget pressure', async () => {
     const budgets = budget({ maxObservedInputTokens: 50 });
     const harness = new StubHarness([{ events: [usage(75), { kind: 'tool_call', tool: 'submit_plan_set', toolUseId: 'submit-1', input: planSet(), output: '' }], text: 'submitted' }]);
 
-    await expect(run({ harness, budgets })).rejects.toBeInstanceOf(CompileScopeContextError);
+    const { output, events } = await run({ harness, budgets });
+
+    expect(output.status).toBe('failed');
+    expect(output.observedBudget?.triggeredLimitKeys).toContain('maxObservedInputTokens');
+    expect(eventTypes(events)).toContain('planning:decomposition:unit:failed');
   });
 
   it('throws before harness invocation when the bounded unit prompt exceeds its prompt budget', async () => {

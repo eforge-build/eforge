@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { safeParseEforgeEvent, type PlanningDecompositionLimits } from '@eforge-build/client';
 import { extractExpectedAcceptanceCriteria } from '@eforge-build/engine/validation/acceptance-criteria';
 import { derivePlanningDecompositionGraph, evaluatePlanningUnitBudgetPressure, selectReadyPlanningBatch, splitOverBudgetPlanningUnit, validatePlanningDecompositionGraph, type PlanningDecompositionGraph } from '@eforge-build/engine/compile-resilience/planning-decomposition';
+import { readUnitSourceSlice } from '@eforge-build/engine/compile-resilience/context-managed-planning/artifacts';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 2, maxPromptSourceBytes: 500, maxPromptBytes: 1000, maxObservedInputTokens: 1000, maxObservedTurns: 3, maxCompactHandoffBytes: 200, maxLocalExplorationToolUses: 4, maxCriteriaPerUnit: 2, maxSubsystemsPerUnit: 1, maxSplitAttemptsPerUnit: 2 };
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -53,12 +54,17 @@ describe('planning decomposition core', () => {
     expect(new Set(graph.units.flatMap((unit) => unit.subsystemHints))).toEqual(new Set(['console', 'engine']));
   });
 
-  it('pre-splits a single criterion line that exceeds the source byte budget', () => {
+  it('pre-splits a single criterion line that exceeds the source byte budget', async () => {
     const content = `# PRD\n\n## Acceptance Criteria\n- ${'x'.repeat(1200)}`;
     const graph = graphFor(content, { ...limits, maxPromptSourceBytes: 500, maxCriteriaPerUnit: 10 });
     expect(graph.units.length).toBeGreaterThan(1);
     expect(validatePlanningDecompositionGraph(graph).ok).toBe(true);
     expect(graph.units.every((unit) => unit.sourceSlices.reduce((sum, slice) => sum + slice.byteLength, 0) <= 500)).toBe(true);
+    for (const unit of graph.units) {
+      const text = await readUnitSourceSlice({ sourceContent: content } as never, unit);
+      expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(500);
+      expect(text).not.toBe(content.split('\n').at(-1));
+    }
   });
 
   it('creates foundation unit for contract-heavy work and independent units for independent work', () => {

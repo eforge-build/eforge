@@ -61,11 +61,13 @@ function groupForCriteria(unit: PlanningDecompositionUnit, criteriaIds: string[]
 function splitOversizedSourceSlice(unit: PlanningDecompositionUnit, limits: PlanningDecompositionLimits): SplitGroup[] {
   if (unit.sourceSlices.length !== 1 || unit.sourceSlices[0].byteLength <= limits.maxPromptSourceBytes) return [];
   const slice = unit.sourceSlices[0];
+  if (typeof slice.byteStart !== 'number' || typeof slice.byteEnd !== 'number' || slice.byteEnd <= slice.byteStart) return [];
   const firstBytes = Math.ceil(slice.byteLength / 2);
-  const secondBytes = slice.byteLength - firstBytes;
-  return [firstBytes, secondBytes]
-    .filter((byteLength) => byteLength > 0)
-    .map((byteLength) => ({ criteriaIds: slice.criteriaIds, subsystemHints: unit.subsystemHints, sourceSlices: [{ ...slice, byteLength }] }));
+  const splitAt = Math.min(slice.byteEnd, slice.byteStart + firstBytes);
+  const ranges = [[slice.byteStart, splitAt], [splitAt, slice.byteEnd]] as const;
+  return ranges
+    .filter(([byteStart, byteEnd]) => byteEnd > byteStart)
+    .map(([byteStart, byteEnd]) => ({ criteriaIds: slice.criteriaIds, subsystemHints: unit.subsystemHints, sourceSlices: [{ ...slice, byteStart, byteEnd, byteLength: byteEnd - byteStart }] }));
 }
 
 function childUnit(parent: PlanningDecompositionUnit, group: SplitGroup, ordinal: number, limits: PlanningDecompositionLimits): PlanningDecompositionUnit {
@@ -137,7 +139,7 @@ function exhausted(input: SplitOverBudgetPlanningUnitInput, blockers: string[]):
       assignedCriteriaIds: input.unit.criteriaIds,
       unresolvedCriteria: input.graph.coverage.unresolvedCriteria,
       blockers,
-      splitAttempts: input.graph.splitAttempts.slice(-8),
+      splitAttempts: input.graph.splitAttempts.filter((attempt) => attempt.unitId === input.unit.unitId).slice(-8),
     },
   };
 }

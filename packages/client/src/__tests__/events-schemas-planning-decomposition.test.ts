@@ -201,6 +201,10 @@ describe('planning decomposition event contracts', () => {
     expect(Value.Check(DecompositionFailureEvidenceSchema, { ...evidence, transcript: 'raw transcript' })).toBe(false);
     expect(safeParseEforgeEvent({ timestamp, type: 'planning:scope-context:failure', failure: { ...failure, decompositionEvidence: { ...evidence, rawSourceContent: 'raw source' } } }).success).toBe(false);
     expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, decompositionEvidence: { ...evidence, prompt: 'raw prompt' } })).toBe(false);
+    expect(Value.Check(CompileScopeContextFailureSchema, { ...failure, failureKind: 'context-window' })).toBe(false);
+    expect(Value.Check(CompileScopeContextFailureSchema, { ...failure, stage: 'planner' })).toBe(false);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, failureKind: 'context-window' })).toBe(false);
+    expect(Value.Check(RecoverySidecarCompileScopeContextOptionSchema, { ...option, source: 'provider' })).toBe(false);
   });
 
   it('registers persistence metadata and public exports', () => {

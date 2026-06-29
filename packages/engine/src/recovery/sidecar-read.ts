@@ -333,7 +333,11 @@ function validateCompileScopeContextOption(obj: Record<string, unknown>, action:
     failureKind: requireCompileScopeContextFailureKind(obj.failureKind, prdId),
     ...(obj.decompositionEvidence !== undefined ? { decompositionEvidence: requireDecompositionEvidence(obj.decompositionEvidence, prdId) } : {}),
   };
-  return option;
+  try {
+    return parseWithSchema(RecoverySidecarCompileScopeContextOptionSchema, option) as RecoverySidecarRecoveryOption;
+  } catch {
+    throw new Error(`recoveryOptions compile-scope-context classification is invalid${suffix(prdId)}`);
+  }
 }
 
 function requireCompileRecoveryGuidanceAction(value: unknown, prdId?: string): Extract<RecoverySidecarRecoveryOption, { kind: 'compile-scope-context' }>['action'] {

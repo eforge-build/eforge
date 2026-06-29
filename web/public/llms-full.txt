@@ -4945,17 +4945,17 @@ Total variants: 243
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
-| `planning:decomposition:start` | `limits`, `riskEvidence`, `runId` |
-| `planning:decomposition:unit:queued` | `unit` |
-| `planning:decomposition:unit:running` | `unitId` |
-| `planning:decomposition:unit:progress` | `message`, `observed`, `unitId` |
-| `planning:decomposition:unit:completed` | `unit` |
-| `planning:decomposition:unit:skipped` | `reason`, `unit`, `unitId` |
-| `planning:decomposition:unit:failed` | `evidence`, `reason`, `unitId` |
-| `planning:decomposition:schedule` | `decision` |
-| `planning:decomposition:budget` | `limits`, `observed`, `unitBudgets`, `unitId` |
-| `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `unitId` |
-| `planning:decomposition:synthesis:complete` | `artifactPaths`, `coverage`, `unitCount` |
+| `planning:decomposition:start` | `limits`, `riskEvidence`, `runId`, `sessionId`, `timestamp` |
+| `planning:decomposition:unit:queued` | `runId`, `sessionId`, `timestamp`, `unit` |
+| `planning:decomposition:unit:running` | `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:unit:progress` | `message`, `observed`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:unit:completed` | `runId`, `sessionId`, `timestamp`, `unit` |
+| `planning:decomposition:unit:skipped` | `reason`, `runId`, `sessionId`, `timestamp`, `unit`, `unitId` |
+| `planning:decomposition:unit:failed` | `evidence`, `reason`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:schedule` | `decision`, `runId`, `sessionId`, `timestamp` |
+| `planning:decomposition:budget` | `limits`, `observed`, `runId`, `sessionId`, `timestamp`, `unitBudgets`, `unitId` |
+| `planning:decomposition:compact-handoff` | `artifactPath`, `byteLength`, `contentHash`, `omittedUnitIds`, `runId`, `sessionId`, `timestamp`, `unitId` |
+| `planning:decomposition:synthesis:complete` | `artifactPaths`, `coverage`, `runId`, `sessionId`, `timestamp`, `unitCount` |
 | `planning:clarification` | `questions` |
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |

@@ -1,7 +1,8 @@
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import { projectPlanningDecompositionUnitSummaryForWire } from '@eforge-build/client';
 import type { BuildStageSpec, CompilePipelineScope, ReviewProfileConfig } from '@eforge-build/client';
 import type { ClarificationQuestion, EforgeEvent, PlanningDecompositionLimits, PlanningObservedBudgetPressure, PlanningUnitBudget } from '../events.js';
-import { PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES, PLANNING_DECOMPOSITION_MAX_STRING_LENGTH } from '../events.js';
+import { PLANNING_DECOMPOSITION_MAX_CRITERIA, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS, PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES, PLANNING_DECOMPOSITION_MAX_STRING_LENGTH, PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA } from '../events.js';
 import { runPlanner } from './planner.js';
 import { runModulePlanner } from './module-planner.js';
 import type { ArchitectureSubmission, PlanSetSubmission } from '../schemas.js';
@@ -20,6 +21,7 @@ export interface BoundedPlanningUnitInput {
   upstreamCompactHandoffRefs: string[];
   budgets: PlanningUnitBudget;
   artifactDir: string;
+  artifactRef?: (absPath: string) => string;
   cwd: string;
   planSetName: string;
   pipelineScope: CompilePipelineScope;
@@ -35,6 +37,7 @@ export interface BoundedPlanningUnitInput {
   abortController?: AbortController;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   emit: (event: EforgeEvent) => void | Promise<void>;
+  onAgentStart?: (event: Extract<EforgeEvent, { type: 'agent:start' }>) => void | Promise<void>;
 }
 
 export interface BoundedPlanningUnitExecutionResult { output: PlanningUnitOutput; events: EforgeEvent[] }
@@ -64,7 +67,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
   if (sourceBytes > input.budgets.maxPromptSourceBytes) {
     const err = new CompileScopeContextError({
       source: 'decomposition',
-      failureKind: 'context-budget',
+      failureKind: 'decomposition-exhausted',
       stage: 'planning-decomposition',
       explanation: cap(`bounded unit source bytes ${sourceBytes} exceed maxPromptSourceBytes ${input.budgets.maxPromptSourceBytes}`),
       observed: { promptBytes: observed.promptBytes },
@@ -126,13 +129,18 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
       });
 
     let budgetEmitted = false;
+    let skipReason: string | undefined;
     for await (const event of runnerEvents) {
       if (!budgetEmitted && observed.promptBytes !== undefined) {
         await emit(input, budgetEvent(input, observed));
         budgetEmitted = true;
       }
       events.push(event);
+      if (event.type === 'agent:start') await input.onAgentStart?.(event);
       updateObserved(event, observed);
+      if (event.type === 'planning:skip') {
+        skipReason = event.reason;
+      }
       if (event.type === 'planning:inspection-summary') {
         await emit(input, { timestamp: now(), type: 'planning:decomposition:unit:progress', unitId: input.unit.unitId, message: 'Compact inspection handoff created', observed: pressure(input, observed) });
         if (event.artifactPath) await emitCompact(input, event.artifactPath, observed);
@@ -144,6 +152,11 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
       if (shouldForwardAgentEvent(event)) await emit(input, event);
     }
 
+    if (skipReason) {
+      const output = buildOutput(input, captures, events, observed, 'skipped', skipReason);
+      await emit(input, { timestamp: now(), type: 'planning:decomposition:unit:skipped', unitId: input.unit.unitId, reason: cap(skipReason), unit: { ...completedUnitSummary(input), status: 'skipped', coverage: { totalCriteria: input.unit.criteriaIds.length, coveredCriteria: [], unresolvedCriteria: [] } } });
+      return output;
+    }
     const output = buildOutput(input, captures, events, observed, 'completed');
     await emit(input, { timestamp: now(), type: 'planning:decomposition:unit:completed', unit: completedUnitSummary(input) });
     return output;
@@ -157,7 +170,7 @@ export async function runBoundedPlanningUnit(input: BoundedPlanningUnitInput): P
   }
 }
 
-function buildOutput(input: BoundedPlanningUnitInput, captures: Captures, events: EforgeEvent[], observed: Partial<PlanningObservedBudgetPressure>, status: 'completed' | 'failed', err?: unknown): PlanningUnitOutput {
+function buildOutput(input: BoundedPlanningUnitInput, captures: Captures, events: EforgeEvent[], observed: Partial<PlanningObservedBudgetPressure>, status: 'completed' | 'failed' | 'skipped', err?: unknown): PlanningUnitOutput {
   const compact = [...events].reverse().find((event): event is Extract<EforgeEvent, { type: 'planning:inspection-summary' }> => event.type === 'planning:inspection-summary');
   const planSuggestions = captures.planSet?.plans.map(plan => ({ id: plan.frontmatter.id, name: plan.frontmatter.name, markdown: plan.body, dependsOn: captures.planSet?.orchestration.plans.find(p => p.id === plan.frontmatter.id)?.dependsOn }))
     ?? (captures.modulePlan ? [{ id: input.unit.unitId, markdown: captures.modulePlan.markdown, buildConfigBlock: captures.modulePlan.buildConfigBlock, dependsOn: input.unit.dependsOn }] : []);
@@ -171,7 +184,7 @@ function buildOutput(input: BoundedPlanningUnitInput, captures: Captures, events
     moduleSuggestions,
     planSuggestions,
     unresolvedRequirements: status === 'failed' ? (input.unit.criteriaIds.length > 0 ? input.unit.criteriaIds : [input.unit.unitId]).map(criterionId => ({ criterionId, reason: err instanceof Error ? err.message : String(err ?? 'bounded unit failed'), evidence: input.unit.unitId })) : [],
-    compactHandoffRef: compact?.artifactPath,
+    compactHandoffRef: compact?.artifactPath ? toArtifactRef(input, compact.artifactPath) : undefined,
     synthesisNotes: [`bounded ${input.agentMode} capture for source ${input.sourceHash}`, captures.planSet ? 'captured plan-set submission' : captures.architecture ? 'captured architecture submission' : captures.modulePlan ? 'captured module-plan submission' : 'no submission captured'],
     observedBudget: pressure(input, observed),
   };
@@ -216,19 +229,20 @@ function budgetEvent(input: BoundedPlanningUnitInput, observed: Partial<Planning
 async function emitCompact(input: BoundedPlanningUnitInput, artifactPath: string, observed: Partial<PlanningObservedBudgetPressure>): Promise<void> {
   const diagnostics = await inspectPlannerHandoffArtifact(artifactPath);
   observed.compactHandoffBytes = diagnostics.byteLength;
-  await emit(input, { timestamp: now(), type: 'planning:decomposition:compact-handoff', unitId: input.unit.unitId, artifactPath, byteLength: diagnostics.byteLength, contentHash: diagnostics.contentHash, omittedUnitIds: [] });
+  await emit(input, { timestamp: now(), type: 'planning:decomposition:compact-handoff', unitId: input.unit.unitId, artifactPath: toArtifactRef(input, artifactPath), byteLength: diagnostics.byteLength, contentHash: diagnostics.contentHash, omittedUnitIds: [] });
   await emit(input, budgetEvent(input, observed));
 }
 
 async function emit(input: BoundedPlanningUnitInput, event: EforgeEvent): Promise<void> { await input.emit(event); }
+function toArtifactRef(input: BoundedPlanningUnitInput, absPath: string): string { return input.artifactRef ? input.artifactRef(absPath) : absPath; }
 function now(): string { return new Date().toISOString(); }
 function guardLimits(budget: PlanningUnitBudget): CompileContextGuardOptions['limits'] { return { maxPromptBytes: budget.maxPromptBytes, maxObservedInputTokens: budget.maxObservedInputTokens, ...(budget.maxObservedTurns ? { maxObservedTurns: budget.maxObservedTurns } : {}) }; }
 function limits(budget: PlanningUnitBudget): PlanningDecompositionLimits { return { parallelism: 1, maxDepth: budget.maxRecursiveDepth + 1, maxPromptSourceBytes: budget.maxPromptSourceBytes, maxPromptBytes: budget.maxPromptBytes, maxObservedInputTokens: budget.maxObservedInputTokens, ...(budget.maxObservedTurns ? { maxObservedTurns: budget.maxObservedTurns } : {}), maxCompactHandoffBytes: budget.maxCompactHandoffBytes, maxLocalExplorationToolUses: budget.maxLocalExplorationToolUses, maxCriteriaPerUnit: budget.maxCriteriaPerUnit, maxSubsystemsPerUnit: budget.maxSubsystemsPerUnit, maxSplitAttemptsPerUnit: budget.maxSplitAttemptsPerUnit }; }
 function isCaptureTool(tool: string): boolean { return tool.includes('submit_plan_set') || tool.includes('submit_architecture') || tool.includes('submit_module_plan'); }
 function shouldForwardAgentEvent(_event: EforgeEvent): boolean { return false; }
 function hasAgentObservation(observed: Partial<PlanningObservedBudgetPressure>): boolean { return (observed.observedTurns ?? 0) > 0 || (observed.observedInputTokens ?? 0) > 0 || (observed.localExplorationToolUses ?? 0) > 0; }
-function completedUnitSummary(input: BoundedPlanningUnitInput) { return { unitId: cap(input.unit.unitId), parentUnitId: input.unit.parentId ? cap(input.unit.parentId) : undefined, depth: input.unit.depth, sourceSlices: input.unit.sourceSlices.slice(0, PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES), coverage: { totalCriteria: input.unit.criteriaIds.length, coveredCriteria: input.unit.criteriaIds.map(criterionId => ({ criterionId: cap(criterionId), sourceHash: input.sourceHash, coveredByUnitIds: [cap(input.unit.unitId)] })), unresolvedCriteria: [] }, subsystemHints: input.unit.subsystemHints.map(cap), dependencies: input.unit.dependsOn.map(cap), interfaceConstraints: input.unit.interfaceConstraints.map(description => ({ description: cap(description) })), sharedFileConstraints: input.unit.sharedFileConstraints.map(description => ({ description: cap(description) })), budgets: input.budgets, status: 'completed' as const }; }
-function failureEvidence(input: BoundedPlanningUnitInput, observed: Partial<PlanningObservedBudgetPressure>, err: unknown) { const message = cap(err instanceof Error ? err.message : String(err)); const criteriaIds = input.unit.criteriaIds.length > 0 ? input.unit.criteriaIds : [input.unit.unitId]; return { unitId: input.unit.unitId, parentUnitId: input.unit.parentId, depth: input.unit.depth, budgets: input.budgets, observed: pressure(input, observed), assignedCriteriaIds: input.unit.criteriaIds.map(id => cap(id)), unresolvedCriteria: criteriaIds.map(criterionId => ({ criterionId: cap(criterionId), reason: message, evidence: cap(input.unit.unitId) })), blockers: [message], splitAttempts: [] }; }
+function completedUnitSummary(input: BoundedPlanningUnitInput): Extract<EforgeEvent, { type: 'planning:decomposition:unit:completed' }>['unit'] { return projectPlanningDecompositionUnitSummaryForWire({ unitId: input.unit.unitId, parentUnitId: input.unit.parentId, depth: input.unit.depth, sourceSlices: input.unit.sourceSlices.slice(0, PLANNING_DECOMPOSITION_MAX_SOURCE_SLICES), coverage: { totalCriteria: input.unit.criteriaIds.length, coveredCriteria: input.unit.criteriaIds.map(criterionId => ({ criterionId: cap(criterionId), sourceHash: input.sourceHash, coveredByUnitIds: [cap(input.unit.unitId)] })), unresolvedCriteria: [] }, subsystemHints: input.unit.subsystemHints.map(cap), dependencies: input.unit.dependsOn.map(cap), interfaceConstraints: input.unit.interfaceConstraints.map(description => ({ description: cap(description) })), sharedFileConstraints: input.unit.sharedFileConstraints.map(description => ({ description: cap(description) })), budgets: input.budgets, status: 'completed' as const }) as Extract<EforgeEvent, { type: 'planning:decomposition:unit:completed' }>['unit']; }
+function failureEvidence(input: BoundedPlanningUnitInput, observed: Partial<PlanningObservedBudgetPressure>, err: unknown) { const message = cap(err instanceof Error ? err.message : String(err)); const criteriaIds = input.unit.criteriaIds.length > 0 ? input.unit.criteriaIds : [input.unit.unitId]; return { unitId: cap(input.unit.unitId), parentUnitId: input.unit.parentId ? cap(input.unit.parentId) : undefined, depth: input.unit.depth, budgets: input.budgets, observed: pressure(input, observed), assignedCriteriaIds: input.unit.criteriaIds.slice(0, PLANNING_DECOMPOSITION_MAX_CRITERIA).map(id => cap(id)), unresolvedCriteria: criteriaIds.slice(0, PLANNING_DECOMPOSITION_MAX_UNRESOLVED_CRITERIA).map(criterionId => ({ criterionId: cap(criterionId), reason: message, evidence: cap(input.unit.unitId) })), blockers: [message].slice(0, PLANNING_DECOMPOSITION_MAX_LIST_ITEMS), splitAttempts: [] }; }
 function cap(value: string): string { return value.length <= PLANNING_DECOMPOSITION_MAX_STRING_LENGTH ? value : `${value.slice(0, PLANNING_DECOMPOSITION_MAX_STRING_LENGTH - 1)}…`; }
 
 export { sha256Hex };

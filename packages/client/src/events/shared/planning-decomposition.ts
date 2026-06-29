@@ -86,6 +86,8 @@ export const PlanningSourceSliceSummarySchema = Type.Object({
   headingPath: Type.Optional(BoundedStringListSchema),
   startLine: Type.Optional(PositiveIntegerSchema),
   endLine: Type.Optional(PositiveIntegerSchema),
+  byteStart: Type.Optional(NonNegativeIntegerSchema),
+  byteEnd: Type.Optional(NonNegativeIntegerSchema),
   criteriaIds: Type.Array(BoundedStringSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_CRITERIA }),
   byteLength: NonNegativeIntegerSchema,
 }, { additionalProperties: false });

@@ -17,6 +17,9 @@ import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
 import { validateCompileArtifacts } from './artifact-validation.js';
 import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
+// --- eforge:region plan-04-compile-orchestration-synthesis ---
+import type { DecompositionPlanningError } from './planning-decomposition.js';
+// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
 
 export interface CompileScopeRecoveryState {
@@ -88,6 +91,19 @@ export async function buildPreflightEscalationDecision(
   });
   return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
 }
+
+// --- eforge:region plan-04-compile-orchestration-synthesis ---
+export async function toDecompositionCompileScopeFailure(ctx: PipelineContext, error: DecompositionPlanningError): Promise<CompileScopeContextFailure> {
+  return buildCompileScopeContextFailure(ctx, {
+    source: error.source,
+    failureKind: error.kind,
+    stage: error.stage,
+    explanation: error.message,
+    decompositionEvidence: error.evidence,
+    risk: ctx.compilePreflight,
+  });
+}
+// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 
 export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
   const state = ensureCompileScopeRecoveryState(ctx);

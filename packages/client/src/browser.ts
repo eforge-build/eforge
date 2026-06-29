@@ -504,6 +504,7 @@ export {
   PlanningSourceSliceSummarySchema,
   PlanningSplitAttemptEvidenceSchema,
   PlanningUnitBudgetSchema,
+  PlanningUnitBudgetEntrySchema,
   PlanningUnitConstraintSchema,
   PlanningUnresolvedCriterionSchema,
   capPlanningDecompositionString,
@@ -511,6 +512,7 @@ export {
   projectPlanningDecompositionUnitSummaryForWire,
   PLANNING_DECOMPOSITION_EVENT_TYPES,
   PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS,
+  PLANNING_DECOMPOSITION_MAX_COVERAGE_OMISSIONS,
   PLANNING_DECOMPOSITION_MAX_CRITERIA,
   PLANNING_DECOMPOSITION_MAX_DEPENDENCIES,
   PLANNING_DECOMPOSITION_MAX_LIST_ITEMS,
@@ -536,6 +538,7 @@ export type {
   PlanningSourceSliceSummary,
   PlanningSplitAttemptEvidence,
   PlanningUnitBudget,
+  PlanningUnitBudgetEntry,
   PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';

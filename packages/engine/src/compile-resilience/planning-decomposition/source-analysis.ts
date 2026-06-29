@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../../validation/acceptance-criteria.js';
 
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
-export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }
+export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }
 
 const SUBSYSTEMS = ['engine', 'client', 'console', 'cli', 'input', 'test', 'docs', 'plugin', 'pi', 'monitor', 'web', 'scopes'];
 const INTERFACE_PATTERNS: Array<[string, RegExp]> = [
@@ -58,6 +58,8 @@ function locateRequirement(criterion: ExpectedAcceptanceCriterion, lines: Markdo
     raw: criterion.raw,
     line: line.line,
     headingPath: line.headingPath,
+    byteStart: line.startByte,
+    byteEnd: line.endByte,
     byteLength: Math.max(1, line.endByte - line.startByte),
     subsystemHints,
     interfaceKeys: inferInterfaceKeys(criterion.text),

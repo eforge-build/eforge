@@ -48,7 +48,7 @@ function planPayload(): PlanSetSubmission {
 
 function generatedPrd(): string {
   const rows = Array.from({ length: 1200 }, (_, i) => `  { "path": "packages/engine/src/${i}.ts", "name": "${i === 200 ? sentinel : `entry-${i}`}" }`).join(',\n');
-  return ['# Generated Source', '', '## Generated Inventory', '', '```json inventory/generated.json', '[', rows, ']', '```', '', 'Touch packages/engine, packages/client, packages/monitor, packages/console-ui, eforge-plugin, and packages/pi-eforge.', '', '## Acceptance Criteria', '', '- Planning artifacts are written.'].join('\n');
+  return ['# Generated Source', '', '## Generated Inventory', '', '```json inventory/generated.json', '[', rows, ']', '```', '', 'Touch packages/engine and packages/client.', '', '## Acceptance Criteria', '', '- Planning artifacts are written.'].join('\n');
 }
 
 function overflowGeneratedPrd(): string {
@@ -93,9 +93,9 @@ describe('compile preflight engine plumbing', () => {
       { toolCalls: [{ tool: 'submit_plan_set', toolUseId: 'tool-1', input: planPayload(), output: '' }], text: 'submitted' },
     ]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness });
-    await collect(engine.compile(overflowGeneratedPrd(), { name: 'preflight-scope' }));
+    await collect(engine.compile(generatedPrd(), { name: 'preflight-scope' }));
     expect(harness.prompts[1]).toContain('Compile Preflight Advisory');
-    expect(harness.prompts[1]).toMatch(/retry-as-expedition|bounded-decomposition/);
+    expect(harness.prompts[1]).toContain('Risk level: elevated');
   });
 
   it('keeps small PRD prompt detail unchanged without advisory', async () => {

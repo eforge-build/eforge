@@ -21,6 +21,9 @@ import type { CompilePreflightRisk } from '../events.js';
 import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
 import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
 import type { CompileScopeRecoveryState } from '../compile-resilience/context-recovery.js';
+// --- eforge:region plan-04-compile-orchestration-synthesis ---
+import type { PlanningUnitOutput } from '../compile-resilience/planning-decomposition.js';
+// --- eforge:endregion plan-04-compile-orchestration-synthesis ---
 
 export interface PipelineContext {
   agentRuntimes: AgentRuntimeRegistry;
@@ -37,6 +40,15 @@ export interface PipelineContext {
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
   runId?: string;
   compileScopeRecovery?: CompileScopeRecoveryState;
+  // --- eforge:region plan-04-compile-orchestration-synthesis ---
+  contextManagedPlanning?: {
+    decompositionArtifactDir: string;
+    graphId: string;
+    unitToModuleMap: Record<string, string>;
+    unitOutputs: PlanningUnitOutput[];
+    planningParallelism: number;
+  };
+  // --- eforge:endregion plan-04-compile-orchestration-synthesis ---
   plannerInspectionSummary?: PlannerInspectionSummary;
   verbose?: boolean;
   auto?: boolean;
