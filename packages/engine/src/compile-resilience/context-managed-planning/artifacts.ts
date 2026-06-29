@@ -30,6 +30,7 @@ export async function writeGraphArtifact(ctx: PipelineContext, graph: PlanningDe
 }
 
 export async function writeUnitOutputArtifact(ctx: PipelineContext, output: PlanningUnitOutput): Promise<string> {
+  assertNoForbiddenKeys(output);
   const dir = unitArtifactDir(ctx, output.unitId);
   await mkdir(dir, { recursive: true });
   const path = resolve(dir, 'output.json');
