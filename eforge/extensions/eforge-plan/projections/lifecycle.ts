@@ -1,16 +1,18 @@
 import type { UserStatus, LifecycleState } from '../sqlite/types.js';
 import type { KanbanLane } from '../schema.js';
 import type { ProjectionLifecycleEvidenceRow, ProjectionPlanningTaskItemRow, ProjectionSessionItemRow } from '../sqlite/repositories/projections/lifecycle.js';
-import { isActivePlanningTaskStatus, isCurrentResultLifecycleState, isLiveSessionPlanStatus, isStalePlannedSessionPlanEvidence, isTerminalSessionPlanStatus, isTerminalBuildStatus, planEligibilityFromBlockers, resultReasonCode, liveSessionPlanLifecycleState, liveSessionPlanReasonCode, type PlanEligibilityProjection, type PlanningBlocker } from '../planning-state-policy.js';
+import { isActivePlanningTaskStatus, isCurrentResultLifecycleState, isLiveQueuePrdStatus, isLiveSessionPlanStatus, isStalePlannedSessionPlanEvidence, isTerminalSessionPlanStatus, isTerminalBuildStatus, planEligibilityFromBlockers, resultReasonCode, liveSessionPlanLifecycleState, liveSessionPlanReasonCode, type PlanEligibilityProjection, type PlanningBlocker } from '../planning-state-policy.js';
 import type { LifecycleReasonCode } from './types.js';
 
 const PRIORITY: Record<string, number> = { shipped: 100, merged: 90, 'pr-open': 80, build: 70, queued: 60, submitted: 55, active: 50, planned: 40, partial: 30, failed: 20, none: 0 };
 const TERMINAL_RESULT_STATES = new Set(['shipped', 'merged', 'failed', 'partial']);
-const TERMINAL_STATUSES = new Set(['abandoned', 'canceled', 'cancelled', 'complete', 'completed', 'deleted', 'done', 'failed', 'merged', 'shipped', 'superseded']);
+const TERMINAL_STATUSES = new Set(['abandoned', 'canceled', 'cancelled', 'complete', 'completed', 'deleted', 'done', 'failed', 'merged', 'removed', 'shipped', 'superseded']);
 
 export function isTerminalLifecycleState(state: string | undefined): boolean { return state !== undefined && TERMINAL_RESULT_STATES.has(state); }
 export function isTerminalProjectionStatus(status: string | undefined): boolean { return status !== undefined && TERMINAL_STATUSES.has(status.toLowerCase()); }
-export function isActionableLifecycleEvidence(e: Pick<ProjectionLifecycleEvidenceRow, 'lifecycleState' | 'status' | 'reasonCode' | 'evidenceKind' | 'session'>): boolean { return !isStalePlannedSessionPlanEvidence(e) && (isTerminalLifecycleState(e.lifecycleState) || !isTerminalProjectionStatus(e.status)); }
+function hasLiveProjectionQueuePrd(e: Pick<ProjectionLifecycleEvidenceRow, 'queuePrdId' | 'queuePrdStatus' | 'runId' | 'buildSessionId' | 'landingId'>): boolean { return e.queuePrdId === undefined || e.queuePrdStatus === undefined || isLiveQueuePrdStatus(e.queuePrdStatus) || e.runId !== undefined || e.buildSessionId !== undefined || e.landingId !== undefined; }
+function hasLiveAssociatedBuildLink(links: readonly import('./types.js').AssociatedPlanBuildLink[]): boolean { return links.some((link) => (link.kind === 'build-run' || link.kind === 'build-session') && !isTerminalBuildStatus(link.status)); }
+export function isActionableLifecycleEvidence(e: Pick<ProjectionLifecycleEvidenceRow, 'lifecycleState' | 'status' | 'reasonCode' | 'evidenceKind' | 'session' | 'queuePrdId' | 'queuePrdStatus' | 'runId' | 'buildSessionId' | 'landingId'>): boolean { return hasLiveProjectionQueuePrd(e) && !isStalePlannedSessionPlanEvidence(e) && (isTerminalLifecycleState(e.lifecycleState) || !isTerminalProjectionStatus(e.status)); }
 export function isActionableSessionPlanStatus(status: string | undefined): boolean { return isLiveSessionPlanStatus(status); }
 
 export interface LifecycleProjection extends PlanEligibilityProjection { lifecycleState: LifecycleState; reasonCode: LifecycleReasonCode; reasons: string[]; closed: boolean; lane: KanbanLane; blocked: boolean; ready: boolean; reviewDue: boolean; evidence?: ProjectionLifecycleEvidenceRow }
@@ -35,7 +37,7 @@ export function blockersFromLifecycleInput(input: { itemId: string; evidence: Pr
   const links = input.links ?? [];
   const blockers: PlanningBlocker[] = [];
   for (const evidence of input.evidence) {
-    if (isStalePlannedSessionPlanEvidence(evidence)) continue;
+    if ((!hasLiveProjectionQueuePrd(evidence) && !hasLiveAssociatedBuildLink(links)) || isStalePlannedSessionPlanEvidence(evidence)) continue;
     if (isCurrentResultLifecycleState(evidence.lifecycleState)) blockers.push({ reasonCode: reasonForEvidence(evidence), lifecycleState: evidence.lifecycleState, associatedLinks: links, terminal: true });
     else if (['submitted', 'queued', 'build', 'pr-open'].includes(evidence.lifecycleState) && !isTerminalBuildStatus(evidence.status)) blockers.push({ reasonCode: reasonForEvidence(evidence), lifecycleState: evidence.lifecycleState, associatedLinks: links, terminal: false });
   }

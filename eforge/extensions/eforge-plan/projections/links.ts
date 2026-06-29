@@ -1,6 +1,7 @@
 import type { EforgePlanStore } from '../sqlite/index.js';
 import { listProjectionQueueBuildLinks, listProjectionSessionItems, listProjectionPlanningTaskItems, listLifecycleEvidenceForItems } from '../sqlite/repositories/projections/lifecycle.js';
 import type { AssociatedPlanBuildLink } from './types.js';
+import { isLiveQueuePrdStatus } from '../planning-state-policy.js';
 import { mapReasonCode, reasonForEvidence } from './lifecycle.js';
 
 export function getAssociatedPlanBuildLinksForItemsFromStore(store: EforgePlanStore, itemIds: readonly string[]): AssociatedPlanBuildLink[] {
@@ -17,6 +18,9 @@ export function getAssociatedPlanBuildLinksForItemsFromStore(store: EforgePlanSt
   for (const link of links) for (const itemId of link.itemIds) addSessionItem(link.session, itemId);
   const sessions = new Set(sessionItemIds.keys());
   for (const q of listProjectionQueueBuildLinks(store).filter((q) => (q.itemId && ids.has(q.itemId)) || (!q.itemId && q.session && sessions.has(q.session)))) {
+    // --- eforge:region plan-02-eforge-plan-cleanup ---
+    if (q.kind === 'queue-prd' && !isLiveQueuePrdStatus(q.status)) continue;
+    // --- eforge:endregion plan-02-eforge-plan-cleanup ---
     const reasonCode = q.kind === 'queue-prd' ? 'queued-build' : q.kind === 'build-session' ? 'active-build-session' : q.kind === 'build-run' ? 'running-build' : q.status === 'merged' ? 'merged-result' : q.status === 'shipped' ? 'shipped-result' : 'open-pr';
     const linkedItemIds = q.itemId ? [q.itemId] : [...(sessionItemIds.get(q.session ?? '') ?? [])];
     if (linkedItemIds.length === 0) continue;

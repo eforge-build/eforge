@@ -28,6 +28,7 @@ import {
 import { captureCanonicalBacklogItem, CanonicalOptimisticLockError, readCanonicalBacklogItem, readCanonicalEpic, updateCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
 import { deriveItemSectionRows, patchItemBodySections } from './canonical/item-body-sections.js';
 import { applyLifecycleEvent } from './lifecycle.js';
+import { synchronizeRemovedQueuePrdCoverage } from './canonical/queue-removal-cleanup.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { userActionError } from './action-errors.js';
@@ -402,6 +403,12 @@ export default defineEforgeExtension((eforge) => {
   for (const pattern of ['enqueue:start', 'enqueue:complete', 'queue:prd:start', 'queue:prd:complete', 'session:start', 'session:end', 'landing:complete', 'landing:auto-merge:complete'] as const) {
     eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event, { mutateLegacyTraces: false }); });
   }
+  // --- eforge:region plan-02-eforge-plan-cleanup ---
+  eforge.onEvent('queue:prd:removed', async (event, ctx) => {
+    const prdId = queueRemovalPrdId(event);
+    if (prdId !== undefined) await synchronizeRemovedQueuePrdCoverage(await resolveHookCwd(ctx), prdId, { timestamp: eventTimestamp(event) });
+  });
+  // --- eforge:endregion plan-02-eforge-plan-cleanup ---
 });
 
 type UpdateItemInputValue = typeof UpdateInput extends { static: infer T } ? T : any;
@@ -505,6 +512,20 @@ async function resolveHookCwd(ctx: EventHookContext): Promise<string> {
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to resolve lifecycle hook cwd.');
   return result.stdout.trim();
 }
+
+// --- eforge:region plan-02-eforge-plan-cleanup ---
+function queueRemovalPrdId(event: Record<string, unknown>): string | undefined {
+  return stringValue(event.prdId) ?? stringValue(event.id);
+}
+
+function eventTimestamp(event: Record<string, unknown>): string | undefined {
+  return stringValue(event.timestamp);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+// --- eforge:endregion plan-02-eforge-plan-cleanup ---
 
 export async function loadItemSectionsForDisplay(cwd: string, itemId: string): Promise<Record<string, string>> {
   const item = await readBacklogItem(cwd, itemId);

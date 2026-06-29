@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { API_ROUTES, buildPath, safeParseEforgeEvent } from '@eforge-build/client';
+import { API_ROUTES, buildPath, eventRegistry, safeParseEforgeEvent, type ProjectableState } from '@eforge-build/client';
 import { startControlRouteHarness, type ControlRouteHarness } from '../packages/monitor/src/__tests__/routes-control-harness.js';
 
 let harness: ControlRouteHarness | undefined;
@@ -44,6 +44,19 @@ describe('queue removal events', () => {
       });
       expect(result.success, previousStatus).toBe(true);
     }
+  });
+
+  it('projects queue:prd:removed by removing only the matching PRD from client state', () => {
+    const state = {
+      runs: [],
+      queue: [{ id: 'removed-prd', title: 'Removed PRD', status: 'pending' }, { id: 'kept-prd', title: 'Kept PRD', status: 'waiting' }],
+      autoBuild: null,
+      latestHeartbeat: null,
+      stackLayers: [],
+    } satisfies ProjectableState;
+
+    expect(eventRegistry['queue:prd:removed'].project?.({ type: 'queue:prd:removed', prdId: 'removed-prd', previousStatus: 'pending', timestamp: '2025-01-01T00:00:00.000Z' }, state)).toEqual({ queue: [{ id: 'kept-prd', title: 'Kept PRD', status: 'waiting' }] });
+    expect(eventRegistry['queue:prd:removed'].project?.({ type: 'queue:prd:removed', prdId: 'missing-prd', previousStatus: 'pending', timestamp: '2025-01-01T00:00:00.000Z' }, state)).toBeUndefined();
   });
 
   it('emits exactly one removal event after a failed item removal and preserves the response shape', async () => {
@@ -114,7 +127,7 @@ describe('queue removal events', () => {
     const res = await removePrd('hooked-prd');
 
     expect(res.status).toBe(200);
-    expect(existsSync(hookFlag)).toBe(true);
+    expect(JSON.parse(await readFile(hookFlag, 'utf-8'))).toEqual({ type: 'queue:prd:removed', prdId: 'hooked-prd', previousStatus: 'pending' });
     expect(removalEvents()).toHaveLength(1);
   });
 
