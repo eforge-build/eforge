@@ -5,8 +5,10 @@ export { buildPlanningAtomTask, buildPlanningAtomTasks, summarizePlanningAtomOut
 export { selectReadyPlanningAtoms, type BlockedPlanningAtom, type PlanningAtomScheduleDecision, type SelectReadyPlanningAtomsInput } from './planner-compiler/atom-scheduler.js';
 export { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type MaterializePlanningAtomSourceInput, type PlanningAtomSourceExcerpt, type PlanningAtomSourceMaterialization } from './planner-compiler/atom-source-materialization.js';
 export { derivePlanningAtomBudget } from './planner-compiler/budgets.js';
+export { runBoundedPlannerCompilerCompileStage } from './planner-compiler/compile-stage-integration.js';
 export { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type BoundedPlannerCompilerStatus, type RunBoundedPlannerCompilerInput } from './planner-compiler/compiler-runner.js';
 export { synthesizePlanningArtifacts, type PlanningArtifactOrchestration, type PlanningArtifactSynthesisResult, type PlanningSynthesizedModulePlan, type SynthesizePlanningArtifactsInput } from './planner-compiler/plan-artifact-synthesis.js';
+export { writePlanningCompilerArtifacts, type WritePlanningCompilerArtifactsInput, type WritePlanningCompilerArtifactsResult } from './planner-compiler/plan-artifact-writer.js';
 export { buildPlanningReduceTask, buildPlanningReduceTree, DEFAULT_PLANNING_REDUCE_LIMITS, validatePlanningReduceOutput, type BuildPlanningReduceTreeInput, type PlanningReduceBudget, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceOutputValidation, type PlanningReduceTask, type PlanningReduceTree, type ValidatePlanningReduceOutputInput } from './planner-compiler/reduce-contracts.js';
 export { runPlanningReduce, type PlanningReduceResult, type RunPlanningReduceInput } from './planner-compiler/reduce-runner.js';
 export { formatPlanningReducerPrompt, parsePlanningReduceOutput, runPlanningReducer, type PlanningReducerResult, type RunPlanningReducerInput } from './planner-compiler/reducer-agent.js';
