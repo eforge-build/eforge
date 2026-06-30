@@ -4,7 +4,8 @@ import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput, type PlanningAtomOutputStatus, type PlanningAtomPlanFragment, type PlanningAtomModuleCandidate } from './atom-planning-contracts.js';
-import { coercePlanningReduceDigest } from './reduce-digest-contracts.js';
+import { DEFAULT_PLANNING_REDUCE_LIMITS } from './reduce-contracts.js';
+import { coercePlanningReduceDigest, deriveReduceDigestTotalByteLimit, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
@@ -37,7 +38,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
         cwd: input.cwd,
         maxTurns: input.agentOptions?.maxTurns ?? 4,
         tools: 'none',
-        customTools: [createAtomOutputSubmissionTool(submitToolName, (output) => {
+        customTools: [createAtomOutputSubmissionTool(submitToolName, input.task, (output) => {
           if (submittedOutput) return false;
           submittedOutput = output;
           return true;
@@ -118,12 +119,17 @@ Call ${submitToolName} with an object matching its schema.
 - Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for reducer agents; do not copy full markdown into it.
 - reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
+- reduceDigest's serialized JSON must fit within ${atomReduceDigestTotalByteLimit()} bytes (derived from the reducer prompt budget and minimum reducer fan-in); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
 - Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
 }
 
-function createAtomOutputSubmissionTool(submitToolName: string, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {
+function atomReduceDigestTotalByteLimit(): number {
+  return deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: DEFAULT_PLANNING_REDUCE_LIMITS.maxReducePromptBytes });
+}
+
+function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAtomTask, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {
   return {
     name: SUBMIT_ATOM_OUTPUT_TOOL,
     description: 'Submit the structured bounded planner atom output. This is the only way to complete an atom-planner turn.',
@@ -131,7 +137,12 @@ function createAtomOutputSubmissionTool(submitToolName: string, onSubmit: (outpu
     handler: async (input: unknown) => {
       const parsed = safeParseWithSchema(PlanningAtomOutputSchema, input);
       if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
-      if (!onSubmit(parsed.data as PlanningAtomOutput)) return `Error: ${submitToolName} was already called. Only one atom output submission is allowed.`;
+      const output = parsed.data as PlanningAtomOutput;
+      if (output.reduceDigest) {
+        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxTotalBytes: atomReduceDigestTotalByteLimit() });
+        if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
+      }
+      if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one atom output submission is allowed.`;
       return 'Atom output submitted successfully.';
     },
   };

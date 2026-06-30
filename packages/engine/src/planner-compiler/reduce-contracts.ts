@@ -3,7 +3,7 @@ import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
 import { PlanningAtomModuleCandidateSchema, PlanningAtomPlanFragmentSchema, type PlanningAtomModuleCandidate, type PlanningAtomOutput, type PlanningAtomPlanFragment } from './atom-planning-contracts.js';
-import { clonePlanningReduceDigest, PlanningReduceDigestSchema, validatePlanningReduceDigest, type PlanningReduceDigest } from './reduce-digest-contracts.js';
+import { clonePlanningReduceDigest, deriveReduceDigestTotalByteLimit, PlanningReduceDigestSchema, validatePlanningReduceDigest, type PlanningReduceDigest } from './reduce-digest-contracts.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
 export const PlanningReduceIssueSchema = Type.Object({ title: boundedString(240), criterionIds: Type.Array(boundedString(80), { maxItems: 64 }), aspectIds: Type.Array(boundedString(240), { maxItems: 128 }), description: boundedString(4_000), sourceIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 32 })) }, { additionalProperties: false });
@@ -87,7 +87,7 @@ function validateReduceOutput(input: ValidatePlanningReduceOutputInput): string[
   if (output.status === 'completed' && output.gaps?.some((gap) => gap.representationRequired)) errors.push(`completed reduce output has unrepresented gaps:${output.nodeId}`);
   if (output.status !== 'failed' && !nonEmpty(output.compactSummary)) errors.push(`reduce output requires compact summary:${output.nodeId}`);
   if (utf8ByteLength(output.compactSummary ?? '') > task.budget.maxReduceSummaryBytes) errors.push(`reduce summary budget exceeded:${output.nodeId}`);
-  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds }));
+  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxTotalBytes: deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes }) }));
   validateUniqueIds('plan fragment', output.planFragments?.map((fragment) => fragment.fragmentId) ?? [], errors);
   validateUniqueIds('module candidate', output.moduleCandidates?.map((module) => module.moduleId) ?? [], errors);
   validateUniqueIds('reduce conflict', output.conflicts?.map((conflict) => conflict.conflictId) ?? [], errors);

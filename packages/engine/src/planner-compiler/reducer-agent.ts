@@ -6,7 +6,7 @@ import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
-import { coercePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import { coercePlanningReduceDigest, deriveReduceDigestTotalByteLimit, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -33,7 +33,7 @@ export async function runPlanningReducer(input: RunPlanningReducerInput): Promis
         cwd: input.cwd,
         maxTurns: input.agentOptions?.maxTurns ?? 4,
         tools: 'none',
-        customTools: [createReduceOutputSubmissionTool(submitToolName, (output) => {
+        customTools: [createReduceOutputSubmissionTool(submitToolName, input.task, (output) => {
           if (submittedOutput) return false;
           submittedOutput = output;
           return true;
@@ -95,11 +95,16 @@ Call ${submitToolName} with an object matching its schema.
 - Failed outputs must not include fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for parent reducers; do not copy full markdown into it.
 - reduceDigest.sourceId must be exactly "${task.node.nodeId}" and reduceDigest.sourceKind must be "reduce".
+- reduceDigest's serialized JSON must fit within ${reduceDigestTotalByteLimit(task)} bytes (derived from this reducer's prompt budget and minimum reducer fan-in); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Keep compactSummary within ${task.budget.maxReduceSummaryBytes} bytes.
 `;
 }
 
-function createReduceOutputSubmissionTool(submitToolName: string, onSubmit: (output: PlanningReduceOutput) => boolean): CustomTool {
+function reduceDigestTotalByteLimit(task: PlanningReduceTask): number {
+  return deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes });
+}
+
+function createReduceOutputSubmissionTool(submitToolName: string, task: PlanningReduceTask, onSubmit: (output: PlanningReduceOutput) => boolean): CustomTool {
   return {
     name: SUBMIT_REDUCE_OUTPUT_TOOL,
     description: 'Submit the structured bounded reduce output. This is the only way to complete a reduce turn.',
@@ -107,7 +112,12 @@ function createReduceOutputSubmissionTool(submitToolName: string, onSubmit: (out
     handler: async (input: unknown) => {
       const parsed = safeParseWithSchema(PlanningReduceOutputSchema, input);
       if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
-      if (!onSubmit(parsed.data as PlanningReduceOutput)) return `Error: ${submitToolName} was already called. Only one reduce output submission is allowed.`;
+      const output = parsed.data as PlanningReduceOutput;
+      if (output.reduceDigest) {
+        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.node.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxTotalBytes: reduceDigestTotalByteLimit(task) });
+        if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
+      }
+      if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one reduce output submission is allowed.`;
       return 'Reduce output submitted successfully.';
     },
   };
@@ -180,7 +190,7 @@ function issueDigest(kind: 'conflict' | 'gap', issueId: string, title: string, d
 }
 
 function boundedOrReference(value: string | undefined, fallback: string): string {
-  if (value && utf8ByteLength(value) <= 700) return value;
+  if (value && utf8ByteLength(value) <= REDUCE_DIGEST_LIMITS.fragmentIntentBytes) return value;
   return fallback;
 }
 

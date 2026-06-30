@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, formatPlanningReducerPrompt, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const reduceLimits: PlanningReduceLimits = { maxInputsPerReduce: 2, maxReduceDepth: 4, maxReducePromptBytes: 50_000, maxReduceSummaryBytes: 8_000 };
+const constrainedPromptBudget = 24_000;
 const hash = (value: string) => `h${value.length}`.padEnd(64, '0');
 
 function prd(criteria: string[]): string {
@@ -104,7 +105,7 @@ describe('planning reduce runner', () => {
         modules: (output.moduleCandidates ?? []).map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: `Purpose for ${module.moduleId}.`, criterionIds: module.criterionIds, aspectIds: module.aspectIds, validationExpectation: 'Run focused validation.' })),
       },
     }));
-    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: 24_000 } });
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget } });
     const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
 
     const prompt = formatPlanningReducerPrompt(task);
@@ -117,14 +118,36 @@ describe('planning reduce runner', () => {
   it('reduces fan-in when configured reducer inputs exceed prompt budget', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.']);
     data.mapResult.outputs = data.mapResult.outputs.map((output) => ({ ...output, reduceDigest: largeReduceDigest(output) }));
-    const adaptiveTree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 2, maxReducePromptBytes: 24_000 } });
+    const adaptiveTree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 2, maxReducePromptBytes: constrainedPromptBudget } });
     const harness = new StubHarness(scriptedReduceOutputs(adaptiveTree, data.mapResult.outputs).map(reduceSubmission));
 
-    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: 24_000 } });
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget } });
 
     expect(result.tree.limits.maxInputsPerReduce).toBe(2);
     expect(result.reduceComplete).toBe(true);
-    expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= 24_000)).toBe(true);
+    expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= constrainedPromptBudget)).toBe(true);
+  });
+
+  it('rejects oversized reducer digests during structured submission', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const node = tree.nodes[0];
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, []);
+    const events: unknown[] = [];
+    const oversized = oversizedDigestReduceOutput(node);
+    const digestBudget = deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes });
+    const harness = new StubHarness([{ toolCalls: [reduceToolCall(oversized, 'submit-oversized'), reduceToolCall(validReduceOutputWithDigest(node), 'submit-valid')] }]);
+
+    expect(Buffer.byteLength(JSON.stringify(oversized.reduceDigest), 'utf8')).toBeGreaterThan(digestBudget);
+
+    const result = await runPlanningReducer({ task, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } });
+
+    expect(result.output.nodeId).toBe(node.nodeId);
+    expect(result.output.reduceDigest?.sourceId).toBe(node.nodeId);
+    expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
+      expect.stringContaining('reduce digest total budget exceeded'),
+      expect.stringContaining('Reduce output submitted successfully.'),
+    ]);
   });
 
   it('retries retryable infrastructure failures before failing a reduce node', async () => {
@@ -193,7 +216,11 @@ describe('planning reduce runner', () => {
 });
 
 function reduceSubmission(output: PlanningReduceOutput | { nodeId: string; status: 'completed'; compactSummary: string; planFragments?: PlanningReduceOutput['planFragments'] }) {
-  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
+  return { toolCalls: [reduceToolCall(output, `submit-${output.nodeId}`)] };
+}
+
+function reduceToolCall(output: PlanningReduceOutput | { nodeId: string; status: 'completed'; compactSummary: string; planFragments?: PlanningReduceOutput['planFragments'] }, toolUseId: string) {
+  return { tool: 'submit_reduce_output', toolUseId, input: output, output: 'ok' };
 }
 
 class PrefixedSubmitHarness extends StubHarness {
@@ -222,6 +249,14 @@ function validReduceOutput(node: PlanningReduceNode, options: { gap?: boolean; s
     ...(options.gap ? { gaps: [{ gapId: `gap-${node.nodeId}`, title: 'Gap', criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: 'Gap requires representation.', representationRequired: true }] } : {}),
     validationStrategy: 'Run relevant validation.',
   };
+}
+
+function validReduceOutputWithDigest(node: PlanningReduceNode): PlanningReduceOutput {
+  return { ...validReduceOutput(node), reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] } };
+}
+
+function oversizedDigestReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {
+  return { ...validReduceOutput(node), reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: Array.from({ length: 16 }, (_, index) => ({ fragmentId: `oversized-fragment-${index}`, title: `Fragment ${index}`, intent: 'oversized intent '.repeat(55), criterionIds: node.criterionIds, aspectIds: node.aspectIds })) } };
 }
 
 function completedAtomOutput(task: PlanningAtomTask): PlanningAtomOutput {
