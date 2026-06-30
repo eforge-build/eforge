@@ -5,6 +5,8 @@ build:
     - pnpm type-check
     - pnpm test
     - node packages/docs-gen/dist/cli.js check
+compile:
+  planningUnitParallelism: 4
 stacking:
   enabled: true
   provider: git-spice

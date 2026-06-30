@@ -4882,7 +4882,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 244
+Total variants: 248
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -4977,6 +4977,10 @@ Total variants: 244
 | `planning:cohesion:evaluate:start` | - |
 | `planning:cohesion:evaluate:continuation` | `attempt`, `maxContinuations` |
 | `planning:cohesion:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
+| `planning:map-reduce:atoms` | `atomCount`, `atoms`, `edgeCount`, `edges`, `graphId` |
+| `planning:map-reduce:atom:status` | `atomId`, `reason`, `status` |
+| `planning:map-reduce:reduce-tree` | `graphId`, `maxDepth`, `nodeCount`, `nodes`, `rootNodeId` |
+| `planning:map-reduce:reduce:status` | `nodeId`, `reason`, `status` |
 | `plan:build:start` | `planId` |
 | `plan:build:implement:start` | `planId` |
 | `plan:build:implement:progress` | `message`, `planId` |

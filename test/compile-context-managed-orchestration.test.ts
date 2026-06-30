@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { CompilePreflightRisk, EforgeEvent } from '@eforge-build/engine/events';
 import { getCompileStage } from '@eforge-build/engine/pipeline';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { makePipelineCtx, TEST_PIPELINE } from './pipeline-helpers.js';
 import { StubHarness, type StubResponse } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -63,7 +64,7 @@ function composer(scope: 'excursion' | 'expedition' = 'excursion'): StubResponse
   };
 }
 
-function unitResponse(id: string): StubResponse {
+function directPlanResponse(id: string): StubResponse {
   return {
     toolCalls: [{
       tool: 'submit_plan_set',
@@ -79,41 +80,96 @@ function unitResponse(id: string): StubResponse {
   };
 }
 
-describe('compile planner stage context-managed orchestration branch', () => {
-  it('routes overflow-risk bounded-decomposition through the controller and avoids a broad root planner prompt', async () => {
-    const harness = new StubHarness([composer(), ...Array.from({ length: 8 }, (_, index) => unitResponse(String(index + 1)))]);
+function compilerResponses(content: string, cfg = config()): StubResponse[] {
+  const tasks = expectedTasks(content, cfg);
+  const outputs = tasks.map(completedOutput);
+  return [...outputs.map(atomSubmission), reduceSubmission(completedReduceOutput(outputs))];
+}
+
+function expectedTasks(content: string, cfg = config()): PlanningAtomTask[] {
+  const limits = resolvePlanningDecompositionLimits(cfg);
+  const inventory = deriveSourceInventory({ content, hash: hash(content), path: undefined });
+  const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+  const sharedBrief = deriveSharedPlanningBrief({ graph });
+  return buildPlanningAtomTasks({ graph, inventory, sharedBrief });
+}
+
+function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
+  return {
+    atomId: task.atomId,
+    status: 'completed',
+    aspectUpdates: task.aspectIds.map((aspectId) => ({ aspectId, status: 'resolved', completedByAtomIds: [task.atomId] })),
+    compactHandoff: `completed ${task.atomId}`,
+    planFragments: [{ fragmentId: `fragment-${task.atomId}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, markdown: `Plan ${task.title}.` }],
+    moduleCandidates: [{ moduleId: `module-${task.atomId}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, description: `Implement ${task.title}.`, validationExpectation: 'Relevant checks pass.' }],
+  };
+}
+
+function completedReduceOutput(outputs: PlanningAtomOutput[]) {
+  const criterionIds = outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? []);
+  const aspectIds = outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? []);
+  return {
+    nodeId: 'reduce-000-001',
+    status: 'completed',
+    compactSummary: 'Reduced compiler synthesis.',
+    reduceDigest: { sourceId: 'reduce-000-001', sourceKind: 'reduce', status: 'completed', summary: 'Reduced compiler synthesis.', criterionIds, aspectIds },
+    planFragments: outputs.flatMap((output) => output.planFragments ?? []),
+    moduleCandidates: [{ moduleId: 'module-reduced', title: 'Reduced module', criterionIds, aspectIds, description: 'Implement reduced compiler work.', validationExpectation: 'Reduced checks pass.' }],
+    validationStrategy: 'Run relevant checks.',
+  };
+}
+
+function atomSubmission(output: PlanningAtomOutput): StubResponse {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function reduceSubmission(output: ReturnType<typeof completedReduceOutput>): StubResponse {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
+}
+
+function hash(value: string): string {
+  return `h${value.length}`.padEnd(64, '0');
+}
+
+describe('compile planner stage bounded compiler orchestration branch', () => {
+  it('routes overflow-risk bounded-decomposition through the canonical compiler without a broad root planner prompt', async () => {
+    const content = source();
+    const cfg = config();
+    const harness = new StubHarness([composer(), ...compilerResponses(content, cfg)]);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
-      sourceContent: source(),
+      sourceContent: content,
       compilePreflight: boundedRisk(),
-      config: config(),
+      config: cfg,
       pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
       agentRuntimes: singletonRegistry(harness),
     });
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(true);
-    expect(events.some((event) => event.type === 'planning:decomposition:schedule')).toBe(true);
-    expect(events.some((event) => event.type === 'planning:decomposition:synthesis:complete')).toBe(true);
-    expect(harness.prompts).toHaveLength(1 + ctx.contextManagedPlanning!.unitOutputs.length);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
+    expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(false);
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    expect(harness.prompts).toHaveLength(1 + expectedTasks(content, cfg).length + 1);
     expect(harness.prompts[0]).toContain(sentinel);
-    expect(harness.prompts.slice(1).every((prompt) => prompt.includes('unit-') && !prompt.includes(sentinel))).toBe(true);
-    expect(ctx.contextManagedPlanning).toMatchObject({ planningParallelism: 2 });
+    expect(harness.calls.slice(1).every((call) => call.tools === 'none')).toBe(true);
+    expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
   });
 
-  it('falls back to context-managed decomposition when an elevated direct planner run trips the live guard', async () => {
+  it('falls back to the bounded compiler when an elevated direct planner run trips the live guard', async () => {
+    const content = source();
+    const cfg = config();
     const harness = new StubHarness([
       composer(),
       { events: [{ kind: 'usage', usage: { input: 101, total: 101 }, numTurns: 1 }] },
-      ...Array.from({ length: 8 }, (_, index) => unitResponse(`fallback-${index + 1}`)),
+      ...compilerResponses(content, cfg),
     ]);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
-      sourceContent: source(),
+      sourceContent: content,
       compilePreflight: elevatedRisk(),
       compileContextGuardLimits: { maxObservedInputTokens: 100 },
-      config: config(),
+      config: cfg,
       pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
       agentRuntimes: singletonRegistry(harness),
     });
@@ -121,17 +177,17 @@ describe('compile planner stage context-managed orchestration branch', () => {
     const events = await collect(getCompileStage('planner')(ctx));
 
     expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
-    expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(true);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
-    expect(ctx.contextManagedPlanning).toBeDefined();
+    expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
     expect(harness.prompts[1]).toContain(sentinel);
-    expect(harness.prompts.slice(2).every((prompt) => prompt.includes('unit-') && !prompt.includes(sentinel))).toBe(true);
+    expect(harness.calls.slice(2).every((call) => call.tools === 'none')).toBe(true);
   });
 
   it('leaves normal-risk planner-stage runs on the existing direct planner path', async () => {
     const harness = new StubHarness([
       composer(),
-      unitResponse('direct-root'),
+      directPlanResponse('direct-root'),
     ]);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
@@ -148,6 +204,5 @@ describe('compile planner stage context-managed orchestration branch', () => {
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
     expect(harness.prompts).toHaveLength(2);
     expect(harness.prompts[1]).toContain(sentinel);
-    expect(ctx.contextManagedPlanning).toBeUndefined();
   });
 });

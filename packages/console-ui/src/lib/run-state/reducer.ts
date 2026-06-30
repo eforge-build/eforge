@@ -68,6 +68,7 @@ export const initialRunState: RunState = {
   perspectiveErrors: {},
   reviewIssuesByPerspective: {},
   decisions: {},
+  mapReduce: null,
 };
 
 export type RunAction =
@@ -78,7 +79,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, resumeSeededMerged: [], resumeSeededPending: [], profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, resumeSeededMerged: [], resumeSeededPending: [], profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {}, mapReduce: null };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.
@@ -155,6 +156,7 @@ export function createInitialRunState(): RunState {
     perspectiveErrors: {},
     reviewIssuesByPerspective: {},
     decisions: {},
+    mapReduce: null,
   };
 }
 
@@ -170,6 +172,17 @@ export function selectAutoBuild(state: RunState): { paused: boolean; reason: str
     paused: state.autoBuildPausedReason !== null,
     reason: state.autoBuildPausedReason,
   };
+}
+
+/**
+ * True once a large-plan bounded-compiler run has emitted its map/reduce atom
+ * snapshot. Gates the dedicated orchestration view and the atom/reduce lane
+ * suppression in the generic pipeline. Always false for normal runs.
+ */
+export function isMapReduceRun(
+  state: RunState,
+): state is RunState & { mapReduce: NonNullable<RunState['mapReduce']> } {
+  return state.mapReduce !== null;
 }
 
 /**

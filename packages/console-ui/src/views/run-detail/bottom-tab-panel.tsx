@@ -4,6 +4,8 @@ import { ConsolePanel } from '@/components/console/console-panel';
 import type { LowerTab } from '@/components/console/console-panel';
 import { Timeline } from '@/components/timeline/timeline';
 import { PipelineSection } from './pipeline-section';
+import { OrchestrationPanel } from '@/components/map-reduce/orchestration-panel';
+import { isMapReduceRun } from '@/lib/run-state';
 import type { RunState, EforgeEvent } from '@/lib/run-state';
 import type { PlanInfo } from '@eforge-build/client/browser';
 import { FileHeatmap } from '@/components/heatmap';
@@ -31,6 +33,14 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
   const [lowerTab, setLowerTab] = useState<LowerTab>('log');
   const [showVerbose, setShowVerbose] = useState(false);
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  // planId the log is narrowed to, set by clicking a node in the orchestration
+  // board. Selecting a node also switches the lower tab to the log.
+  const [logFilterPlanId, setLogFilterPlanId] = useState<string | null>(null);
+
+  const handleSelectNode = useCallback((planId: string) => {
+    setLogFilterPlanId((prev) => (prev === planId ? null : planId));
+    setLowerTab('log');
+  }, []);
 
   // Auto-scroll state for the log tab
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -98,6 +108,8 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
           events={runState.events}
           startTime={runState.startTime}
           showVerbose={showVerbose}
+          filterPlanId={logFilterPlanId}
+          onClearFilter={() => setLogFilterPlanId(null)}
         />
       );
     }
@@ -137,14 +149,25 @@ export function BottomTabPanel({ runState, plans, detailId }: BottomTabPanelProp
       orientation="vertical"
       className="h-full"
     >
-      {/* Upper panel: pipeline */}
+      {/* Upper panel: map/reduce orchestration board on large-plan runs, else the
+          generic pipeline. The board offers a Board/Timeline toggle whose
+          Timeline mode reuses the same PipelineSection. */}
       <ResizablePanel
         id="upper"
         defaultSize={pipelineDefaultSize}
         minSize={20}
         className="overflow-y-auto"
       >
-        <PipelineSection runState={runState} plans={plans} />
+        {isMapReduceRun(runState) ? (
+          <OrchestrationPanel
+            runState={runState}
+            onSelectNode={handleSelectNode}
+            selectedPlanId={logFilterPlanId}
+            timeline={<PipelineSection runState={runState} plans={plans} />}
+          />
+        ) : (
+          <PipelineSection runState={runState} plans={plans} />
+        )}
       </ResizablePanel>
 
       <ResizableHandle withHandle />

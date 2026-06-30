@@ -1,0 +1,254 @@
+import { describe, it, expect } from 'vitest';
+import {
+  handleMapReduceAtoms,
+  handleMapReduceReduceTree,
+  handleMapReduceAtomStatus,
+  handleMapReduceReduceStatus,
+} from '../handlers/handle-map-reduce';
+import { eforgeReducer, initialRunState, isMapReduceRun } from '../reducer';
+import { buildMapReduceSummary, buildMapReduceBoard } from '../selectors/map-reduce';
+import type { AgentThread, EforgeEvent, RunState } from '../types';
+
+function makeEvent<T extends EforgeEvent['type']>(type: T, extra: object): Extract<EforgeEvent, { type: T }> {
+  return { type, timestamp: '2024-01-15T10:00:00.000Z', sessionId: 's1', ...extra } as unknown as Extract<EforgeEvent, { type: T }>;
+}
+
+const ATOMS_EVENT = makeEvent('planning:map-reduce:atoms', {
+  graphId: 'g1',
+  atomCount: 3,
+  edgeCount: 1,
+  atoms: [
+    { atomId: 'atom-a', title: 'A', reason: 'foundation-contract', criterionIds: ['c1'], dependencyAtomIds: [] },
+    { atomId: 'atom-b', title: 'B', reason: 'general', criterionIds: ['c2'], dependencyAtomIds: ['atom-a'] },
+    { atomId: 'atom-c', title: 'C', reason: 'subsystem', criterionIds: [], dependencyAtomIds: ['atom-a'] },
+  ],
+  edges: [{ fromAtomId: 'atom-a', toAtomId: 'atom-b', reason: 'depends' }],
+});
+
+const TREE_EVENT = makeEvent('planning:map-reduce:reduce-tree', {
+  graphId: 'g1',
+  rootNodeId: 'reduce-001',
+  maxDepth: 1,
+  nodeCount: 2,
+  nodes: [
+    { nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-a', 'atom-b'], inputNodeIds: [] },
+    { nodeId: 'reduce-001', depth: 1, inputAtomIds: ['atom-c'], inputNodeIds: ['reduce-000'] },
+  ],
+});
+
+describe('handle-map-reduce', () => {
+  describe('handleMapReduceAtoms', () => {
+    it('seeds the orchestration model with every atom queued', () => {
+      const delta = handleMapReduceAtoms(ATOMS_EVENT, initialRunState);
+      const mr = delta?.mapReduce;
+      expect(mr?.graphId).toBe('g1');
+      expect(mr?.atomOrder).toEqual(['atom-a', 'atom-b', 'atom-c']);
+      expect(mr?.atoms['atom-b']).toMatchObject({ title: 'B', reason: 'general', dependencyAtomIds: ['atom-a'], status: 'queued' });
+      expect(mr?.edges).toHaveLength(1);
+      expect(mr?.reduceOrder).toEqual([]);
+    });
+
+    it('preserves an already-folded reduce tree when the atom snapshot arrives second', () => {
+      const treeFirst = handleMapReduceReduceTree(TREE_EVENT, initialRunState);
+      const state = { ...initialRunState, mapReduce: treeFirst!.mapReduce! };
+      const delta = handleMapReduceAtoms(ATOMS_EVENT, state);
+      expect(delta?.mapReduce?.reduceOrder).toEqual(['reduce-000', 'reduce-001']);
+      expect(delta?.mapReduce?.atomOrder).toEqual(['atom-a', 'atom-b', 'atom-c']);
+      // The reduce-tree root must survive the later atom snapshot too.
+      expect(delta?.mapReduce?.rootNodeId).toBe('reduce-001');
+    });
+  });
+
+  describe('handleMapReduceReduceTree', () => {
+    it('folds the reduce nodes queued and preserves prior atoms', () => {
+      const atomsDelta = handleMapReduceAtoms(ATOMS_EVENT, initialRunState);
+      const state = { ...initialRunState, mapReduce: atomsDelta!.mapReduce! };
+      const delta = handleMapReduceReduceTree(TREE_EVENT, state);
+      const mr = delta?.mapReduce;
+      expect(mr?.rootNodeId).toBe('reduce-001');
+      expect(mr?.maxDepth).toBe(1);
+      expect(mr?.reduceNodes['reduce-000']).toMatchObject({ depth: 0, status: 'queued', inputAtomIds: ['atom-a', 'atom-b'] });
+      expect(mr?.atomOrder).toEqual(['atom-a', 'atom-b', 'atom-c']);
+    });
+  });
+
+  describe('status updates', () => {
+    it('updates a single atom status with reason and leaves the rest untouched', () => {
+      const state = { ...initialRunState, mapReduce: handleMapReduceAtoms(ATOMS_EVENT, initialRunState)!.mapReduce! };
+      const running = handleMapReduceAtomStatus(makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'running' }), state);
+      expect(running?.mapReduce?.atoms['atom-a'].status).toBe('running');
+      const next = { ...state, mapReduce: running!.mapReduce! };
+      const skipped = handleMapReduceAtomStatus(makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-b', status: 'skipped', reason: 'no work' }), next);
+      expect(skipped?.mapReduce?.atoms['atom-b']).toMatchObject({ status: 'skipped', statusReason: 'no work' });
+      expect(skipped?.mapReduce?.atoms['atom-a'].status).toBe('running');
+    });
+
+    it('updates a reduce node status', () => {
+      const withTree = { ...initialRunState, mapReduce: handleMapReduceReduceTree(TREE_EVENT, initialRunState)!.mapReduce! };
+      const delta = handleMapReduceReduceStatus(makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'completed' }), withTree);
+      expect(delta?.mapReduce?.reduceNodes['reduce-000'].status).toBe('completed');
+    });
+
+    it('ignores status events that arrive before any snapshot', () => {
+      expect(handleMapReduceAtomStatus(makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'running' }), initialRunState)).toBeUndefined();
+      expect(handleMapReduceReduceStatus(makeEvent('planning:map-reduce:reduce:status', { nodeId: 'x', status: 'completed' }), initialRunState)).toBeUndefined();
+    });
+
+    it('ignores status events for unknown ids', () => {
+      const state = { ...initialRunState, mapReduce: handleMapReduceAtoms(ATOMS_EVENT, initialRunState)!.mapReduce! };
+      expect(handleMapReduceAtomStatus(makeEvent('planning:map-reduce:atom:status', { atomId: 'nope', status: 'failed' }), state)).toBeUndefined();
+      // Same guard on the reduce path: a populated tree but an unknown nodeId.
+      const withTree = { ...initialRunState, mapReduce: handleMapReduceReduceTree(TREE_EVENT, initialRunState)!.mapReduce! };
+      expect(handleMapReduceReduceStatus(makeEvent('planning:map-reduce:reduce:status', { nodeId: 'nope', status: 'failed' }), withTree)).toBeUndefined();
+    });
+  });
+
+  describe('isMapReduceRun', () => {
+    it('is false on a fresh state and true once atoms arrive', () => {
+      expect(isMapReduceRun(initialRunState)).toBe(false);
+      const state = eforgeReducer(initialRunState, { type: 'ADD_EVENT', event: ATOMS_EVENT, eventId: 'e1' });
+      expect(isMapReduceRun(state)).toBe(true);
+    });
+  });
+
+  describe('reducer integration', () => {
+    it('folds the full snapshot+status sequence through BATCH_LOAD', () => {
+      const events: Array<{ event: EforgeEvent; eventId: string }> = [
+        { event: ATOMS_EVENT, eventId: 'e1' },
+        { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'completed' }), eventId: 'e2' },
+        { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-b', status: 'failed', reason: 'boom' }), eventId: 'e3' },
+        { event: TREE_EVENT, eventId: 'e4' },
+        { event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'running' }), eventId: 'e5' },
+      ];
+      const state = eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events });
+      expect(state.mapReduce?.atoms['atom-a'].status).toBe('completed');
+      expect(state.mapReduce?.atoms['atom-b']).toMatchObject({ status: 'failed', statusReason: 'boom' });
+      expect(state.mapReduce?.reduceNodes['reduce-000'].status).toBe('running');
+      expect(state.mapReduce?.reduceNodes['reduce-001'].status).toBe('queued');
+    });
+  });
+});
+
+describe('buildMapReduceSummary', () => {
+  function baseState(): RunState {
+    const events: Array<{ event: EforgeEvent; eventId: string }> = [
+      { event: ATOMS_EVENT, eventId: 'e1' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'completed' }), eventId: 'e2' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-b', status: 'running' }), eventId: 'e3' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-c', status: 'skipped' }), eventId: 'e4' },
+      { event: TREE_EVENT, eventId: 'e5' },
+      { event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'running' }), eventId: 'e6' },
+    ];
+    return eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events });
+  }
+
+  function thread(planId: string, input: number, output: number, cost: number): AgentThread {
+    return {
+      agentId: planId, agent: 'planner', planId, startedAt: '', endedAt: null, durationMs: null,
+      inputTokens: input, outputTokens: output, totalTokens: input + output, cacheRead: null,
+      cacheCreation: null, costUsd: cost, numTurns: null, model: 'claude',
+    };
+  }
+
+  it('counts atom and reduce statuses and identifies the in-flight wave', () => {
+    const summary = buildMapReduceSummary(baseState().mapReduce!, []);
+    // Full count objects (not partial) so zero-valued buckets are also pinned.
+    expect(summary.atomCounts).toEqual({ total: 3, queued: 0, running: 1, completed: 1, skipped: 1, failed: 0 });
+    expect(summary.reduceCounts).toEqual({ total: 2, queued: 1, running: 1, completed: 0, failed: 0, incomplete: 0 });
+    expect(summary.currentWave).toBe(0);
+    expect(summary.maxDepth).toBe(1);
+  });
+
+  it('sums tokens and cost only from member agent threads', () => {
+    const threads = [
+      thread('atom-a', 100, 20, 0.5),
+      thread('reduce-000', 200, 40, 1.0),
+      thread('some-other-plan', 999, 999, 9.9), // not a member — must be excluded
+    ];
+    const summary = buildMapReduceSummary(baseState().mapReduce!, threads);
+    expect(summary.tokensIn).toBe(300);
+    expect(summary.tokensOut).toBe(60);
+    expect(summary.totalTokens).toBe(360);
+    expect(summary.costUsd).toBeCloseTo(1.5, 5);
+  });
+
+  it('reports currentWave null once all reduce nodes are terminal', () => {
+    const state = eforgeReducer(baseState(), {
+      type: 'ADD_EVENT',
+      event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'completed' }),
+      eventId: 'e7',
+    });
+    const done = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-001', status: 'completed' }),
+      eventId: 'e8',
+    });
+    expect(buildMapReduceSummary(done.mapReduce!, []).currentWave).toBeNull();
+  });
+});
+
+describe('buildMapReduceBoard', () => {
+  function baseState(): RunState {
+    const events: Array<{ event: EforgeEvent; eventId: string }> = [
+      { event: ATOMS_EVENT, eventId: 'e1' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'completed' }), eventId: 'e2' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-b', status: 'running' }), eventId: 'e3' },
+      { event: TREE_EVENT, eventId: 'e4' },
+      { event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'running' }), eventId: 'e5' },
+    ];
+    return eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events });
+  }
+
+  function thread(planId: string): AgentThread {
+    return {
+      agentId: planId, agent: 'planner', planId, startedAt: '', endedAt: null, durationMs: 12_000,
+      inputTokens: 100, outputTokens: 20, totalTokens: 120, cacheRead: null,
+      cacheCreation: null, costUsd: 0.5, numTurns: 2, model: 'claude',
+    };
+  }
+
+  it('produces a Map atoms section followed by one section per reduce depth, ascending', () => {
+    const board = buildMapReduceBoard(baseState().mapReduce!, []);
+    expect(board.sections.map((s) => s.key)).toEqual(['atoms', 'reduce-wave-0', 'reduce-wave-1']);
+    expect(board.sections[0].kind).toBe('atoms');
+    expect(board.sections[1].depth).toBe(0);
+    expect(board.sections[2].depth).toBe(1);
+    // Wave labels are 1-indexed for display.
+    expect(board.sections[1].title).toBe('Reduce wave 1');
+    expect(board.sections[2].title).toBe('Reduce wave 2');
+  });
+
+  it('marks a section active when it has a queued or running node', () => {
+    const board = buildMapReduceBoard(baseState().mapReduce!, []);
+    // atom-b running -> atoms active; reduce-000 running -> wave 0 active; wave 1 only queued -> active.
+    expect(board.sections[0].active).toBe(true);
+    expect(board.sections[1].active).toBe(true);
+    expect(board.sections[2].active).toBe(true);
+  });
+
+  it('joins each node to its agent thread by planId, leaving threadless nodes null', () => {
+    const board = buildMapReduceBoard(baseState().mapReduce!, [thread('atom-a'), thread('reduce-000')]);
+    const atoms = board.sections[0].nodes;
+    const completed = atoms.find((n) => n.id === 'atom-a')!;
+    expect(completed.thread).toEqual({ model: 'claude', totalTokens: 120, durationMs: 12_000, numTurns: 2 });
+    // atom-b has no thread.
+    expect(atoms.find((n) => n.id === 'atom-b')!.thread).toBeNull();
+    // reduce node enriched too.
+    expect(board.sections[1].nodes[0].thread?.model).toBe('claude');
+  });
+
+  it('carries reduce fan-in (inputAtomIds / inputNodeIds) on reduce nodes', () => {
+    const board = buildMapReduceBoard(baseState().mapReduce!, []);
+    const root = board.sections[2].nodes[0];
+    expect(root.kind).toBe('reduce');
+    expect(root.inputAtomIds).toEqual(['atom-c']);
+    expect(root.inputNodeIds).toEqual(['reduce-000']);
+  });
+
+  it('carries the atom decomposition reason on atom nodes', () => {
+    const board = buildMapReduceBoard(baseState().mapReduce!, []);
+    const atomB = board.sections[0].nodes.find((n) => n.id === 'atom-b')!;
+    expect(atomB.kind).toBe('atom');
+    expect(atomB.reason).toBe('general');
+  });
+});

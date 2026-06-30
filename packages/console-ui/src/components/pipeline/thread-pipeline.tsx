@@ -55,9 +55,15 @@ interface ThreadPipelineProps {
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
   decisions?: Record<string, DecisionPoint[]>;
+  /**
+   * Lane keys to omit from the generic pipeline (e.g. map/reduce atom/reduce
+   * ids, which are rendered by the dedicated orchestration view instead). These
+   * agent threads still exist; they are simply not given their own top-level row.
+   */
+  suppressedLaneIds?: ReadonlySet<string>;
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions, suppressedLaneIds }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
@@ -161,6 +167,14 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     for (const id of threadsByPlan.keys()) addPlanStatusLane(id);
     for (const id of validationCommandIds) addPlanStatusLane(id);
 
+    // Drop lanes rendered by the dedicated map/reduce orchestration view so the
+    // generic pipeline does not also render a row per atom/reducer (the wall).
+    if (suppressedLaneIds && suppressedLaneIds.size > 0) {
+      for (let i = ids.length - 1; i >= 0; i--) {
+        if (suppressedLaneIds.has(ids[i])) ids.splice(i, 1);
+      }
+    }
+
     // Sort the full set by lane registry order. Within the same order tier,
     // preserve the insertion order (orchestration-declared plans first).
     const orderByIndex = new Map(ids.map((id, i) => [id, i]));
@@ -171,7 +185,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events]);
+  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, suppressedLaneIds]);
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;

@@ -63,6 +63,32 @@ function renderPipeline(props: Partial<ComponentProps<typeof ThreadPipeline>> = 
   );
 }
 
+describe('ThreadPipeline map/reduce lane suppression', () => {
+  const atomThreadA = makeThread({ planId: 'atom-a', agent: 'planner', startedAt: '2025-01-01T00:01:00.000Z' });
+  const atomThreadB = makeThread({ planId: 'atom-b', agent: 'planner', startedAt: '2025-01-01T00:02:00.000Z' });
+  const reduceThread = makeThread({ planId: 'reduce-000', agent: 'planner', startedAt: '2025-01-01T00:03:00.000Z' });
+
+  it('renders one lane per atom/reduce thread when no suppression set is provided', () => {
+    renderPipeline({ agentThreads: [atomThreadA, atomThreadB, reduceThread] });
+    expect(screen.getByText('atom-a')).toBeTruthy();
+    expect(screen.getByText('atom-b')).toBeTruthy();
+    expect(screen.getByText('reduce-000')).toBeTruthy();
+  });
+
+  it('omits suppressed atom/reduce lanes (the map/reduce wall) while keeping other lanes', () => {
+    const planThread = makeThread({ planId: 'planning', agent: 'planner', startedAt: '2025-01-01T00:00:30.000Z' });
+    renderPipeline({
+      agentThreads: [atomThreadA, atomThreadB, reduceThread, planThread],
+      suppressedLaneIds: new Set(['atom-a', 'atom-b', 'reduce-000']),
+    });
+    expect(screen.queryByText('atom-a')).toBeNull();
+    expect(screen.queryByText('atom-b')).toBeNull();
+    expect(screen.queryByText('reduce-000')).toBeNull();
+    // The non-suppressed planning lane still renders.
+    expect(screen.getByText('Planning')).toBeTruthy();
+  });
+});
+
 describe('ThreadPipeline lane ordering', () => {
   it('includes a validation lane key when only validation threads exist (no planStatuses entry)', () => {
     const validationThread = makeThread({

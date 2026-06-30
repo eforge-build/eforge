@@ -30,6 +30,18 @@ import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client/b
 export type { BuildStageSpec, ReviewProfileConfig };
 
 import type { BuildDecision, PlanningDecision } from '@eforge-build/client/browser';
+import type {
+  PlanningMapReduceAtomEdge,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceReduceStatus,
+} from '@eforge-build/client/browser';
+export type {
+  PlanningMapReduceAtomEdge,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceReduceStatus,
+};
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
@@ -137,6 +149,56 @@ export interface AgentThread {
   activity?: AgentActivityFacts;
 }
 
+/**
+ * A single map-phase atom, folded from the `planning:map-reduce:atoms` snapshot
+ * and updated in place by `planning:map-reduce:atom:status` events. Per-node
+ * cost/tokens/model live on the matching `agentThreads` entry (joined by
+ * `planId === atomId`), not here.
+ */
+export interface MapReduceAtomNode {
+  atomId: string;
+  title: string;
+  reason: PlanningMapReduceAtomReason;
+  criterionIds: string[];
+  dependencyAtomIds: string[];
+  status: PlanningMapReduceAtomStatus;
+  statusReason?: string;
+}
+
+/**
+ * A single reduce-tree node, folded from the `planning:map-reduce:reduce-tree`
+ * snapshot and updated by `planning:map-reduce:reduce:status` events.
+ */
+export interface MapReduceReduceNode {
+  nodeId: string;
+  depth: number;
+  inputAtomIds: string[];
+  inputNodeIds: string[];
+  status: PlanningMapReduceReduceStatus;
+  statusReason?: string;
+}
+
+/**
+ * Reduced map/reduce orchestration model for a large-plan bounded-compiler run.
+ * Non-null only once the `planning:map-reduce:atoms` snapshot has arrived, which
+ * is the signal `isMapReduceRun` keys off of. Atoms/reduceNodes are keyed by id
+ * for O(1) status updates; the `*Order` arrays preserve emission order for
+ * stable rendering.
+ */
+export interface MapReduceOrchestration {
+  graphId: string;
+  atomCount: number;
+  edgeCount: number;
+  edges: PlanningMapReduceAtomEdge[];
+  atoms: Record<string, MapReduceAtomNode>;
+  atomOrder: string[];
+  rootNodeId?: string;
+  maxDepth: number;
+  nodeCount: number;
+  reduceNodes: Record<string, MapReduceReduceNode>;
+  reduceOrder: string[];
+}
+
 export interface RunState {
   events: StoredEvent[];
   startTime: number | null;
@@ -175,6 +237,11 @@ export interface RunState {
    * `'__run__'` for session-level planning-phase decisions not tied to a specific plan.
    */
   decisions: Record<string, DecisionPoint[]>;
+  /**
+   * Map/reduce orchestration model for large-plan bounded-compiler runs. Null for
+   * normal runs (and until the first `planning:map-reduce:atoms` snapshot arrives).
+   */
+  mapReduce: MapReduceOrchestration | null;
 }
 
 // Ensure BuildDecision and PlanningDecision are used (they compose Decision above)

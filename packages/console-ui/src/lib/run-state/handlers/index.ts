@@ -18,6 +18,12 @@ import type { EforgeEvent } from '../types';
 import { handleSessionStart, handleSessionEnd, handleSessionProfile, handlePhaseStart } from './handle-session';
 import { handlePlanningComplete } from './handle-planning';
 import {
+  handleMapReduceAtoms,
+  handleMapReduceReduceTree,
+  handleMapReduceAtomStatus,
+  handleMapReduceReduceStatus,
+} from './handle-map-reduce';
+import {
   handlePlanBuildStart,
   handlePlanBuildImplementStart,
   handlePlanBuildDocAuthorStart,
@@ -106,6 +112,12 @@ export const handlerRegistry = {
 
   // Planning
   'planning:complete': handlePlanningComplete,
+
+  // Map/reduce orchestration (large-plan bounded compiler)
+  'planning:map-reduce:atoms': handleMapReduceAtoms,
+  'planning:map-reduce:reduce-tree': handleMapReduceReduceTree,
+  'planning:map-reduce:atom:status': handleMapReduceAtomStatus,
+  'planning:map-reduce:reduce:status': handleMapReduceReduceStatus,
 
   // Building
   'plan:build:start': handlePlanBuildStart,

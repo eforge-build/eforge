@@ -234,3 +234,26 @@ export type {
   PlanningUnitConstraint,
   PlanningUnresolvedCriterion,
 } from './events/shared/planning-decomposition.js';
+export {
+  PlanningMapReduceAtomSchema,
+  PlanningMapReduceAtomEdgeSchema,
+  PlanningMapReduceAtomReasonSchema,
+  PlanningMapReduceAtomStatusSchema,
+  PlanningMapReduceReduceNodeSchema,
+  PlanningMapReduceReduceStatusSchema,
+  PLANNING_MAP_REDUCE_EVENT_TYPES,
+  PLANNING_MAP_REDUCE_MAX_ATOMS,
+  PLANNING_MAP_REDUCE_MAX_EDGES,
+  PLANNING_MAP_REDUCE_MAX_IDS,
+  PLANNING_MAP_REDUCE_MAX_NODES,
+  PLANNING_MAP_REDUCE_MAX_STRING_LENGTH,
+} from './events/variants/planning-map-reduce.js';
+export type {
+  PlanningMapReduceAtom,
+  PlanningMapReduceAtomEdge,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceEventType,
+  PlanningMapReduceReduceNode,
+  PlanningMapReduceReduceStatus,
+} from './events/variants/planning-map-reduce.js';

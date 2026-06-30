@@ -465,6 +465,13 @@ export type {
   PlannerInspectionSourceBuildContext,
   PlannerInspectionSummary,
   PlannerInspectionSummaryEvent,
+  PlanningMapReduceAtom,
+  PlanningMapReduceAtomEdge,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceEventType,
+  PlanningMapReduceReduceNode,
+  PlanningMapReduceReduceStatus,
 } from './events.js';
 
 

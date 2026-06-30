@@ -39,7 +39,8 @@ import { derivePlannerInspectionBudget } from '../../compile-resilience/planner-
 import { applyRetryAsExpeditionPipeline, buildPreflightEscalationDecision, markRetryAsExpeditionStarted, scopeContextFailureEvent, toCompileScopeContextError } from '../../compile-resilience/context-recovery.js';
 import { validateCompileArtifacts, validateExpeditionModuleInputs } from '../../compile-resilience/artifact-validation.js';
 import { derivePiCompileContextGuard } from '../../harnesses/pi-model-resolution.js';
-import { selectCompilePlanningStrategy } from '../../compile-resilience/planning-strategy.js'; import { runContextManagedCompilePlanning } from '../../compile-resilience/context-managed-planning.js';
+import { selectCompilePlanningStrategy } from '../../compile-resilience/planning-strategy.js';
+import { runBoundedPlannerCompilerCompileStage } from '../../planner-compiler/compile-stage-integration.js';
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -49,7 +50,7 @@ function mergePromptAppend(configured: string | undefined, preflightAppend: stri
   return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
 }
 
-function shouldFallbackToContextManagedPlanning(ctx: PipelineContext, f: CompileScopeContextFailure): boolean { return !ctx.contextManagedPlanning && f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
+function shouldFallbackToBoundedPlannerCompiler(f: CompileScopeContextFailure): boolean { return f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
 
 async function resolveModelAwareCompileContextGuardOptions(
   ctx: PipelineContext,
@@ -353,10 +354,7 @@ registerCompileStage({
   }
 
   if (selectCompilePlanningStrategy({ risk: ctx.compilePreflight, selectedScope: ctx.pipeline.scope }) === 'context-managed-decomposition') {
-    yield* runContextManagedCompilePlanning(ctx);
-    if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(
-      `Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`,
-    );
+    yield* runBoundedPlannerCompilerCompileStage(ctx);
     return;
   }
 
@@ -377,10 +375,9 @@ registerCompileStage({
   } catch (err) {
     const contextError = await toCompileScopeContextError(ctx, err, 'planner');
     if (!contextError) throw err;
-    if (shouldFallbackToContextManagedPlanning(ctx, contextError.failure)) {
+    if (shouldFallbackToBoundedPlannerCompiler(contextError.failure)) {
       yield scopeContextFailureEvent(contextError.failure, ctx.runId);
-      yield* runContextManagedCompilePlanning(ctx);
-      if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(`Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`);
+      yield* runBoundedPlannerCompilerCompileStage(ctx);
       return;
     }
     if (contextError.failure.recovery.action !== 'retry-as-expedition' || !contextError.failure.recovery.eligible) throw contextError;
@@ -390,7 +387,7 @@ registerCompileStage({
     applyRetryAsExpeditionPipeline(ctx, attempted.recovery.reason);
     yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: ctx.pipeline.scope, compile: ctx.pipeline.compile, defaultBuild: ctx.pipeline.defaultBuild, defaultReview: ctx.pipeline.defaultReview, rationale: ctx.pipeline.rationale };
     if (selectCompilePlanningStrategy({ risk: ctx.compilePreflight, selectedScope: ctx.pipeline.scope }) === 'context-managed-decomposition') {
-      yield* runContextManagedCompilePlanning(ctx); if (ctx.expeditionModules.length > 0 && !ctx.pipeline.compile.includes('compile-expedition')) throw new Error(`Planner identified ${ctx.expeditionModules.length} expedition modules but the compile pipeline does not include 'compile-expedition'. orchestration.yaml will not be generated. Current compile stages: [${ctx.pipeline.compile.join(', ')}]`);
+      yield* runBoundedPlannerCompilerCompileStage(ctx);
       return; }
     yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
   }
@@ -539,7 +536,7 @@ registerCompileStage({
       run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig, contextGuard),
     }));
 
-    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError, ...(ctx.contextManagedPlanning ? { parallelism: ctx.contextManagedPlanning.planningParallelism } : {}) });
+    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });
 
     // Read completed module plan files for this wave (context for later waves)
     for (const modId of waveModuleIds) {

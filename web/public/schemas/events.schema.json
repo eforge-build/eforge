@@ -10575,6 +10575,287 @@
           "type": "object",
           "required": [
             "type",
+            "graphId",
+            "atomCount",
+            "edgeCount",
+            "atoms",
+            "edges"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:map-reduce:atoms",
+              "type": "string"
+            },
+            "graphId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "atomCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "edgeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "atoms": {
+              "maxItems": 1024,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "atomId",
+                  "title",
+                  "reason",
+                  "criterionIds",
+                  "dependencyAtomIds"
+                ],
+                "properties": {
+                  "atomId": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "foundation-contract",
+                        "type": "string"
+                      },
+                      {
+                        "const": "subsystem",
+                        "type": "string"
+                      },
+                      {
+                        "const": "oversized-criterion",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "criterionIds": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  },
+                  "dependencyAtomIds": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "edges": {
+              "maxItems": 2048,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "fromAtomId",
+                  "toAtomId",
+                  "reason"
+                ],
+                "properties": {
+                  "fromAtomId": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "toAtomId": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "atomId",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:map-reduce:atom:status",
+              "type": "string"
+            },
+            "atomId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "queued",
+                  "type": "string"
+                },
+                {
+                  "const": "running",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "maxLength": 2000,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "graphId",
+            "maxDepth",
+            "nodeCount",
+            "nodes"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:map-reduce:reduce-tree",
+              "type": "string"
+            },
+            "graphId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "rootNodeId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "maxDepth": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nodeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nodes": {
+              "maxItems": 1024,
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "nodeId",
+                  "depth",
+                  "inputAtomIds",
+                  "inputNodeIds"
+                ],
+                "properties": {
+                  "nodeId": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "depth": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "inputAtomIds": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  },
+                  "inputNodeIds": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "nodeId",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:map-reduce:reduce:status",
+              "type": "string"
+            },
+            "nodeId": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "queued",
+                  "type": "string"
+                },
+                {
+                  "const": "running",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "incomplete",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "maxLength": 2000,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "planId"
           ],
           "properties": {
@@ -29788,6 +30069,287 @@
                                 }
                               }
                             }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "graphId",
+                          "atomCount",
+                          "edgeCount",
+                          "atoms",
+                          "edges"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:map-reduce:atoms",
+                            "type": "string"
+                          },
+                          "graphId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "atomCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "edgeCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "atoms": {
+                            "maxItems": 1024,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "atomId",
+                                "title",
+                                "reason",
+                                "criterionIds",
+                                "dependencyAtomIds"
+                              ],
+                              "properties": {
+                                "atomId": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "anyOf": [
+                                    {
+                                      "const": "foundation-contract",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "subsystem",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "oversized-criterion",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "general",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "criterionIds": {
+                                  "maxItems": 128,
+                                  "type": "array",
+                                  "items": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                },
+                                "dependencyAtomIds": {
+                                  "maxItems": 128,
+                                  "type": "array",
+                                  "items": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "edges": {
+                            "maxItems": 2048,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "fromAtomId",
+                                "toAtomId",
+                                "reason"
+                              ],
+                              "properties": {
+                                "fromAtomId": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                },
+                                "toAtomId": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "atomId",
+                          "status"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:map-reduce:atom:status",
+                            "type": "string"
+                          },
+                          "atomId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "queued",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "skipped",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "graphId",
+                          "maxDepth",
+                          "nodeCount",
+                          "nodes"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:map-reduce:reduce-tree",
+                            "type": "string"
+                          },
+                          "graphId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "rootNodeId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "maxDepth": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "nodeCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "nodes": {
+                            "maxItems": 1024,
+                            "type": "array",
+                            "items": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "nodeId",
+                                "depth",
+                                "inputAtomIds",
+                                "inputNodeIds"
+                              ],
+                              "properties": {
+                                "nodeId": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                },
+                                "depth": {
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "inputAtomIds": {
+                                  "maxItems": 128,
+                                  "type": "array",
+                                  "items": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                },
+                                "inputNodeIds": {
+                                  "maxItems": 128,
+                                  "type": "array",
+                                  "items": {
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "nodeId",
+                          "status"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "planning:map-reduce:reduce:status",
+                            "type": "string"
+                          },
+                          "nodeId": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "queued",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "incomplete",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
                           }
                         }
                       },

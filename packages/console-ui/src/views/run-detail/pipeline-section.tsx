@@ -56,6 +56,19 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
     return null;
   }, [runState.events]);
 
+  // On map/reduce runs, the atom/reduce agent threads are represented by the
+  // dedicated orchestration view; exclude their lane keys here so the generic
+  // pipeline does not render a row per atom/reducer.
+  const suppressedLaneIds = useMemo(() => {
+    const mr = runState.mapReduce;
+    if (!mr) return undefined;
+    return new Set<string>([...mr.atomOrder, ...mr.reduceOrder]);
+    // Key on the order arrays (which only change on the two snapshot events), not
+    // the whole mapReduce object: per-node :*:status events spread a new mapReduce
+    // ref every tick, and rebuilding the Set there would needlessly bust
+    // ThreadPipeline's lane-ordering memo.
+  }, [runState.mapReduce?.atomOrder, runState.mapReduce?.reduceOrder]);
+
   const phaseSummary = useMemo(() => {
     for (let i = runState.events.length - 1; i >= 0; i--) {
       const { event } = runState.events[i];
@@ -83,6 +96,7 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         perspectiveErrors={runState.perspectiveErrors}
         reviewIssuesByPerspective={runState.reviewIssuesByPerspective}
         decisions={runState.decisions}
+        suppressedLaneIds={suppressedLaneIds}
       />
       <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} compileFailure={compileFailure} />
     </div>

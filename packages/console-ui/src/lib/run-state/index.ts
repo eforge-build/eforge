@@ -8,7 +8,7 @@
  */
 
 // Core reducer
-export { eforgeReducer, createInitialRunState, initialRunState, selectAutoBuild, reduce } from './reducer';
+export { eforgeReducer, createInitialRunState, initialRunState, selectAutoBuild, isMapReduceRun, reduce } from './reducer';
 export type { RunAction } from './reducer';
 
 // Types
@@ -22,6 +22,12 @@ export type {
   ModuleStatus,
   StoredEvent,
   SessionProfile,
+  MapReduceOrchestration,
+  MapReduceAtomNode,
+  MapReduceReduceNode,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceReduceStatus,
   ValidationCommandSpan,
   ValidationCommandStatus,
   // Re-exported client types (so pipeline/timeline components can import from @/lib/run-state)
@@ -52,6 +58,16 @@ export type {
   PlanningLane,
 } from './selectors/plan-progress';
 export { selectStackLayersForRun } from './selectors/stack-layers';
+export { buildMapReduceSummary, buildMapReduceBoard } from './selectors/map-reduce';
+export type {
+  MapReduceSummary,
+  MapReduceAtomCounts,
+  MapReduceReduceCounts,
+  MapReduceBoard,
+  MapReduceBoardSection,
+  MapReduceBoardNode,
+  MapReduceBoardThread,
+} from './selectors/map-reduce';
 
 // Lane registry
 export { LANE_REGISTRY, laneLabel, laneOrder, isRegisteredPhaseLane } from './lane-registry';

@@ -253,6 +253,82 @@ export function validationSwimlaneBugRunState(): RunState {
   return runStateFromEvents(events.map((event, i) => ({ event, eventId: `validation-bug-${i + 1}` })));
 }
 
+/**
+ * RunState for a large-plan bounded-compiler (map/reduce) run, mid-flight: the
+ * map phase has cleared some atoms and one is still running; the reduce tree is
+ * built with wave 0 running and the root (wave 1) still queued. Atom/reduce
+ * agent threads are keyed `planId === atomId / nodeId`, so the board's per-node
+ * enrichment join (model/tokens/duration/turns) exercises real reduced data.
+ *
+ * Folds the four `planning:map-reduce:*` events plus `agent:*` threads through
+ * the production reducer, so the orchestration selectors run against real-shaped
+ * state rather than a hand-authored `mapReduce` snapshot.
+ */
+export function mapReduceRunState(): RunState {
+  const sessionId = 'sess-map-reduce';
+  const events: EforgeEvent[] = [
+    eventAt('2024-01-15T10:00:00.000Z', { type: 'session:start', sessionId }),
+    eventAt('2024-01-15T10:00:01.000Z', { type: 'phase:start', sessionId, runId: 'run-map-reduce', planSet: 'large-plan-refactor', command: 'build' }),
+    eventAt('2024-01-15T10:00:02.000Z', { type: 'planning:start', sessionId, label: 'Payments refactor PRD', source: '# Payments refactor' }),
+
+    // Atom graph snapshot (known up front, before the map phase runs).
+    eventAt('2024-01-15T10:00:03.000Z', {
+      type: 'planning:map-reduce:atoms',
+      sessionId,
+      graphId: 'graph-payments-refactor-7f3a',
+      atomCount: 5,
+      edgeCount: 2,
+      atoms: [
+        { atomId: 'atom-001', title: 'Define payment intent contract', reason: 'foundation-contract', criterionIds: ['c1', 'c2'], dependencyAtomIds: [] },
+        { atomId: 'atom-002', title: 'Migrate ledger schema', reason: 'subsystem', criterionIds: ['c3'], dependencyAtomIds: ['atom-001'] },
+        { atomId: 'atom-003', title: 'Wire refund webhook', reason: 'general', criterionIds: ['c4'], dependencyAtomIds: ['atom-001'] },
+        { atomId: 'atom-004', title: 'Backfill legacy charges', reason: 'general', criterionIds: [], dependencyAtomIds: ['atom-002'] },
+        { atomId: 'atom-005', title: 'Update reconciliation report', reason: 'general', criterionIds: ['c5'], dependencyAtomIds: ['atom-002'] },
+      ],
+      edges: [
+        { fromAtomId: 'atom-001', toAtomId: 'atom-002', reason: 'depends' },
+        { fromAtomId: 'atom-001', toAtomId: 'atom-003', reason: 'depends' },
+      ],
+    }),
+
+    // Map phase: atom-001 + atom-002 done, atom-003 running, atom-004 skipped, atom-005 queued.
+    eventAt('2024-01-15T10:00:04.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-001', status: 'running' }),
+    eventAt('2024-01-15T10:00:04.000Z', { type: 'agent:start', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:40.000Z', { type: 'agent:result', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner', result: { durationMs: 36_000, durationApiMs: 34_000, numTurns: 2, totalCostUsd: 0.21, usage: { input: 142_000, output: 38_000, total: 180_000, cacheRead: 40_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Contract drafted.' } }),
+    eventAt('2024-01-15T10:00:40.000Z', { type: 'agent:stop', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner' }),
+    eventAt('2024-01-15T10:00:41.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-001', status: 'completed' }),
+
+    eventAt('2024-01-15T10:00:42.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-002', status: 'running' }),
+    eventAt('2024-01-15T10:00:42.000Z', { type: 'agent:start', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:01:30.000Z', { type: 'agent:result', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner', result: { durationMs: 48_000, durationApiMs: 45_000, numTurns: 3, totalCostUsd: 0.34, usage: { input: 210_000, output: 56_000, total: 266_000, cacheRead: 80_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Schema migrated.' } }),
+    eventAt('2024-01-15T10:01:30.000Z', { type: 'agent:stop', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner' }),
+    eventAt('2024-01-15T10:01:31.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-002', status: 'completed' }),
+
+    eventAt('2024-01-15T10:01:32.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-003', status: 'running' }),
+    eventAt('2024-01-15T10:01:32.000Z', { type: 'agent:start', sessionId, planId: 'atom-003', agentId: 'agent-atom-003', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+
+    eventAt('2024-01-15T10:01:33.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-004', status: 'skipped', reason: 'no acceptance criteria mapped' }),
+
+    // Reduce tree snapshot (built synchronously before the reduce loop).
+    eventAt('2024-01-15T10:01:34.000Z', {
+      type: 'planning:map-reduce:reduce-tree',
+      sessionId,
+      graphId: 'graph-payments-refactor-7f3a',
+      rootNodeId: 'reduce-001',
+      maxDepth: 1,
+      nodeCount: 2,
+      nodes: [
+        { nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-001', 'atom-002', 'atom-003'], inputNodeIds: [] },
+        { nodeId: 'reduce-001', depth: 1, inputAtomIds: ['atom-004', 'atom-005'], inputNodeIds: ['reduce-000'] },
+      ],
+    }),
+    eventAt('2024-01-15T10:01:35.000Z', { type: 'planning:map-reduce:reduce:status', sessionId, nodeId: 'reduce-000', status: 'running' }),
+    eventAt('2024-01-15T10:01:35.000Z', { type: 'agent:start', sessionId, planId: 'reduce-000', agentId: 'agent-reduce-000', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+  ];
+
+  return runStateFromEvents(events.map((event, i) => ({ event, eventId: `map-reduce-${i + 1}` })));
+}
+
 /** Wrap a RunState in an ActiveSessionDetail for a connected, running session. */
 export function activeSessionDetail(
   overrides: Partial<ActiveSessionDetail> = {},
