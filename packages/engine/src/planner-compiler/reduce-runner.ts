@@ -5,8 +5,9 @@ import type { PlanningAtomMapResult } from './atom-map-runner.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
 import { buildPlanningReduceTask, buildPlanningReduceTree, DEFAULT_PLANNING_REDUCE_LIMITS, validatePlanningReduceOutput, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceOutput, type PlanningReduceTask, type PlanningReduceTree } from './reduce-contracts.js';
 import { runPlanningReducer } from './reducer-agent.js';
+import type { PlannerCompilerEventSink } from './event-sink.js';
 
-export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; abortSignal?: AbortSignal }
+export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReduceResult { graphId: string; rootNodeId?: string; tree: PlanningReduceTree; outputs: PlanningReduceOutput[]; finalOutput?: PlanningReduceOutput; conflicts: PlanningReduceConflict[]; gaps: PlanningReduceGap[]; validationErrors: string[]; reduceComplete: boolean; events: EforgeEvent[]; iterations: number }
 
 interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeEvent[]; validationErrors: string[] }
@@ -40,7 +41,7 @@ async function runReduceNode(input: RunPlanningReduceInput, tree: PlanningReduce
   const node = requireNode(tree, nodeId);
   const task = buildTaskForNode(tree, nodeId, input.mapResult.outputs, outputs);
   try {
-    const result = await runPlanningReducer({ task, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal });
+    const result = await runPlanningReducer({ task, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, onEvent: input.onEvent });
     const validation = validatePlanningReduceOutput({ graph: input.graph, tree, task, output: result.output });
     if (!validation.ok) return { output: failedOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: result.events, validationErrors: validation.errors };
     return { output: result.output, events: result.events, validationErrors: [] };

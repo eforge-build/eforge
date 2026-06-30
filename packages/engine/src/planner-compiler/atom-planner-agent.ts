@@ -7,8 +7,9 @@ import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource,
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
 import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
+import type { PlannerCompilerEventSink } from './event-sink.js';
 
-export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle }
+export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
 export interface PlanningAtomPlannerResult { output: PlanningAtomOutput; events: EforgeEvent[]; resultText: string; materialization: PlanningAtomSourceMaterialization }
 
 export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput): Promise<PlanningAtomPlannerResult> {
@@ -29,6 +30,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
     phase: 'compile',
     stage: 'planner',
   }, 'planner', input.task.atomId)) {
+    input.onEvent?.(event);
     events.push(event);
     if (event.type === 'agent:message') streamedText += event.content;
     if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;

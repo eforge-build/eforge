@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
+import type { AgentRole, EforgeEvent } from '@eforge-build/engine/events';
 import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, runBoundedPlannerCompiler, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
@@ -55,6 +57,25 @@ describe('bounded planner compiler runner', () => {
     expect(result.residue.candidates.map((candidate) => candidate.reason)).toContain('source-evidence-missing');
   });
 
+  it('streams agent events through onEvent before the compiler promise resolves', async () => {
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const sourceEvidence = true;\n' });
+    const content = prd(['engine updates `packages/engine/src/a.ts` using repo-grounded evidence.']);
+    const [task] = expectedTasks(content);
+    const mapOutput = completedOutput(task);
+    const harness = new BlockingFirstHarness(JSON.stringify(mapOutput), JSON.stringify(completedReduceOutput(mapOutput)));
+    const streamed: EforgeEvent[] = [];
+    let settled = false;
+
+    const promise = runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits, onEvent: (event) => streamed.push(event) }).finally(() => { settled = true; });
+    await harness.firstStarted;
+
+    expect(streamed.some((event) => event.type === 'agent:start' && event.planId === task.atomId)).toBe(true);
+    expect(settled).toBe(false);
+
+    harness.releaseFirst();
+    await expect(promise).resolves.toMatchObject({ status: 'complete' });
+  });
+
   it('propagates aborts from the canonical map phase', async () => {
     const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const sourceEvidence = true;\n' });
     const content = prd(['engine updates `packages/engine/src/a.ts`.']);
@@ -92,6 +113,38 @@ function completedReduceOutput(output: PlanningAtomOutput) {
     moduleCandidates: output.moduleCandidates,
     validationStrategy: 'Run relevant checks for linked module candidates.',
   };
+}
+
+class BlockingFirstHarness implements AgentHarness {
+  readonly firstStarted: Promise<void>;
+  private readonly markFirstStarted: () => void;
+  private readonly firstRelease: Promise<void>;
+  private readonly markFirstReleased: () => void;
+  private calls = 0;
+
+  constructor(private readonly firstResultText: string, private readonly laterResultText: string) {
+    let started!: () => void;
+    let released!: () => void;
+    this.firstStarted = new Promise<void>((resolve) => { started = resolve; });
+    this.firstRelease = new Promise<void>((resolve) => { released = resolve; });
+    this.markFirstStarted = started;
+    this.markFirstReleased = released;
+  }
+
+  effectiveCustomToolName(name: string): string { return name; }
+  releaseFirst(): void { this.markFirstReleased(); }
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    const callIndex = this.calls++;
+    const agentId = `blocking-${callIndex}`;
+    yield { type: 'agent:start', planId, agentId, agent, model: options.model?.id ?? 'stub-model', harness: options.harness ?? 'pi', harnessSource: options.harnessSource ?? 'tier', tier: options.tier ?? 'stub', tierSource: options.tierSource ?? 'tier', timestamp: new Date().toISOString() };
+    if (callIndex === 0) {
+      this.markFirstStarted();
+      await this.firstRelease;
+    }
+    yield { type: 'agent:result', planId, agent, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {}, resultText: callIndex === 0 ? this.firstResultText : this.laterResultText } };
+    yield { type: 'agent:stop', planId, agent, agentId, timestamp: new Date().toISOString() };
+  }
 }
 
 async function workspace(files: Record<string, string>): Promise<string> {

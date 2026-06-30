@@ -6,7 +6,7 @@ import { resolvePlanningDecompositionLimits } from '../config.js';
 import { parseOrchestrationConfig } from '../plan.js';
 import { resolveAgentConfig } from '../pipeline/agent-config.js';
 import type { PipelineContext } from '../pipeline/types.js';
-import { runBoundedPlannerCompiler } from './compiler-runner.js';
+import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type RunBoundedPlannerCompilerInput } from './compiler-runner.js';
 import { synthesizePlanningArtifacts } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 
@@ -14,7 +14,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting bounded planner compiler...' };
   const { harness, toolbeltSummary } = ctx.agentRuntimes.forRoleResolved('planner');
   const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, toolbeltSummary);
-  const compilerResult = await runBoundedPlannerCompiler({
+  const compilerResult = yield* runCompilerAndStreamEvents({
     sourceContent: ctx.promptSourceContent ?? ctx.compilePromptSourceBundle?.promptSource ?? ctx.sourceContent,
     sourceHash: ctx.compilePromptSourceBundle?.sourceHash,
     cwd: ctx.cwd,
@@ -24,7 +24,6 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     parallelism: ctx.config.compile.planningUnitParallelism,
     abortSignal: ctx.abortController?.signal,
   });
-  for (const event of compilerResult.events) yield event;
 
   const artifacts = synthesizePlanningArtifacts({ compilerResult });
   if (artifacts.validationErrors.length > 0) {
@@ -58,6 +57,32 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   const orch = await parseOrchestrationConfig(orchPath);
   const planConfigs = orch.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review }));
   yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans: validation.plans, planConfigs };
+}
+
+async function* runCompilerAndStreamEvents(input: RunBoundedPlannerCompilerInput): AsyncGenerator<EforgeEvent, BoundedPlannerCompilerResult> {
+  const queue: EforgeEvent[] = [];
+  let wake: (() => void) | undefined;
+  let settled = false;
+  let result: BoundedPlannerCompilerResult | undefined;
+  let failure: unknown;
+  const notify = (): void => { wake?.(); wake = undefined; };
+  const compiler = runBoundedPlannerCompiler({ ...input, onEvent: (event) => { queue.push(event); notify(); } })
+    .then((value) => { result = value; })
+    .catch((err) => { failure = err; })
+    .finally(() => { settled = true; notify(); });
+
+  while (!settled || queue.length > 0) {
+    const event = queue.shift();
+    if (event) {
+      yield event;
+      continue;
+    }
+    await new Promise<void>((resolve) => { wake = resolve; });
+  }
+  await compiler;
+  if (failure) throw failure;
+  if (!result) throw new Error('Bounded planner compiler finished without a result');
+  return result;
 }
 
 function boundedCompilerPipeline(ctx: PipelineContext): PipelineContext['pipeline'] {

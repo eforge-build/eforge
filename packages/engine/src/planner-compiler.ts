@@ -7,6 +7,7 @@ export { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource,
 export { derivePlanningAtomBudget } from './planner-compiler/budgets.js';
 export { runBoundedPlannerCompilerCompileStage } from './planner-compiler/compile-stage-integration.js';
 export { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type BoundedPlannerCompilerStatus, type RunBoundedPlannerCompilerInput } from './planner-compiler/compiler-runner.js';
+export type { PlannerCompilerEventSink } from './planner-compiler/event-sink.js';
 export { synthesizePlanningArtifacts, type PlanningArtifactOrchestration, type PlanningArtifactSynthesisResult, type PlanningSynthesizedModulePlan, type SynthesizePlanningArtifactsInput } from './planner-compiler/plan-artifact-synthesis.js';
 export { writePlanningCompilerArtifacts, type WritePlanningCompilerArtifactsInput, type WritePlanningCompilerArtifactsResult } from './planner-compiler/plan-artifact-writer.js';
 export { buildPlanningReduceTask, buildPlanningReduceTree, DEFAULT_PLANNING_REDUCE_LIMITS, validatePlanningReduceOutput, type BuildPlanningReduceTreeInput, type PlanningReduceBudget, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceOutputValidation, type PlanningReduceTask, type PlanningReduceTree, type ValidatePlanningReduceOutputInput } from './planner-compiler/reduce-contracts.js';

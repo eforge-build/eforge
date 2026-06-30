@@ -8,8 +8,9 @@ import type { PlanningAspectCoverageSummary, PlanningCriterionAspect } from './c
 import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
 import { validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle } from './source-evidence-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
+import type { PlannerCompilerEventSink } from './event-sink.js';
 
-export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle }
+export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 
 interface AtomRunResult { output: PlanningAtomOutput; events: EforgeEvent[]; validationErrors: string[] }
@@ -45,7 +46,7 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
 
 async function runAtom(input: RunPlanningAtomMapInput, task: PlanningAtomTask, acceptedSharedFindings: PlanningSharedFinding[]): Promise<AtomRunResult> {
   try {
-    const result = await runPlanningAtomPlanner({ task, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, acceptedSharedFindings, sourceEvidenceBundle: input.sourceEvidenceBundle });
+    const result = await runPlanningAtomPlanner({ task, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, acceptedSharedFindings, sourceEvidenceBundle: input.sourceEvidenceBundle, onEvent: input.onEvent });
     const validation = validatePlanningAtomOutput({ graph: input.graph, inventory: input.inventory, aspects: input.aspects, task, output: result.output });
     if (!validation.ok) return { output: failedOutput(task, new Error(`invalid atom output:${validation.errors.join('; ')}`)), events: result.events, validationErrors: validation.errors };
     return { output: result.output, events: result.events, validationErrors: [] };

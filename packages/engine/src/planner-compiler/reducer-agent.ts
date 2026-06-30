@@ -5,8 +5,9 @@ import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import type { PlanningReduceConflict, PlanningReduceGap, PlanningReduceOutput, PlanningReduceOutputStatus, PlanningReduceTask } from './reduce-contracts.js';
+import type { PlannerCompilerEventSink } from './event-sink.js';
 
-export interface RunPlanningReducerInput { task: PlanningReduceTask; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal }
+export interface RunPlanningReducerInput { task: PlanningReduceTask; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReducerResult { output: PlanningReduceOutput; events: EforgeEvent[]; resultText: string; prompt: string }
 
 export async function runPlanningReducer(input: RunPlanningReducerInput): Promise<PlanningReducerResult> {
@@ -25,6 +26,7 @@ export async function runPlanningReducer(input: RunPlanningReducerInput): Promis
     phase: 'compile',
     stage: 'planner',
   }, 'planner', input.task.node.nodeId)) {
+    input.onEvent?.(event);
     events.push(event);
     if (event.type === 'agent:message') streamedText += event.content;
     if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
