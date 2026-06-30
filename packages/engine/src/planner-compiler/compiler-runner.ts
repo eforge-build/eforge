@@ -57,7 +57,8 @@ export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompiler
 }
 
 function compilerValidationErrors(sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis): string[] {
-  return [...new Set([...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduce.validationErrors, ...residue.validationErrors])].sort();
+  const reduceErrors = residue.candidates.length > 0 ? reduce.validationErrors.filter((error) => error !== 'map result incomplete') : reduce.validationErrors;
+  return [...new Set([...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduceErrors, ...residue.validationErrors])].sort();
 }
 
 function compilerStatus(map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, validationErrors: string[]): BoundedPlannerCompilerStatus {
