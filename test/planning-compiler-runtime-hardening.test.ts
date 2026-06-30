@@ -23,7 +23,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
       composerResponse(),
-      { resultText: JSON.stringify({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' }) },
+      atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'missing-evidence');
 
@@ -45,7 +45,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
       composerResponse(),
-      { resultText: JSON.stringify({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'oversized source evidence' }) },
+      atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'oversized source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'oversized-evidence');
 
@@ -63,14 +63,14 @@ describe('bounded planner compiler runtime hardening', () => {
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
       composerResponse(),
-      { resultText: JSON.stringify(mapOutput) },
-      { resultText: JSON.stringify(completedReduceOutput(mapOutput)) },
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'evidence-hygiene');
 
     await collect(getCompileStage('planner')(ctx));
 
-    const sourceEvidenceSection = promptSection(harness.prompts[1], '## Source evidence', '## Required JSON shape');
+    const sourceEvidenceSection = promptSection(harness.prompts[1], '## Source evidence', '## Structured submission rules');
     expect(sourceEvidenceSection).toContain('packages/engine/src/a.ts');
     expect(sourceEvidenceSection).not.toContain('eforge/plans/old/orchestration.yaml');
     expect(sourceEvidenceSection).not.toContain('"path": "packages"');
@@ -84,8 +84,8 @@ describe('bounded planner compiler runtime hardening', () => {
     const reduceOutput = reduceOutputWithGapAndConflict(mapOutput);
     const harness = new StubHarness([
       composerResponse(),
-      { resultText: JSON.stringify(mapOutput) },
-      { resultText: JSON.stringify(reduceOutput) },
+      atomSubmission(mapOutput),
+      reduceSubmission(reduceOutput),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'reduce-residue');
 
@@ -152,6 +152,14 @@ function reduceOutputWithGapAndConflict(output: PlanningAtomOutput) {
     gaps: [{ gapId: 'gap-runtime-verification', title: 'Runtime verification gap', criterionIds, aspectIds, description: 'The reducer needs a bounded runtime verification module.', representationRequired: true, sourceIds: [output.atomId] }],
     conflicts: [{ conflictId: 'conflict-runtime-choice', title: 'Runtime conflict', criterionIds, aspectIds, description: 'The reducer identified a bounded conflict requiring reconciliation.', sourceIds: [output.atomId] }],
   };
+}
+
+function atomSubmission(output: PlanningAtomOutput | { atomId: string; status: 'failed'; aspectUpdates: []; error: string }) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function reduceSubmission(output: ReturnType<typeof completedReduceOutput> | ReturnType<typeof reduceOutputWithGapAndConflict>) {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
 function composerResponse() {

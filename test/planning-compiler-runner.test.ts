@@ -22,8 +22,8 @@ describe('bounded planner compiler runner', () => {
     const [task] = expectedTasks(content);
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
-      { resultText: JSON.stringify(mapOutput) },
-      { resultText: JSON.stringify(completedReduceOutput(mapOutput)) },
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
 
     const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits, agentOptions: { maxTurns: 3 } });
@@ -45,7 +45,7 @@ describe('bounded planner compiler runner', () => {
     const cwd = await workspace({});
     const content = prd(['engine updates `packages/engine/src/missing.ts` using repo-grounded evidence.']);
     const [task] = expectedTasks(content);
-    const harness = new StubHarness([{ resultText: JSON.stringify({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' }) }]);
+    const harness = new StubHarness([atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' })]);
 
     const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits });
 
@@ -62,7 +62,7 @@ describe('bounded planner compiler runner', () => {
     const content = prd(['engine updates `packages/engine/src/a.ts` using repo-grounded evidence.']);
     const [task] = expectedTasks(content);
     const mapOutput = completedOutput(task);
-    const harness = new BlockingFirstHarness(JSON.stringify(mapOutput), JSON.stringify(completedReduceOutput(mapOutput)));
+    const harness = new BlockingFirstHarness(mapOutput, completedReduceOutput(mapOutput));
     const streamed: EforgeEvent[] = [];
     let settled = false;
 
@@ -91,6 +91,14 @@ function expectedTasks(content: string): PlanningAtomTask[] {
   const inventory = deriveSourceInventory({ content, hash: hash(content), path: 'compiler.md' });
   const graph = derivePlanningAtomGraph({ content, hash: hash(content), path: 'compiler.md', limits, inventory });
   return buildPlanningAtomTasks({ graph, inventory });
+}
+
+function atomSubmission(output: PlanningAtomOutput | { atomId: string; status: 'failed'; aspectUpdates: []; error: string }) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function reduceSubmission(output: ReturnType<typeof completedReduceOutput>) {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
 function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
@@ -122,7 +130,7 @@ class BlockingFirstHarness implements AgentHarness {
   private readonly markFirstReleased: () => void;
   private calls = 0;
 
-  constructor(private readonly firstResultText: string, private readonly laterResultText: string) {
+  constructor(private readonly firstOutput: unknown, private readonly laterOutput: unknown) {
     let started!: () => void;
     let released!: () => void;
     this.firstStarted = new Promise<void>((resolve) => { started = resolve; });
@@ -142,7 +150,14 @@ class BlockingFirstHarness implements AgentHarness {
       this.markFirstStarted();
       await this.firstRelease;
     }
-    yield { type: 'agent:result', planId, agent, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {}, resultText: callIndex === 0 ? this.firstResultText : this.laterResultText } };
+    const tool = options.customTools?.[0];
+    const input = callIndex === 0 ? this.firstOutput : this.laterOutput;
+    if (tool) {
+      yield { type: 'agent:tool_use', planId, agentId, agent, tool: tool.name, toolUseId: `tool-${callIndex}`, input };
+      const output = await tool.handler(input);
+      yield { type: 'agent:tool_result', planId, agentId, agent, tool: tool.name, toolUseId: `tool-${callIndex}`, output };
+    }
+    yield { type: 'agent:result', planId, agent, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {}, resultText: '' } };
     yield { type: 'agent:stop', planId, agent, agentId, timestamp: new Date().toISOString() };
   }
 }

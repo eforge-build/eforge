@@ -1,8 +1,9 @@
 import type { EforgeEvent } from '../events.js';
-import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { findJsonObjectText } from '../validation/json-object-extractor.js';
-import type { PlanningAtomTask, PlanningAtomOutput, PlanningAtomOutputStatus, PlanningAtomPlanFragment, PlanningAtomModuleCandidate } from './atom-planning-contracts.js';
+import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput, type PlanningAtomOutputStatus, type PlanningAtomPlanFragment, type PlanningAtomModuleCandidate } from './atom-planning-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
@@ -11,12 +12,15 @@ import type { PlannerCompilerEventSink } from './event-sink.js';
 
 export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
 export interface PlanningAtomPlannerResult { output: PlanningAtomOutput; events: EforgeEvent[]; resultText: string; materialization: PlanningAtomSourceMaterialization }
+const SUBMIT_ATOM_OUTPUT_TOOL = 'submit_atom_output';
 
 export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput): Promise<PlanningAtomPlannerResult> {
   const materialization = materializePlanningAtomSource({ sourceContent: input.sourceContent, task: input.task });
   if (materialization.errors.length > 0) throw new Error(materialization.errors.join('; '));
 
-  const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? [], sourceEvidenceRecordsForAtom(input.sourceEvidenceBundle, input.task.atomId));
+  let submittedOutput: PlanningAtomOutput | undefined;
+  const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_ATOM_OUTPUT_TOOL);
+  const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? [], sourceEvidenceRecordsForAtom(input.sourceEvidenceBundle, input.task.atomId), submitToolName);
   const events: EforgeEvent[] = [];
   let streamedText = '';
   let resultText = '';
@@ -26,6 +30,11 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
     cwd: input.cwd,
     maxTurns: input.agentOptions?.maxTurns ?? 4,
     tools: 'none',
+    customTools: [createAtomOutputSubmissionTool(submitToolName, (output) => {
+      if (submittedOutput) return false;
+      submittedOutput = output;
+      return true;
+    })],
     abortSignal: input.abortSignal,
     phase: 'compile',
     stage: 'planner',
@@ -37,13 +46,14 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
   }
 
   const candidate = resultText.trim() ? resultText : streamedText;
-  return { output: parsePlanningAtomOutput(candidate, input.task.atomId), events, resultText: candidate, materialization };
+  if (!submittedOutput) throw new Error(`Atom planner did not call ${submitToolName}`);
+  return { output: submittedOutput, events, resultText: candidate, materialization };
 }
 
-export function formatPlanningAtomPrompt(task: PlanningAtomTask, materialization: PlanningAtomSourceMaterialization, acceptedSharedFindings: PlanningSharedFinding[] = [], sourceEvidence: PlanningSourceEvidenceRecord[] = []): string {
+export function formatPlanningAtomPrompt(task: PlanningAtomTask, materialization: PlanningAtomSourceMaterialization, acceptedSharedFindings: PlanningSharedFinding[] = [], sourceEvidence: PlanningSourceEvidenceRecord[] = [], submitToolName = SUBMIT_ATOM_OUTPUT_TOOL): string {
   return `You are a bounded atom planner for eforge's planner compiler.
 
-Plan only the atom below. Do not inspect the repository or call tools. Use the provided source excerpts, evidence paths, interface keys, and aspect IDs. Return exactly one JSON object matching the requested shape. Do not wrap it in commentary.
+Plan only the atom below. Do not inspect the repository or call repository tools. Use the provided source excerpts, evidence paths, interface keys, and aspect IDs. Complete this turn by calling ${submitToolName} exactly once. Do not return JSON in text.
 
 ## Atom task
 
@@ -74,34 +84,34 @@ ${formatSharedPlanningBriefForAtom(task, acceptedSharedFindings)}
 
 ${formatSourceEvidence(sourceEvidence)}
 
-## Required JSON shape
+## Structured submission rules
 
-{
-  "atomId": "${task.atomId}",
-  "status": "completed | skipped | failed",
-  "aspectUpdates": [
-    { "aspectId": "one of the provided aspectIds", "status": "resolved", "completedByAtomIds": ["${task.atomId}"] }
-  ],
-  "planFragments": [
-    { "fragmentId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "markdown": "bounded plan fragment" }
-  ],
-  "moduleCandidates": [
-    { "moduleId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "description": "bounded module work", "validationExpectation": "how to validate" }
-  ],
-  "sharedFindings": [
-    { "findingId": "stable-id", "sourceAtomId": "${task.atomId}", "evidencePath": "owned shared evidence path", "aspectIds": [], "summary": "reusable bounded finding", "byteLength": 123 }
-  ],
-  "compactHandoff": "optional bounded summary"
-}
+Call ${submitToolName} with an object matching its schema.
 
-Rules:
-- Every resolved aspect must cite completedByAtomIds containing ${task.atomId}.
-- Use aspectUpdates[].status "represented" with representation.kind residue or follow-up when executable follow-up work represents an aspect.
-- Use skipped only with a concrete reason.
-- Failed outputs must not include aspect updates.
+- atomId must be exactly "${task.atomId}".
+- Every non-failed output must include one aspectUpdates entry for every provided aspectId.
+- Every resolved aspect must cite completedByAtomIds containing "${task.atomId}".
+- skipped aspect updates require a concrete reason.
+- represented aspect updates require exactly this representation shape: { "kind": "residue" | "follow-up", "moduleId": "one moduleCandidates[].moduleId", "reason": "why representation is needed", "validationExpectation": "how the represented work is validated" }.
+- Do not use moduleIds, moduleCandidateIds, fragmentIds, or prerequisiteAtomIds inside representation.
+- Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
 - Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
+}
+
+function createAtomOutputSubmissionTool(submitToolName: string, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {
+  return {
+    name: SUBMIT_ATOM_OUTPUT_TOOL,
+    description: 'Submit the structured bounded planner atom output. This is the only way to complete an atom-planner turn.',
+    inputSchema: PlanningAtomOutputSchema,
+    handler: async (input: unknown) => {
+      const parsed = safeParseWithSchema(PlanningAtomOutputSchema, input);
+      if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
+      if (!onSubmit(parsed.data as PlanningAtomOutput)) return `Error: ${submitToolName} was already called. Only one atom output submission is allowed.`;
+      return 'Atom output submitted successfully.';
+    },
+  };
 }
 
 export function parsePlanningAtomOutput(text: string, expectedAtomId: string): PlanningAtomOutput {

@@ -126,7 +126,7 @@ describe('planning source evidence materialization', () => {
     const data = await fixture(['engine updates `packages/engine/src/local.ts`.']);
     const bundle = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief });
     const [task] = buildPlanningAtomTasks({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief });
-    const harness = new StubHarness([{ resultText: JSON.stringify(completedOutput(task)) }]);
+    const harness = new StubHarness([atomSubmission(completedOutput(task))]);
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief, sourceEvidenceBundle: bundle, sourceContent: data.content, cwd, harness });
 
@@ -141,6 +141,10 @@ async function writeEvidence(relativePath: string, content: string): Promise<voi
   const absolute = join(cwd, relativePath);
   await mkdir(join(absolute, '..'), { recursive: true });
   await writeFile(absolute, content);
+}
+
+function atomSubmission(output: PlanningAtomOutput) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
 }
 
 function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {

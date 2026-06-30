@@ -1,17 +1,21 @@
 import type { EforgeEvent } from '../events.js';
-import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
-import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
-import type { PlanningReduceConflict, PlanningReduceGap, PlanningReduceOutput, PlanningReduceOutputStatus, PlanningReduceTask } from './reduce-contracts.js';
+import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
+import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 
 export interface RunPlanningReducerInput { task: PlanningReduceTask; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReducerResult { output: PlanningReduceOutput; events: EforgeEvent[]; resultText: string; prompt: string }
+const SUBMIT_REDUCE_OUTPUT_TOOL = 'submit_reduce_output';
 
 export async function runPlanningReducer(input: RunPlanningReducerInput): Promise<PlanningReducerResult> {
-  const prompt = formatPlanningReducerPrompt(input.task);
+  let submittedOutput: PlanningReduceOutput | undefined;
+  const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_REDUCE_OUTPUT_TOOL);
+  const prompt = formatPlanningReducerPrompt(input.task, submitToolName);
   if (utf8ByteLength(prompt) > input.task.budget.maxReducePromptBytes) throw new Error(`reduce prompt budget exceeded:${input.task.node.nodeId}`);
   const events: EforgeEvent[] = [];
   let streamedText = '';
@@ -22,6 +26,11 @@ export async function runPlanningReducer(input: RunPlanningReducerInput): Promis
     cwd: input.cwd,
     maxTurns: input.agentOptions?.maxTurns ?? 4,
     tools: 'none',
+    customTools: [createReduceOutputSubmissionTool(submitToolName, (output) => {
+      if (submittedOutput) return false;
+      submittedOutput = output;
+      return true;
+    })],
     abortSignal: input.abortSignal,
     phase: 'compile',
     stage: 'planner',
@@ -32,13 +41,14 @@ export async function runPlanningReducer(input: RunPlanningReducerInput): Promis
     if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
   }
   const candidate = resultText.trim() ? resultText : streamedText;
-  return { output: parsePlanningReduceOutput(candidate, input.task.node.nodeId), events, resultText: candidate, prompt };
+  if (!submittedOutput) throw new Error(`Reducer did not call ${submitToolName}`);
+  return { output: submittedOutput, events, resultText: candidate, prompt };
 }
 
-export function formatPlanningReducerPrompt(task: PlanningReduceTask): string {
+export function formatPlanningReducerPrompt(task: PlanningReduceTask, submitToolName = SUBMIT_REDUCE_OUTPUT_TOOL): string {
   return `You are a bounded reducer for eforge's planner compiler.
 
-Synthesize only the reduce node below. Do not inspect the repository or call tools. Deduplicate fragments and modules, reconcile conflicts, preserve criterion/aspect traceability, and return exactly one JSON object. Do not wrap it in commentary.
+Synthesize only the reduce node below. Do not inspect the repository or call repository tools. Deduplicate fragments and modules, reconcile conflicts, preserve criterion/aspect traceability, and complete this turn by calling ${submitToolName} exactly once. Do not return JSON in text.
 
 ## Reduce task
 
@@ -52,33 +62,30 @@ ${JSON.stringify(task.atomOutputs.map(summarizeAtomOutput), null, 2)}
 
 ${JSON.stringify(task.childOutputs.map(summarizeReduceOutput), null, 2)}
 
-## Required JSON shape
+## Structured submission rules
 
-{
-  "nodeId": "${task.node.nodeId}",
-  "status": "completed | failed | incomplete",
-  "compactSummary": "bounded synthesis summary",
-  "planFragments": [
-    { "fragmentId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "markdown": "bounded plan fragment" }
-  ],
-  "moduleCandidates": [
-    { "moduleId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "description": "bounded module work", "validationExpectation": "how to validate" }
-  ],
-  "conflicts": [
-    { "conflictId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "description": "conflict to resolve" }
-  ],
-  "gaps": [
-    { "gapId": "stable-id", "title": "short title", "criterionIds": [], "aspectIds": [], "description": "gap to represent", "representationRequired": true }
-  ],
-  "validationStrategy": "how the reduced work should be validated"
-}
+Call ${submitToolName} with an object matching its schema.
 
-Rules:
+- nodeId must be exactly "${task.node.nodeId}".
 - Link every fragment, module, conflict, and gap to provided criterionIds and aspectIds.
 - Completed outputs must not contain representationRequired gaps.
 - Failed outputs must not include fragments or module candidates.
 - Keep compactSummary within ${task.budget.maxReduceSummaryBytes} bytes.
 `;
+}
+
+function createReduceOutputSubmissionTool(submitToolName: string, onSubmit: (output: PlanningReduceOutput) => boolean): CustomTool {
+  return {
+    name: SUBMIT_REDUCE_OUTPUT_TOOL,
+    description: 'Submit the structured bounded reduce output. This is the only way to complete a reduce turn.',
+    inputSchema: PlanningReduceOutputSchema,
+    handler: async (input: unknown) => {
+      const parsed = safeParseWithSchema(PlanningReduceOutputSchema, input);
+      if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
+      if (!onSubmit(parsed.data as PlanningReduceOutput)) return `Error: ${submitToolName} was already called. Only one reduce output submission is allowed.`;
+      return 'Reduce output submitted successfully.';
+    },
+  };
 }
 
 export function parsePlanningReduceOutput(text: string, expectedNodeId: string): PlanningReduceOutput {
@@ -105,8 +112,30 @@ function coercePlanningReduceOutput(value: Record<string, unknown>, expectedNode
   };
 }
 
-function summarizeAtomOutput(output: unknown): unknown { return output; }
-function summarizeReduceOutput(output: unknown): unknown { return output; }
+function summarizeAtomOutput(output: PlanningAtomOutput): unknown {
+  return {
+    atomId: output.atomId,
+    status: output.status,
+    aspectIds: output.aspectUpdates.map((update) => update.aspectId).sort(),
+    planFragments: (output.planFragments ?? []).slice(0, 8).map((fragment) => ({ ...fragment, markdown: boundText(fragment.markdown, 900) })),
+    moduleCandidates: (output.moduleCandidates ?? []).slice(0, 8).map((module) => ({ ...module, description: boundText(module.description, 900), validationExpectation: boundText(module.validationExpectation, 500) })),
+    compactHandoff: output.compactHandoff ? boundText(output.compactHandoff, 900) : undefined,
+    error: output.error ? boundText(output.error, 500) : undefined,
+  };
+}
+function summarizeReduceOutput(output: PlanningReduceOutput): unknown {
+  return {
+    nodeId: output.nodeId,
+    status: output.status,
+    compactSummary: boundText(output.compactSummary, 1_200),
+    planFragments: (output.planFragments ?? []).slice(0, 8).map((fragment) => ({ ...fragment, markdown: boundText(fragment.markdown, 900) })),
+    moduleCandidates: (output.moduleCandidates ?? []).slice(0, 8).map((module) => ({ ...module, description: boundText(module.description, 900), validationExpectation: boundText(module.validationExpectation, 500) })),
+    conflicts: (output.conflicts ?? []).slice(0, 8).map((conflict) => ({ ...conflict, description: boundText(conflict.description, 700) })),
+    gaps: (output.gaps ?? []).slice(0, 8).map((gap) => ({ ...gap, description: boundText(gap.description, 700) })),
+    validationStrategy: output.validationStrategy ? boundText(output.validationStrategy, 700) : undefined,
+    error: output.error ? boundText(output.error, 500) : undefined,
+  };
+}
 
 function coercePlanFragment(value: unknown): PlanningAtomPlanFragment {
   const record = objectValue(value);
@@ -126,6 +155,16 @@ function coerceConflict(value: unknown): PlanningReduceConflict {
 function coerceGap(value: unknown): PlanningReduceGap {
   const record = objectValue(value);
   return { gapId: requiredString(record.gapId, 'gap id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), description: requiredString(record.description, 'gap description'), representationRequired: record.representationRequired === true, ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}) };
+}
+
+function boundText(value: string, maxBytes: number): string {
+  if (utf8ByteLength(value) <= maxBytes) return value;
+  let result = '';
+  for (const char of value) {
+    if (utf8ByteLength(`${result}${char}…`) > maxBytes) break;
+    result += char;
+  }
+  return `${result}…`;
 }
 
 function reduceStatus(value: unknown): PlanningReduceOutputStatus | undefined {

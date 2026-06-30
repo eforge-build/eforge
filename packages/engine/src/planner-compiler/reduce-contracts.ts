@@ -1,7 +1,15 @@
+import { Type, type Static } from '@sinclair/typebox';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
-import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
+import { PlanningAtomModuleCandidateSchema, PlanningAtomPlanFragmentSchema, type PlanningAtomModuleCandidate, type PlanningAtomOutput, type PlanningAtomPlanFragment } from './atom-planning-contracts.js';
+
+const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
+export const PlanningReduceIssueSchema = Type.Object({ title: boundedString(240), criterionIds: Type.Array(boundedString(80), { maxItems: 64 }), aspectIds: Type.Array(boundedString(240), { maxItems: 128 }), description: boundedString(4_000), sourceIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 32 })) }, { additionalProperties: false });
+export const PlanningReduceConflictSchema = Type.Object({ conflictId: boundedString(160), ...PlanningReduceIssueSchema.properties }, { additionalProperties: false });
+export const PlanningReduceGapSchema = Type.Object({ gapId: boundedString(160), ...PlanningReduceIssueSchema.properties, representationRequired: Type.Boolean() }, { additionalProperties: false });
+export const PlanningReduceOutputSchema = Type.Object({ nodeId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('failed'), Type.Literal('incomplete')]), compactSummary: boundedString(8_000), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), conflicts: Type.Optional(Type.Array(PlanningReduceConflictSchema, { maxItems: 32 })), gaps: Type.Optional(Type.Array(PlanningReduceGapSchema, { maxItems: 32 })), validationStrategy: Type.Optional(boundedString(2_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
+export type PlanningReduceOutputSubmission = Static<typeof PlanningReduceOutputSchema>;
 
 export interface PlanningReduceLimits { maxInputsPerReduce: number; maxReduceDepth: number; maxReducePromptBytes: number; maxReduceSummaryBytes: number }
 export interface PlanningReduceBudget extends PlanningReduceLimits {}

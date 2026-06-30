@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, runPlanningAtomMap, selectReadyPlanningAtoms, type PlanningAtomGraph, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, runPlanningAtomMap, runPlanningAtomPlanner, selectReadyPlanningAtoms, type PlanningAtomGraph, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -26,7 +26,7 @@ describe('planning atom map runner', () => {
       'docs update `docs/c.md`.',
     ]);
     const order = completionOrder(data.graph);
-    const harness = new StubHarness(order.map((atomId) => ({ resultText: JSON.stringify(completedOutput(data.taskById.get(atomId)!)) })));
+    const harness = new StubHarness(order.map((atomId) => atomSubmission(completedOutput(data.taskById.get(atomId)!))));
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2, agentOptions: { maxTurns: 3 } });
 
@@ -36,7 +36,20 @@ describe('planning atom map runner', () => {
     expect(result.failedAtomIds).toEqual([]);
     expect(result.coverage.completeCriteria).toEqual(['ac-001', 'ac-002', 'ac-003']);
     expect(harness.calls.every((call) => call.tools === 'none' && call.maxTurns === 3)).toBe(true);
-    expect(harness.prompts[0]).toContain('Do not inspect the repository or call tools');
+    expect(harness.prompts[0]).toContain('Do not inspect the repository or call repository tools');
+    expect(harness.customToolSets[0]?.map((tool) => tool.name)).toEqual(['submit_atom_output']);
+  });
+
+  it('uses harness-effective submit tool names in schema retry guidance', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const [task] = data.tasks;
+    const harness = new PrefixedSubmitHarness([{ toolCalls: [{ tool: 'submit_atom_output', toolUseId: 'submit-invalid', input: { atomId: task.atomId }, output: 'unused' }] }]);
+    const events: unknown[] = [];
+
+    await expect(runPlanningAtomPlanner({ task, sourceContent: data.content, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } })).rejects.toThrow('Atom planner did not call mcp__eforge_engine__submit_atom_output');
+
+    const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
+    expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_atom_output again with a schema-valid payload.');
   });
 
   it('continues independent atoms after a failure and blocks dependency successors', async () => {
@@ -49,7 +62,7 @@ describe('planning atom map runner', () => {
     const failedAtomId = data.graph.edges[0].fromAtomId;
     const blockedAtomId = data.graph.edges[0].toAtomId;
     const independentAtomId = initial.find((atomId) => atomId !== failedAtomId)!;
-    const harness = new StubHarness(initial.map((atomId) => ({ resultText: JSON.stringify(atomId === failedAtomId ? { atomId, status: 'failed', aspectUpdates: [], error: 'source too ambiguous' } : completedOutput(data.taskById.get(atomId)!)) })));
+    const harness = new StubHarness(initial.map((atomId) => atomSubmission(atomId === failedAtomId ? { atomId, status: 'failed', aspectUpdates: [], error: 'source too ambiguous' } : completedOutput(data.taskById.get(atomId)!))));
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2 });
 
@@ -63,7 +76,7 @@ describe('planning atom map runner', () => {
   it('rejects invalid agent outputs before accepting atom completion', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const [task] = data.tasks;
-    const harness = new StubHarness([{ resultText: JSON.stringify({ atomId: task.atomId, status: 'completed', aspectUpdates: [{ aspectId: 'ac-999:evidence:missing', status: 'resolved', completedByAtomIds: [task.atomId] }] }) }]);
+    const harness = new StubHarness([atomSubmission({ atomId: task.atomId, status: 'completed', aspectUpdates: [{ aspectId: 'ac-999:evidence:missing', status: 'resolved', completedByAtomIds: [task.atomId] }] })]);
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness });
 
@@ -77,7 +90,7 @@ describe('planning atom map runner', () => {
   it('excludes invalid aspect updates from coverage accounting', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const [task] = data.tasks;
-    const harness = new StubHarness([{ resultText: JSON.stringify({ atomId: task.atomId, status: 'completed', aspectUpdates: [{ aspectId: task.aspectIds[0], status: 'resolved' }] }) }]);
+    const harness = new StubHarness([atomSubmission({ atomId: task.atomId, status: 'completed', aspectUpdates: [{ aspectId: task.aspectIds[0], status: 'resolved' }] })]);
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness });
 
@@ -119,6 +132,16 @@ function completionOrder(graph: PlanningAtomGraph): string[] {
     const ready = selectReadyPlanningAtoms({ graph, completedAtomIds: completed, parallelism: graph.limits.parallelism }).readyAtomIds;
     if (ready.length === 0) return order;
     for (const atomId of ready) { order.push(atomId); completed.add(atomId); }
+  }
+}
+
+function atomSubmission(output: PlanningAtomOutput | { atomId: string; status: 'failed'; aspectUpdates: []; error: string }) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+class PrefixedSubmitHarness extends StubHarness {
+  override effectiveCustomToolName(name: string): string {
+    return `mcp__eforge_engine__${name}`;
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, runPlanningReduce, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -56,7 +56,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const scripted = scriptedReduceOutputs(tree, data.mapResult.outputs);
-    const harness = new StubHarness(scripted.map((output) => ({ resultText: JSON.stringify(output) })));
+    const harness = new StubHarness(scripted.map(reduceSubmission));
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits, agentOptions: { maxTurns: 3 } });
 
@@ -66,14 +66,29 @@ describe('planning reduce runner', () => {
     expect(result.finalOutput?.status).toBe('completed');
     expect(result.iterations).toBe(2);
     expect(harness.calls.every((call) => call.tools === 'none' && call.maxTurns === 3)).toBe(true);
-    expect(harness.prompts[0]).toContain('Do not inspect the repository or call tools');
+    expect(harness.prompts[0]).toContain('Do not inspect the repository or call repository tools');
+    expect(harness.customToolSets[0]?.map((tool) => tool.name)).toEqual(['submit_reduce_output']);
+  });
+
+  it('uses harness-effective submit tool names in schema retry guidance', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const node = tree.nodes[0];
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, []);
+    const harness = new PrefixedSubmitHarness([{ toolCalls: [{ tool: 'submit_reduce_output', toolUseId: 'submit-invalid', input: { nodeId: node.nodeId }, output: 'unused' }] }]);
+    const events: unknown[] = [];
+
+    await expect(runPlanningReducer({ task, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } })).rejects.toThrow('Reducer did not call mcp__eforge_engine__submit_reduce_output');
+
+    const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
+    expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_reduce_output again with a schema-valid payload.');
   });
 
   it('rejects invalid reducer output before accepting completion', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const node = tree.nodes[0];
-    const harness = new StubHarness([{ resultText: JSON.stringify({ nodeId: node.nodeId, status: 'completed', compactSummary: 'bad', planFragments: [{ fragmentId: 'fragment-bad', title: 'Bad', criterionIds: ['ac-001'], aspectIds: ['ac-999:missing'], markdown: 'Bad.' }] }) }]);
+    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'bad', planFragments: [{ fragmentId: 'fragment-bad', title: 'Bad', criterionIds: ['ac-001'], aspectIds: ['ac-999:missing'], markdown: 'Bad.' }] })]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits });
 
@@ -86,7 +101,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxReduceSummaryBytes: 8 } });
     const node = tree.nodes[0];
-    const harness = new StubHarness([{ resultText: JSON.stringify({ nodeId: node.nodeId, status: 'completed', compactSummary: 'this summary is too long' }) }]);
+    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'this summary is too long' })]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxReduceSummaryBytes: 8 } });
 
@@ -98,7 +113,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.'], false);
     const node = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }).nodes[0];
     const task = buildPlanningReduceTask(buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }), node, data.mapResult.outputs, []);
-    const harness = new StubHarness([{ resultText: JSON.stringify(validReduceOutput(task.node, { gap: true, status: 'incomplete' })) }]);
+    const harness = new StubHarness([reduceSubmission(validReduceOutput(task.node, { gap: true, status: 'incomplete' }))]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits });
 
@@ -116,6 +131,16 @@ describe('planning reduce runner', () => {
     await expect(runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits })).rejects.toMatchObject({ name: 'AbortError', message: 'cancelled' });
   });
 });
+
+function reduceSubmission(output: PlanningReduceOutput | { nodeId: string; status: 'completed'; compactSummary: string; planFragments?: PlanningReduceOutput['planFragments'] }) {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
+}
+
+class PrefixedSubmitHarness extends StubHarness {
+  override effectiveCustomToolName(name: string): string {
+    return `mcp__eforge_engine__${name}`;
+  }
+}
 
 function scriptedReduceOutputs(tree: ReturnType<typeof buildPlanningReduceTree>, atomOutputs: PlanningAtomOutput[]): PlanningReduceOutput[] {
   const outputs: PlanningReduceOutput[] = [];

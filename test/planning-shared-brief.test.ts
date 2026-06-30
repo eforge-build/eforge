@@ -81,8 +81,8 @@ describe('planning shared brief and evidence ownership', () => {
     const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedEvidenceRefs.some((ref) => ref.path === 'packages/engine/src/shared.ts'))!;
     const finding = { findingId: 'finding-shared-ts', sourceAtomId: primaryTask.atomId, evidencePath: 'packages/engine/src/shared.ts', aspectIds: primaryTask.aspectIds, summary: 'Shared file exports the bounded planner contract.', byteLength: 48 };
     const harness = new StubHarness([
-      { resultText: JSON.stringify(completedOutput(primaryTask, { sharedFindings: [finding] })) },
-      { resultText: JSON.stringify(completedOutput(consumerTask)) },
+      atomSubmission(completedOutput(primaryTask, { sharedFindings: [finding] })),
+      atomSubmission(completedOutput(consumerTask)),
     ]);
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2 });
@@ -101,8 +101,8 @@ describe('planning shared brief and evidence ownership', () => {
     const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedInterfaceRefs.some((ref) => ref.key === 'event-schemas'))!;
     const finding = { findingId: 'finding-event-schema', sourceAtomId: primaryTask.atomId, interfaceKey: 'event-schemas', aspectIds: primaryTask.aspectIds, summary: 'Event schema variants share the same discriminant contract.', byteLength: 60 };
     const harness = new StubHarness([
-      { resultText: JSON.stringify(completedOutput(primaryTask, { sharedFindings: [finding] })) },
-      { resultText: JSON.stringify(completedOutput(consumerTask)) },
+      atomSubmission(completedOutput(primaryTask, { sharedFindings: [finding] })),
+      atomSubmission(completedOutput(consumerTask)),
     ]);
 
     const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2 });
@@ -115,6 +115,10 @@ describe('planning shared brief and evidence ownership', () => {
     expect(harness.prompts[1]).toContain('Event schema variants share the same discriminant contract.');
   });
 });
+
+function atomSubmission(output: PlanningAtomOutput) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
 
 function completedOutput(task: PlanningAtomTask, extra: Partial<PlanningAtomOutput> = {}): PlanningAtomOutput {
   return {

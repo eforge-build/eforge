@@ -25,8 +25,8 @@ describe('bounded planner compiler stage integration', () => {
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
       composerResponse(),
-      { resultText: JSON.stringify(mapOutput) },
-      { resultText: JSON.stringify(completedReduceOutput(mapOutput)) },
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
     const ctx = makePipelineCtx({
       cwd,
@@ -77,6 +77,14 @@ function completedReduceOutput(output: PlanningAtomOutput) {
     moduleCandidates: [{ moduleId: 'module-reduce-000-001', title: 'Reduced module', criterionIds: output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? [], aspectIds: output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? [], description: 'Implement reduced stage work.', validationExpectation: 'Reduced checks pass.' }],
     validationStrategy: 'Run relevant checks.',
   };
+}
+
+function atomSubmission(output: PlanningAtomOutput) {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function reduceSubmission(output: ReturnType<typeof completedReduceOutput>) {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
 function composerResponse() {

@@ -83,7 +83,7 @@ function directPlanResponse(id: string): StubResponse {
 function compilerResponses(content: string, cfg = config()): StubResponse[] {
   const tasks = expectedTasks(content, cfg);
   const outputs = tasks.map(completedOutput);
-  return [...outputs.map((output) => ({ resultText: JSON.stringify(output) })), { resultText: JSON.stringify(completedReduceOutput(outputs)) }];
+  return [...outputs.map(atomSubmission), reduceSubmission(completedReduceOutput(outputs))];
 }
 
 function expectedTasks(content: string, cfg = config()): PlanningAtomTask[] {
@@ -107,12 +107,21 @@ function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
 
 function completedReduceOutput(outputs: PlanningAtomOutput[]) {
   return {
+    nodeId: 'reduce-000-001',
     status: 'completed',
     compactSummary: 'Reduced compiler synthesis.',
     planFragments: outputs.flatMap((output) => output.planFragments ?? []),
     moduleCandidates: [{ moduleId: 'module-reduced', title: 'Reduced module', criterionIds: outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? []), aspectIds: outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? []), description: 'Implement reduced compiler work.', validationExpectation: 'Reduced checks pass.' }],
     validationStrategy: 'Run relevant checks.',
   };
+}
+
+function atomSubmission(output: PlanningAtomOutput): StubResponse {
+  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function reduceSubmission(output: ReturnType<typeof completedReduceOutput>): StubResponse {
+  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
 function hash(value: string): string {
