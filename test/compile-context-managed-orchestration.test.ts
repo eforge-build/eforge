@@ -106,12 +106,15 @@ function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
 }
 
 function completedReduceOutput(outputs: PlanningAtomOutput[]) {
+  const criterionIds = outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? []);
+  const aspectIds = outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? []);
   return {
     nodeId: 'reduce-000-001',
     status: 'completed',
     compactSummary: 'Reduced compiler synthesis.',
+    reduceDigest: { sourceId: 'reduce-000-001', sourceKind: 'reduce', status: 'completed', summary: 'Reduced compiler synthesis.', criterionIds, aspectIds },
     planFragments: outputs.flatMap((output) => output.planFragments ?? []),
-    moduleCandidates: [{ moduleId: 'module-reduced', title: 'Reduced module', criterionIds: outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? []), aspectIds: outputs.flatMap((output) => output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? []), description: 'Implement reduced compiler work.', validationExpectation: 'Reduced checks pass.' }],
+    moduleCandidates: [{ moduleId: 'module-reduced', title: 'Reduced module', criterionIds, aspectIds, description: 'Implement reduced compiler work.', validationExpectation: 'Reduced checks pass.' }],
     validationStrategy: 'Run relevant checks.',
   };
 }

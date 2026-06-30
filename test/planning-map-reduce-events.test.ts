@@ -195,6 +195,7 @@ function validReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {
     nodeId: node.nodeId,
     status: 'completed',
     compactSummary: `Reduced ${node.nodeId}.`,
+    reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] },
     planFragments: [{ fragmentId: `fragment-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }],
     moduleCandidates: [{ moduleId: `module-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: `Implement reduced work for ${node.nodeId}.`, validationExpectation: 'Reduced validation passes.' }],
     validationStrategy: 'Run relevant validation.',

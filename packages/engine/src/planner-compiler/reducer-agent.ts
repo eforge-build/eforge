@@ -6,7 +6,7 @@ import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
-import { coercePlanningReduceDigest, deriveReduceDigestTotalByteLimit, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import { coercePlanningReduceDigest, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -95,13 +95,9 @@ Call ${submitToolName} with an object matching its schema.
 - Failed outputs must not include fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for parent reducers; do not copy full markdown into it.
 - reduceDigest.sourceId must be exactly "${task.node.nodeId}" and reduceDigest.sourceKind must be "reduce".
-- reduceDigest's serialized JSON must fit within ${reduceDigestTotalByteLimit(task)} bytes (derived from this reducer's prompt budget and minimum reducer fan-in); prefer fewer fragments/modules with concise intent/purpose over long prose.
+- reduceDigest's formatted prompt JSON must fit within ${task.budget.maxReduceDigestPromptBytes} bytes (assigned by the map/reduce budget planner); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Keep compactSummary within ${task.budget.maxReduceSummaryBytes} bytes.
 `;
-}
-
-function reduceDigestTotalByteLimit(task: PlanningReduceTask): number {
-  return deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes });
 }
 
 function createReduceOutputSubmissionTool(submitToolName: string, task: PlanningReduceTask, onSubmit: (output: PlanningReduceOutput) => boolean): CustomTool {
@@ -113,8 +109,9 @@ function createReduceOutputSubmissionTool(submitToolName: string, task: Planning
       const parsed = safeParseWithSchema(PlanningReduceOutputSchema, input);
       if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
       const output = parsed.data as PlanningReduceOutput;
+      if (output.status === 'completed' && !output.reduceDigest) return `Submission rejected: completed reduce output requires reduceDigest.\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
       if (output.reduceDigest) {
-        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.node.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxTotalBytes: reduceDigestTotalByteLimit(task) });
+        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.node.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxPromptBytes: task.budget.maxReduceDigestPromptBytes });
         if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
       }
       if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one reduce output submission is allowed.`;

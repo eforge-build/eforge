@@ -75,7 +75,7 @@ export interface PlanningReduceDigestModule { moduleId: string; title: string; p
 export interface PlanningReduceDigestIssue { issueId: string; kind: 'conflict' | 'gap'; title: string; summary: string; criterionIds: string[]; aspectIds: string[]; sourceIds?: string[]; representationRequired?: boolean }
 export interface PlanningReduceDigest { sourceId: string; sourceKind: PlanningReduceDigestSourceKind; status: PlanningReduceDigestStatus; summary: string; criterionIds: string[]; aspectIds: string[]; fragments?: PlanningReduceDigestFragment[]; modules?: PlanningReduceDigestModule[]; issues?: PlanningReduceDigestIssue[] }
 
-export interface ValidatePlanningReduceDigestInput { digest: PlanningReduceDigest; expectedSourceId?: string; expectedSourceKind?: PlanningReduceDigestSourceKind; allowedCriterionIds?: string[]; allowedAspectIds?: string[]; maxTotalBytes?: number }
+export interface ValidatePlanningReduceDigestInput { digest: PlanningReduceDigest; expectedSourceId?: string; expectedSourceKind?: PlanningReduceDigestSourceKind; allowedCriterionIds?: string[]; allowedAspectIds?: string[]; maxTotalBytes?: number; maxPromptBytes?: number }
 
 export function validatePlanningReduceDigest(input: ValidatePlanningReduceDigestInput): string[] {
   const errors: string[] = [];
@@ -83,6 +83,7 @@ export function validatePlanningReduceDigest(input: ValidatePlanningReduceDigest
   if (input.expectedSourceId && digest.sourceId !== input.expectedSourceId) errors.push(`reduce digest source mismatch:${digest.sourceId}->${input.expectedSourceId}`);
   if (input.expectedSourceKind && digest.sourceKind !== input.expectedSourceKind) errors.push(`reduce digest kind mismatch:${digest.sourceKind}->${input.expectedSourceKind}`);
   if (input.maxTotalBytes !== undefined) validateBytes('reduce digest total', digest.sourceId, JSON.stringify(digest), input.maxTotalBytes, errors);
+  if (input.maxPromptBytes !== undefined) validateBytes('reduce digest prompt', digest.sourceId, reduceDigestPromptText(digest), input.maxPromptBytes, errors);
   validateBytes('reduce digest summary', digest.sourceId, digest.summary, REDUCE_DIGEST_LIMITS.summaryBytes, errors);
   validateLinkedIds('reduce digest', digest.sourceId, digest.criterionIds, digest.aspectIds, input, errors);
   for (const fragment of digest.fragments ?? []) {
@@ -116,6 +117,14 @@ export function coercePlanningReduceDigest(value: Record<string, unknown>): Plan
     ...(arrayValue(value.modules).length > 0 ? { modules: arrayValue(value.modules).map(coerceDigestModule) } : {}),
     ...(arrayValue(value.issues).length > 0 ? { issues: arrayValue(value.issues).map(coerceDigestIssue) } : {}),
   };
+}
+
+export function reduceDigestPromptText(digest: PlanningReduceDigest): string {
+  return JSON.stringify(digest, null, 2);
+}
+
+export function reduceDigestPromptByteLength(digest: PlanningReduceDigest): number {
+  return utf8ByteLength(reduceDigestPromptText(digest));
 }
 
 export function clonePlanningReduceDigest(digest: PlanningReduceDigest): PlanningReduceDigest {

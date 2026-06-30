@@ -119,14 +119,14 @@ Call ${submitToolName} with an object matching its schema.
 - Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for reducer agents; do not copy full markdown into it.
 - reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
-- reduceDigest's serialized JSON must fit within ${atomReduceDigestTotalByteLimit()} bytes (derived from the reducer prompt budget and minimum reducer fan-in); prefer fewer fragments/modules with concise intent/purpose over long prose.
+- reduceDigest's formatted prompt JSON must fit within ${atomReduceDigestPromptByteLimit(task)} bytes (assigned by the map/reduce budget planner); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
 - Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
 }
 
-function atomReduceDigestTotalByteLimit(): number {
-  return deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: DEFAULT_PLANNING_REDUCE_LIMITS.maxReducePromptBytes });
+function atomReduceDigestPromptByteLimit(task: PlanningAtomTask): number {
+  return task.reduceDigestPromptBudgetBytes ?? deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: DEFAULT_PLANNING_REDUCE_LIMITS.maxReducePromptBytes });
 }
 
 function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAtomTask, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {
@@ -139,7 +139,7 @@ function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAt
       if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
       const output = parsed.data as PlanningAtomOutput;
       if (output.reduceDigest) {
-        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxTotalBytes: atomReduceDigestTotalByteLimit() });
+        const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxPromptBytes: atomReduceDigestPromptByteLimit(task) });
         if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
       }
       if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one atom output submission is allowed.`;

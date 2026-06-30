@@ -18,11 +18,11 @@ export const PlanningSharedFindingSchema = Type.Object({ findingId: boundedStrin
 export const PlanningAtomOutputSchema = Type.Object({ atomId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('skipped'), Type.Literal('failed')]), aspectUpdates: Type.Array(PlanningAspectCoverageUpdateSchema, { maxItems: 128 }), reduceDigest: Type.Optional(PlanningReduceDigestSchema), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), sharedFindings: Type.Optional(Type.Array(PlanningSharedFindingSchema, { maxItems: 8 })), discoveredEvidencePaths: Type.Optional(Type.Array(boundedString(500), { maxItems: 64 })), compactHandoff: Type.Optional(boundedString(8_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
 export type PlanningAtomOutputSubmission = Static<typeof PlanningAtomOutputSchema>;
 
-export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; sharedBrief?: PlanningAtomBrief }
+export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; reduceDigestPromptBudgetBytes?: number; sharedBrief?: PlanningAtomBrief }
 export interface PlanningAtomPlanFragment { fragmentId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnFragmentIds?: string[] }
 export interface PlanningAtomModuleCandidate { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; validationExpectation: string; dependsOnModuleIds?: string[] }
 export interface PlanningAtomOutput { atomId: string; status: PlanningAtomOutputStatus; aspectUpdates: PlanningAspectCoverageUpdate[]; reduceDigest?: PlanningReduceDigest; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; sharedFindings?: PlanningSharedFinding[]; discoveredEvidencePaths?: string[]; compactHandoff?: string; observedBudget?: PlanningObservedBudgetPressure; error?: string }
-export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[]; sharedBrief?: SharedPlanningBrief }
+export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[]; sharedBrief?: SharedPlanningBrief; reduceDigestPromptBudgetBytes?: number }
 export interface ValidatePlanningAtomOutputInput extends BuildPlanningAtomTasksInput { output: PlanningAtomOutput; task?: PlanningAtomTask }
 export interface SummarizePlanningAtomOutputsInput extends BuildPlanningAtomTasksInput { outputs: PlanningAtomOutput[] }
 export type PlanningAtomOutputValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
@@ -30,10 +30,10 @@ export interface PlanningAtomOutputCoverageSummary { coverage: PlanningAspectCov
 
 export function buildPlanningAtomTasks(input: BuildPlanningAtomTasksInput): PlanningAtomTask[] {
   const aspects = input.aspects ?? derivePlanningCriterionAspects(input.graph, input.inventory);
-  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief)).sort((a, b) => a.atomId.localeCompare(b.atomId));
+  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief, input.reduceDigestPromptBudgetBytes)).sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
 
-export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[], sharedBrief?: SharedPlanningBrief): PlanningAtomTask {
+export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[], sharedBrief?: SharedPlanningBrief, reduceDigestPromptBudgetBytes?: number): PlanningAtomTask {
   return {
     graphId: graph.graphId,
     atomId: atom.atomId,
@@ -48,6 +48,7 @@ export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAt
     sourceSlices: atom.sourceSlices.map((slice) => ({ ...slice, criteriaIds: [...slice.criteriaIds], headingPath: [...slice.headingPath] })),
     budget: { ...atom.budget },
     estimate: { ...atom.estimate },
+    ...(reduceDigestPromptBudgetBytes !== undefined ? { reduceDigestPromptBudgetBytes } : {}),
     ...(briefForAtom(sharedBrief, atom.atomId) ? { sharedBrief: briefForAtom(sharedBrief, atom.atomId)! } : {}),
   };
 }
@@ -81,7 +82,7 @@ function validateOutputForTask(output: PlanningAtomOutput, task: PlanningAtomTas
   for (const update of output.aspectUpdates) validateAspectUpdate(output, task, aspects, update, errors);
   validateTerminalAspectAccounting(output, task, errors);
   validateCompactHandoff(output, task, errors);
-  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds }));
+  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, ...(task.reduceDigestPromptBudgetBytes !== undefined ? { maxPromptBytes: task.reduceDigestPromptBudgetBytes } : {}) }));
   validateUniqueIds('plan fragment', fragments.map((fragment) => fragment.fragmentId), errors);
   validateUniqueIds('module candidate', modules.map((module) => module.moduleId), errors);
   errors.push(...validatePlanningSharedFindings({ atomId: output.atomId, aspectIds: task.aspectIds, interfaceKeys: task.interfaceKeys, ownedEvidencePaths: task.sharedBrief?.ownedEvidencePaths ?? [], ownedInterfaceKeys: task.sharedBrief?.ownedInterfaceKeys ?? task.interfaceKeys, findings: output.sharedFindings ?? [] }));

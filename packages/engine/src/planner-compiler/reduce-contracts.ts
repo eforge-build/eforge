@@ -12,11 +12,11 @@ export const PlanningReduceGapSchema = Type.Object({ gapId: boundedString(160), 
 export const PlanningReduceOutputSchema = Type.Object({ nodeId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('failed'), Type.Literal('incomplete')]), compactSummary: boundedString(8_000), reduceDigest: Type.Optional(PlanningReduceDigestSchema), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), conflicts: Type.Optional(Type.Array(PlanningReduceConflictSchema, { maxItems: 32 })), gaps: Type.Optional(Type.Array(PlanningReduceGapSchema, { maxItems: 32 })), validationStrategy: Type.Optional(boundedString(2_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
 export type PlanningReduceOutputSubmission = Static<typeof PlanningReduceOutputSchema>;
 
-export interface PlanningReduceLimits { maxInputsPerReduce: number; maxReduceDepth: number; maxReducePromptBytes: number; maxReduceSummaryBytes: number }
-export interface PlanningReduceBudget extends PlanningReduceLimits {}
+export interface PlanningReduceLimits { maxInputsPerReduce: number; maxReduceDepth: number; maxReducePromptBytes: number; maxReduceSummaryBytes: number; maxReduceDigestPromptBytes?: number }
+export interface PlanningReduceBudget extends PlanningReduceLimits { maxReduceDigestPromptBytes: number }
 export type PlanningReduceOutputStatus = 'completed' | 'failed' | 'incomplete';
 export interface PlanningReduceNode { nodeId: string; depth: number; inputAtomIds: string[]; inputNodeIds: string[]; criterionIds: string[]; aspectIds: string[] }
-export interface PlanningReduceTree { graphId: string; nodes: PlanningReduceNode[]; rootNodeId?: string; limits: PlanningReduceLimits; validationErrors: string[] }
+export interface PlanningReduceTree { graphId: string; nodes: PlanningReduceNode[]; rootNodeId?: string; limits: PlanningReduceBudget; validationErrors: string[] }
 export interface PlanningReduceConflict { conflictId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; sourceIds?: string[] }
 export interface PlanningReduceGap { gapId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; representationRequired: boolean; sourceIds?: string[] }
 export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget }
@@ -27,19 +27,24 @@ export type PlanningReduceOutputValidation = { ok: true; errors: [] } | { ok: fa
 
 export const DEFAULT_PLANNING_REDUCE_LIMITS: PlanningReduceLimits = { maxInputsPerReduce: 4, maxReduceDepth: 6, maxReducePromptBytes: 24_000, maxReduceSummaryBytes: 8_000 };
 
+export function normalizePlanningReduceBudget(limits: PlanningReduceLimits): PlanningReduceBudget {
+  return { ...limits, maxReduceDigestPromptBytes: limits.maxReduceDigestPromptBytes ?? deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: limits.maxReducePromptBytes }) };
+}
+
 export function buildPlanningReduceTree(input: BuildPlanningReduceTreeInput): PlanningReduceTree {
+  const limits = normalizePlanningReduceBudget(input.limits);
   const accepted = input.mapResult.outputs.filter((output) => output.status !== 'failed').sort((a, b) => a.atomId.localeCompare(b.atomId));
   const nodes: PlanningReduceNode[] = [];
-  let level = chunks(accepted.map((output) => output.atomId), input.limits.maxInputsPerReduce).map((atomIds, index) => nodeForInputs(`reduce-000-${String(index + 1).padStart(3, '0')}`, 0, atomIds, [], input));
+  let level = chunks(accepted.map((output) => output.atomId), limits.maxInputsPerReduce).map((atomIds, index) => nodeForInputs(`reduce-000-${String(index + 1).padStart(3, '0')}`, 0, atomIds, [], input));
   nodes.push(...level);
   let depth = 1;
   while (level.length > 1) {
-    level = chunks(level.map((node) => node.nodeId), input.limits.maxInputsPerReduce).map((nodeIds, index) => nodeForInputs(`reduce-${String(depth).padStart(3, '0')}-${String(index + 1).padStart(3, '0')}`, depth, [], nodeIds, input, nodes));
+    level = chunks(level.map((node) => node.nodeId), limits.maxInputsPerReduce).map((nodeIds, index) => nodeForInputs(`reduce-${String(depth).padStart(3, '0')}-${String(index + 1).padStart(3, '0')}`, depth, [], nodeIds, input, nodes));
     nodes.push(...level);
     depth += 1;
   }
-  const validationErrors = validateReduceTree(nodes, input.limits);
-  return { graphId: input.graph.graphId, nodes, ...(level[0] ? { rootNodeId: level[0].nodeId } : {}), limits: input.limits, validationErrors };
+  const validationErrors = validateReduceTree(nodes, limits);
+  return { graphId: input.graph.graphId, nodes, ...(level[0] ? { rootNodeId: level[0].nodeId } : {}), limits, validationErrors };
 }
 
 export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[]): PlanningReduceTask {
@@ -84,10 +89,11 @@ function validateReduceOutput(input: ValidatePlanningReduceOutputInput): string[
   const { output, task } = input;
   if (output.nodeId !== task.node.nodeId) errors.push(`reduce output node mismatch:${output.nodeId}->${task.node.nodeId}`);
   if (output.status === 'failed' && ((output.planFragments?.length ?? 0) > 0 || (output.moduleCandidates?.length ?? 0) > 0)) errors.push(`failed reduce output must not produce planning artifacts:${output.nodeId}`);
+  if (output.status === 'completed' && !output.reduceDigest) errors.push(`completed reduce output requires reduce digest:${output.nodeId}`);
   if (output.status === 'completed' && output.gaps?.some((gap) => gap.representationRequired)) errors.push(`completed reduce output has unrepresented gaps:${output.nodeId}`);
   if (output.status !== 'failed' && !nonEmpty(output.compactSummary)) errors.push(`reduce output requires compact summary:${output.nodeId}`);
   if (utf8ByteLength(output.compactSummary ?? '') > task.budget.maxReduceSummaryBytes) errors.push(`reduce summary budget exceeded:${output.nodeId}`);
-  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxTotalBytes: deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes }) }));
+  if (output.reduceDigest) errors.push(...validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: output.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxPromptBytes: task.budget.maxReduceDigestPromptBytes }));
   validateUniqueIds('plan fragment', output.planFragments?.map((fragment) => fragment.fragmentId) ?? [], errors);
   validateUniqueIds('module candidate', output.moduleCandidates?.map((module) => module.moduleId) ?? [], errors);
   validateUniqueIds('reduce conflict', output.conflicts?.map((conflict) => conflict.conflictId) ?? [], errors);

@@ -9,7 +9,8 @@ import { materializePlanningSourceEvidence } from './source-evidence-materializa
 import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits } from './source-evidence-contracts.js';
 import { deriveSourceInventory, type SourceInventory } from './source-inventory.js';
 import { runPlanningReduce, type PlanningReduceResult } from './reduce-runner.js';
-import type { PlanningReduceLimits } from './reduce-contracts.js';
+import { deriveInitialReduceDigestPromptBudget } from './prompt-budget-planner.js';
+import { DEFAULT_PLANNING_REDUCE_LIMITS, type PlanningReduceLimits } from './reduce-contracts.js';
 import { synthesizePlanningResidue } from './residue-synthesis.js';
 import type { PlanningResidueLimits, PlanningResidueSynthesis } from './residue-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
@@ -51,8 +52,10 @@ export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompiler
   const atomGraph = derivePlanningAtomGraph({ content: input.sourceContent, hash: sourceInventory.sourceHash, path: input.sourcePath, limits: input.limits, inventory: sourceInventory });
   const sharedBrief = deriveSharedPlanningBrief({ graph: atomGraph, limits: input.sharedBriefLimits });
   const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: atomGraph, sharedBrief, limits: input.sourceEvidenceLimits });
-  const map = await runPlanningAtomMap({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent });
-  const reduce = await runPlanningReduce({ graph: atomGraph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
+  const reduceLimits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.reduceLimits ?? {}) };
+  const reduceDigestPromptBudgetBytes = deriveInitialReduceDigestPromptBudget({ graph: atomGraph, limits: reduceLimits });
+  const map = await runPlanningAtomMap({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent });
+  const reduce = await runPlanningReduce({ graph: atomGraph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
   const residue = synthesizePlanningResidue({ graph: atomGraph, coverage: map.coverage, atomOutputs: map.outputs, sourceEvidenceBundle, reduceOutputs: reduce.outputs, limits: input.residueLimits });
   const validationErrors = compilerValidationErrors(sourceEvidenceBundle, map, reduce, residue);
   return { sourceInventory, atomGraph, sharedBrief, sourceEvidenceBundle, map, reduce, residue, status: compilerStatus(map, reduce, residue, validationErrors), validationErrors, events: [...map.events, ...reduce.events] };

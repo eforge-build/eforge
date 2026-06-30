@@ -132,12 +132,15 @@ function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
 }
 
 function completedReduceOutput(output: PlanningAtomOutput) {
+  const criterionIds = output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? [];
+  const aspectIds = output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? [];
   return {
     nodeId: 'reduce-000-001',
     status: 'completed',
     compactSummary: 'Reduced runtime hardening synthesis.',
+    reduceDigest: { sourceId: 'reduce-000-001', sourceKind: 'reduce', status: 'completed', summary: 'Reduced runtime hardening synthesis.', criterionIds, aspectIds },
     planFragments: output.planFragments,
-    moduleCandidates: [{ moduleId: 'module-reduce-000-001', title: 'Reduced module', criterionIds: output.moduleCandidates?.flatMap((module) => module.criterionIds) ?? [], aspectIds: output.moduleCandidates?.flatMap((module) => module.aspectIds) ?? [], description: 'Implement reduced runtime hardening work.', validationExpectation: 'Reduced checks pass.' }],
+    moduleCandidates: [{ moduleId: 'module-reduce-000-001', title: 'Reduced module', criterionIds, aspectIds, description: 'Implement reduced runtime hardening work.', validationExpectation: 'Reduced checks pass.' }],
     validationStrategy: 'Run relevant checks.',
   };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, planPromptSafeReduceTree, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -128,6 +128,28 @@ describe('planning reduce runner', () => {
     expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= constrainedPromptBudget)).toBe(true);
   });
 
+  it('budget-plans multi-level reducer prompts before emitting the reduce tree', async () => {
+    const criteria = Array.from({ length: 14 }, (_, index) => `general work item ${index + 1} updates packages/engine/src/file-${index + 1}.ts.`);
+    const data = fixture(criteria);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({ ...output, reduceDigest: largeReduceDigest(output) }));
+    const limits = { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget };
+
+    const planned = planPromptSafeReduceTree({ graph: data.graph, mapResult: data.mapResult, limits });
+
+    expect(planned.ok).toBe(true);
+    expect(planned.tree.limits.maxInputsPerReduce).toBe(2);
+    expect(validatePromptSafeTree(planned.tree, data.mapResult.outputs)).toEqual([]);
+
+    const live: unknown[] = [];
+    const harness = new StubHarness(scriptedReduceOutputs(planned.tree, data.mapResult.outputs).map(reduceSubmission));
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits, onEvent: (event) => live.push(event) });
+    const treeEvent = live.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'planning:map-reduce:reduce-tree') as { nodes?: Array<{ nodeId: string }> } | undefined;
+
+    expect(result.reduceComplete).toBe(true);
+    expect(treeEvent?.nodes?.map((node) => node.nodeId)).toEqual(planned.tree.nodes.map((node) => node.nodeId));
+    expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= constrainedPromptBudget)).toBe(true);
+  });
+
   it('rejects oversized reducer digests during structured submission', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
@@ -136,7 +158,7 @@ describe('planning reduce runner', () => {
     const events: unknown[] = [];
     const oversized = oversizedDigestReduceOutput(node);
     const digestBudget = deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes });
-    const harness = new StubHarness([{ toolCalls: [reduceToolCall(oversized, 'submit-oversized'), reduceToolCall(validReduceOutputWithDigest(node), 'submit-valid')] }]);
+    const harness = new StubHarness([{ toolCalls: [reduceToolCall(oversized, 'submit-oversized'), reduceToolCall(validReduceOutput(node), 'submit-valid')] }]);
 
     expect(Buffer.byteLength(JSON.stringify(oversized.reduceDigest), 'utf8')).toBeGreaterThan(digestBudget);
 
@@ -145,7 +167,7 @@ describe('planning reduce runner', () => {
     expect(result.output.nodeId).toBe(node.nodeId);
     expect(result.output.reduceDigest?.sourceId).toBe(node.nodeId);
     expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
-      expect.stringContaining('reduce digest total budget exceeded'),
+      expect.stringContaining('reduce digest prompt budget exceeded'),
       expect.stringContaining('Reduce output submitted successfully.'),
     ]);
   });
@@ -171,7 +193,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const node = tree.nodes[0];
-    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'bad', planFragments: [{ fragmentId: 'fragment-bad', title: 'Bad', criterionIds: ['ac-001'], aspectIds: ['ac-999:missing'], markdown: 'Bad.' }] })]);
+    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'bad', reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: 'Bad.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }, planFragments: [{ fragmentId: 'fragment-bad', title: 'Bad', criterionIds: ['ac-001'], aspectIds: ['ac-999:missing'], markdown: 'Bad.' }] })]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits });
 
@@ -184,7 +206,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxReduceSummaryBytes: 8 } });
     const node = tree.nodes[0];
-    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'this summary is too long' })]);
+    const harness = new StubHarness([reduceSubmission({ nodeId: node.nodeId, status: 'completed', compactSummary: 'this summary is too long', reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: 'Too long.', criterionIds: node.criterionIds, aspectIds: node.aspectIds } })]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxReduceSummaryBytes: 8 } });
 
@@ -245,14 +267,11 @@ function validReduceOutput(node: PlanningReduceNode, options: { gap?: boolean; s
     status: options.status ?? 'completed',
     compactSummary: `Reduced ${node.nodeId}.`,
     planFragments: [{ fragmentId, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }],
+    reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: options.status ?? 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] },
     moduleCandidates: [{ moduleId: `module-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: `Implement reduced work for ${node.nodeId}.`, validationExpectation: 'Reduced validation passes.' }],
     ...(options.gap ? { gaps: [{ gapId: `gap-${node.nodeId}`, title: 'Gap', criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: 'Gap requires representation.', representationRequired: true }] } : {}),
     validationStrategy: 'Run relevant validation.',
   };
-}
-
-function validReduceOutputWithDigest(node: PlanningReduceNode): PlanningReduceOutput {
-  return { ...validReduceOutput(node), reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] } };
 }
 
 function oversizedDigestReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {

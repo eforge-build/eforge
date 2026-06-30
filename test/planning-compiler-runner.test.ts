@@ -117,6 +117,7 @@ function completedReduceOutput(output: PlanningAtomOutput) {
     nodeId: 'reduce-000-001',
     status: 'completed',
     compactSummary: 'Reduced one atom output into a canonical compiler synthesis.',
+    reduceDigest: { sourceId: 'reduce-000-001', sourceKind: 'reduce', status: 'completed', summary: 'Reduced one atom output.', criterionIds: [...new Set([...(output.planFragments ?? []).flatMap((fragment) => fragment.criterionIds), ...(output.moduleCandidates ?? []).flatMap((module) => module.criterionIds)])].sort(), aspectIds: [...new Set([...(output.planFragments ?? []).flatMap((fragment) => fragment.aspectIds), ...(output.moduleCandidates ?? []).flatMap((module) => module.aspectIds)])].sort() },
     planFragments: output.planFragments,
     moduleCandidates: output.moduleCandidates,
     validationStrategy: 'Run relevant checks for linked module candidates.',
