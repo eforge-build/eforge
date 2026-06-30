@@ -114,6 +114,19 @@ describe('planning reduce runner', () => {
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(task.budget.maxReducePromptBytes);
   });
 
+  it('reduces fan-in when configured reducer inputs exceed prompt budget', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.']);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({ ...output, reduceDigest: largeReduceDigest(output) }));
+    const adaptiveTree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 2, maxReducePromptBytes: 24_000 } });
+    const harness = new StubHarness(scriptedReduceOutputs(adaptiveTree, data.mapResult.outputs).map(reduceSubmission));
+
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: 24_000 } });
+
+    expect(result.tree.limits.maxInputsPerReduce).toBe(2);
+    expect(result.reduceComplete).toBe(true);
+    expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= 24_000)).toBe(true);
+  });
+
   it('retries retryable infrastructure failures before failing a reduce node', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
@@ -213,6 +226,21 @@ function validReduceOutput(node: PlanningReduceNode, options: { gap?: boolean; s
 
 function completedAtomOutput(task: PlanningAtomTask): PlanningAtomOutput {
   return { atomId: task.atomId, status: 'completed', aspectUpdates: task.aspectIds.map((aspectId) => ({ aspectId, status: 'resolved', completedByAtomIds: [task.atomId] })), compactHandoff: `completed ${task.atomId}`, planFragments: [{ fragmentId: `fragment-${task.atomId}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, markdown: `Plan ${task.title}.` }], moduleCandidates: [{ moduleId: `module-${task.atomId}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, description: `Implement ${task.title}.`, validationExpectation: 'Relevant checks pass.' }] };
+}
+
+function largeReduceDigest(output: PlanningAtomOutput): NonNullable<PlanningAtomOutput['reduceDigest']> {
+  const criterionIds = [...new Set([...(output.planFragments ?? []).flatMap((fragment) => fragment.criterionIds), ...(output.moduleCandidates ?? []).flatMap((module) => module.criterionIds)])].sort();
+  const aspectIds = output.aspectUpdates.map((update) => update.aspectId).sort();
+  return {
+    sourceId: output.atomId,
+    sourceKind: 'atom',
+    status: output.status,
+    summary: `Large bounded digest for ${output.atomId}.`,
+    criterionIds,
+    aspectIds,
+    fragments: Array.from({ length: 4 }, (_, index) => ({ fragmentId: `digest-fragment-${output.atomId}-${index}`, title: `Fragment ${index}`, intent: 'fragment intent '.repeat(45), criterionIds, aspectIds })),
+    modules: Array.from({ length: 4 }, (_, index) => ({ moduleId: `digest-module-${output.atomId}-${index}`, title: `Module ${index}`, purpose: 'module purpose '.repeat(45), criterionIds, aspectIds, validationExpectation: 'focused validation' })),
+  };
 }
 
 function completedCoverage(tasks: PlanningAtomTask[]): PlanningAtomMapResult['coverage'] {

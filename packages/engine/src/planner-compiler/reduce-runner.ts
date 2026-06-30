@@ -4,7 +4,8 @@ import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
 import { buildPlanningReduceTask, buildPlanningReduceTree, DEFAULT_PLANNING_REDUCE_LIMITS, validatePlanningReduceOutput, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceOutput, type PlanningReduceTask, type PlanningReduceTree } from './reduce-contracts.js';
-import { runPlanningReducer } from './reducer-agent.js';
+import { formatPlanningReducerPrompt, runPlanningReducer } from './reducer-agent.js';
+import { utf8ByteLength } from './source-analysis.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 
 export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
@@ -14,7 +15,7 @@ interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeEvent[];
 
 export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<PlanningReduceResult> {
   const limits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.limits ?? {}) };
-  const tree = buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits });
+  const tree = buildPromptBoundedReduceTree(input, limits);
   const outputs: PlanningReduceOutput[] = [];
   const events: EforgeEvent[] = [];
   const validationErrors = [...tree.validationErrors];
@@ -35,6 +36,24 @@ export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<
   }
 
   return finish(input, tree, outputs, events, validationErrors, iterations);
+}
+
+function buildPromptBoundedReduceTree(input: RunPlanningReduceInput, limits: PlanningReduceLimits): PlanningReduceTree {
+  const acceptedCount = input.mapResult.outputs.filter((output) => output.status !== 'failed').length;
+  const minFanIn = acceptedCount > 1 ? 2 : 1;
+  for (let fanIn = Math.max(limits.maxInputsPerReduce, minFanIn); fanIn >= minFanIn; fanIn -= 1) {
+    const candidateLimits = { ...limits, maxInputsPerReduce: fanIn };
+    const tree = buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits: candidateLimits });
+    if (firstLevelReducePromptsFit(tree, input.mapResult.outputs)) return tree;
+  }
+  return buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits: { ...limits, maxInputsPerReduce: minFanIn } });
+}
+
+function firstLevelReducePromptsFit(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[]): boolean {
+  return tree.nodes.filter((node) => node.depth === 0).every((node) => {
+    const task = buildPlanningReduceTask(tree, node, atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), []);
+    return utf8ByteLength(formatPlanningReducerPrompt(task)) <= task.budget.maxReducePromptBytes;
+  });
 }
 
 async function runReduceNode(input: RunPlanningReduceInput, tree: PlanningReduceTree, nodeId: string, outputs: PlanningReduceOutput[]): Promise<ReduceRunResult> {
