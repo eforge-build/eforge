@@ -6,22 +6,24 @@ import { runPlanningAtomPlanner } from './atom-planner-agent.js';
 import { selectReadyPlanningAtoms, type BlockedPlanningAtom } from './atom-scheduler.js';
 import type { PlanningAspectCoverageSummary, PlanningCriterionAspect } from './coverage-accounting.js';
 import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
+import { validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle } from './source-evidence-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 
-export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief }
+export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle }
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 
 interface AtomRunResult { output: PlanningAtomOutput; events: EforgeEvent[]; validationErrors: string[] }
 
 export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promise<PlanningAtomMapResult> {
   const briefValidation = input.sharedBrief ? validateSharedPlanningBrief(input.sharedBrief, input.graph) : { ok: true as const, errors: [] };
+  const sourceEvidenceValidation = input.sharedBrief && input.sourceEvidenceBundle ? validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle: input.sourceEvidenceBundle }) : { ok: true as const, errors: [] };
   const tasks = new Map(buildPlanningAtomTasks(input).map((task) => [task.atomId, task]));
   const completed = new Set<string>();
   const failed = new Set<string>();
   const skipped = new Set<string>();
   const outputs: PlanningAtomOutput[] = [];
   const events: EforgeEvent[] = [];
-  const validationErrors: string[] = briefValidation.ok ? [] : briefValidation.errors;
+  const validationErrors: string[] = [...(briefValidation.ok ? [] : briefValidation.errors), ...(sourceEvidenceValidation.ok ? [] : sourceEvidenceValidation.errors)];
   let iterations = 0;
 
   while (true) {
@@ -43,7 +45,7 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
 
 async function runAtom(input: RunPlanningAtomMapInput, task: PlanningAtomTask, acceptedSharedFindings: PlanningSharedFinding[]): Promise<AtomRunResult> {
   try {
-    const result = await runPlanningAtomPlanner({ task, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, acceptedSharedFindings });
+    const result = await runPlanningAtomPlanner({ task, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, acceptedSharedFindings, sourceEvidenceBundle: input.sourceEvidenceBundle });
     const validation = validatePlanningAtomOutput({ graph: input.graph, inventory: input.inventory, aspects: input.aspects, task, output: result.output });
     if (!validation.ok) return { output: failedOutput(task, new Error(`invalid atom output:${validation.errors.join('; ')}`)), events: result.events, validationErrors: validation.errors };
     return { output: result.output, events: result.events, validationErrors: [] };

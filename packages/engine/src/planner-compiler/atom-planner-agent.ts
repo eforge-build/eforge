@@ -6,15 +6,16 @@ import type { PlanningAtomTask, PlanningAtomOutput, PlanningAtomOutputStatus, Pl
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
+import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
 
-export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[] }
+export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle }
 export interface PlanningAtomPlannerResult { output: PlanningAtomOutput; events: EforgeEvent[]; resultText: string; materialization: PlanningAtomSourceMaterialization }
 
 export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput): Promise<PlanningAtomPlannerResult> {
   const materialization = materializePlanningAtomSource({ sourceContent: input.sourceContent, task: input.task });
   if (materialization.errors.length > 0) throw new Error(materialization.errors.join('; '));
 
-  const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? []);
+  const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? [], sourceEvidenceRecordsForAtom(input.sourceEvidenceBundle, input.task.atomId));
   const events: EforgeEvent[] = [];
   let streamedText = '';
   let resultText = '';
@@ -37,7 +38,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
   return { output: parsePlanningAtomOutput(candidate, input.task.atomId), events, resultText: candidate, materialization };
 }
 
-export function formatPlanningAtomPrompt(task: PlanningAtomTask, materialization: PlanningAtomSourceMaterialization, acceptedSharedFindings: PlanningSharedFinding[] = []): string {
+export function formatPlanningAtomPrompt(task: PlanningAtomTask, materialization: PlanningAtomSourceMaterialization, acceptedSharedFindings: PlanningSharedFinding[] = [], sourceEvidence: PlanningSourceEvidenceRecord[] = []): string {
   return `You are a bounded atom planner for eforge's planner compiler.
 
 Plan only the atom below. Do not inspect the repository or call tools. Use the provided source excerpts, evidence paths, interface keys, and aspect IDs. Return exactly one JSON object matching the requested shape. Do not wrap it in commentary.
@@ -67,6 +68,10 @@ ${formatPlanningAtomSourceMaterialization(materialization)}
 
 ${formatSharedPlanningBriefForAtom(task, acceptedSharedFindings)}
 
+## Source evidence
+
+${formatSourceEvidence(sourceEvidence)}
+
 ## Required JSON shape
 
 {
@@ -93,6 +98,7 @@ Rules:
 - Use skipped only with a concrete reason.
 - Failed outputs must not include aspect updates.
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
+- Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
 }
 
@@ -189,6 +195,23 @@ function formatSharedPlanningBriefForAtom(task: PlanningAtomTask, acceptedShared
     sections: task.sharedBrief.sections,
     acceptedSharedFindings: relevantFindings,
   }, null, 2);
+}
+
+function formatSourceEvidence(records: PlanningSourceEvidenceRecord[]): string {
+  if (records.length === 0) return 'No repository source evidence was materialized for this atom.';
+  return JSON.stringify(records.map((record) => ({
+    path: record.path,
+    status: record.status,
+    shared: record.shared,
+    primaryAtomId: record.primaryAtomId,
+    referencedByAtomIds: record.referencedByAtomIds,
+    deliveredToAtomIds: record.deliveredToAtomIds,
+    byteLength: record.byteLength,
+    excerptByteLength: record.excerptByteLength,
+    reason: record.reason,
+    error: record.error,
+    contentExcerpt: record.contentExcerpt,
+  })), null, 2);
 }
 
 function isRelevantSharedFinding(task: PlanningAtomTask, finding: PlanningSharedFinding): boolean {
