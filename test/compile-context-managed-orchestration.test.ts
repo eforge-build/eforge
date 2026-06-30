@@ -192,6 +192,5 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
     expect(harness.prompts).toHaveLength(2);
     expect(harness.prompts[1]).toContain(sentinel);
-    expect(ctx.contextManagedPlanning).toBeUndefined();
   });
 });

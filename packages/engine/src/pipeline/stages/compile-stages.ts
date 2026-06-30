@@ -50,7 +50,7 @@ function mergePromptAppend(configured: string | undefined, preflightAppend: stri
   return [configured, preflightAppend].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
 }
 
-function shouldFallbackToContextManagedPlanning(ctx: PipelineContext, f: CompileScopeContextFailure): boolean { return !ctx.contextManagedPlanning && f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
+function shouldFallbackToBoundedPlannerCompiler(f: CompileScopeContextFailure): boolean { return f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
 
 async function resolveModelAwareCompileContextGuardOptions(
   ctx: PipelineContext,
@@ -375,7 +375,7 @@ registerCompileStage({
   } catch (err) {
     const contextError = await toCompileScopeContextError(ctx, err, 'planner');
     if (!contextError) throw err;
-    if (shouldFallbackToContextManagedPlanning(ctx, contextError.failure)) {
+    if (shouldFallbackToBoundedPlannerCompiler(contextError.failure)) {
       yield scopeContextFailureEvent(contextError.failure, ctx.runId);
       yield* runBoundedPlannerCompilerCompileStage(ctx);
       return;
@@ -536,7 +536,7 @@ registerCompileStage({
       run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig, contextGuard),
     }));
 
-    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError, ...(ctx.contextManagedPlanning ? { parallelism: ctx.contextManagedPlanning.planningParallelism } : {}) });
+    yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });
 
     // Read completed module plan files for this wave (context for later waves)
     for (const modId of waveModuleIds) {

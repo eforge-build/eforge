@@ -17,7 +17,6 @@ import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
 import { validateCompileArtifacts } from './artifact-validation.js';
 import { boundProviderContextExplanation, classifyProviderContextError } from './provider-context.js';
-import type { DecompositionPlanningError } from './planning-decomposition.js';
 export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } from './provider-context.js';
 
 export interface CompileScopeRecoveryState {
@@ -101,17 +100,6 @@ export async function buildPreflightEscalationDecision(
     risk,
   });
   return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
-}
-
-export async function toDecompositionCompileScopeFailure(ctx: PipelineContext, error: DecompositionPlanningError): Promise<CompileScopeContextFailure> {
-  return buildCompileScopeContextFailure(ctx, {
-    source: error.source,
-    failureKind: error.kind,
-    stage: error.stage,
-    explanation: error.message,
-    decompositionEvidence: error.evidence,
-    risk: ctx.compilePreflight,
-  });
 }
 
 export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
