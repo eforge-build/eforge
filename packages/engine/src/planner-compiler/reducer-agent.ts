@@ -7,42 +7,62 @@ import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
+import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
 export interface RunPlanningReducerInput { task: PlanningReduceTask; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReducerResult { output: PlanningReduceOutput; events: EforgeEvent[]; resultText: string; prompt: string }
 const SUBMIT_REDUCE_OUTPUT_TOOL = 'submit_reduce_output';
 
 export async function runPlanningReducer(input: RunPlanningReducerInput): Promise<PlanningReducerResult> {
-  let submittedOutput: PlanningReduceOutput | undefined;
   const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_REDUCE_OUTPUT_TOOL);
   const prompt = formatPlanningReducerPrompt(input.task, submitToolName);
   if (utf8ByteLength(prompt) > input.task.budget.maxReducePromptBytes) throw new Error(`reduce prompt budget exceeded:${input.task.node.nodeId}`);
   const events: EforgeEvent[] = [];
-  let streamedText = '';
-  let resultText = '';
-  for await (const event of input.harness.run({
-    ...pickSdkOptions(input.agentOptions ?? {}),
-    prompt,
-    cwd: input.cwd,
-    maxTurns: input.agentOptions?.maxTurns ?? 4,
-    tools: 'none',
-    customTools: [createReduceOutputSubmissionTool(submitToolName, (output) => {
-      if (submittedOutput) return false;
-      submittedOutput = output;
-      return true;
-    })],
-    abortSignal: input.abortSignal,
-    phase: 'compile',
-    stage: 'planner',
-  }, 'planner', input.task.node.nodeId)) {
-    input.onEvent?.(event);
-    events.push(event);
-    if (event.type === 'agent:message') streamedText += event.content;
-    if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
+  let candidate = '';
+
+  for (let attempt = 1; attempt <= PLANNER_COMPILER_AGENT_MAX_ATTEMPTS; attempt += 1) {
+    const attemptEvents: EforgeEvent[] = [];
+    let submittedOutput: PlanningReduceOutput | undefined;
+    let streamedText = '';
+    let resultText = '';
+    try {
+      for await (const event of input.harness.run({
+        ...pickSdkOptions(input.agentOptions ?? {}),
+        prompt,
+        cwd: input.cwd,
+        maxTurns: input.agentOptions?.maxTurns ?? 4,
+        tools: 'none',
+        customTools: [createReduceOutputSubmissionTool(submitToolName, (output) => {
+          if (submittedOutput) return false;
+          submittedOutput = output;
+          return true;
+        })],
+        abortSignal: input.abortSignal,
+        phase: 'compile',
+        stage: 'planner',
+      }, 'planner', input.task.node.nodeId)) {
+        input.onEvent?.(event);
+        events.push(event);
+        attemptEvents.push(event);
+        if (event.type === 'agent:message') streamedText += event.content;
+        if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
+      }
+      candidate = resultText.trim() ? resultText : streamedText;
+      if (!submittedOutput) throw new Error(`Reducer did not call ${submitToolName}`);
+      return { output: submittedOutput, events, resultText: candidate, prompt };
+    } catch (err) {
+      candidate = resultText.trim() ? resultText : streamedText;
+      const subtype = retryablePlannerCompilerSubtype(err);
+      if (submittedOutput && subtype) {
+        emitPlannerCompilerCheckpointWarning({ events, onEvent: input.onEvent, attemptEvents, subtype, label: 'reducer-infrastructure', planId: input.task.node.nodeId, err });
+        return { output: submittedOutput, events, resultText: candidate, prompt };
+      }
+      if (!subtype || attempt >= PLANNER_COMPILER_AGENT_MAX_ATTEMPTS) throw err;
+      emitPlannerCompilerRetry({ events, onEvent: input.onEvent, attempt, subtype, label: 'reducer-infrastructure-retry', planId: input.task.node.nodeId });
+    }
   }
-  const candidate = resultText.trim() ? resultText : streamedText;
-  if (!submittedOutput) throw new Error(`Reducer did not call ${submitToolName}`);
-  return { output: submittedOutput, events, resultText: candidate, prompt };
+
+  throw new Error(`Reducer did not call ${submitToolName}`);
 }
 
 export function formatPlanningReducerPrompt(task: PlanningReduceTask, submitToolName = SUBMIT_REDUCE_OUTPUT_TOOL): string {

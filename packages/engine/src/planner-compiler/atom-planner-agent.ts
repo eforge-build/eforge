@@ -9,6 +9,7 @@ import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
 import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
+import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
 export interface RunPlanningAtomPlannerInput { task: PlanningAtomTask; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; acceptedSharedFindings?: PlanningSharedFinding[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
 export interface PlanningAtomPlannerResult { output: PlanningAtomOutput; events: EforgeEvent[]; resultText: string; materialization: PlanningAtomSourceMaterialization }
@@ -18,36 +19,55 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
   const materialization = materializePlanningAtomSource({ sourceContent: input.sourceContent, task: input.task });
   if (materialization.errors.length > 0) throw new Error(materialization.errors.join('; '));
 
-  let submittedOutput: PlanningAtomOutput | undefined;
   const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_ATOM_OUTPUT_TOOL);
   const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? [], sourceEvidenceRecordsForAtom(input.sourceEvidenceBundle, input.task.atomId), submitToolName);
   const events: EforgeEvent[] = [];
-  let streamedText = '';
-  let resultText = '';
-  for await (const event of input.harness.run({
-    ...pickSdkOptions(input.agentOptions ?? {}),
-    prompt,
-    cwd: input.cwd,
-    maxTurns: input.agentOptions?.maxTurns ?? 4,
-    tools: 'none',
-    customTools: [createAtomOutputSubmissionTool(submitToolName, (output) => {
-      if (submittedOutput) return false;
-      submittedOutput = output;
-      return true;
-    })],
-    abortSignal: input.abortSignal,
-    phase: 'compile',
-    stage: 'planner',
-  }, 'planner', input.task.atomId)) {
-    input.onEvent?.(event);
-    events.push(event);
-    if (event.type === 'agent:message') streamedText += event.content;
-    if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
+  let candidate = '';
+
+  for (let attempt = 1; attempt <= PLANNER_COMPILER_AGENT_MAX_ATTEMPTS; attempt += 1) {
+    const attemptEvents: EforgeEvent[] = [];
+    let submittedOutput: PlanningAtomOutput | undefined;
+    let streamedText = '';
+    let resultText = '';
+    try {
+      for await (const event of input.harness.run({
+        ...pickSdkOptions(input.agentOptions ?? {}),
+        prompt,
+        cwd: input.cwd,
+        maxTurns: input.agentOptions?.maxTurns ?? 4,
+        tools: 'none',
+        customTools: [createAtomOutputSubmissionTool(submitToolName, (output) => {
+          if (submittedOutput) return false;
+          submittedOutput = output;
+          return true;
+        })],
+        abortSignal: input.abortSignal,
+        phase: 'compile',
+        stage: 'planner',
+      }, 'planner', input.task.atomId)) {
+        input.onEvent?.(event);
+        events.push(event);
+        attemptEvents.push(event);
+        if (event.type === 'agent:message') streamedText += event.content;
+        if (event.type === 'agent:result' && event.result.resultText !== undefined) resultText = event.result.resultText;
+      }
+
+      candidate = resultText.trim() ? resultText : streamedText;
+      if (!submittedOutput) throw new Error(`Atom planner did not call ${submitToolName}`);
+      return { output: submittedOutput, events, resultText: candidate, materialization };
+    } catch (err) {
+      candidate = resultText.trim() ? resultText : streamedText;
+      const subtype = retryablePlannerCompilerSubtype(err);
+      if (submittedOutput && subtype) {
+        emitPlannerCompilerCheckpointWarning({ events, onEvent: input.onEvent, attemptEvents, subtype, label: 'atom-planner-infrastructure', planId: input.task.atomId, err });
+        return { output: submittedOutput, events, resultText: candidate, materialization };
+      }
+      if (!subtype || attempt >= PLANNER_COMPILER_AGENT_MAX_ATTEMPTS) throw err;
+      emitPlannerCompilerRetry({ events, onEvent: input.onEvent, attempt, subtype, label: 'atom-planner-infrastructure-retry', planId: input.task.atomId });
+    }
   }
 
-  const candidate = resultText.trim() ? resultText : streamedText;
-  if (!submittedOutput) throw new Error(`Atom planner did not call ${submitToolName}`);
-  return { output: submittedOutput, events, resultText: candidate, materialization };
+  throw new Error(`Atom planner did not call ${submitToolName}`);
 }
 
 export function formatPlanningAtomPrompt(task: PlanningAtomTask, materialization: PlanningAtomSourceMaterialization, acceptedSharedFindings: PlanningSharedFinding[] = [], sourceEvidence: PlanningSourceEvidenceRecord[] = [], submitToolName = SUBMIT_ATOM_OUTPUT_TOOL): string {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
@@ -82,6 +83,23 @@ describe('planning reduce runner', () => {
 
     const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
     expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_reduce_output again with a schema-valid payload.');
+  });
+
+  it('retries retryable infrastructure failures before failing a reduce node', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const node = tree.nodes[0];
+    const harness = new StubHarness([
+      { error: new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.') },
+      reduceSubmission(validReduceOutput(node)),
+    ]);
+
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits });
+
+    expect(result.reduceComplete).toBe(true);
+    expect(result.validationErrors).toEqual([]);
+    expect(harness.calls).toHaveLength(2);
+    expect(result.events.filter((event) => event.type === 'agent:retry')).toEqual([expect.objectContaining({ agent: 'planner', planId: node.nodeId, subtype: 'error_pi_tool_infrastructure', label: 'reducer-infrastructure-retry' })]);
   });
 
   it('rejects invalid reducer output before accepting completion', async () => {

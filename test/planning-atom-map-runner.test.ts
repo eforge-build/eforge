@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
+import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, runPlanningAtomMap, runPlanningAtomPlanner, selectReadyPlanningAtoms, type PlanningAtomGraph, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
@@ -50,6 +51,22 @@ describe('planning atom map runner', () => {
 
     const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
     expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_atom_output again with a schema-valid payload.');
+  });
+
+  it('retries retryable infrastructure failures before failing an atom', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const [task] = data.tasks;
+    const harness = new StubHarness([
+      { error: new AgentTerminalError('error_transient_transport', 'Backend error: WebSocket closed 1000') },
+      atomSubmission(completedOutput(task)),
+    ]);
+
+    const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness });
+
+    expect(result.mapComplete).toBe(true);
+    expect(result.failedAtomIds).toEqual([]);
+    expect(harness.calls).toHaveLength(2);
+    expect(result.events.filter((event) => event.type === 'agent:retry')).toEqual([expect.objectContaining({ agent: 'planner', planId: task.atomId, subtype: 'error_transient_transport', label: 'atom-planner-infrastructure-retry' })]);
   });
 
   it('continues independent atoms after a failure and blocks dependency successors', async () => {
