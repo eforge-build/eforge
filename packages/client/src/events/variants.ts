@@ -5,6 +5,7 @@ import { agentEventVariants } from './variants/agents.js';
 import { buildEventVariants, buildResumeEventVariants } from './variants/build.js';
 import { daemonEventVariants } from './variants/daemon.js';
 import { extensionEventVariants } from './variants/extensions.js';
+import { planningMapReduceEventVariants } from './variants/planning-map-reduce.js';
 import { sessionLifecycleEventVariants, planningEventVariants, expeditionEventVariants } from './variants/session-planning.js';
 import { stackEventVariants } from './variants/stack.js';
 import { validationRecoveryEventVariants } from './variants/validation-recovery.js';
@@ -13,6 +14,7 @@ export const eforgeEventVariantEntries = [
   ...sessionLifecycleEventVariants,
   ...extensionEventVariants,
   ...planningEventVariants,
+  ...planningMapReduceEventVariants,
   ...buildEventVariants,
   ...expeditionEventVariants,
   ...agentEventVariants,

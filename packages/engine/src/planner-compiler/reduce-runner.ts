@@ -7,6 +7,7 @@ import { buildPlanningReduceTask, buildPlanningReduceTree, DEFAULT_PLANNING_REDU
 import { formatPlanningReducerPrompt, runPlanningReducer } from './reducer-agent.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
+import { buildMapReduceReduceTreeEvent, buildMapReduceReduceStatusEvent } from './orchestration-events.js';
 
 export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReduceResult { graphId: string; rootNodeId?: string; tree: PlanningReduceTree; outputs: PlanningReduceOutput[]; finalOutput?: PlanningReduceOutput; conflicts: PlanningReduceConflict[]; gaps: PlanningReduceGap[]; validationErrors: string[]; reduceComplete: boolean; events: EforgeEvent[]; iterations: number }
@@ -21,17 +22,26 @@ export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<
   const validationErrors = [...tree.validationErrors];
   let iterations = 0;
 
+  const emit = (event: EforgeEvent): void => { input.onEvent?.(event); events.push(event); };
+  emit(buildMapReduceReduceTreeEvent(tree));
+
   for (const depth of reduceDepths(tree)) {
     const runnable = tree.nodes.filter((node) => node.depth === depth && node.inputNodeIds.every((childId) => completedNodeIds(outputs).has(childId)));
     const blocked = tree.nodes.filter((node) => node.depth === depth && !runnable.includes(node));
-    outputs.push(...blocked.map((node) => incompleteOutput(node.nodeId, `reduce node blocked by incomplete child:${node.inputNodeIds.join(',')}`)));
+    for (const node of blocked) {
+      const error = `reduce node blocked by incomplete child:${node.inputNodeIds.join(',')}`;
+      outputs.push(incompleteOutput(node.nodeId, error));
+      emit(buildMapReduceReduceStatusEvent(node.nodeId, 'incomplete', error));
+    }
     if (runnable.length === 0) continue;
     iterations += 1;
+    for (const node of runnable) emit(buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
     const results = await Promise.all(runnable.map((node) => runReduceNode(input, tree, node.nodeId, outputs)));
     for (const result of results) {
       outputs.push(result.output);
       events.push(...result.events);
       validationErrors.push(...result.validationErrors);
+      emit(buildMapReduceReduceStatusEvent(result.output.nodeId, result.output.status, result.output.error));
     }
   }
 

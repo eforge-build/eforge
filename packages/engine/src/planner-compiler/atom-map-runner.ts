@@ -9,6 +9,8 @@ import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPla
 import { validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle } from './source-evidence-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
+import { buildMapReduceAtomsEvent, buildMapReduceAtomStatusEvent } from './orchestration-events.js';
+import type { PlanningMapReduceAtomStatus } from '@eforge-build/client';
 
 export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
@@ -27,21 +29,39 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
   const validationErrors: string[] = [...(briefValidation.ok ? [] : briefValidation.errors), ...(sourceEvidenceValidation.ok ? [] : sourceEvidenceValidation.errors)];
   let iterations = 0;
 
+  const emit = (event: EforgeEvent): void => { input.onEvent?.(event); events.push(event); };
+  emit(buildMapReduceAtomsEvent(input.graph));
+
   while (true) {
     const decision = selectReadyAtoms(input, tasks, completed, failed, skipped);
     if (decision.readyAtomIds.length === 0) return finish(input, { outputs, events, completed, failed, skipped, validationErrors, iterations, blockedAtoms: decision.blockedAtoms, readyAtomIds: decision.readyAtomIds });
     iterations += 1;
+    for (const atomId of decision.readyAtomIds) emit(buildMapReduceAtomStatusEvent(atomId, 'running'));
     const acceptedFindings = outputs.flatMap((output) => output.sharedFindings ?? []);
     const batchResults = await Promise.all(decision.readyAtomIds.map((atomId) => runAtom(input, requireTask(tasks, atomId), acceptedFindings)));
     for (const result of batchResults) {
       outputs.push(result.output);
       events.push(...result.events);
       validationErrors.push(...result.validationErrors);
-      if (result.output.status === 'completed' && result.validationErrors.length === 0) completed.add(result.output.atomId);
-      else if (result.output.status === 'skipped' && result.validationErrors.length === 0) skipped.add(result.output.atomId);
+      const terminal = atomTerminalStatus(result.output.status, result.validationErrors.length);
+      if (terminal === 'completed') completed.add(result.output.atomId);
+      else if (terminal === 'skipped') skipped.add(result.output.atomId);
       else failed.add(result.output.atomId);
+      emit(buildMapReduceAtomStatusEvent(result.output.atomId, terminal, atomStatusReason(result)));
     }
   }
+}
+
+function atomTerminalStatus(outputStatus: PlanningAtomOutput['status'], validationErrorCount: number): PlanningMapReduceAtomStatus {
+  if (outputStatus === 'completed' && validationErrorCount === 0) return 'completed';
+  if (outputStatus === 'skipped' && validationErrorCount === 0) return 'skipped';
+  return 'failed';
+}
+
+function atomStatusReason(result: AtomRunResult): string | undefined {
+  if (result.output.error) return result.output.error;
+  if (result.validationErrors.length > 0) return result.validationErrors.join('; ');
+  return undefined;
 }
 
 async function runAtom(input: RunPlanningAtomMapInput, task: PlanningAtomTask, acceptedSharedFindings: PlanningSharedFinding[]): Promise<AtomRunResult> {

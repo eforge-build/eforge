@@ -257,6 +257,12 @@ export const IGNORED_EVENT_TYPES = [
   'expedition:wave:complete',
   'expedition:compile:start',
   'expedition:compile:complete',
+  // Map/reduce orchestration events are consumed by a dedicated view (Phase 2+),
+  // not the generic pipeline reducer. Ignored here so the exhaustiveness gate stays green.
+  'planning:map-reduce:atoms',
+  'planning:map-reduce:atom:status',
+  'planning:map-reduce:reduce-tree',
+  'planning:map-reduce:reduce:status',
   'agent:warning',
   'agent:message',
   'agent:tool_use',
