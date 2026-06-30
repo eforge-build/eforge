@@ -25,6 +25,9 @@ export type {
   MapReduceOrchestration,
   MapReduceAtomNode,
   MapReduceReduceNode,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceReduceStatus,
   ValidationCommandSpan,
   ValidationCommandStatus,
   // Re-exported client types (so pipeline/timeline components can import from @/lib/run-state)
@@ -55,11 +58,15 @@ export type {
   PlanningLane,
 } from './selectors/plan-progress';
 export { selectStackLayersForRun } from './selectors/stack-layers';
-export { buildMapReduceSummary } from './selectors/map-reduce';
+export { buildMapReduceSummary, buildMapReduceBoard } from './selectors/map-reduce';
 export type {
   MapReduceSummary,
   MapReduceAtomCounts,
   MapReduceReduceCounts,
+  MapReduceBoard,
+  MapReduceBoardSection,
+  MapReduceBoardNode,
+  MapReduceBoardThread,
 } from './selectors/map-reduce';
 
 // Lane registry

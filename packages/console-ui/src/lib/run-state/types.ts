@@ -36,6 +36,12 @@ import type {
   PlanningMapReduceAtomStatus,
   PlanningMapReduceReduceStatus,
 } from '@eforge-build/client/browser';
+export type {
+  PlanningMapReduceAtomEdge,
+  PlanningMapReduceAtomReason,
+  PlanningMapReduceAtomStatus,
+  PlanningMapReduceReduceStatus,
+};
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 

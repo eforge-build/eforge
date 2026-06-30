@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SummaryChips } from './summary-chips';
@@ -6,8 +6,6 @@ import { BottomTabPanel } from './bottom-tab-panel';
 import { useHybridRunDetail } from '@/hooks/use-run-detail';
 import { extractPrdTitle } from '@/lib/plan-content';
 import type { RunState } from '@/lib/run-state';
-import { buildMapReduceSummary } from '@/lib/run-state';
-import { OrchestrationSummary } from '@/components/map-reduce/orchestration-summary';
 import { PlanPreviewProvider, PlanPreviewPanel, usePlanPreview } from '@/components/preview';
 
 interface RunDetailViewProps {
@@ -70,14 +68,6 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
   const { setRuntimeData } = usePlanPreview();
   const runTitle = getRunTitle(runState);
 
-  // Derive the map/reduce summary once per state change rather than on every
-  // render (mirrors the memoized derivation in PipelineSection). Null for normal
-  // runs and until the first `planning:map-reduce:atoms` snapshot arrives.
-  const mapReduceSummary = useMemo(
-    () => (runState?.mapReduce ? buildMapReduceSummary(runState.mapReduce, runState.agentThreads) : null),
-    [runState?.mapReduce, runState?.agentThreads],
-  );
-
   useEffect(() => {
     if (!runState) return;
     setRuntimeData({
@@ -123,13 +113,6 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
       {runState && (
         <div className="px-4 py-2 border-b border-border shrink-0">
           <SummaryChips runState={runState} />
-        </div>
-      )}
-
-      {/* Map/reduce orchestration summary (large-plan bounded-compiler runs only) */}
-      {mapReduceSummary && (
-        <div className="px-4 py-2 border-b border-border shrink-0">
-          <OrchestrationSummary summary={mapReduceSummary} />
         </div>
       )}
 
