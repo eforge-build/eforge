@@ -66,6 +66,7 @@ function validateOutputForTask(output: PlanningAtomOutput, task: PlanningAtomTas
   const fragments = output.planFragments ?? [];
   const modules = output.moduleCandidates ?? [];
   for (const update of output.aspectUpdates) validateAspectUpdate(output, task, aspects, update, errors);
+  validateTerminalAspectAccounting(output, task, errors);
   validateCompactHandoff(output, task, errors);
   validateUniqueIds('plan fragment', fragments.map((fragment) => fragment.fragmentId), errors);
   validateUniqueIds('module candidate', modules.map((module) => module.moduleId), errors);
@@ -82,6 +83,12 @@ function validateAspectUpdate(output: PlanningAtomOutput, task: PlanningAtomTask
   if (update.status === 'resolved') validateResolvedAspectAtomIds(output, aspect, update, errors);
   if (update.status === 'skipped' && !nonEmpty(update.reason)) errors.push(`skipped aspect requires reason:${update.aspectId}`);
   if (update.status === 'represented' && !validRepresentation(update.representation)) errors.push(`represented aspect requires kind, module, reason, and validation expectation:${update.aspectId}`);
+}
+
+function validateTerminalAspectAccounting(output: PlanningAtomOutput, task: PlanningAtomTask, errors: string[]): void {
+  if (output.status === 'failed') return;
+  const updated = new Set(output.aspectUpdates.map((update) => update.aspectId));
+  for (const aspectId of task.aspectIds) if (!updated.has(aspectId)) errors.push(`atom output missing aspect update:${output.atomId}:${aspectId}`);
 }
 
 function validateCompactHandoff(output: PlanningAtomOutput, task: PlanningAtomTask, errors: string[]): void {
