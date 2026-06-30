@@ -4,6 +4,7 @@ import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput, type PlanningAtomOutputStatus, type PlanningAtomPlanFragment, type PlanningAtomModuleCandidate } from './atom-planning-contracts.js';
+import { coercePlanningReduceDigest } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
@@ -115,6 +116,8 @@ Call ${submitToolName} with an object matching its schema.
 - represented aspect updates require exactly this representation shape: { "kind": "residue" | "follow-up", "moduleId": "one moduleCandidates[].moduleId", "reason": "why representation is needed", "validationExpectation": "how the represented work is validated" }.
 - Do not use moduleIds, moduleCandidateIds, fragmentIds, or prerequisiteAtomIds inside representation.
 - Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
+- Include reduceDigest. It is the canonical bounded digest for reducer agents; do not copy full markdown into it.
+- reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
 - Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
@@ -149,6 +152,7 @@ function coercePlanningAtomOutput(value: Record<string, unknown>, expectedAtomId
     atomId,
     status,
     aspectUpdates: arrayValue(value.aspectUpdates).map(coerceAspectUpdate),
+    ...(objectValueOrUndefined(value.reduceDigest) ? { reduceDigest: coercePlanningReduceDigest(objectValue(value.reduceDigest)) } : {}),
     ...(arrayValue(value.planFragments).length > 0 ? { planFragments: arrayValue(value.planFragments).map(coercePlanFragment) } : {}),
     ...(arrayValue(value.moduleCandidates).length > 0 ? { moduleCandidates: arrayValue(value.moduleCandidates).map(coerceModuleCandidate) } : {}),
     ...(arrayValue(value.sharedFindings).length > 0 ? { sharedFindings: arrayValue(value.sharedFindings).map(coerceSharedFinding) } : {}),

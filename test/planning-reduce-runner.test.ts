@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveSourceInventory, formatPlanningReducerPrompt, runPlanningReduce, runPlanningReducer, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -83,6 +83,35 @@ describe('planning reduce runner', () => {
 
     const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
     expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_reduce_output again with a schema-valid payload.');
+  });
+
+  it('formats reducer prompts from reducer digests instead of full artifact markdown', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.']);
+    const hugeMarkdown = 'LOSSY-MARKDOWN-SHOULD-NOT-APPEAR '.repeat(1_000);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
+      ...output,
+      compactHandoff: hugeMarkdown,
+      planFragments: (output.planFragments ?? []).map((fragment) => ({ ...fragment, markdown: hugeMarkdown })),
+      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, description: hugeMarkdown, validationExpectation: hugeMarkdown })),
+      reduceDigest: {
+        sourceId: output.atomId,
+        sourceKind: 'atom',
+        status: output.status,
+        summary: `Digest for ${output.atomId}.`,
+        criterionIds: [...new Set((output.planFragments ?? []).flatMap((fragment) => fragment.criterionIds))].sort(),
+        aspectIds: output.aspectUpdates.map((update) => update.aspectId).sort(),
+        fragments: (output.planFragments ?? []).map((fragment) => ({ fragmentId: fragment.fragmentId, title: fragment.title, intent: `Intent for ${fragment.fragmentId}.`, criterionIds: fragment.criterionIds, aspectIds: fragment.aspectIds })),
+        modules: (output.moduleCandidates ?? []).map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: `Purpose for ${module.moduleId}.`, criterionIds: module.criterionIds, aspectIds: module.aspectIds, validationExpectation: 'Run focused validation.' })),
+      },
+    }));
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: 24_000 } });
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+
+    const prompt = formatPlanningReducerPrompt(task);
+
+    expect(prompt).toContain(`Digest for ${data.mapResult.outputs[0]!.atomId}.`);
+    expect(prompt).not.toContain('LOSSY-MARKDOWN-SHOULD-NOT-APPEAR');
+    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(task.budget.maxReducePromptBytes);
   });
 
   it('retries retryable infrastructure failures before failing a reduce node', async () => {

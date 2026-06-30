@@ -6,6 +6,7 @@ import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
+import { coercePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -70,17 +71,19 @@ export function formatPlanningReducerPrompt(task: PlanningReduceTask, submitTool
 
 Synthesize only the reduce node below. Do not inspect the repository or call repository tools. Deduplicate fragments and modules, reconcile conflicts, preserve criterion/aspect traceability, and complete this turn by calling ${submitToolName} exactly once. Do not return JSON in text.
 
+Reducer inputs are bounded producer-authored digests. Full artifact markdown and long descriptions are intentionally omitted from this prompt; preserve and reason from the IDs, traceability, intent, purpose, gaps, and conflicts in the digests.
+
 ## Reduce task
 
 ${JSON.stringify({ graphId: task.graphId, node: task.node, budget: task.budget }, null, 2)}
 
-## Atom outputs
+## Atom output reducer digests
 
-${JSON.stringify(task.atomOutputs.map(summarizeAtomOutput), null, 2)}
+${JSON.stringify(task.atomOutputs.map(reduceDigestForAtomOutput), null, 2)}
 
-## Child reduce outputs
+## Child reduce output reducer digests
 
-${JSON.stringify(task.childOutputs.map(summarizeReduceOutput), null, 2)}
+${JSON.stringify(task.childOutputs.map(reduceDigestForReduceOutput), null, 2)}
 
 ## Structured submission rules
 
@@ -90,6 +93,8 @@ Call ${submitToolName} with an object matching its schema.
 - Link every fragment, module, conflict, and gap to provided criterionIds and aspectIds.
 - Completed outputs must not contain representationRequired gaps.
 - Failed outputs must not include fragments or module candidates.
+- Include reduceDigest. It is the canonical bounded digest for parent reducers; do not copy full markdown into it.
+- reduceDigest.sourceId must be exactly "${task.node.nodeId}" and reduceDigest.sourceKind must be "reduce".
 - Keep compactSummary within ${task.budget.maxReduceSummaryBytes} bytes.
 `;
 }
@@ -123,6 +128,7 @@ function coercePlanningReduceOutput(value: Record<string, unknown>, expectedNode
     nodeId,
     status,
     compactSummary: stringValue(value.compactSummary) ?? '',
+    ...(objectValueOrUndefined(value.reduceDigest) ? { reduceDigest: coercePlanningReduceDigest(objectValue(value.reduceDigest)) } : {}),
     ...(arrayValue(value.planFragments).length > 0 ? { planFragments: arrayValue(value.planFragments).map(coercePlanFragment) } : {}),
     ...(arrayValue(value.moduleCandidates).length > 0 ? { moduleCandidates: arrayValue(value.moduleCandidates).map(coerceModuleCandidate) } : {}),
     ...(arrayValue(value.conflicts).length > 0 ? { conflicts: arrayValue(value.conflicts).map(coerceConflict) } : {}),
@@ -132,30 +138,53 @@ function coercePlanningReduceOutput(value: Record<string, unknown>, expectedNode
   };
 }
 
-function summarizeAtomOutput(output: PlanningAtomOutput): unknown {
+function reduceDigestForAtomOutput(output: PlanningAtomOutput): PlanningReduceDigest {
+  if (output.reduceDigest) return output.reduceDigest;
+  const fragments = output.planFragments ?? [];
+  const modules = output.moduleCandidates ?? [];
   return {
-    atomId: output.atomId,
+    sourceId: output.atomId,
+    sourceKind: 'atom',
     status: output.status,
-    aspectIds: output.aspectUpdates.map((update) => update.aspectId).sort(),
-    planFragments: (output.planFragments ?? []).slice(0, 8).map((fragment) => ({ ...fragment, markdown: boundText(fragment.markdown, 900) })),
-    moduleCandidates: (output.moduleCandidates ?? []).slice(0, 8).map((module) => ({ ...module, description: boundText(module.description, 900), validationExpectation: boundText(module.validationExpectation, 500) })),
-    compactHandoff: output.compactHandoff ? boundText(output.compactHandoff, 900) : undefined,
-    error: output.error ? boundText(output.error, 500) : undefined,
+    summary: boundedOrReference(output.compactHandoff ?? output.error, `No producer-authored reducer digest was supplied for atom ${output.atomId}; use artifact IDs and traceability only.`),
+    criterionIds: uniq([...fragments.flatMap((fragment) => fragment.criterionIds), ...modules.flatMap((module) => module.criterionIds)]),
+    aspectIds: uniq([...output.aspectUpdates.map((update) => update.aspectId), ...fragments.flatMap((fragment) => fragment.aspectIds), ...modules.flatMap((module) => module.aspectIds)]),
+    fragments: fragments.map((fragment) => ({ fragmentId: fragment.fragmentId, title: fragment.title, intent: boundedOrReference(fragment.markdown, `Full markdown retained in atom artifact fragment ${fragment.fragmentId}.`), criterionIds: [...fragment.criterionIds], aspectIds: [...fragment.aspectIds], ...(fragment.dependsOnFragmentIds ? { dependsOnFragmentIds: [...fragment.dependsOnFragmentIds] } : {}) })),
+    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in atom artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in atom artifact module ${module.moduleId}.`), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
   };
 }
-function summarizeReduceOutput(output: PlanningReduceOutput): unknown {
+
+function reduceDigestForReduceOutput(output: PlanningReduceOutput): PlanningReduceDigest {
+  if (output.reduceDigest) return output.reduceDigest;
+  const fragments = output.planFragments ?? [];
+  const modules = output.moduleCandidates ?? [];
+  const issues: PlanningReduceDigestIssue[] = [
+    ...(output.conflicts ?? []).map((conflict) => issueDigest('conflict', conflict.conflictId, conflict.title, conflict.description, conflict.criterionIds, conflict.aspectIds, conflict.sourceIds)),
+    ...(output.gaps ?? []).map((gap) => issueDigest('gap', gap.gapId, gap.title, gap.description, gap.criterionIds, gap.aspectIds, gap.sourceIds, gap.representationRequired)),
+  ];
   return {
-    nodeId: output.nodeId,
+    sourceId: output.nodeId,
+    sourceKind: 'reduce',
     status: output.status,
-    compactSummary: boundText(output.compactSummary, 1_200),
-    planFragments: (output.planFragments ?? []).slice(0, 8).map((fragment) => ({ ...fragment, markdown: boundText(fragment.markdown, 900) })),
-    moduleCandidates: (output.moduleCandidates ?? []).slice(0, 8).map((module) => ({ ...module, description: boundText(module.description, 900), validationExpectation: boundText(module.validationExpectation, 500) })),
-    conflicts: (output.conflicts ?? []).slice(0, 8).map((conflict) => ({ ...conflict, description: boundText(conflict.description, 700) })),
-    gaps: (output.gaps ?? []).slice(0, 8).map((gap) => ({ ...gap, description: boundText(gap.description, 700) })),
-    validationStrategy: output.validationStrategy ? boundText(output.validationStrategy, 700) : undefined,
-    error: output.error ? boundText(output.error, 500) : undefined,
+    summary: boundedOrReference(output.compactSummary || output.error, `No producer-authored reducer digest was supplied for reduce node ${output.nodeId}; use artifact IDs and traceability only.`),
+    criterionIds: uniq([...fragments.flatMap((fragment) => fragment.criterionIds), ...modules.flatMap((module) => module.criterionIds), ...issues.flatMap((issue) => issue.criterionIds)]),
+    aspectIds: uniq([...fragments.flatMap((fragment) => fragment.aspectIds), ...modules.flatMap((module) => module.aspectIds), ...issues.flatMap((issue) => issue.aspectIds)]),
+    fragments: fragments.map((fragment) => ({ fragmentId: fragment.fragmentId, title: fragment.title, intent: boundedOrReference(fragment.markdown, `Full markdown retained in reduce artifact fragment ${fragment.fragmentId}.`), criterionIds: [...fragment.criterionIds], aspectIds: [...fragment.aspectIds], ...(fragment.dependsOnFragmentIds ? { dependsOnFragmentIds: [...fragment.dependsOnFragmentIds] } : {}) })),
+    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in reduce artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in reduce artifact module ${module.moduleId}.`), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
+    issues,
   };
 }
+
+function issueDigest(kind: 'conflict' | 'gap', issueId: string, title: string, description: string, criterionIds: string[], aspectIds: string[], sourceIds?: string[], representationRequired?: boolean): PlanningReduceDigestIssue {
+  return { issueId, kind, title, summary: boundedOrReference(description, `Full ${kind} description retained in reduce artifact issue ${issueId}.`), criterionIds: [...criterionIds], aspectIds: [...aspectIds], ...(sourceIds ? { sourceIds: [...sourceIds] } : {}), ...(representationRequired ? { representationRequired } : {}) };
+}
+
+function boundedOrReference(value: string | undefined, fallback: string): string {
+  if (value && utf8ByteLength(value) <= 700) return value;
+  return fallback;
+}
+
+function uniq(values: string[]): string[] { return [...new Set(values.filter((value) => value.trim().length > 0))].sort(); }
 
 function coercePlanFragment(value: unknown): PlanningAtomPlanFragment {
   const record = objectValue(value);
@@ -177,16 +206,6 @@ function coerceGap(value: unknown): PlanningReduceGap {
   return { gapId: requiredString(record.gapId, 'gap id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), description: requiredString(record.description, 'gap description'), representationRequired: record.representationRequired === true, ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}) };
 }
 
-function boundText(value: string, maxBytes: number): string {
-  if (utf8ByteLength(value) <= maxBytes) return value;
-  let result = '';
-  for (const char of value) {
-    if (utf8ByteLength(`${result}${char}…`) > maxBytes) break;
-    result += char;
-  }
-  return `${result}…`;
-}
-
 function reduceStatus(value: unknown): PlanningReduceOutputStatus | undefined {
   return value === 'completed' || value === 'failed' || value === 'incomplete' ? value : undefined;
 }
@@ -194,6 +213,10 @@ function reduceStatus(value: unknown): PlanningReduceOutputStatus | undefined {
 function objectValue(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
   throw new Error('Reducer output contains invalid object');
+}
+
+function objectValueOrUndefined(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function arrayValue(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
