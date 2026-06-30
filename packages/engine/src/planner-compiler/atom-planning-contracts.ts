@@ -2,15 +2,16 @@ import type { PlanningObservedBudgetPressure, PlanningUnitBudget } from '@eforge
 import type { PlanningAtom, PlanningAtomBudgetEstimate, PlanningAtomGraph, PlanningAtomReason, PlanningAtomSourceSlice } from './atom-graph.js';
 import { derivePlanningAspectCoverage, derivePlanningCriterionAspects, type PlanningAspectCoverageSummary, type PlanningAspectCoverageUpdate, type PlanningCriterionAspect } from './coverage-accounting.js';
 import { utf8ByteLength } from './source-analysis.js';
+import { validatePlanningSharedFindings, type PlanningAtomBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 
 export type PlanningAtomOutputStatus = 'completed' | 'skipped' | 'failed';
 
-export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate }
+export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; sharedBrief?: PlanningAtomBrief }
 export interface PlanningAtomPlanFragment { fragmentId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnFragmentIds?: string[] }
 export interface PlanningAtomModuleCandidate { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; validationExpectation: string; dependsOnModuleIds?: string[] }
-export interface PlanningAtomOutput { atomId: string; status: PlanningAtomOutputStatus; aspectUpdates: PlanningAspectCoverageUpdate[]; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; discoveredEvidencePaths?: string[]; compactHandoff?: string; observedBudget?: PlanningObservedBudgetPressure; error?: string }
-export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[] }
+export interface PlanningAtomOutput { atomId: string; status: PlanningAtomOutputStatus; aspectUpdates: PlanningAspectCoverageUpdate[]; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; sharedFindings?: PlanningSharedFinding[]; discoveredEvidencePaths?: string[]; compactHandoff?: string; observedBudget?: PlanningObservedBudgetPressure; error?: string }
+export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[]; sharedBrief?: SharedPlanningBrief }
 export interface ValidatePlanningAtomOutputInput extends BuildPlanningAtomTasksInput { output: PlanningAtomOutput; task?: PlanningAtomTask }
 export interface SummarizePlanningAtomOutputsInput extends BuildPlanningAtomTasksInput { outputs: PlanningAtomOutput[] }
 export type PlanningAtomOutputValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
@@ -18,10 +19,10 @@ export interface PlanningAtomOutputCoverageSummary { coverage: PlanningAspectCov
 
 export function buildPlanningAtomTasks(input: BuildPlanningAtomTasksInput): PlanningAtomTask[] {
   const aspects = input.aspects ?? derivePlanningCriterionAspects(input.graph, input.inventory);
-  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects)).sort((a, b) => a.atomId.localeCompare(b.atomId));
+  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief)).sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
 
-export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[]): PlanningAtomTask {
+export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[], sharedBrief?: SharedPlanningBrief): PlanningAtomTask {
   return {
     graphId: graph.graphId,
     atomId: atom.atomId,
@@ -36,6 +37,7 @@ export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAt
     sourceSlices: atom.sourceSlices.map((slice) => ({ ...slice, criteriaIds: [...slice.criteriaIds], headingPath: [...slice.headingPath] })),
     budget: { ...atom.budget },
     estimate: { ...atom.estimate },
+    ...(briefForAtom(sharedBrief, atom.atomId) ? { sharedBrief: briefForAtom(sharedBrief, atom.atomId)! } : {}),
   };
 }
 
@@ -43,7 +45,7 @@ export function validatePlanningAtomOutput(input: ValidatePlanningAtomOutputInpu
   const atom = input.graph.atoms.find((candidate) => candidate.atomId === input.output.atomId);
   if (!atom) return invalid([`unknown atom:${input.output.atomId}`]);
   const aspects = input.aspects ?? derivePlanningCriterionAspects(input.graph, input.inventory);
-  const task = input.task ?? buildPlanningAtomTask(input.graph, atom, aspects);
+  const task = input.task ?? buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief);
   const errors = validateOutputForTask(input.output, task, aspects);
   return errors.length === 0 ? { ok: true, errors: [] } : invalid(errors);
 }
@@ -70,6 +72,7 @@ function validateOutputForTask(output: PlanningAtomOutput, task: PlanningAtomTas
   validateCompactHandoff(output, task, errors);
   validateUniqueIds('plan fragment', fragments.map((fragment) => fragment.fragmentId), errors);
   validateUniqueIds('module candidate', modules.map((module) => module.moduleId), errors);
+  errors.push(...validatePlanningSharedFindings({ atomId: output.atomId, aspectIds: task.aspectIds, interfaceKeys: task.interfaceKeys, ownedEvidencePaths: task.sharedBrief?.ownedEvidencePaths ?? [], ownedInterfaceKeys: task.sharedBrief?.ownedInterfaceKeys ?? task.interfaceKeys, findings: output.sharedFindings ?? [] }));
   for (const fragment of fragments) validateFragment(task, fragment, fragments, errors);
   for (const module of modules) validateModule(task, module, modules, errors);
   return errors.sort();
@@ -138,6 +141,11 @@ function validateDependencyIds(kind: string, id: string, dependsOnIds: string[] 
     else if (dependencyId === id) errors.push(`${kind} dependency self-reference:${id}`);
     else if (!available.has(dependencyId)) errors.push(`${kind} dependency missing:${id}:${dependencyId}`);
   }
+}
+
+function briefForAtom(sharedBrief: SharedPlanningBrief | undefined, atomId: string): PlanningAtomBrief | undefined {
+  const atomBrief = sharedBrief?.atomBriefs.find((brief) => brief.atomId === atomId);
+  return atomBrief ? { ...atomBrief, ownedEvidencePaths: [...atomBrief.ownedEvidencePaths], localEvidencePaths: [...atomBrief.localEvidencePaths], ownedInterfaceKeys: [...atomBrief.ownedInterfaceKeys], sharedEvidenceRefs: atomBrief.sharedEvidenceRefs.map((ref) => ({ ...ref })), sharedInterfaceRefs: atomBrief.sharedInterfaceRefs.map((ref) => ({ ...ref })), prerequisiteAtomIds: [...atomBrief.prerequisiteAtomIds], sectionIds: [...atomBrief.sectionIds], sections: atomBrief.sections.map((section) => ({ ...section })) } : undefined;
 }
 
 function duplicateAspectUpdateErrors(outputs: PlanningAtomOutput[]): string[] {
