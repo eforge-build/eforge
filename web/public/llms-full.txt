@@ -75,7 +75,7 @@ eforge build ./docs/my-feature.md
 eforge build --landing-action pr plans/my-feature-prd.md
 ```
 
-The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
+The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, token usage, and efficiency metrics in real time.
 
 Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
 
@@ -222,7 +222,7 @@ At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/
 
 The queue supports dependencies, priority, hold state, and runtime controls. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items, or to completed items with durable usable artifacts. Failed, skipped, unknown, or completed-without-artifact dependencies are rejected. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter, while failed and skipped items reject priority changes with a conflict until recovery or requeue makes them runnable. Queue hold state is runtime-only PRD frontmatter (`held`, `hold_reason`, `held_at`) on pending or waiting items; held items keep their file location and ordering metadata, but scheduler ticks do not dispatch them until they are unheld. Daemon projections expose hold state and queue-control capabilities, so Console can show hold/unhold, priority, remove, cascade, cancel, and disabled reasons from daemon-authored rules instead of inferring them locally. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files and deletes matching failed-build recovery sidecars. The daemon API also supports targeted dependency overrides for pending or waiting PRDs: one `depends_on` id is removed, remaining blockers keep the PRD in `waiting/`, and clearing the last blocker moves a waiting PRD back to the queue root. Running items reject priority, hold, unhold, removal, and dependency override controls; daemon-owned cancellation requires live queue-lock and run/session ownership evidence. Legacy removal fails closed when live pending/waiting dependents exist and lists dependent ids. Cascade remove and cancel use a two-phase preview/apply flow that rechecks an expected affected token and requires explicit dependent confirmation before mutating dependents. These are runtime filesystem mutations under `.eforge/queue/`, are gitignored, produce no git commits, and notify the scheduler so it re-reads queue files before dispatch. Scheduler pause is distinct from disabling auto-build: pause keeps desired auto-build on but prevents new launches until resume, while already-running builds continue unless cancelled. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build. The Console Now dashboard surfaces failed and skipped terminal rows in the Needs attention strip rather than the Queue card; the Queue card preview lists only forward pending and waiting rows, which expose set-priority, hold/unhold, and preview-first remove/cascade controls as capabilities allow. Failed enqueue attempts that never reached the queue appear as durable Needs attention rows with source label, reason, timestamp, fallback command, disabled reason when needed, and confirmed re-enqueue when source data is available. Failed upstreams with skipped descendants can be inspected before applying daemon-planned recovery, including projected pre-session dispatch blockers and explicit queue-cascade metadata repair choices when available.
 
-The **Console dashboard** (`http://localhost:<port>/console/`) tracks cost, token usage, and pipeline progress in real time. Root UI requests redirect to Console, and the daemon keeps it available after the build completes so you can inspect results.
+The **Console dashboard** (`http://localhost:<port>/console/`) tracks cost, token usage, efficiency metrics, and pipeline progress in real time. Root UI requests redirect to Console, and the daemon keeps it available after the build completes so you can inspect results.
 
 ## Artifact Branches and Landing Actions
 
@@ -3731,9 +3731,22 @@ Console shows:
 - Header controls that distinguish disabling auto-build from pausing/resuming scheduler launches
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
+- Live efficiency metrics and a historical efficiency analytics Now rail card with selectable 1d, 7d, 14d, 30d, and 90d windows
 - Runtime agent decisions (effort, thinking mode) on stage hover
 - Console Needs attention strip for failed builds, compile scope/context failure banners with optional guard diagnostics or decomposition-exhaustion evidence, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
+
+Efficiency metrics are telemetry proxies from eforge event data, not provider benchmark measurements:
+
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Output generation rate | `sum(output tokens) / sum(API duration seconds)` | Historical rows show p50/p95 over eligible finalized samples. |
+| Token traffic | Live: `(input + output tokens) / elapsed wall-clock minute`; historical: `total tokens / provider API duration seconds` for eligible finalized samples | Use this to understand total token movement, not just generated output. |
+| Cost burn | Live: `total cost / elapsed wall-clock minute`; historical cost/min: `finalized cost / provider API duration minutes` for eligible finalized samples | Distinct from total spend. |
+| Output tokens / $ | `output tokens / total cost` | Unavailable when cost is missing or zero. |
+| Cache context | `cache read tokens / input tokens` | Cache creation tokens are separate context, not cache hits. |
+
+The historical analytics card groups model rows by model plus harness/provider and profile rows by session profile. Rows include p50/p95 output generation rate, cost/run, cost/min, output tokens/$, success/failure counts, and sample counts when available. Sparse data is labeled explicitly: missing values render as `—`, and partial rows call out missing or excluded samples instead of displaying zero. Multi-model builds can split model attribution while still counting once at the profile/run level, so compare model and profile rollups as directional signals rather than exact benchmark rankings.
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
 
@@ -4037,7 +4050,7 @@ A TypeScript extension adapter that resolves `eforge://input/<adapter>/<id>` URI
 
 ## Console dashboard
 
-The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, queue management, failed-enqueue attention, recovery guidance flows, scheduler pause/resume, and preview-first cascade controls. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
+The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, live/historical efficiency metrics, queue management, failed-enqueue attention, recovery guidance flows, scheduler pause/resume, and preview-first cascade controls. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
 
 ## Playbook
 

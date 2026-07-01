@@ -104,6 +104,7 @@ describe('SummaryCards', () => {
       />,
     );
 
+    expect(screen.getByText('partial')).toBeTruthy();
     expect(screen.getAllByText('unavailable').length).toBeGreaterThan(0);
     expect(screen.queryByText('0 out tok/s')).toBeNull();
     expect(screen.getByTitle(/output generation rate formula\. Only finalized agent results are included\. Samples: 1\/3\./)).toBeTruthy();

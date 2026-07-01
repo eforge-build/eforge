@@ -8,6 +8,8 @@ export interface EfficiencyMetricRollup {
   durationSampleCount: number;
   durationUnavailableCount: number;
   speedExcludedSampleCount: number;
+  outputRateSampleCount: number;
+  outputRateUnavailableCount: number;
   inputTokens: number | null;
   outputTokens: number | null;
   totalTokens: number | null;

@@ -43,6 +43,14 @@ daemon REST (Header auto-build and scheduler controls)
   → SchedulerPauseControl      pauses/resumes scheduler launches without disabling desired auto-build
   → AutoBuildToggle            remains the desired-state control and labels paused scheduler state as auto-build on (scheduler paused)
 
+daemon REST (Now historical efficiency analytics)
+  → API_ROUTES.efficiencyAnalytics GET /api/efficiency-analytics?days=:days
+  → useEfficiencyAnalytics         stale-preserving fetch/poll behavior for fixed 1d, 7d, 14d, 30d, and 90d windows
+  → selectEfficiencyAnalyticsViewModel maps client-owned EfficiencyAnalyticsSummary rows into compact card rows and availability flags
+  → EfficiencyAnalyticsCard        Now rail model/profile rollups with denominator copy, sample counts, and partial/unavailable states
+
+Console requests the route through `API_ROUTES.efficiencyAnalytics` and imports response types from `@eforge-build/client/browser`; it does not declare local analytics wire shapes or inline `/api/...` paths. Window changes refetch with the selected `days` query while preserving the last successful payload for each window across transient failures.
+
 daemon REST (Now failed-build recovery)
   → API_ROUTES.queue includes client-owned QueueItem.dispatchFailure plus hold/capability metadata for queue-control-aware rows
   → stream:hello.failedEnqueues plus live failed-enqueue daemon events seed ConsoleProjectState.failedEnqueues
@@ -121,6 +129,24 @@ The Extensions section under `/console/system` (`src/views/system/extensions-sec
 **Refresh-after-mutation.** After every successful mutating action the management hook invokes the System refresh callback (`useSystemSurfaces.refresh()`) before recording success feedback. Failed mutations do not refresh.
 
 **Deferred.** Package lifecycle workflows - `new`, `install`, `update`, `remove`, and `test` - are explicitly deferred from this surface, along with force-overwrite promote, promote-with-trust, package/source and replay-source input UX, global enable/disable workflows, and any arbitrary extension-supplied frontend bundles, React components, browser JavaScript, or extension-owned HTTP routes. Pi and Claude extension management are out of scope here.
+
+## Efficiency metrics
+
+Console renders efficiency metrics as telemetry proxies from eforge event data, not as provider benchmark measurements.
+
+**Live run efficiency** comes from per-session SSE events folded into `RunState` and selected by `selectRunEfficiencyMetrics`:
+
+| Metric | Formula | Denominator |
+|--------|---------|-------------|
+| Output generation rate | `sum(output tokens) / sum(API duration seconds)` | Finalized agent results with positive provider API duration |
+| Token traffic | `(input + output tokens) / elapsed wall-clock minute` | Build elapsed wall-clock time, including live in-flight usage overlays |
+| Cost burn | `total cost / elapsed wall-clock minute` | Build elapsed wall-clock time, including live in-flight cost overlays |
+| Output tokens / $ | `output tokens / total cost` | Finalized output tokens and finalized cost |
+| Cache context | `cache read tokens / input tokens` | Finalized input tokens; cache creation tokens are shown separately when present |
+
+**Historical efficiency analytics** comes from `EfficiencyAnalyticsSummary` over the selected recent window. Model rows are grouped by `model` + `harness`/`provider`; profile rows are grouped by session profile and use an unattributed label when profile attribution is missing. Rows show p50/p95 output generation rate, cost/run, cost/min, output tokens/$, success/failure counts, and speed/run sample counts when supplied. Historical token-traffic rate fields use `total tokens / provider API duration seconds`; cost/min uses `finalized cost / provider API duration minutes`. Live token traffic and cost burn use wall-clock minutes, while historical rows use finalized provider-duration samples. Null metrics render as `—`, and rows with excluded or missing duration/cost/token samples are labeled `partial` or `unavailable` instead of being coerced to zero.
+
+Sparse windows can be noisy: one run may dominate a percentile or cost ratio, and multi-model runs can split attribution across model rollups while still belonging to one profile/run count. Treat the Now rail analytics card as a compact trend and attribution aid, then inspect individual builds for root-cause analysis.
 
 The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all active session IDs. Each stream's events are folded through the run-state reducer to produce a `RunState` snapshot. Selectors derive view-ready data from those snapshots without mutating state.
 

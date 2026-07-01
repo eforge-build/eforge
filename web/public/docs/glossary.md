@@ -67,7 +67,7 @@ A TypeScript extension adapter that resolves `eforge://input/<adapter>/<id>` URI
 
 ## Console dashboard
 
-The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, queue management, failed-enqueue attention, recovery guidance flows, scheduler pause/resume, and preview-first cascade controls. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
+The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, live/historical efficiency metrics, queue management, failed-enqueue attention, recovery guidance flows, scheduler pause/resume, and preview-first cascade controls. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
 
 ## Playbook
 

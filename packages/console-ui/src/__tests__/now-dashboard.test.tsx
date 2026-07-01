@@ -56,7 +56,50 @@ describe('NowDashboard', () => {
     expect(screen.getByText('Build health')).toBeDefined();
     expect(screen.queryByText('Open activity log →')).toBeNull();
     expect(screen.getByText('Build history')).toBeDefined();
+    // --- eforge:region plan-03-historical-analytics-ui-docs ---
+    expect(screen.getByText('Efficiency analytics')).toBeDefined();
+    // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
   });
+
+  // --- eforge:region plan-03-historical-analytics-ui-docs ---
+  it('refetches efficiency analytics through the daemon route when the window changes', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith(API_ROUTES.extensionList)) return Promise.resolve(jsonResponse(extListBody([])));
+      if (url.startsWith(API_ROUTES.spend)) {
+        return Promise.resolve(jsonResponse({ windowDays: 7, days: [], models: [], modelsToday: [] }));
+      }
+      if (url.startsWith(API_ROUTES.efficiencyAnalytics)) {
+        const days = Number(new URL(url, 'http://localhost').searchParams.get('days') ?? 7);
+        return Promise.resolve(jsonResponse({
+          windowDays: days,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          endedAt: '2026-01-08T00:00:00.000Z',
+          agentResultCount: 0,
+          runCount: 0,
+          sessionCount: 0,
+          missingModelAttributionCount: 0,
+          missingProfileAttributionCount: 0,
+          models: [],
+          profiles: [],
+        }));
+      }
+      return Promise.resolve(jsonResponse({}, false, 500, 'Error'));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    try {
+      render(<NowDashboard projectState={connectedState()} activeSessions={emptyActiveSessions} />);
+
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === `${API_ROUTES.efficiencyAnalytics}?days=7`)).toBe(true));
+      fireEvent.click(screen.getByRole('button', { name: '30d' }));
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === `${API_ROUTES.efficiencyAnalytics}?days=30`)).toBe(true));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+  // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
 
   it('surfaces failed PRDs in the Needs attention strip with a Recover action, not in the Queue card', () => {
     const state = connectedState({

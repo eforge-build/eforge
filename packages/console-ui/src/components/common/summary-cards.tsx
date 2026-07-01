@@ -3,7 +3,7 @@ import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, Message
 import { formatNumber } from '@/lib/run-state/format';
 import { cn } from '@/lib/utils';
 import { AnimatedCounter } from './animated-counter';
-import type { RunEfficiencyMetrics, SessionProfile } from '@/lib/run-state';
+import type { EfficiencyMetric, RunEfficiencyMetrics, SessionProfile } from '@/lib/run-state';
 import { ProfileBadge } from '@/components/profile/profile-badge';
 
 interface SummaryCardsProps {
@@ -68,15 +68,15 @@ export function SummaryCards({
   const formatCost = useCallback((n: number) => `$${(n / 10000).toFixed(4)}`, []);
 
   // --- eforge:region plan-02-live-efficiency-surfaces ---
-  const formatEfficiency = useCallback((label: string, value: number | null) => {
-    if (value == null) return 'unavailable';
-    switch (label) {
-      case 'output generation rate': return `${Math.round(value)} out tok/s`;
-      case 'token traffic': return `${Math.round(value)} tok/min`;
-      case 'cost burn': return `$${value.toFixed(2)}/min`;
-      case 'output tokens / $': return `${Math.round(value)} out tok/$`;
-      case 'cache context': return `${Math.round(value)}% cache`;
-      default: return value.toLocaleString();
+  const formatEfficiency = useCallback((metric: EfficiencyMetric) => {
+    if (metric.value == null) return metric.availability === 'partial' ? 'partial' : 'unavailable';
+    switch (metric.label) {
+      case 'output generation rate': return `${Math.round(metric.value)} out tok/s`;
+      case 'token traffic': return `${Math.round(metric.value)} tok/min`;
+      case 'cost burn': return `$${metric.value.toFixed(2)}/min`;
+      case 'output tokens / $': return `${Math.round(metric.value)} out tok/$`;
+      case 'cache context': return `${Math.round(metric.value)}% cache`;
+      default: return metric.value.toLocaleString();
     }
   }, []);
   const efficiencyMetrics = efficiency ? [
@@ -178,7 +178,7 @@ export function SummaryCards({
             title={`${metric.formula}. ${metric.detail}${metric.sampleCounts ? ` Samples: ${metric.sampleCounts.included}/${metric.sampleCounts.total}.` : ''}`}
           >
             <span className="text-text-dim">{metric.label}: </span>
-            {formatEfficiency(metric.label, metric.value)}
+            {formatEfficiency(metric)}
           </span>
         </StatGroup>
       ))}

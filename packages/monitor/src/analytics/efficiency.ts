@@ -52,6 +52,8 @@ interface RollupAccumulator {
   durationSampleCount: number;
   durationUnavailableCount: number;
   speedExcludedSampleCount: number;
+  outputRateSampleCount: number;
+  outputRateUnavailableCount: number;
   outputRateSamples: number[];
   totalRateSamples: number[];
   runIds: Set<string>;
@@ -170,12 +172,10 @@ function aggregateProfiles(
   let missingProfileAttributionCount = 0;
 
   for (const sample of samples.values()) {
-    if (sample.profileName === null) {
-      if (sessionSampleHasData(sample)) missingProfileAttributionCount += 1;
-      continue;
-    }
-    const acc = rows.get(sample.profileName) ?? createAccumulator();
-    rows.set(sample.profileName, acc);
+    const profileName = sample.profileName ?? '';
+    if (sample.profileName === null && sessionSampleHasData(sample)) missingProfileAttributionCount += 1;
+    const acc = rows.get(profileName) ?? createAccumulator();
+    rows.set(profileName, acc);
     addSessionSample(acc, sample);
   }
 
@@ -334,7 +334,12 @@ function addSpeedSamples(acc: RollupAccumulator, outputTokens: number | null, to
   acc.durationSampleCount += 1;
   const outputRate = computeOutputGenerationRate(outputTokens, durationApiMs);
   const totalRate = computeTotalTokenTrafficRate(totalTokens, durationApiMs);
-  if (outputRate !== null) acc.outputRateSamples.push(outputRate);
+  if (outputRate !== null) {
+    acc.outputRateSamples.push(outputRate);
+    acc.outputRateSampleCount += 1;
+  } else {
+    acc.outputRateUnavailableCount += 1;
+  }
   if (totalRate !== null) acc.totalRateSamples.push(totalRate);
 }
 
@@ -382,7 +387,7 @@ function resolveProfilesBySession(
     profiles.set(sessionId, readString(data.profileName));
   }
   for (const [sessionId, value] of Object.entries(metadata)) {
-    if (!profiles.has(sessionId)) profiles.set(sessionId, value.baseProfile);
+    if (!profiles.has(sessionId)) profiles.set(sessionId, readString(value.baseProfile));
   }
   return profiles;
 }
@@ -424,6 +429,8 @@ function finishRollup(acc: RollupAccumulator) {
     durationSampleCount: acc.durationSampleCount,
     durationUnavailableCount: acc.durationUnavailableCount,
     speedExcludedSampleCount: acc.speedExcludedSampleCount,
+    outputRateSampleCount: acc.outputRateSampleCount,
+    outputRateUnavailableCount: acc.outputRateUnavailableCount,
     inputTokens,
     outputTokens,
     totalTokens,
@@ -460,6 +467,8 @@ function createAccumulator(): RollupAccumulator {
     durationSampleCount: 0,
     durationUnavailableCount: 0,
     speedExcludedSampleCount: 0,
+    outputRateSampleCount: 0,
+    outputRateUnavailableCount: 0,
     outputRateSamples: [],
     totalRateSamples: [],
     runIds: new Set(),
@@ -491,7 +500,9 @@ function readHarness(result: Record<string, unknown>): 'claude-sdk' | 'pi' | nul
 }
 
 function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function readNumber(value: unknown): number | null {

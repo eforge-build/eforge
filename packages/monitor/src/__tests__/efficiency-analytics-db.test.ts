@@ -122,6 +122,16 @@ describe('MonitorDB.getEfficiencyAnalytics', () => {
     ]));
   });
 
+  it('counts whitespace-only profile events as missing profile attribution', () => {
+    insertRun(db, 'run-whitespace', 'session-whitespace');
+    insertProfile(db, 'run-whitespace', '   ');
+    insertResult(db, 'run-whitespace', result({ cost: 1, output: 10, input: 10 }));
+
+    const summary = db.getEfficiencyAnalytics(7);
+    expect(summary.profiles).toEqual([expect.objectContaining({ profileName: '', totalCostUsd: 1 })]);
+    expect(summary.missingProfileAttributionCount).toBe(1);
+  });
+
   it('uses the first session profile event and counts missing profile attribution', () => {
     insertRun(db, 'run-profiled', 'session-profiled');
     insertProfile(db, 'run-profiled', 'first');
@@ -131,7 +141,8 @@ describe('MonitorDB.getEfficiencyAnalytics', () => {
     insertResult(db, 'run-missing', result({ cost: 1, output: 10, input: 10 }));
 
     const summary = db.getEfficiencyAnalytics(7);
-    expect(summary.profiles.map((row) => row.profileName)).toEqual(['first']);
+    expect(summary.profiles.map((row) => row.profileName)).toEqual(['first', '']);
+    expect(summary.profiles[1]).toMatchObject({ profileName: '', totalCostUsd: 1 });
     expect(summary.missingProfileAttributionCount).toBe(1);
   });
 
