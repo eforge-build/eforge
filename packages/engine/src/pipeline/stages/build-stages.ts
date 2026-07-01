@@ -31,7 +31,6 @@ import { runDocSyncer } from '../../agents/doc-syncer.js';
 import { runTestWriter, runTester } from '../../agents/tester.js';
 import { testIssueToReviewIssue } from '../../agents/common.js';
 import { assignReviewIssueIds } from '../../review-issue-traceability.js';
-import type { ResolvedAgentConfig } from '../../config.js';
 import { runParallel } from '../../concurrency.js';
 import { forgeCommit } from '../../git.js';
 import { composeCommitMessage } from '../../model-tracker.js';
@@ -51,7 +50,7 @@ import {
   runValidationProviderRecoveryStage,
   type ValidationRecoveryRepairContext,
 } from './validation-provider-recovery.js';
-import { resolveAgentConfig } from '../agent-config.js';
+import { resolveAgentRuntimeForInvocation, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
 import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
@@ -107,14 +106,14 @@ function hasOnlyReviewerBackendIssues(issues: ReviewIssue[]): boolean {
 async function* runBuilderAttempt(
   input: BuilderContinuationInput,
   ctx: BuildStageContext,
-  agentConfig: ResolvedAgentConfig,
+  runtime: ResolvedAgentRuntimeForInvocation,
   parallelStages: string[][],
   verificationScope: 'build-only' | 'full',
 ): AsyncGenerator<EforgeEvent> {
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement' });
   implSpan.setInput({ planId: ctx.planId, phase: 'implement' });
   const implTracker = createToolTracker(implSpan);
-  const { harness: builderHarness, toolbeltSummary: builderTb } = ctx.agentRuntimes.forRoleResolved('builder', ctx.planFile);
+  const { agentConfig, harness: builderHarness, toolbeltSummary: builderTb } = runtime;
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
       cwd: ctx.worktreePath,
@@ -157,13 +156,18 @@ function isRetryableNoVerdictsResult(
 async function* runEvaluatorAttempt(
   input: EvaluatorContinuationInput,
   ctx: BuildStageContext,
-  evalAgentConfig: ResolvedAgentConfig,
   strictness?: 'strict' | 'standard' | 'lenient',
 ): AsyncGenerator<EforgeEvent, BuilderEvaluationResult | undefined> {
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
   const evalTracker = createToolTracker(evalSpan);
-  const { harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = ctx.agentRuntimes.forRoleResolved('evaluator', ctx.planFile);
+  const { agentConfig: resolvedEvalAgentConfig, harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = resolveAgentRuntimeForInvocation(
+    'evaluator',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'evaluate', changedFiles: input.evaluationSnapshot?.files.map((file) => file.path) },
+  );
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
     const validationRepairContext = typeof input.evaluatorOptions.validationRepairContext === 'string'
@@ -179,7 +183,7 @@ async function* runEvaluatorAttempt(
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      ...evalAgentConfig,
+      ...resolvedEvalAgentConfig,
       ...evaluatorTb,
       strictness,
       phase: 'build',
@@ -345,8 +349,13 @@ async function* reviewStageInner(
     });
   }
 
-  const { harness: reviewerHarness, toolbeltSummary: reviewerTb } = ctx.agentRuntimes.forRoleResolved('reviewer', ctx.planFile);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile, reviewerTb);
+  const { agentConfig: reviewerAgentConfig, harness: reviewerHarness, toolbeltSummary: reviewerTb } = resolveAgentRuntimeForInvocation(
+    'reviewer',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'review' },
+  );
   const reviewerPromptAppend = appendPromptSection(reviewerAgentConfig.promptAppend, renderReviewerPriorOutcomeContext(getReviewCycleFeedback(ctx)));
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -392,6 +401,7 @@ async function* reviewStageInner(
       extensionApplicabilityTimeoutMs: ctx.config.extensions.eventHookTimeoutMs,
       ...(round !== undefined ? { round } : {}),
       ...reviewerAgentConfig,
+      ...reviewerTb,
       promptAppend: reviewerPromptAppend,
       phase: 'build',
       stage: 'review',
@@ -531,7 +541,6 @@ async function* evaluateStageInner(
     source: strictnessSource,
   });
 
-  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.planFile);
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
@@ -549,7 +558,7 @@ async function* evaluateStageInner(
 
   try {
     const evaluator = withRetry<EvaluatorContinuationInput, BuilderEvaluationResult | undefined>(
-      (input) => runEvaluatorAttempt(input, ctx, evalAgentConfig, strictness),
+      (input) => runEvaluatorAttempt(input, ctx, strictness),
       evaluatorPolicy,
       initialInput,
     );
@@ -632,8 +641,13 @@ async function* runReviewFixerAttempt(
   onAgentId: (id: string) => void,
   validationRepairContext?: ValidationRecoveryRepairContext,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
+  const { agentConfig: fixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = resolveAgentRuntimeForInvocation(
+    'review-fixer',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'review-fix' },
+  );
   const fixerConfigWithPhase = { ...fixerConfig, phase: 'build', stage: 'review-fix' };
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
@@ -649,6 +663,7 @@ async function* runReviewFixerAttempt(
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfigWithPhase,
+      ...fixerTb,
       harness: fixerHarness,
       ...(input.reviewFixerOptions.continuationContext !== undefined
         ? { continuationContext: input.reviewFixerOptions.continuationContext }
@@ -750,12 +765,12 @@ async function* reviewFixStageInner(
 async function* structuralValidationFixStageInner(ctx: BuildStageContext, validationRepairContext: ValidationRecoveryRepairContext): AsyncGenerator<EforgeEvent> {
   let baseRef: string | undefined; let agentId: string | undefined;
   try { baseRef = (await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath })).stdout.trim(); } catch { /* non-git unit contexts skip commit rollback/activity */ }
-  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('validation-fixer', ctx.planFile); const fixerConfig = { ...resolveAgentConfig('validation-fixer', ctx.config, ctx.planFile, fixerTb), phase: 'build', stage: 'validate-repair' };
+  const { agentConfig: validationFixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = resolveAgentRuntimeForInvocation('validation-fixer', ctx.config, ctx.agentRuntimes, ctx.planFile, { phase: 'build', stage: 'validate-repair' }); const fixerConfig = { ...validationFixerConfig, phase: 'build', stage: 'validate-repair' };
   const span = ctx.tracing.createSpan('validation-fixer', { planId: ctx.planId, providerName: validationRepairContext.providerName });
   span.setInput({ planId: ctx.planId, providerName: validationRepairContext.providerName, repairStrategy: validationRepairContext.repairStrategy }); const tracker = createToolTracker(span);
   yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: ctx.planId, message: `Running structural validation repair for provider "${validationRepairContext.providerName}". Checkpoint: ${validationRepairContext.checkpoint.directory}` };
   try {
-    const repair = runValidationRepairFixer({ cwd: ctx.worktreePath, planId: ctx.planId, validationRepairContext: validationRepairContext.promptContext, attempt: validationRepairContext.attempt, maxAttempts: validationRepairContext.maxAttempts, verbose: ctx.verbose, abortController: ctx.abortController, ...fixerConfig, harness: fixerHarness });
+    const repair = runValidationRepairFixer({ cwd: ctx.worktreePath, planId: ctx.planId, validationRepairContext: validationRepairContext.promptContext, attempt: validationRepairContext.attempt, maxAttempts: validationRepairContext.maxAttempts, verbose: ctx.verbose, abortController: ctx.abortController, ...fixerConfig, ...fixerTb, harness: fixerHarness });
     for await (const event of withPeriodicFileCheck(repair, ctx)) {
       if (event.type === 'agent:start' && event.agent === 'validation-fixer') agentId = event.agentId;
       tracker.handleEvent(event); yield event;
@@ -780,8 +795,13 @@ async function* structuralValidationFixStageInner(ctx: BuildStageContext, valida
 }
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const { harness: testerHarness, toolbeltSummary: testerTb } = ctx.agentRuntimes.forRoleResolved('tester', ctx.planFile);
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planFile, testerTb);
+  const { agentConfig, harness: testerHarness, toolbeltSummary: testerTb } = resolveAgentRuntimeForInvocation(
+    'tester',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'test' },
+  );
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -793,6 +813,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...testerTb,
       phase: 'build',
       stage: 'test',
       harness: testerHarness,
@@ -825,13 +846,13 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
 async function* runBuilderShardAttempt(
   input: BuilderShardContinuationInput,
   ctx: BuildStageContext,
-  agentConfig: ResolvedAgentConfig,
+  runtime: ResolvedAgentRuntimeForInvocation,
   parallelStages: string[][],
 ): AsyncGenerator<EforgeEvent> {
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement', shardId: input.shardId });
   implSpan.setInput({ planId: ctx.planId, phase: 'implement', shardId: input.shardId });
   const implTracker = createToolTracker(implSpan);
-  const { harness: shardBuilderHarness, toolbeltSummary: shardBuilderTb } = ctx.agentRuntimes.forRoleResolved('builder');
+  const { agentConfig, harness: shardBuilderHarness, toolbeltSummary: shardBuilderTb } = runtime;
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
       cwd: ctx.worktreePath,
@@ -864,7 +885,7 @@ async function* runBuilderShardAttempt(
 async function* runShardAttempt(
   shard: ShardScope,
   ctx: BuildStageContext,
-  agentConfig: ResolvedAgentConfig,
+  runtime: ResolvedAgentRuntimeForInvocation,
   parallelStages: string[][],
   maxContinuations: number,
 ): AsyncGenerator<EforgeEvent> {
@@ -881,7 +902,7 @@ async function* runShardAttempt(
 
   try {
     for await (const event of withRetry(
-      (input) => runBuilderShardAttempt(input, ctx, agentConfig, parallelStages),
+      (input) => runBuilderShardAttempt(input, ctx, runtime, parallelStages),
       shardPolicy,
       initialInput,
     )) {
@@ -913,14 +934,21 @@ registerBuildStage({
   }
 
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const baseAgentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
-  // Inject resume context into the builder prompt when resuming a compiled build.
+  const builderRuntime = resolveAgentRuntimeForInvocation(
+    'builder',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'implement' },
+  );
+  // Inject resume context into the resolved builder prompt when resuming a compiled build.
   const agentConfig = ctx.resumeContext
     ? {
-        ...baseAgentConfig,
-        promptAppend: [baseAgentConfig.promptAppend, ctx.resumeContext].filter(Boolean).join('\n\n'),
+        ...builderRuntime.agentConfig,
+        promptAppend: [builderRuntime.agentConfig.promptAppend, ctx.resumeContext].filter(Boolean).join('\n\n'),
       }
-    : baseAgentConfig;
+    : builderRuntime.agentConfig;
+  const builderRuntimeWithPrompt: ResolvedAgentRuntimeForInvocation = { ...builderRuntime, agentConfig };
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
@@ -948,7 +976,7 @@ registerBuildStage({
 
     try {
       for await (const event of withRetry(
-        (input) => runBuilderAttempt(input, ctx, agentConfig, parallelStages, verificationScope),
+        (input) => runBuilderAttempt(input, ctx, builderRuntimeWithPrompt, parallelStages, verificationScope),
         builderPolicy,
         initialInput,
       )) {
@@ -997,7 +1025,28 @@ registerBuildStage({
       id: shard.id,
       run: (): AsyncGenerator<EforgeEvent> => {
         async function* trackShardAgentId() {
-          for await (const event of runShardAttempt(shard, ctx, agentConfig, parallelStages, maxContinuations)) {
+          const shardRuntime = resolveAgentRuntimeForInvocation(
+            'builder',
+            ctx.config,
+            ctx.agentRuntimes,
+            ctx.planFile,
+            {
+              phase: 'build',
+              stage: 'implement',
+              shardIds: [shard.id],
+              shardRoots: shard.roots,
+              shardFiles: shard.files,
+              shardLabels: [shard.id],
+            },
+          );
+          const shardAgentConfig = ctx.resumeContext
+            ? {
+                ...shardRuntime.agentConfig,
+                promptAppend: [shardRuntime.agentConfig.promptAppend, ctx.resumeContext].filter(Boolean).join('\n\n'),
+              }
+            : shardRuntime.agentConfig;
+          const shardRuntimeWithPrompt: ResolvedAgentRuntimeForInvocation = { ...shardRuntime, agentConfig: shardAgentConfig };
+          for await (const event of runShardAttempt(shard, ctx, shardRuntimeWithPrompt, parallelStages, maxContinuations)) {
             if (event.type === 'agent:start' && event.agent === 'builder') {
               shardAgentIds.set(shard.id, event.agentId);
             }
@@ -1347,8 +1396,13 @@ registerBuildStage({
   whenToUse: 'When the plan names new documentation files to create, or describes specific docs to update.',
   costHint: 'medium',
 }, async function* docAuthorStage(ctx) {
-  const { harness: docAuthorHarness, toolbeltSummary: docAuthorTb } = ctx.agentRuntimes.forRoleResolved('doc-author', ctx.planFile);
-  const agentConfig = resolveAgentConfig('doc-author', ctx.config, ctx.planFile, docAuthorTb);
+  const { agentConfig, harness: docAuthorHarness, toolbeltSummary: docAuthorTb } = resolveAgentRuntimeForInvocation(
+    'doc-author',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'doc-author' },
+  );
   const docSpan = ctx.tracing.createSpan('doc-author', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1360,6 +1414,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...docAuthorTb,
       phase: 'build',
       stage: 'doc-author',
       harness: docAuthorHarness,
@@ -1404,8 +1459,13 @@ registerBuildStage({
     return;
   }
 
-  const { harness: docSyncerHarness, toolbeltSummary: docSyncerTb } = ctx.agentRuntimes.forRoleResolved('doc-syncer', ctx.planFile);
-  const agentConfig = resolveAgentConfig('doc-syncer', ctx.config, ctx.planFile, docSyncerTb);
+  const { agentConfig, harness: docSyncerHarness, toolbeltSummary: docSyncerTb } = resolveAgentRuntimeForInvocation(
+    'doc-syncer',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'doc-sync' },
+  );
   const docSpan = ctx.tracing.createSpan('doc-syncer', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1418,6 +1478,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...docSyncerTb,
       phase: 'build',
       stage: 'doc-sync',
       harness: docSyncerHarness,
@@ -1454,8 +1515,13 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const { harness: testWriterHarness, toolbeltSummary: testWriterTb } = ctx.agentRuntimes.forRoleResolved('test-writer', ctx.planFile);
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planFile, testWriterTb);
+  const { agentConfig, harness: testWriterHarness, toolbeltSummary: testWriterTb } = resolveAgentRuntimeForInvocation(
+    'test-writer',
+    ctx.config,
+    ctx.agentRuntimes,
+    ctx.planFile,
+    { phase: 'build', stage: 'test-write' },
+  );
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -1478,6 +1544,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...testWriterTb,
       phase: 'build',
       stage: 'test-write',
       harness: testWriterHarness,

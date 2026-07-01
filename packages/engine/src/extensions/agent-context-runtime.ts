@@ -718,13 +718,16 @@ export function withAgentContextHooks(
     };
   }
 
+  const forEffectiveRecipe: AgentRuntimeRegistry['forEffectiveRecipe'] | undefined = registry.forEffectiveRecipe
+    ? (tierName, recipe) => {
+        const { harness, toolbeltSummary } = registry.forEffectiveRecipe!(tierName, recipe);
+        return { harness: wrapHarness(harness), toolbeltSummary };
+      }
+    : undefined;
+
   return {
-    forRole(role, planEntry) {
-      return wrapHarness(registry.forRole(role, planEntry));
-    },
-    forRoleResolved(role, planEntry) {
-      const { harness, toolbeltSummary } = registry.forRoleResolved(role, planEntry);
-      return { harness: wrapHarness(harness), toolbeltSummary };
-    },
+    forRole(role, planEntry) { return wrapHarness(registry.forRole(role, planEntry)); },
+    forRoleResolved(role, planEntry, metadata) { const { harness, toolbeltSummary, selection } = registry.forRoleResolved(role, planEntry, metadata); return { harness: wrapHarness(harness), toolbeltSummary, ...(selection !== undefined && { selection }) }; },
+    ...(forEffectiveRecipe ? { forEffectiveRecipe } : {}),
   };
 }

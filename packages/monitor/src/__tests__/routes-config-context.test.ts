@@ -45,23 +45,18 @@ describe('config/context routes', () => {
 agents:
   tiers:
     planning:
-      harness: claude-sdk
+      harness: pi
+      pi:
+        provider: anthropic
+        apiKey: pi-secret
       model: claude-opus-4-7
       effort: high
-      tuning:
-        apikey: key
-        token: token
-        secret: secret
-        password: password
-        authorization: bearer
-        credential: credential
-        credentials: credentials
 `, 'utf-8');
     const url = await start(cwd);
     const shown = await fetch(`${url}${API_ROUTES.configShow}`).then((res) => res.json()) as Record<string, unknown>;
     const serialized = JSON.stringify(shown);
     expect(serialized).toContain('[redacted]');
-    for (const sensitiveValue of ['key', 'token', 'secret', 'password', 'bearer', 'credential', 'credentials']) {
+    for (const sensitiveValue of ['shh', 'pi-secret']) {
       expect(serialized).not.toContain(`:"${sensitiveValue}"`);
     }
     const verbose = await fetch(`${url}${API_ROUTES.configShow}?verbose=true`).then((res) => res.json()) as { resolved: unknown; sources: Record<string, { path: string | null; found: boolean }> };

@@ -11,12 +11,14 @@
  */
 
 import type { AgentRole } from './events.js';
-import type { EforgeConfig, TierConfig, PiConfig, AgentTier } from './config.js';
+import type { EforgeConfig, TierConfig, PiConfig } from './config.js';
 import type { AgentHarness } from './harness.js';
+import type { EffectiveAgentRecipe, RuntimeChoiceInvocationMetadata, RuntimeChoiceSelection } from './pipeline/runtime-choice.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource, McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeSDKHarness } from './harnesses/claude-sdk.js';
-import { AGENT_ROLE_TIERS } from './pipeline/agent-config.js';
+import { resolveTierForRole } from './pipeline/agent-config.js';
+import { resolveRuntimeChoiceForInvocation } from './pipeline/runtime-choice.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -74,7 +76,12 @@ export interface AgentRuntimeRegistry {
    * summary fields onto agent run options so the harness can stamp them on
    * agent:start events for observability.
    */
-  forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary };
+  forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection?: RuntimeChoiceSelection };
+
+  // --- eforge:region plan-01-runtime-choice-core ---
+  /** Resolve a harness from an already-selected effective runtime-choice recipe. */
+  forEffectiveRecipe?(tierName: string, recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary };
+  // --- eforge:endregion plan-01-runtime-choice-core ---
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +115,11 @@ export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
     forRoleResolved(_role: AgentRole, _planEntry?: PlanEntryForRegistry): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
       return { harness, toolbeltSummary: defaultSummary };
     },
+    // --- eforge:region plan-01-runtime-choice-core ---
+    forEffectiveRecipe(_tierName: string, _recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
+      return { harness, toolbeltSummary: defaultSummary };
+    },
+    // --- eforge:endregion plan-01-runtime-choice-core ---
   };
 }
 
@@ -228,22 +240,31 @@ function resolveTierToolbelt(
  * Two tiers sharing all dimensions reuse a single harness instance;
  * differing on any dimension get distinct instances.
  */
+function stableKey(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableKey).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableKey(entry)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function makeKey(
   harness: 'claude-sdk' | 'pi',
-  provider?: string,
   sortedProjectMcpServerNames: string[] = [],
   disableSubagents: boolean = false,
-  resources?: 'isolated' | 'ambient',
+  piCfg?: PiConfig,
+  bare?: boolean,
 ): string {
   const serversKey = sortedProjectMcpServerNames.length > 0
     ? `:servers=${sortedProjectMcpServerNames.join(',')}`
     : '';
   const subagentsKey = disableSubagents ? ':nosubagents' : '';
   if (harness === 'pi') {
-    // Only append :ambient when explicitly opted in; isolated (the default) omits the
-    // suffix to preserve backward compatibility with existing memoization keys.
-    const resourcesKey = resources === 'ambient' ? ':ambient' : '';
-    return `pi:${provider ?? ''}${serversKey}${subagentsKey}${resourcesKey}`;
+    return `pi:${stableKey({ bare: bare === true, piCfg })}${serversKey}${subagentsKey}`;
   }
   return `claude-sdk${serversKey}${subagentsKey}`;
 }
@@ -275,7 +296,7 @@ export async function buildAgentRuntimeRegistry(
 
   // Detect whether any tier uses Pi so we can lazily import the module.
   let PiHarnessCtor: (typeof import('./harnesses/pi.js'))['PiHarness'] | undefined;
-  const hasPi = Object.values(tiers).some((t) => t?.harness === 'pi');
+  const hasPi = Object.values(tiers).some((t) => t?.harness === 'pi' || Object.values(t?.choices ?? {}).some((choice) => choice.harness === 'pi'));
   if (hasPi) {
     try {
       const piModule = await import('./harnesses/pi.js');
@@ -302,7 +323,6 @@ export async function buildAgentRuntimeRegistry(
 
   function instanceForTier(tierName: string, tierRecipe: TierConfig): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
     const { projectMcpServerMap, summary } = resolveTierToolbelt(tierName, tierRecipe, globalMcp, toolbelts);
-    const provider = tierRecipe.harness === 'pi' ? tierRecipe.pi?.provider : undefined;
     const disableSubagents = tierRecipe.harness === 'claude-sdk'
       ? (tierRecipe.claudeSdk?.disableSubagents ?? true)
       : false;
@@ -317,7 +337,7 @@ export async function buildAgentRuntimeRegistry(
         piCfg.resources = 'isolated';
       }
     }
-    const key = makeKey(tierRecipe.harness, provider, summary.projectMcpServerNames, disableSubagents, piCfg?.resources);
+    const key = makeKey(tierRecipe.harness, summary.projectMcpServerNames, disableSubagents, piCfg, config.agents.bare);
 
     const existingHarness = instances.get(key);
     if (existingHarness) return { harness: existingHarness, toolbeltSummary: summary };
@@ -351,29 +371,34 @@ export async function buildAgentRuntimeRegistry(
     return { harness, toolbeltSummary: summary };
   }
 
-  function resolveForRole(role: AgentRole, planEntry?: PlanEntryForRegistry): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
-    // Resolve role's tier using the same precedence as resolveAgentConfig:
-    // plan-file override > per-role config override > built-in AGENT_ROLE_TIERS.
-    const planTier = planEntry?.agents?.[role]?.tier as AgentTier | undefined;
-    const userRoleTier = (config.agents.roles?.[role] as { tier?: AgentTier } | undefined)?.tier;
-    const tier = planTier ?? userRoleTier ?? AGENT_ROLE_TIERS[role];
-    const tierRecipe = tiers[tier];
-    if (!tierRecipe) {
-      throw new Error(
-        `Role "${role}" resolves to tier "${tier}" but no tier recipe is configured. ` +
-        `Add agents.tiers.${tier} to eforge/config.yaml.`,
-      );
-    }
-    return instanceForTier(tier, tierRecipe);
+  function resolveForRole(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection: RuntimeChoiceSelection } {
+    // --- eforge:region plan-01-runtime-choice-core ---
+    const selection = resolveRuntimeChoiceForInvocation(role, config, planEntry, metadata ?? {});
+    const resolved = instanceForTier(selection.tier, selection.effectiveRecipe);
+    return { ...resolved, selection };
+    // --- eforge:endregion plan-01-runtime-choice-core ---
+  }
+
+  function resolveDefaultForRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness {
+    const { tier } = resolveTierForRole(role, config, planEntry);
+    const tierRecipe = config.agents.tiers?.[tier];
+    if (!tierRecipe) throw new Error(`Role "${role}" resolves to tier "${tier}" but no tier recipe is configured.`);
+    const { choices: _choices, routing: _routing, ...defaultRecipe } = tierRecipe;
+    return instanceForTier(tier, defaultRecipe as TierConfig).harness;
   }
 
   const registry: AgentRuntimeRegistry = {
     forRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness {
-      return resolveForRole(role, planEntry).harness;
+      return resolveDefaultForRole(role, planEntry);
     },
-    forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
-      return resolveForRole(role, planEntry);
+    forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection: RuntimeChoiceSelection } {
+      return resolveForRole(role, planEntry, metadata);
     },
+    // --- eforge:region plan-01-runtime-choice-core ---
+    forEffectiveRecipe(tierName: string, recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
+      return instanceForTier(tierName, recipe as TierConfig);
+    },
+    // --- eforge:endregion plan-01-runtime-choice-core ---
   };
 
   return registry;

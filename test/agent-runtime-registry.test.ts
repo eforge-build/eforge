@@ -8,6 +8,7 @@ import {
   singletonRegistry,
   buildAgentRuntimeRegistry,
 } from '@eforge-build/engine/agent-runtime-registry';
+import { resolveAgentConfig, resolveAgentRuntimeForInvocation } from '@eforge-build/engine/pipeline';
 import { StubHarness } from './stub-harness.js';
 import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
@@ -239,6 +240,92 @@ describe('buildAgentRuntimeRegistry — forRoleResolved toolbelt summary', () =>
     expect(planH).toBe(reviewH);    // same disableSubagents and toolbelt
   });
 });
+
+// --- eforge:region plan-01-runtime-choice-core ---
+describe('buildAgentRuntimeRegistry — runtime choices', () => {
+  it('shares identical effective recipes and separates different providers', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          ...FULL_TIERS_CLAUDE,
+          implementation: {
+            harness: 'pi' as const,
+            pi: { provider: 'anthropic' },
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            choices: {
+              ui: { effort: 'high' as const },
+              backend: { pi: { provider: 'local' }, model: 'qwen3-coder' },
+            },
+            routing: { rules: [{ name: 'ui', choice: 'ui', when: { keywords: ['ui'] } }, { name: 'backend', choice: 'backend', when: { keywords: ['backend'] } }] },
+          },
+        },
+      },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    const defaultRuntime = resolveAgentRuntimeForInvocation('builder', config, registry, { name: 'plain', body: 'plain' });
+    const uiRuntime = resolveAgentRuntimeForInvocation('builder', config, registry, { name: 'ui', body: 'ui' });
+    const backendRuntime = resolveAgentRuntimeForInvocation('builder', config, registry, { name: 'backend', body: 'backend' });
+
+    expect(defaultRuntime.harness).toBe(uiRuntime.harness);
+    expect(backendRuntime.harness).not.toBe(defaultRuntime.harness);
+    expect(backendRuntime.agentConfig.model.provider).toBe('local');
+    expect(backendRuntime.selection.effectiveRecipe.pi?.provider).toBe('local');
+  });
+
+  it('returns one invocation result with config, harness, toolbelt, and selection from the same choice', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          ...FULL_TIERS_CLAUDE,
+          implementation: {
+            harness: 'claude-sdk' as const,
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            choices: { ui: { model: 'claude-opus-4-7', toolbelt: 'ui-tools' } },
+            routing: { rules: [{ name: 'ui', choice: 'ui', when: { pathGlobs: ['web/**'] } }] },
+          },
+        },
+      },
+      tools: { toolbelts: { 'ui-tools': { mcpServers: ['playwright'] } } },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, { mcpServers: FAKE_MCP, toolbelts: { 'ui-tools': { mcpServers: ['playwright'] } } });
+    const runtime = resolveAgentRuntimeForInvocation('builder', config, registry, { name: 'UI', body: 'component' }, { pathHints: ['web/app/page.tsx'] });
+    expect(runtime.selection.choiceRef).toBe('implementation.ui');
+    expect(runtime.agentConfig.model.id).toBe('claude-opus-4-7');
+    expect(runtime.agentConfig.toolbelt).toBe('ui-tools');
+    expect(runtime.toolbeltSummary.projectMcpServerNames).toEqual(['playwright']);
+    expect(runtime.harness).toBeDefined();
+  });
+
+  it('keeps the existing forRoleResolved plus resolveAgentConfig call pattern choice-aware', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          ...FULL_TIERS_CLAUDE,
+          implementation: {
+            harness: 'claude-sdk' as const,
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            choices: { ui: { model: 'claude-opus-4-7', effort: 'high' as const, toolbelt: 'ui-tools' } },
+            routing: { rules: [{ name: 'ui', choice: 'ui', when: { pathGlobs: ['web/**'] } }] },
+          },
+        },
+      },
+      tools: { toolbelts: { 'ui-tools': { mcpServers: ['playwright'] } } },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, { mcpServers: FAKE_MCP, toolbelts: { 'ui-tools': { mcpServers: ['playwright'] } } });
+    const planEntry = { name: 'UI', body: 'component' };
+    const { toolbeltSummary, selection } = registry.forRoleResolved('builder', planEntry, { pathHints: ['web/app/page.tsx'] });
+    const agentConfig = resolveAgentConfig('builder', config, planEntry, toolbeltSummary);
+
+    expect(selection?.choiceRef).toBe('implementation.ui');
+    expect(agentConfig.model.id).toBe('claude-opus-4-7');
+    expect(agentConfig.effort).toBe('high');
+    expect(agentConfig.toolbelt).toBe('ui-tools');
+  });
+});
+// --- eforge:endregion plan-01-runtime-choice-core ---
 
 // ---------------------------------------------------------------------------
 // Pi resources isolation — buildPiConfig defaults and agents.bare coercion
