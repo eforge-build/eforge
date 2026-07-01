@@ -135,3 +135,20 @@ None.
 - [ ] Agent invocation setup returns one result object whose `agentConfig.model`, selected harness, toolbelt summary, and `selection.effectiveRecipe` all refer to the same choice.
 - [ ] Registry tests show identical effective recipes share a harness instance and different providers, resource isolation settings, toolbelt-selected MCP server sets, or subagent policies create distinct instances.
 - [ ] `agents.bare` Pi resource isolation behavior remains covered by an existing or new test.
+
+## Recovery Guidance
+
+- Failed PRD: "per-invocation-runtime-choice-routing"
+- Root failed plan: "plan-01-runtime-choice-core"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for per-invocation-runtime-choice-routing. artifact source: feature-branch; 3 landed commit(s); failing plan: plan-01-runtime-choice-core; feature branch: eforge/per-invocation-runtime-choice-routing. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "1 blocking issue outcome(s) remain after 2 review round(s) (1 unresolved, 0 need human review; 2 rejected, 0 under review)."
+- Failure detail: "1 blocking issue outcome(s) remain after 2 review round(s) (1 unresolved, 0 need human review; 2 rejected, 0 under review)."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair per-invocation-runtime-choice-routing`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair plan-01-runtime-choice-core by making config validation run unknown-choice checks against the same merged effective config layers used by loadConfig."
+  - "Avoid validating unknown choices in each raw config layer before merge, because layered configs may define routing and choices separately."
+  - "After repair, continue blocked plans [REDACTED_HIGH_ENTROPY] and [REDACTED_HIGH_ENTROPY]."
+- Retry/resume guidance: Continue plan-01-runtime-choice-core for failed PRD per-invocation-runtime-choice-routing from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-07-01T16:09:18.919Z
+- Source sidecar: .eforge/queue/failed/per-invocation-runtime-choice-routing.recovery.json
+- Source identity: prdId=per-invocation-runtime-choice-routing; setName=per-invocation-runtime-choice-routing; featureBranch=eforge/per-invocation-runtime-choice-routing; baseBranch=main
