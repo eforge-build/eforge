@@ -1,0 +1,129 @@
+name: planner-source-localization-repair-loop
+description: Add repository-agnostic source localization before bounded planner
+  atom planning, feed localized ownership into evidence and atom prompts, then
+  repair source/localization reduce gaps inside the compiler loop while gating
+  vague residue.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/planning-source-localization.test.ts
+    test/planning-source-evidence.test.ts test/planning-compiler-runner.test.ts
+    test/planning-compiler-runtime-hardening.test.ts
+    test/planning-residue-synthesis.test.ts
+    test/planning-plan-artifact-synthesis.test.ts
+    test/planning-compiler-repair-loop.test.ts
+  - pnpm test
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-source-localization-foundation
+    name: Source Localization Foundation
+    depends_on: []
+    branch: planner-source-localization-repair-loop/plan-01-source-localization-foundation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Introduces new repository indexing and ranking contracts that must
+          stay deterministic, bounded, and repository-agnostic.
+      reviewer:
+        effort: high
+        rationale: Review must check path traversal, subprocess usage, ignore rules, and
+          absence of hard-coded first-party layouts.
+  - id: plan-02-localized-evidence-pipeline
+    name: Localized Evidence Pipeline
+    depends_on:
+      - plan-01-source-localization-foundation
+    branch: planner-source-localization-repair-loop/plan-02-localized-evidence-pipeline
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Threads a new optional bundle through shared brief, materialization,
+          atom task contracts, and compiler ordering without breaking existing
+          callers.
+      reviewer:
+        effort: high
+        rationale: Review must verify type changes and all consumers move together so
+          intermediate merges type-check.
+  - id: plan-03-repair-loop-and-residue-gating
+    name: Repair Loop and Residue Gating
+    depends_on:
+      - plan-02-localized-evidence-pipeline
+    branch: planner-source-localization-repair-loop/plan-03-repair-loop-and-residue-gating
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds bounded compiler control flow and changes reduce/residue
+          semantics while preserving fail-closed behavior.
+      reviewer:
+        effort: high
+        rationale: Review must check repair termination, affected-atom reruns,
+          diagnostics, and residue gating for source/localization gaps.
+      tester:
+        effort: high
+        rationale: Integration regressions need to prove gap repair, exhaustion
+          diagnostics, and absence of vague candidate-reduce-gap plans.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: This is a large, coordinated planner-compiler feature touching source
+    localization, evidence materialization, reducer repair, residue gating,
+    tests, and docs, but it is centered on one tightly coupled subsystem with
+    sequential foundation dependencies rather than independent modules, so
+    excursion is appropriate. A planner plus plan-review-cycle gives a quality
+    gate without full expedition overhead. The build pipeline runs
+    implementation and docs authoring, adds explicit test generation, syncs
+    docs, runs the registered maintainability validation gate before review,
+    then uses iterative review and test cycles for the high regression risk.
+diff_base_ref: 7efc068142c6a0707ef695b125607cfa66c27107
