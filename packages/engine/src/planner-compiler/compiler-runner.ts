@@ -16,6 +16,7 @@ import { DEFAULT_PLANNING_REDUCE_LIMITS, type PlanningReduceLimits } from './red
 import { synthesizePlanningResidue } from './residue-synthesis.js';
 import type { PlanningResidueLimits, PlanningResidueSynthesis } from './residue-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
+import { DEFAULT_SOURCE_LOCALIZATION_REPAIR_ATTEMPTS, runSourceLocalizationRepairLoop, type SourceLocalizationRepairDiagnostic } from './source-localization-repair.js';
 
 export type BoundedPlannerCompilerStatus = 'complete' | 'complete-with-residue' | 'incomplete' | 'failed';
 
@@ -33,6 +34,7 @@ export interface RunBoundedPlannerCompilerInput {
   sourceEvidenceLimits?: Partial<PlanningSourceEvidenceLimits>;
   reduceLimits?: Partial<PlanningReduceLimits>;
   residueLimits?: Partial<PlanningResidueLimits>;
+  maxRepairAttempts?: number;
   parallelism?: number;
   abortSignal?: AbortSignal;
   onEvent?: PlannerCompilerEventSink;
@@ -47,6 +49,7 @@ export interface BoundedPlannerCompilerResult {
   map: PlanningAtomMapResult;
   reduce: PlanningReduceResult;
   residue: PlanningResidueSynthesis;
+  repairDiagnostics: SourceLocalizationRepairDiagnostic[];
   status: BoundedPlannerCompilerStatus;
   validationErrors: string[];
   events: EforgeEvent[];
@@ -62,15 +65,17 @@ export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompiler
   const reduceDigestPromptBudgetBytes = deriveInitialReduceDigestPromptBudget({ graph: atomGraph, limits: reduceLimits });
   const map = await runPlanningAtomMap({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent });
   const reduce = await runPlanningReduce({ graph: atomGraph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
-  const residue = synthesizePlanningResidue({ graph: atomGraph, coverage: map.coverage, atomOutputs: map.outputs, sourceEvidenceBundle, reduceOutputs: reduce.outputs, limits: input.residueLimits });
-  const validationErrors = compilerValidationErrors(sourceLocalizationBundle, sourceEvidenceBundle, map, reduce, residue);
-  return { sourceInventory, atomGraph, sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce, residue, status: compilerStatus(map, reduce, residue, validationErrors), validationErrors, events: [...map.events, ...reduce.events] };
+  const repair = await runSourceLocalizationRepairLoop({ cwd: input.cwd, sourceContent: input.sourceContent, sourceInventory, graph: atomGraph, harness: input.harness, agentOptions: input.agentOptions, sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce, sourceLocalizationHints: input.sourceLocalizationHints, sourceLocalizationLimits: input.sourceLocalizationLimits, sharedBriefLimits: input.sharedBriefLimits, sourceEvidenceLimits: input.sourceEvidenceLimits, reduceLimits, reduceDigestPromptBudgetBytes, maxAttempts: input.maxRepairAttempts ?? DEFAULT_SOURCE_LOCALIZATION_REPAIR_ATTEMPTS, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent });
+  const residue = synthesizePlanningResidue({ graph: atomGraph, coverage: repair.map.coverage, atomOutputs: repair.map.outputs, sourceEvidenceBundle: repair.sourceEvidenceBundle, reduceOutputs: repair.reduce.outputs, limits: input.residueLimits });
+  const validationErrors = compilerValidationErrors(repair.sourceLocalizationBundle, repair.sourceEvidenceBundle, repair.map, repair.reduce, residue, repair.diagnostics);
+  return { sourceInventory, atomGraph, sourceLocalizationBundle: repair.sourceLocalizationBundle, sharedBrief: repair.sharedBrief, sourceEvidenceBundle: repair.sourceEvidenceBundle, map: repair.map, reduce: repair.reduce, residue, repairDiagnostics: repair.diagnostics, status: compilerStatus(repair.map, repair.reduce, residue, validationErrors), validationErrors, events: [...repair.map.events, ...repair.reduce.events] };
 }
 
-function compilerValidationErrors(sourceLocalizationBundle: SourceLocalizationBundle, sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis): string[] {
+function compilerValidationErrors(sourceLocalizationBundle: SourceLocalizationBundle, sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, repairDiagnostics: SourceLocalizationRepairDiagnostic[]): string[] {
   const reduceErrors = residue.candidates.length > 0 ? reduce.validationErrors.filter((error) => error !== 'map result incomplete') : reduce.validationErrors;
   const localizationErrors = sourceLocalizationBundle.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').map((diagnostic) => `source localization ${diagnostic.code}${diagnostic.path ? `:${diagnostic.path}` : ''}:${diagnostic.message}`);
-  return [...new Set([...localizationErrors, ...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduceErrors, ...residue.validationErrors])].sort();
+  const repairErrors = repairDiagnostics.filter((diagnostic) => diagnostic.status === 'exhausted').map((diagnostic) => `source localization repair exhausted:${diagnostic.gapIds.join(',')}:${diagnostic.unresolvedReason ?? 'unresolved source/localization gaps'}`);
+  return [...new Set([...localizationErrors, ...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduceErrors, ...residue.validationErrors, ...repairErrors])].sort();
 }
 
 function compilerStatus(map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, validationErrors: string[]): BoundedPlannerCompilerStatus {

@@ -103,6 +103,30 @@ describe('planning source localization foundation', () => {
     expect(candidates.join('\n')).not.toContain('eforge');
   });
 
+  it('localizes route, client, and extension fixtures through generic hints without eforge defaults', async () => {
+    const temp = await workspace({
+      'packages/server/src/routes/session.ts': 'export const sessionRoute = "/api/session";',
+      'packages/client/src/api/session-client.ts': 'export async function fetchSession() { return fetch("/api/session"); }',
+      'packages/pi-eforge/src/session-extension.ts': 'export const sessionExtension = { contributions: [] };',
+      'packages/eforge/src/unrelated.ts': 'export const unrelated = true;',
+    });
+    const content = prd(['Session route, session client API, and session extension surfaces are localized from repository fixture signals.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content), path: 'session-prd.md' });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph, hints: { projectHints: [
+      { kind: 'route', query: 'session route', keywords: ['sessionRoute'], subsystemHints: ['session'] },
+      { kind: 'consumer-surface', query: 'session client API', keywords: ['fetchSession'], subsystemHints: ['session'] },
+      { kind: 'extension', query: 'session extension', keywords: ['sessionExtension'], subsystemHints: ['session'] },
+    ] } });
+
+    const candidates = allCandidates(bundle);
+    expect(candidates).toContain('packages/server/src/routes/session.ts');
+    expect(candidates).toContain('packages/client/src/api/session-client.ts');
+    expect(candidates).toContain('packages/pi-eforge/src/session-extension.ts');
+    expect(candidates).not.toContain('packages/eforge/src/unrelated.ts');
+  });
+
   it('expands directory evidence with candidate reasons and budget diagnostics', async () => {
     const temp = await workspace({
       'workspace/tools/src/a.ts': 'export const command = true;',

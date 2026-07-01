@@ -12,7 +12,7 @@ import type { PlannerCompilerEventSink } from './event-sink.js';
 import { buildMapReduceAtomsEvent, buildMapReduceAtomStatusEvent } from './orchestration-events.js';
 import type { PlanningMapReduceAtomStatus } from '@eforge-build/client';
 
-export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; reduceDigestPromptBudgetBytes?: number; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink }
+export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; reduceDigestPromptBudgetBytes?: number; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink; affectedAtomIds?: string[]; priorOutputs?: PlanningAtomOutput[] }
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 
 interface AtomRunResult { output: PlanningAtomOutput; events: EforgeEvent[]; validationErrors: string[] }
@@ -22,10 +22,12 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
   const briefValidation = input.sharedBrief ? validateSharedPlanningBrief(input.sharedBrief, input.graph) : { ok: true as const, errors: [] };
   const sourceEvidenceValidation = input.sharedBrief && input.sourceEvidenceBundle ? validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle: input.sourceEvidenceBundle }) : { ok: true as const, errors: [] };
   const tasks = new Map(buildPlanningAtomTasks(input).map((task) => [task.atomId, task]));
-  const completed = new Set<string>();
-  const failed = new Set<string>();
-  const skipped = new Set<string>();
-  const outputs: PlanningAtomOutput[] = [];
+  const affectedAtomIds = input.affectedAtomIds ? new Set(input.affectedAtomIds) : undefined;
+  const retainedOutputs = retainedPriorOutputs(input.priorOutputs ?? [], affectedAtomIds, new Set(input.graph.atoms.map((atom) => atom.atomId)));
+  const completed = new Set<string>(retainedOutputs.filter((output) => output.status === 'completed').map((output) => output.atomId));
+  const failed = new Set<string>(retainedOutputs.filter((output) => output.status === 'failed').map((output) => output.atomId));
+  const skipped = new Set<string>(retainedOutputs.filter((output) => output.status === 'skipped').map((output) => output.atomId));
+  const outputs: PlanningAtomOutput[] = [...retainedOutputs];
   const events: EforgeEvent[] = [];
   const validationErrors: string[] = [...(briefValidation.ok ? [] : briefValidation.errors), ...(sourceEvidenceValidation.ok ? [] : sourceEvidenceValidation.errors)];
   let iterations = 0;
@@ -142,16 +144,36 @@ function finish(input: RunPlanningAtomMapInput, state: { outputs: PlanningAtomOu
 
 function selectReadyAtoms(input: RunPlanningAtomMapInput, tasks: Map<string, PlanningAtomTask>, completed: Set<string>, failed: Set<string>, skipped: Set<string>, running: Map<string, Promise<AtomSettled>>): { readyAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[] } {
   const parallelism = input.parallelism ?? input.graph.limits.parallelism;
+  const affected = input.affectedAtomIds ? new Set(input.affectedAtomIds) : undefined;
   const base = selectReadyPlanningAtoms({ graph: input.graph, completedAtomIds: completed, failedAtomIds: failed, runningAtomIds: running.keys(), skippedAtomIds: skipped, parallelism: input.graph.atoms.length });
   const sharedBlocked: BlockedPlanningAtom[] = [];
   const candidates: string[] = [];
-  for (const atomId of base.readyAtomIds) {
+  for (const atomId of base.readyAtomIds.filter((id) => !affected || affected.has(id))) {
     const missingPrerequisites = (tasks.get(atomId)?.sharedBrief?.prerequisiteAtomIds ?? []).filter((dependencyId) => !completed.has(dependencyId));
     if (missingPrerequisites.length > 0) sharedBlocked.push({ atomId, blockedByAtomIds: missingPrerequisites });
     else candidates.push(atomId);
   }
+  const affectedBlocked = affected ? base.blockedAtoms.filter((atom) => affected.has(atom.atomId)) : base.blockedAtoms;
   const capacity = Math.max(0, parallelism - running.size);
-  return { readyAtomIds: candidates.slice(0, capacity), blockedAtoms: [...base.blockedAtoms, ...sharedBlocked].sort((a, b) => a.atomId.localeCompare(b.atomId)) };
+  return { readyAtomIds: candidates.slice(0, capacity), blockedAtoms: [...affectedBlocked, ...sharedBlocked].sort((a, b) => a.atomId.localeCompare(b.atomId)) };
+}
+
+function retainedPriorOutputs(outputs: PlanningAtomOutput[], affectedAtomIds: Set<string> | undefined, graphAtomIds: Set<string>): PlanningAtomOutput[] {
+  return outputs
+    .filter((output) => graphAtomIds.has(output.atomId) && (!affectedAtomIds || !affectedAtomIds.has(output.atomId)))
+    .map(cloneAtomOutput)
+    .sort((a, b) => a.atomId.localeCompare(b.atomId));
+}
+
+function cloneAtomOutput(output: PlanningAtomOutput): PlanningAtomOutput {
+  return {
+    ...output,
+    aspectUpdates: output.aspectUpdates.map((update) => ({ ...update, completedByAtomIds: update.completedByAtomIds ? [...update.completedByAtomIds] : undefined })),
+    planFragments: output.planFragments?.map((fragment) => ({ ...fragment, criterionIds: [...fragment.criterionIds], aspectIds: [...fragment.aspectIds], dependsOnFragmentIds: fragment.dependsOnFragmentIds ? [...fragment.dependsOnFragmentIds] : undefined })),
+    moduleCandidates: output.moduleCandidates?.map((module) => ({ ...module, criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], dependsOnModuleIds: module.dependsOnModuleIds ? [...module.dependsOnModuleIds] : undefined })),
+    sharedFindings: output.sharedFindings?.map((finding) => ({ ...finding, aspectIds: [...finding.aspectIds] })),
+    discoveredEvidencePaths: output.discoveredEvidencePaths ? [...output.discoveredEvidencePaths] : undefined,
+  };
 }
 
 function composeAbortSignal(parent: AbortSignal | undefined, child: AbortSignal): AbortSignal {

@@ -3,7 +3,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
-import { buildPlanningReduceTask, DEFAULT_PLANNING_REDUCE_LIMITS, validatePlanningReduceOutput, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceOutput, type PlanningReduceTask, type PlanningReduceTree } from './reduce-contracts.js';
+import { buildPlanningReduceTask, DEFAULT_PLANNING_REDUCE_LIMITS, normalizePlanningReduceOutput, validatePlanningReduceOutput, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceLimits, type PlanningReduceOutput, type PlanningReduceTask, type PlanningReduceTree } from './reduce-contracts.js';
 import { runPlanningReducer } from './reducer-agent.js';
 import { planPromptSafeReduceTree } from './prompt-budget-planner.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
@@ -89,9 +89,10 @@ async function runReduceNode(input: RunPlanningReduceInput, tree: PlanningReduce
   const task = buildTaskForNode(tree, nodeId, input.mapResult.outputs, outputs);
   try {
     const result = await runPlanningReducer({ task, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, onEvent: input.onEvent });
-    const validation = validatePlanningReduceOutput({ graph: input.graph, tree, task, output: result.output });
+    const output = normalizePlanningReduceOutput(result.output);
+    const validation = validatePlanningReduceOutput({ graph: input.graph, tree, task, output });
     if (!validation.ok) return { output: failedOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: result.events, validationErrors: validation.errors };
-    return { output: result.output, events: result.events, validationErrors: [] };
+    return { output, events: result.events, validationErrors: [] };
   } catch (err) {
     if (isAbortError(err)) throw err;
     return { output: failedOutput(node.nodeId, err instanceof Error ? err.message : String(err)), events: [], validationErrors: [`reduce failed:${node.nodeId}:${err instanceof Error ? err.message : String(err)}`] };

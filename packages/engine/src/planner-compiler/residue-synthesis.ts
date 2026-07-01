@@ -1,8 +1,9 @@
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
 import type { PlanningAspectCoverageRecord, PlanningAspectCoverageSummary } from './coverage-accounting.js';
-import type { PlanningReduceOutput } from './reduce-contracts.js';
+import type { PlanningReduceGap, PlanningReduceOutput } from './reduce-contracts.js';
 import { coverageUpdatesForResidueCandidates, DEFAULT_PLANNING_RESIDUE_LIMITS, residueCandidateId, validatePlanningResidueCandidates, type PlanningResidueCandidate, type PlanningResidueLimits, type PlanningResidueReason, type PlanningResidueSynthesis } from './residue-contracts.js';
+import { classifyPlanningReduceGap } from './source-localization-repair.js';
 import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
 
 export interface SynthesizePlanningResidueInput { graph: PlanningAtomGraph; coverage: PlanningAspectCoverageSummary; atomOutputs?: PlanningAtomOutput[]; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; reduceOutputs?: PlanningReduceOutput[]; limits?: Partial<PlanningResidueLimits> }
@@ -29,9 +30,9 @@ function pendingAspectCandidates(coverage: PlanningAspectCoverageSummary): Plann
 
 function sourceEvidenceCandidates(coverage: PlanningAspectCoverageSummary, bundle: PlanningSourceEvidenceBundle | undefined): PlanningResidueCandidate[] {
   if (!bundle) return [];
-  return bundle.records.filter((record) => record.status !== 'materialized').flatMap((record) => evidenceAspects(coverage, record).map((aspect) => {
+  return bundle.records.filter((record) => record.status !== 'materialized' && buildableEvidenceStatus(record.status)).flatMap((record) => evidenceAspects(coverage, record).map((aspect) => {
     const reason = sourceEvidenceReason(record.status);
-    return candidate('residue', reason, [aspect.criterionId], [aspect.aspectId], `Represent source evidence ${record.status}: ${record.path}`, `Create bounded planning work for evidence path ${record.path} because source materialization returned ${record.status}.`, [`Concrete handling for ${record.path} is captured without requiring unbounded mapper exploration.`], [`Validation confirms the module handles ${record.path} status ${record.status} and documents any remaining source assumption.`], sourceEvidenceRationale(record), [record.path, record.reason].filter((value): value is string => Boolean(value)));
+    return candidate('residue', reason, [aspect.criterionId], [aspect.aspectId], `Represent source evidence ${record.status}: ${record.path}`, `Create bounded product-scoped handling for localized owner path ${record.path} because source materialization returned ${record.status}.`, [`Product-scoped output accounts for ${record.path} without requiring unbounded mapper exploration.`], [aspect.criterionId], sourceEvidenceRationale(record), [record.path, record.reason].filter((value): value is string => Boolean(value)), { buildability: 'buildable', sourceLocalizationDerived: true, localizedOwnerPaths: [record.path], productScopedOutputRefs: [`localized-owner:${record.path}`], productScopedValidationRefs: [aspect.criterionId] });
   }));
 }
 
@@ -41,10 +42,28 @@ function atomOutputCandidates(coverage: PlanningAspectCoverageSummary, outputs: 
 
 function reduceOutputCandidates(coverage: PlanningAspectCoverageSummary, outputs: PlanningReduceOutput[]): PlanningResidueCandidate[] {
   return outputs.flatMap((output) => [
-    ...((output.gaps ?? []).map((gap) => candidate(gap.representationRequired ? 'residue' : 'follow-up', 'reduce-gap', gap.criterionIds, gap.aspectIds, gap.title, `Represent reduce gap ${gap.gapId}: ${gap.description}`, ['A bounded module resolves or explicitly represents the reduce gap.'], ['Validation confirms the gap is addressed in the final plan set or represented follow-up work.'], `Reduce node ${output.nodeId} reported gap ${gap.gapId}.`, [output.nodeId, gap.gapId, ...(gap.sourceIds ?? [])]))),
+    ...((output.gaps ?? []).flatMap((gap) => reduceGapCandidate(output, gap))),
     ...((output.conflicts ?? []).map((conflict) => candidate('follow-up', 'reduce-conflict', conflict.criterionIds, conflict.aspectIds, conflict.title, `Create bounded verification work for reduce conflict ${conflict.conflictId}: ${conflict.description}`, ['A verification or reconciliation module resolves the conflicting planning outputs.'], ['Validation confirms one coherent approach remains after reconciliation.'], `Reduce node ${output.nodeId} reported conflict ${conflict.conflictId}.`, [output.nodeId, conflict.conflictId, ...(conflict.sourceIds ?? [])]))),
     ...(output.status === 'failed' || output.status === 'incomplete' ? incompleteReduceCandidates(coverage, output) : []),
   ]);
+}
+
+function reduceGapCandidate(output: PlanningReduceOutput, gap: PlanningReduceGap): PlanningResidueCandidate[] {
+  const classified = classifyPlanningReduceGap(gap);
+  if (classified && !buildableSourceLocalizationGap(gap)) return [];
+  const extra = classified ? { buildability: 'buildable' as const, sourceLocalizationDerived: true, localizedOwnerPaths: gap.ownerPaths, productScopedOutputRefs: gap.productScopedOutputRefs, productScopedValidationRefs: gap.productScopedValidationRefs } : undefined;
+  const validationExpectations = classified ? gap.productScopedValidationRefs! : ['Validation confirms the gap is addressed in the final plan set or represented follow-up work.'];
+  const expectedOutputs = classified ? gap.productScopedOutputRefs! : ['A bounded module resolves or explicitly represents the reduce gap.'];
+  return [candidate(gap.representationRequired ? 'residue' : 'follow-up', 'reduce-gap', gap.criterionIds, gap.aspectIds, gap.title, `Represent reduce gap ${gap.gapId}: ${gap.description}`, expectedOutputs, validationExpectations, `Reduce node ${output.nodeId} reported gap ${gap.gapId}.`, [output.nodeId, gap.gapId, ...(gap.sourceIds ?? []), ...(gap.ownerPaths ?? [])], extra)];
+}
+
+function buildableSourceLocalizationGap(gap: PlanningReduceGap): boolean {
+  const ownerPaths = gap.ownerPaths ?? [];
+  const outputRefs = gap.productScopedOutputRefs ?? [];
+  return ownerPaths.length > 0 && outputRefs.length > 0 && outputRefs.every((ref) => {
+    const path = ref.startsWith('localized-owner:') ? ref.slice('localized-owner:'.length) : '';
+    return path.length > 0 && ownerPaths.includes(path);
+  }) && (gap.productScopedValidationRefs?.length ?? 0) > 0 && gap.productScopedValidationRefs!.every((ref) => gap.criterionIds.includes(ref));
 }
 
 function incompleteReduceCandidates(coverage: PlanningAspectCoverageSummary, output: PlanningReduceOutput): PlanningResidueCandidate[] {
@@ -58,6 +77,10 @@ function evidenceAspects(coverage: PlanningAspectCoverageSummary, record: Planni
 
 function aspectsForAtom(coverage: PlanningAspectCoverageSummary, atomId: string): PlanningAspectCoverageRecord[] {
   return coverage.aspects.filter((aspect) => aspect.atomIds.includes(atomId));
+}
+
+function buildableEvidenceStatus(status: PlanningSourceEvidenceRecord['status']): boolean {
+  return status === 'too-large' || status === 'budget-exceeded';
 }
 
 function sourceEvidenceReason(status: PlanningSourceEvidenceRecord['status']): PlanningResidueReason {
@@ -74,9 +97,9 @@ function requireAspect(coverage: PlanningAspectCoverageSummary, aspectId: string
   return aspect;
 }
 
-function candidate(kind: PlanningResidueCandidate['kind'], reason: PlanningResidueReason, criterionIds: string[], aspectIds: string[], title: string, scope: string, expectedOutputs: string[], validationExpectations: string[], rationale: string, sourceRefs: string[] = []): PlanningResidueCandidate {
+function candidate(kind: PlanningResidueCandidate['kind'], reason: PlanningResidueReason, criterionIds: string[], aspectIds: string[], title: string, scope: string, expectedOutputs: string[], validationExpectations: string[], rationale: string, sourceRefs: string[] = [], extra: Partial<PlanningResidueCandidate> = {}): PlanningResidueCandidate {
   const cleanAspects = uniq(aspectIds);
-  return { candidateId: residueCandidateId(reason, cleanAspects, sourceRefs[0]), kind, reason, title, criterionIds: uniq(criterionIds), aspectIds: cleanAspects, scope, expectedOutputs, validationExpectations, rationale, ...(sourceRefs.length > 0 ? { sourceRefs: uniq(sourceRefs) } : {}) };
+  return { candidateId: residueCandidateId(reason, cleanAspects, sourceRefs[0]), kind, reason, title, criterionIds: uniq(criterionIds), aspectIds: cleanAspects, scope, expectedOutputs, validationExpectations, rationale, ...(sourceRefs.length > 0 ? { sourceRefs: uniq(sourceRefs) } : {}), ...extra };
 }
 
 function dedupeCandidates(candidates: PlanningResidueCandidate[]): PlanningResidueCandidate[] {
