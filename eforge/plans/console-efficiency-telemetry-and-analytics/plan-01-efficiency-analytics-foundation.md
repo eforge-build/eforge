@@ -85,3 +85,22 @@ Add shared efficiency metric helpers and typed historical analytics response sha
 - [ ] DB tests return `null` p50/p95, cost/min, output tokens/dollar, or cache percentage when their source numerator or denominator is absent.
 - [ ] Route tests show `?days=0` maps to a 1-day window and `?days=999` maps to a 90-day window.
 - [ ] No `/api/...` literal for the new route appears outside `packages/client/src/routes/route-map.ts`.
+
+## Recovery Guidance
+
+- Failed PRD: "console-efficiency-telemetry-and-analytics"
+- Root failed plan: "plan-01-efficiency-analytics-foundation"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for console-efficiency-telemetry-and-analytics. artifact source: feature-branch; 3 landed commit(s); failing plan: plan-01-efficiency-analytics-foundation; feature branch: eforge/console-efficiency-telemetry-and-analytics. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "2 blocking issue outcome(s) remain after 2 review round(s) (2 unresolved, 0 need human review; 2 rejected, 0 under review)."
+- Failure detail: "2 blocking issue outcome(s) remain after 2 review round(s) (2 unresolved, 0 need human review; 2 rejected, 0 under review)."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair console-efficiency-telemetry-and-analytics`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair profile attribution so first session:profile is resolved from unfiltered session profile history, including same-session/different-run cases."
+  - "Replace per-run full event loading with focused bulk queries for window-limited agent results and required profile attribution rows."
+  - "Add the missing regression where the first profile is on an older run sharing the same session id and a later profile is on the included run."
+  - "Resume blocked plan-02-live-efficiency-surfaces and plan-03-historical-analytics-ui-docs after the foundation repair passes review."
+  - "Run required validation: pnpm type-check, pnpm test, pnpm build, and pnpm maintainability:check."
+- Retry/resume guidance: Continue plan-01-efficiency-analytics-foundation for failed PRD console-efficiency-telemetry-and-analytics from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-07-01T16:59:38.070Z
+- Source sidecar: .eforge/queue/failed/console-efficiency-telemetry-and-analytics.recovery.json
+- Source identity: prdId=console-efficiency-telemetry-and-analytics; setName=console-efficiency-telemetry-and-analytics; featureBranch=eforge/console-efficiency-telemetry-and-analytics; baseBranch=main
