@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { parseOrchestrationConfig } from '@eforge-build/engine/plan';
-import { writePlanningCompilerArtifacts, type PlanningArtifactSynthesisResult } from '@eforge-build/engine/planner-compiler';
+import { writePlanningCompilerArtifacts, type PlanningArchitectureManifest, type PlanningArtifactSynthesisResult } from '@eforge-build/engine/planner-compiler';
 import { DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
@@ -15,6 +15,7 @@ describe('planning compiler artifact writer', () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-plan-writer-'));
     const artifacts: PlanningArtifactSynthesisResult = {
       architectureMarkdown: '# Architecture\n\nBounded compiler architecture.',
+      architectureManifest: emptyManifest(),
       planMarkdown: '# Plan\n\nBounded compiler plan.',
       acceptanceCoverageMarkdown: '## Acceptance Coverage\n\nComplete criteria: ac-001',
       modulePlans: [
@@ -41,6 +42,7 @@ describe('planning compiler artifact writer', () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-plan-writer-'));
     const artifacts: PlanningArtifactSynthesisResult = {
       architectureMarkdown: '# Architecture',
+      architectureManifest: emptyManifest(),
       planMarkdown: '# Plan',
       acceptanceCoverageMarkdown: '## Coverage',
       modulePlans: [
@@ -59,3 +61,7 @@ describe('planning compiler artifact writer', () => {
     expect(parsed.plans[1].depends_on).toEqual(['plan-01-module-core']);
   });
 });
+
+function emptyManifest(): PlanningArchitectureManifest {
+  return { version: 1, plans: [], fileOwnership: [], contracts: [], conflicts: [] };
+}

@@ -7,7 +7,8 @@ import type { PipelineComposition, PlanSetSubmission } from '../schemas.js';
 import { validatePlanSetSubmission } from '../schemas.js';
 import { writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
 import { COMPILER_DIAGNOSTICS_ARTIFACT, type CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
-import type { PlanningArtifactSynthesisResult, PlanningSynthesizedModulePlan } from './plan-artifact-synthesis.js';
+import type { PlanningArtifactSynthesisResult } from './plan-artifact-synthesis.js';
+import { derivePlanIds, requirePlanId } from './plan-ids.js';
 
 export interface WritePlanningCompilerArtifactsInput {
   cwd: string;
@@ -61,22 +62,4 @@ function planSetPayload(input: WritePlanningCompilerArtifactsInput, planIds: Map
       plans: input.artifacts.modulePlans.map(module => ({ id: requirePlanId(planIds, module.moduleId), dependsOn: module.dependsOnModuleIds.map(id => requirePlanId(planIds, id)) })),
     },
   };
-}
-
-function derivePlanIds(modules: PlanningSynthesizedModulePlan[]): Map<string, string> {
-  const ids = new Map<string, string>();
-  for (const [index, module] of modules.entries()) ids.set(module.moduleId, safePlanId(module.moduleId, index));
-  return ids;
-}
-
-function safePlanId(moduleId: string, index: number): string {
-  if (/^[A-Za-z0-9_-]+$/.test(moduleId) && !moduleId.includes('..')) return moduleId;
-  const slug = moduleId.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'module';
-  return `plan-${String(index + 1).padStart(2, '0')}-${slug}`;
-}
-
-function requirePlanId(planIds: Map<string, string>, moduleId: string): string {
-  const planId = planIds.get(moduleId);
-  if (!planId) throw new Error(`Missing plan id for module dependency:${moduleId}`);
-  return planId;
 }

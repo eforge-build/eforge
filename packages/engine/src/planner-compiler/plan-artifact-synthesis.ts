@@ -1,3 +1,5 @@
+import type { PlanningArchitectureManifest } from './architecture-manifest-contracts.js';
+import { synthesizeArchitecture } from './architecture-synthesis.js';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { derivePlanningAspectCoverage } from './coverage-accounting.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
@@ -6,20 +8,21 @@ import type { PlanningResidueCandidate } from './residue-contracts.js';
 export interface SynthesizePlanningArtifactsInput { compilerResult: BoundedPlannerCompilerResult }
 export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean }
 export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[] }> }
-export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; acceptanceCoverageMarkdown: string; validationErrors: string[] }
+export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; acceptanceCoverageMarkdown: string; validationErrors: string[] }
 
 export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsInput): PlanningArtifactSynthesisResult {
   const result = input.compilerResult;
   const fragments = selectPlanFragments(result);
   const modules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
   const validationErrors = validateSynthesizedArtifacts(result, modules);
-  const architectureMarkdown = architectureMarkdownFor(result);
+  const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules });
   const acceptanceCoverageMarkdown = coverageMarkdownFor(result);
   const planMarkdown = planMarkdownFor(result, modules, fragments);
-  if (!nonEmpty(architectureMarkdown)) validationErrors.push('architecture markdown is empty');
+  if (!nonEmpty(architecture.markdown)) validationErrors.push('architecture markdown is empty');
   if (!nonEmpty(planMarkdown)) validationErrors.push('plan markdown is empty');
   return {
-    architectureMarkdown,
+    architectureMarkdown: architecture.markdown,
+    architectureManifest: architecture.manifest,
     planMarkdown,
     modulePlans: modules,
     orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds] })) },
@@ -116,12 +119,6 @@ function validateCoverage(result: BoundedPlannerCompilerResult, errors: string[]
   for (const criterion of coverage.criteria.filter((item) => !item.complete)) errors.push(`unresolved criterion after artifact synthesis:${criterion.criterionId}:${criterion.pendingAspectIds.join(',')}`);
 }
 
-function architectureMarkdownFor(result: BoundedPlannerCompilerResult): string {
-  const finalSummary = result.reduce.finalOutput?.compactSummary;
-  const summaries = result.reduce.outputs.map((output) => output.compactSummary).filter(nonEmpty);
-  return ['# Planner Compiler Architecture', '', finalSummary || summaries.join('\n\n') || 'No reduce synthesis was produced.', '', `Compiler status: ${result.status}`, `Source hash: ${result.sourceInventory.sourceHash}`].join('\n');
-}
-
 function planMarkdownFor(result: BoundedPlannerCompilerResult, modules: PlanningSynthesizedModulePlan[], fragments: PlanningAtomPlanFragment[]): string {
   return ['# Planner Compiler Plan', '', '## Modules', ...modules.map((module) => `- ${module.moduleId}: ${module.title}${module.residue ? ' (residue/follow-up)' : ''}`), '', '## Plan fragments', ...(fragments.length > 0 ? fragments.map((fragment) => `### ${fragment.title || fragment.fragmentId}\n\n${fragment.markdown}`) : ['No standalone plan fragments were produced.']), '', coverageMarkdownFor(result)].join('\n');
 }
@@ -136,7 +133,7 @@ function moduleMarkdown(module: PlanningAtomModuleCandidate, fragments: Planning
 }
 
 function residueMarkdown(candidate: PlanningResidueCandidate): string {
-  return [`# ${candidate.title}`, '', candidate.scope, '', '## Expected outputs', '', ...candidate.expectedOutputs.map((output) => `- ${output}`), '', '## Validation expectations', '', ...candidate.validationExpectations.map((value) => `- ${value}`), '', '## Rationale', '', candidate.rationale].join('\n');
+  return [`# ${candidate.title}`, '', candidate.scope, '', '## Traceability', '', `Criteria: ${candidate.criterionIds.join(', ')}`, `Aspects: ${candidate.aspectIds.join(', ')}`, '', '## Expected outputs', '', ...candidate.expectedOutputs.map((output) => `- ${output}`), '', '## Validation expectations', '', ...candidate.validationExpectations.map((value) => `- ${value}`), '', '## Rationale', '', candidate.rationale].join('\n');
 }
 
 function cloneFragments(fragments: PlanningAtomPlanFragment[]): PlanningAtomPlanFragment[] {

@@ -6,9 +6,9 @@ export const COMPILER_DIAGNOSTICS_ARTIFACT = 'compiler-diagnostics.json';
 export const COMPILER_DIAGNOSTICS_VERSION = 1;
 export const MAX_COMPILER_DIAGNOSTICS_BYTES = 262_144;
 
-const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
-const boundedIds = (maxLength: number, maxItems: number): ReturnType<typeof Type.Array> => Type.Array(boundedString(maxLength), { maxItems });
-const count = (): ReturnType<typeof Type.Integer> => Type.Integer({ minimum: 0 });
+const boundedString = (maxLength: number) => Type.String({ maxLength });
+const boundedIds = (maxLength: number, maxItems: number) => Type.Array(boundedString(maxLength), { maxItems });
+const count = () => Type.Integer({ minimum: 0 });
 
 const CompilerStatusSchema = Type.Union([Type.Literal('complete'), Type.Literal('complete-with-residue'), Type.Literal('incomplete'), Type.Literal('failed')]);
 const RepairStatusSchema = Type.Union([Type.Literal('not-needed'), Type.Literal('repaired'), Type.Literal('unresolved'), Type.Literal('exhausted')]);
@@ -68,7 +68,7 @@ export const CompilerDiagnosticsConflictSchema = Type.Object({
   representedByCandidateId: Type.Optional(boundedString(160)),
 }, { additionalProperties: false });
 
-const RepairCoverageEntrySchema = (idLength: number): ReturnType<typeof Type.Object> => Type.Object({ id: boundedString(idLength), status: RepairCoverageStatusSchema }, { additionalProperties: false });
+const RepairCoverageEntrySchema = (idLength: number) => Type.Object({ id: boundedString(idLength), status: RepairCoverageStatusSchema }, { additionalProperties: false });
 
 export const CompilerDiagnosticsRepairAttemptSchema = Type.Object({
   attempt: Type.Integer({ minimum: 0, maximum: 100 }),

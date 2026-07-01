@@ -23,6 +23,7 @@ export interface WriteCompilerDiagnosticsArtifactInput { cwd: string; outputDir:
 
 const COMPACT_DESCRIPTION_LENGTH = 500;
 
+// --- eforge:region compiler-diagnostics-entrypoints ---
 export function buildCompilerDiagnostics(input: BuildCompilerDiagnosticsInput): CompilerDiagnostics {
   const result = input.compilerResult;
   const omitted = emptyOmittedCounts();
@@ -67,7 +68,9 @@ export async function writeCompilerDiagnosticsArtifact(input: WriteCompilerDiagn
   await writeFile(artifactPath, serializeCompilerDiagnostics(input.diagnostics), 'utf8');
   return artifactPath;
 }
+// --- eforge:endregion compiler-diagnostics-entrypoints ---
 
+// --- eforge:region compiler-diagnostics-projections ---
 function coverageSection(result: BoundedPlannerCompilerResult, omitted: CompilerDiagnosticsOmittedCounts): CompilerDiagnostics['coverage'] {
   const coverage = derivePlanningAspectCoverage({
     graph: result.atomGraph,
@@ -251,6 +254,9 @@ function coverageEntries(record: Record<string, SourceLocalizationRepairCoverage
     .slice(0, maxItems);
 }
 
+// --- eforge:endregion compiler-diagnostics-projections ---
+
+// --- eforge:region compiler-diagnostics-compaction-helpers ---
 function dropCoverageAspects(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
   return {
     ...diagnostics,
@@ -322,3 +328,4 @@ function isInsideDirectory(child: string, parent: string): boolean {
   const relativePath = relative(parent, child);
   return relativePath.length > 0 && !relativePath.startsWith('..') && !isAbsolute(relativePath);
 }
+// --- eforge:endregion compiler-diagnostics-compaction-helpers ---
