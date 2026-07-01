@@ -14,16 +14,29 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting bounded planner compiler...' };
   const { harness, toolbeltSummary } = ctx.agentRuntimes.forRoleResolved('planner');
   const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, toolbeltSummary);
-  const compilerResult = yield* runCompilerAndStreamEvents({
-    sourceContent: ctx.promptSourceContent ?? ctx.compilePromptSourceBundle?.promptSource ?? ctx.sourceContent,
-    sourceHash: ctx.compilePromptSourceBundle?.sourceHash,
-    cwd: ctx.cwd,
-    harness,
-    limits: resolvePlanningDecompositionLimits(ctx.config),
-    agentOptions: agentConfig,
-    parallelism: ctx.config.compile.planningUnitParallelism,
-    abortSignal: ctx.abortController?.signal,
-  });
+  let compilerResult: BoundedPlannerCompilerResult;
+  try {
+    compilerResult = yield* runCompilerAndStreamEvents({
+      sourceContent: ctx.promptSourceContent ?? ctx.compilePromptSourceBundle?.promptSource ?? ctx.sourceContent,
+      sourceHash: ctx.compilePromptSourceBundle?.sourceHash,
+      cwd: ctx.cwd,
+      harness,
+      limits: resolvePlanningDecompositionLimits(ctx.config),
+      agentOptions: agentConfig,
+      parallelism: ctx.config.compile.planningUnitParallelism,
+      abortSignal: ctx.abortController?.signal,
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };
+    throw err;
+  }
+
+  if (compilerResult.status === 'failed') {
+    const reason = `Bounded planner compiler failed: ${compilerResult.validationErrors.join('; ') || compilerResult.map.failedAtomIds.join(',') || compilerResult.reduce.validationErrors.join('; ') || 'unknown failure'}`;
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };
+    throw new Error(reason);
+  }
 
   const artifacts = synthesizePlanningArtifacts({ compilerResult });
   if (artifacts.validationErrors.length > 0) {

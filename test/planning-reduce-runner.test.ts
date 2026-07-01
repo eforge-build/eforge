@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, planPromptSafeReduceTree, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, deriveInitialReduceDigestPromptBudget, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, minimumReduceDigestPromptByteLength, planPromptSafeReduceTree, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -126,6 +126,17 @@ describe('planning reduce runner', () => {
     expect(result.tree.limits.maxInputsPerReduce).toBe(2);
     expect(result.reduceComplete).toBe(true);
     expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= constrainedPromptBudget)).toBe(true);
+  });
+
+  it('derives feasible initial atom digest budgets per first-level reducer input', () => {
+    const criteria = Array.from({ length: 120 }, (_, index) => `general work item ${index + 1} updates packages/engine/src/file-${index + 1}.ts.`);
+    const data = fixture(criteria, true, { ...atomLimits, maxCriteriaPerUnit: 1, parallelism: 4 });
+
+    const budget = deriveInitialReduceDigestPromptBudget({ graph: data.graph, limits: { ...reduceLimits, maxReducePromptBytes: constrainedPromptBudget } });
+    const minimumAtomBudget = Math.max(...data.tasks.map((task) => minimumReduceDigestPromptByteLength({ sourceId: task.atomId, sourceKind: 'atom', criterionIds: task.criterionIds, aspectIds: task.aspectIds })));
+
+    expect(data.graph.atoms.length).toBeGreaterThan(50);
+    expect(budget).toBeGreaterThanOrEqual(minimumAtomBudget);
   });
 
   it('budget-plans multi-level reducer prompts before emitting the reduce tree', async () => {

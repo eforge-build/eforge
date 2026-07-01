@@ -95,6 +95,31 @@ describe('planning shared brief and evidence ownership', () => {
     expect(harness.prompts[1]).toContain('Shared file exports the bounded planner contract.');
   });
 
+  it('fills map parallelism with independent atoms when a shared evidence consumer is waiting', async () => {
+    const data = fixture([
+      'engine updates `packages/engine/src/shared.ts` for one aspect.',
+      'engine validates `packages/engine/src/shared.ts` for another aspect.',
+      'engine updates `packages/engine/src/independent.ts` independently.',
+    ]);
+    const primaryTask = data.tasks.find((task) => task.sharedBrief?.ownedEvidencePaths.includes('packages/engine/src/shared.ts'))!;
+    const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedEvidenceRefs.some((ref) => ref.path === 'packages/engine/src/shared.ts'))!;
+    const independentTask = data.tasks.find((task) => task.atomId !== primaryTask.atomId && task.atomId !== consumerTask.atomId)!;
+    const live: unknown[] = [];
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(primaryTask)),
+      atomSubmission(completedOutput(independentTask)),
+      atomSubmission(completedOutput(consumerTask)),
+    ]);
+
+    const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2, onEvent: (event) => live.push(event) });
+
+    const atomStatuses = live.filter((event): event is { type: string; atomId: string; status: string } => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'planning:map-reduce:atom:status');
+    const firstCompletedIndex = atomStatuses.findIndex((event) => event.status === 'completed');
+    const initialRunningAtomIds = atomStatuses.slice(0, firstCompletedIndex).filter((event) => event.status === 'running').map((event) => event.atomId).sort();
+    expect(result.mapComplete).toBe(true);
+    expect(initialRunningAtomIds).toEqual([independentTask.atomId, primaryTask.atomId].sort());
+  });
+
   it('passes accepted shared interface findings and section content to consumers', async () => {
     const data = fixture(['engine updates the event schema contract for one aspect.', 'engine validates the event schema contract for another aspect.']);
     const primaryTask = data.tasks.find((task) => task.sharedBrief?.ownedInterfaceKeys.includes('event-schemas'))!;
