@@ -2,7 +2,7 @@ import { Type, type Static } from '@sinclair/typebox';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
-import { PlanningAtomModuleCandidateSchema, PlanningAtomPlanFragmentSchema, type PlanningAtomModuleCandidate, type PlanningAtomOutput, type PlanningAtomPlanFragment } from './atom-planning-contracts.js';
+import { PlanningAtomModuleCandidateSchema, PlanningAtomPlanFragmentSchema, type PlanningAtomModuleCandidate, type PlanningAtomOutput, type PlanningAtomPlanFragment, type PlanningAtomTask } from './atom-planning-contracts.js';
 import { clonePlanningReduceDigest, deriveReduceDigestTotalByteLimit, PlanningReduceDigestSchema, validatePlanningReduceDigest, type PlanningReduceDigest } from './reduce-digest-contracts.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
@@ -24,6 +24,7 @@ export interface PlanningReduceGap { gapId: string; title: string; criterionIds:
 export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget }
 export interface PlanningReduceOutput { nodeId: string; status: PlanningReduceOutputStatus; compactSummary: string; reduceDigest?: PlanningReduceDigest; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; conflicts?: PlanningReduceConflict[]; gaps?: PlanningReduceGap[]; validationStrategy?: string; error?: string }
 export interface BuildPlanningReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits }
+export interface BuildPlanningReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits }
 export interface ValidatePlanningReduceOutputInput { graph: PlanningAtomGraph; tree: PlanningReduceTree; task: PlanningReduceTask; output: PlanningReduceOutput }
 export type PlanningReduceOutputValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
 
@@ -36,17 +37,14 @@ export function normalizePlanningReduceBudget(limits: PlanningReduceLimits): Pla
 export function buildPlanningReduceTree(input: BuildPlanningReduceTreeInput): PlanningReduceTree {
   const limits = normalizePlanningReduceBudget(input.limits);
   const accepted = input.mapResult.outputs.filter((output) => output.status !== 'failed').sort((a, b) => a.atomId.localeCompare(b.atomId));
-  const nodes: PlanningReduceNode[] = [];
-  let level = chunks(accepted.map((output) => output.atomId), limits.maxInputsPerReduce).map((atomIds, index) => nodeForInputs(`reduce-000-${String(index + 1).padStart(3, '0')}`, 0, atomIds, [], input));
-  nodes.push(...level);
-  let depth = 1;
-  while (level.length > 1) {
-    level = chunks(level.map((node) => node.nodeId), limits.maxInputsPerReduce).map((nodeIds, index) => nodeForInputs(`reduce-${String(depth).padStart(3, '0')}-${String(index + 1).padStart(3, '0')}`, depth, [], nodeIds, input, nodes));
-    nodes.push(...level);
-    depth += 1;
-  }
-  const validationErrors = validateReduceTree(nodes, limits);
-  return { graphId: input.graph.graphId, nodes, ...(level[0] ? { rootNodeId: level[0].nodeId } : {}), limits, validationErrors };
+  return buildReduceTreeFromAtomIds({ graphId: input.graph.graphId, atomIds: accepted.map((output) => output.atomId), limits, nodeForAtomInputs: (nodeId, depth, atomIds, inputNodeIds, priorNodes) => nodeForInputs(nodeId, depth, atomIds, inputNodeIds, input, priorNodes) });
+}
+
+export function buildPlanningReduceTreeFromAtomTasks(input: BuildPlanningReduceTreeFromTasksInput): PlanningReduceTree {
+  const limits = normalizePlanningReduceBudget(input.limits);
+  const tasks = [...input.tasks].sort((a, b) => a.atomId.localeCompare(b.atomId));
+  const taskById = new Map(tasks.map((task) => [task.atomId, task]));
+  return buildReduceTreeFromAtomIds({ graphId: input.graph.graphId, atomIds: tasks.map((task) => task.atomId), limits, nodeForAtomInputs: (nodeId, depth, atomIds, inputNodeIds, priorNodes) => nodeForTaskInputs(nodeId, depth, atomIds, inputNodeIds, taskById, priorNodes) });
 }
 
 export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[]): PlanningReduceTask {
@@ -76,6 +74,21 @@ export function normalizePlanningReduceOutput(output: PlanningReduceOutput): Pla
   });
 }
 
+function buildReduceTreeFromAtomIds(input: { graphId: string; atomIds: string[]; limits: PlanningReduceBudget; nodeForAtomInputs: (nodeId: string, depth: number, atomIds: string[], inputNodeIds: string[], priorNodes: PlanningReduceNode[]) => PlanningReduceNode }): PlanningReduceTree {
+  const limits = input.atomIds.length > 1 && input.limits.maxInputsPerReduce < 2 ? { ...input.limits, maxInputsPerReduce: 2 } : input.limits;
+  const nodes: PlanningReduceNode[] = [];
+  let level = chunks(input.atomIds, limits.maxInputsPerReduce).map((atomIds, index) => input.nodeForAtomInputs(`reduce-000-${String(index + 1).padStart(3, '0')}`, 0, atomIds, [], nodes));
+  nodes.push(...level);
+  let depth = 1;
+  while (level.length > 1) {
+    level = chunks(level.map((node) => node.nodeId), limits.maxInputsPerReduce).map((nodeIds, index) => input.nodeForAtomInputs(`reduce-${String(depth).padStart(3, '0')}-${String(index + 1).padStart(3, '0')}`, depth, [], nodeIds, nodes));
+    nodes.push(...level);
+    depth += 1;
+  }
+  const validationErrors = validateReduceTree(nodes, limits);
+  return { graphId: input.graphId, nodes, ...(level[0] ? { rootNodeId: level[0].nodeId } : {}), limits, validationErrors };
+}
+
 function nodeForInputs(nodeId: string, depth: number, inputAtomIds: string[], inputNodeIds: string[], input: BuildPlanningReduceTreeInput, priorNodes: PlanningReduceNode[] = []): PlanningReduceNode {
   const atomById = new Map(input.mapResult.outputs.map((output) => [output.atomId, output]));
   const nodeById = new Map(priorNodes.map((node) => [node.nodeId, node]));
@@ -86,6 +99,15 @@ function nodeForInputs(nodeId: string, depth: number, inputAtomIds: string[], in
   const atomAspects = inputAtomIds.flatMap((atomId) => atomById.get(atomId)?.aspectUpdates.map((update) => update.aspectId) ?? []);
   const childCriteria = inputNodeIds.flatMap((nodeId) => nodeById.get(nodeId)?.criterionIds ?? []);
   const childAspects = inputNodeIds.flatMap((nodeId) => nodeById.get(nodeId)?.aspectIds ?? []);
+  return { nodeId, depth, inputAtomIds: [...inputAtomIds].sort(), inputNodeIds: [...inputNodeIds].sort(), criterionIds: uniq([...atomCriteria, ...childCriteria]), aspectIds: uniq([...atomAspects, ...childAspects]) };
+}
+
+function nodeForTaskInputs(nodeId: string, depth: number, inputAtomIds: string[], inputNodeIds: string[], taskById: Map<string, PlanningAtomTask>, priorNodes: PlanningReduceNode[] = []): PlanningReduceNode {
+  const nodeById = new Map(priorNodes.map((node) => [node.nodeId, node]));
+  const atomCriteria = inputAtomIds.flatMap((atomId) => taskById.get(atomId)?.criterionIds ?? []);
+  const atomAspects = inputAtomIds.flatMap((atomId) => taskById.get(atomId)?.aspectIds ?? []);
+  const childCriteria = inputNodeIds.flatMap((childId) => nodeById.get(childId)?.criterionIds ?? []);
+  const childAspects = inputNodeIds.flatMap((childId) => nodeById.get(childId)?.aspectIds ?? []);
   return { nodeId, depth, inputAtomIds: [...inputAtomIds].sort(), inputNodeIds: [...inputNodeIds].sort(), criterionIds: uniq([...atomCriteria, ...childCriteria]), aspectIds: uniq([...atomAspects, ...childAspects]) };
 }
 

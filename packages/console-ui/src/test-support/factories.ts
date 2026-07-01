@@ -256,7 +256,7 @@ export function validationSwimlaneBugRunState(): RunState {
 /**
  * RunState for a large-plan bounded-compiler (map/reduce) run, mid-flight: the
  * map phase has cleared some atoms and one is still running; the reduce tree is
- * built with wave 0 running and the root (wave 1) still queued. Atom/reduce
+ * built with level 1 running and the root (level 2) still queued. Atom/reduce
  * agent threads are keyed `planId === atomId / nodeId`, so the board's per-node
  * enrichment join (model/tokens/duration/turns) exercises real reduced data.
  *

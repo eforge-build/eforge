@@ -1,8 +1,7 @@
 import type { EforgeEvent } from '../events.js';
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
-import { buildPlanningAtomTasks, summarizePlanningAtomOutputs, validatePlanningAtomOutput, type PlanningAtomOutput, type PlanningAtomTask } from './atom-planning-contracts.js';
-import { runPlanningAtomPlanner } from './atom-planner-agent.js';
+import { buildPlanningAtomTasks, summarizePlanningAtomOutputs, type PlanningAtomOutput, type PlanningAtomTask } from './atom-planning-contracts.js';
 import { selectReadyPlanningAtoms, type BlockedPlanningAtom } from './atom-scheduler.js';
 import type { PlanningAspectCoverageSummary, PlanningCriterionAspect } from './coverage-accounting.js';
 import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
@@ -10,12 +9,12 @@ import { validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle
 import type { SourceInventory } from './source-inventory.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { buildMapReduceAtomsEvent, buildMapReduceAtomStatusEvent } from './orchestration-events.js';
-import type { PlanningMapReduceAtomStatus } from '@eforge-build/client';
+import { atomStatusReason, atomTerminalStatus, executePlanningAtom, failedAtomOutput, type AtomRunResult } from './atom-execution.js';
+import { composeAbortSignal, isAbortError } from './abort-utils.js';
 
 export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; reduceDigestPromptBudgetBytes?: number; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; onEvent?: PlannerCompilerEventSink; affectedAtomIds?: string[]; priorOutputs?: PlanningAtomOutput[] }
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 
-interface AtomRunResult { output: PlanningAtomOutput; events: EforgeEvent[]; validationErrors: string[] }
 interface AtomSettled { atomId: string; result?: AtomRunResult; error?: unknown }
 
 export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promise<PlanningAtomMapResult> {
@@ -45,7 +44,7 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
     for (const atomId of decision.readyAtomIds) {
       emit(buildMapReduceAtomStatusEvent(atomId, 'running'));
       const acceptedFindings = outputs.flatMap((output) => output.sharedFindings ?? []);
-      running.set(atomId, runAtom(runInput, requireTask(tasks, atomId), acceptedFindings).then((result) => ({ atomId, result }), (error) => ({ atomId, error })));
+      running.set(atomId, executePlanningAtom(runInput, requireTask(tasks, atomId), acceptedFindings).then((result) => ({ atomId, result }), (error) => ({ atomId, error })));
     }
 
     if (running.size === 0) return finish(input, { outputs, events, completed, failed, skipped, validationErrors, iterations, blockedAtoms: decision.blockedAtoms, readyAtomIds: decision.readyAtomIds });
@@ -55,7 +54,7 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
     if (settled.error) {
       if (isAbortError(settled.error) && !failFastController.signal.aborted) throw settled.error;
       const task = requireTask(tasks, settled.atomId);
-      applyAtomResult({ result: { output: failedOutput(task, settled.error), events: [], validationErrors: [`atom planner failed:${settled.atomId}:${settled.error instanceof Error ? settled.error.message : String(settled.error)}`] }, outputs, events, validationErrors, completed, failed, skipped, emit });
+      applyAtomResult({ result: { output: failedAtomOutput(task, settled.error), events: [], validationErrors: [`atom planner failed:${settled.atomId}:${settled.error instanceof Error ? settled.error.message : String(settled.error)}`] }, outputs, events, validationErrors, completed, failed, skipped, emit });
     } else {
       applyAtomResult({ result: settled.result!, outputs, events, validationErrors, completed, failed, skipped, emit });
     }
@@ -86,43 +85,15 @@ function cancelRunningAtoms(input: { running: Map<string, Promise<AtomSettled>>;
   input.running.clear();
   for (const atomId of atomIds) {
     if (input.completed.has(atomId) || input.failed.has(atomId) || input.skipped.has(atomId)) continue;
-    const output = failedOutput(requireTask(input.tasks, atomId), new Error(input.reason));
+    const output = failedAtomOutput(requireTask(input.tasks, atomId), new Error(input.reason));
     input.outputs.push(output);
     input.failed.add(atomId);
     input.emit(buildMapReduceAtomStatusEvent(atomId, 'failed', input.reason));
   }
 }
 
-function atomTerminalStatus(outputStatus: PlanningAtomOutput['status'], validationErrorCount: number): PlanningMapReduceAtomStatus {
-  if (outputStatus === 'completed' && validationErrorCount === 0) return 'completed';
-  if (outputStatus === 'skipped' && validationErrorCount === 0) return 'skipped';
-  return 'failed';
-}
-
-function atomStatusReason(result: AtomRunResult): string | undefined {
-  if (result.output.error) return result.output.error;
-  if (result.validationErrors.length > 0) return result.validationErrors.join('; ');
-  return undefined;
-}
-
-async function runAtom(input: RunPlanningAtomMapInput, task: PlanningAtomTask, acceptedSharedFindings: PlanningSharedFinding[]): Promise<AtomRunResult> {
-  try {
-    const result = await runPlanningAtomPlanner({ task, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, acceptedSharedFindings, sourceEvidenceBundle: input.sourceEvidenceBundle, onEvent: input.onEvent });
-    const validation = validatePlanningAtomOutput({ graph: input.graph, inventory: input.inventory, aspects: input.aspects, task, output: result.output });
-    if (!validation.ok) return { output: failedOutput(task, new Error(`invalid atom output:${validation.errors.join('; ')}`)), events: result.events, validationErrors: validation.errors };
-    return { output: result.output, events: result.events, validationErrors: [] };
-  } catch (err) {
-    if (isAbortError(err)) throw err;
-    return { output: failedOutput(task, err), events: [], validationErrors: [`atom planner failed:${task.atomId}:${err instanceof Error ? err.message : String(err)}`] };
-  }
-}
-
-function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError';
-}
-
 function finish(input: RunPlanningAtomMapInput, state: { outputs: PlanningAtomOutput[]; events: EforgeEvent[]; completed: Set<string>; failed: Set<string>; skipped: Set<string>; validationErrors: string[]; iterations: number; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[] }): PlanningAtomMapResult {
-  const summary = summarizePlanningAtomOutputs({ graph: input.graph, inventory: input.inventory, aspects: input.aspects, sharedBrief: input.sharedBrief, outputs: state.outputs });
+  const summary = summarizePlanningAtomOutputs({ graph: input.graph, inventory: input.inventory, aspects: input.aspects, sharedBrief: input.sharedBrief, sourceEvidenceBundle: input.sourceEvidenceBundle, reduceDigestPromptBudgetBytes: input.reduceDigestPromptBudgetBytes, outputs: state.outputs });
   const validationErrors = [...new Set([...state.validationErrors, ...summary.validationErrors])].sort();
   const mapComplete = state.failed.size === 0 && state.blockedAtoms.length === 0 && validationErrors.length === 0 && summary.coverage.incompleteCriteria.length === 0;
   return {
@@ -174,24 +145,6 @@ function cloneAtomOutput(output: PlanningAtomOutput): PlanningAtomOutput {
     sharedFindings: output.sharedFindings?.map((finding) => ({ ...finding, aspectIds: [...finding.aspectIds] })),
     discoveredEvidencePaths: output.discoveredEvidencePaths ? [...output.discoveredEvidencePaths] : undefined,
   };
-}
-
-function composeAbortSignal(parent: AbortSignal | undefined, child: AbortSignal): AbortSignal {
-  if (!parent) return child;
-  const anyAbortSignal = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
-  if (anyAbortSignal) return anyAbortSignal([parent, child]);
-  const controller = new AbortController();
-  const abort = (): void => { controller.abort(); };
-  if (parent.aborted || child.aborted) abort();
-  else {
-    parent.addEventListener('abort', abort, { once: true });
-    child.addEventListener('abort', abort, { once: true });
-  }
-  return controller.signal;
-}
-
-function failedOutput(task: PlanningAtomTask, err: unknown): PlanningAtomOutput {
-  return { atomId: task.atomId, status: 'failed', aspectUpdates: [], error: err instanceof Error ? err.message : String(err) };
 }
 
 function requireTask(tasks: Map<string, PlanningAtomTask>, atomId: string): PlanningAtomTask {

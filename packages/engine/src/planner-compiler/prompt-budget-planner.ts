@@ -1,9 +1,10 @@
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
-import type { PlanningAtomOutput } from './atom-planning-contracts.js';
-import { buildPlanningReduceTask, buildPlanningReduceTree, normalizePlanningReduceBudget, type PlanningReduceBudget, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput, type PlanningReduceTree } from './reduce-contracts.js';
+import type { PlanningAtomOutput, PlanningAtomTask } from './atom-planning-contracts.js';
+import { buildPlanningReduceTask, buildPlanningReduceTree, buildPlanningReduceTreeFromAtomTasks, normalizePlanningReduceBudget, type PlanningReduceBudget, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput, type PlanningReduceTree } from './reduce-contracts.js';
 import { reduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, REDUCE_DIGEST_PROMPT_BUDGETING, type PlanningReduceDigest, type PlanningReduceDigestSourceKind } from './reduce-digest-contracts.js';
 import { formatPlanningReducerPrompt } from './reducer-agent.js';
+import { validateReduceTaskPromptBudget } from './reduce-execution.js';
 import { utf8ByteLength } from './source-analysis.js';
 
 const MIN_REDUCE_FAN_IN = REDUCE_DIGEST_PROMPT_BUDGETING.minReduceFanIn;
@@ -12,6 +13,7 @@ const SYNTHETIC_DIGEST_FRAGMENT_CRITERION_LIMIT = 32;
 const SYNTHETIC_DIGEST_FRAGMENT_ASPECT_LIMIT = 64;
 
 export interface PlanPromptSafeReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits }
+export interface PlanPromptSafeReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits }
 export interface PromptSafeReduceTreePlan { ok: boolean; tree: PlanningReduceTree; validationErrors: string[]; maxReduceDigestPromptBytes: number }
 export interface DeriveInitialReduceDigestPromptBudgetInput { graph: PlanningAtomGraph; limits: PlanningReduceLimits }
 
@@ -26,20 +28,46 @@ export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduce
 }
 
 export function planPromptSafeReduceTree(input: PlanPromptSafeReduceTreeInput): PromptSafeReduceTreePlan {
+  return planPromptSafeReduceTreeCore({
+    graph: input.graph,
+    limits: input.limits,
+    acceptedCount: input.mapResult.outputs.filter((output) => output.status !== 'failed').length,
+    atomOutputs: input.mapResult.outputs,
+    buildTree: (limits) => buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits }),
+  });
+}
+
+export function planPromptSafeReduceTreeFromTasks(input: PlanPromptSafeReduceTreeFromTasksInput): PromptSafeReduceTreePlan {
+  const atomOutputs = input.tasks.map((task) => atomTaskPlaceholderOutput(task));
+  return planPromptSafeReduceTreeCore({
+    graph: input.graph,
+    limits: input.limits,
+    acceptedCount: input.tasks.length,
+    atomOutputs,
+    buildTree: (limits) => buildPlanningReduceTreeFromAtomTasks({ graph: input.graph, tasks: input.tasks, limits }),
+  });
+}
+
+export function validateLaunchReducePrompt(input: { tree: PlanningReduceTree; nodeId: string; atomOutputs: PlanningAtomOutput[]; reduceOutputs: PlanningReduceOutput[] }): string[] {
+  const node = requireNode(input.tree, input.nodeId);
+  const task = buildPlanningReduceTask(input.tree, node, input.atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), input.reduceOutputs.filter((output) => node.inputNodeIds.includes(output.nodeId)));
+  return validateReduceTaskPromptBudget(task);
+}
+
+function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits: PlanningReduceLimits; acceptedCount: number; atomOutputs: PlanningAtomOutput[]; buildTree: (limits: PlanningReduceBudget) => PlanningReduceTree }): PromptSafeReduceTreePlan {
   const baseLimits = normalizePlanningReduceBudget(input.limits);
-  const acceptedCount = input.mapResult.outputs.filter((output) => output.status !== 'failed').length;
-  const minFanIn = acceptedCount > 1 ? MIN_REDUCE_FAN_IN : 1;
+  const minFanIn = input.acceptedCount > 1 ? MIN_REDUCE_FAN_IN : 1;
   const maxFanIn = Math.max(baseLimits.maxInputsPerReduce, minFanIn);
-  let fallbackTree = buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits: { ...baseLimits, maxInputsPerReduce: minFanIn } });
+  let fallbackTree = input.buildTree(normalizePlanningReduceBudget({ ...baseLimits, maxInputsPerReduce: minFanIn }));
   let lastErrors: string[] = [];
 
   for (let fanIn = maxFanIn; fanIn >= minFanIn; fanIn -= 1) {
     const candidateBase = normalizePlanningReduceBudget({ ...baseLimits, maxInputsPerReduce: fanIn });
-    const initialTree = buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits: candidateBase });
+    const initialTree = input.buildTree(candidateBase);
     fallbackTree = initialTree;
-    const budget = deriveTreeDigestPromptBudget(initialTree, input.mapResult.outputs);
+    const budget = deriveTreeDigestPromptBudget(initialTree, input.atomOutputs);
     const tree = withReduceBudget(initialTree, { ...candidateBase, maxReduceDigestPromptBytes: budget });
-    const errors = validatePromptSafeTree(tree, input.mapResult.outputs);
+    const errors = validatePromptSafeTree(tree, input.atomOutputs);
     lastErrors = errors;
     if (errors.length === 0) return { ok: true, tree, validationErrors: [], maxReduceDigestPromptBytes: budget };
   }
@@ -54,7 +82,10 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
   for (const depth of reduceDepths(tree)) {
     for (const node of tree.nodes.filter((candidate) => candidate.depth === depth)) {
       const childOutputs = node.inputNodeIds.map((nodeId) => syntheticOutputs.get(nodeId)).filter((output): output is PlanningReduceOutput => output !== undefined);
-      const task = buildPlanningReduceTask(tree, node, atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs);
+      const atomInputs = atomOutputs
+        .filter((output) => node.inputAtomIds.includes(output.atomId))
+        .map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', tree.limits.maxReduceDigestPromptBytes, node.criterionIds, node.aspectIds) });
+      const task = buildPlanningReduceTask(tree, node, atomInputs, childOutputs);
       const promptBytes = utf8ByteLength(formatPlanningReducerPrompt(task));
       if (promptBytes > task.budget.maxReducePromptBytes) errors.push(`reduce prompt budget exceeded:${node.nodeId}`);
       syntheticOutputs.set(node.nodeId, syntheticReduceOutput(node, task.budget.maxReduceDigestPromptBytes));
@@ -98,6 +129,14 @@ function syntheticReduceOutput(node: PlanningReduceNode, digestBytes: number): P
 function atomPlaceholderOutput(atomId: string, criterionIds: string[]): PlanningAtomOutput {
   const aspectIds = criterionIds.map((criterionId) => `${criterionId}:general:general`);
   return { atomId, status: 'completed', aspectUpdates: aspectIds.map((aspectId) => ({ aspectId, status: 'resolved', completedByAtomIds: [atomId] })) };
+}
+
+function atomTaskPlaceholderOutput(task: PlanningAtomTask): PlanningAtomOutput {
+  return {
+    atomId: task.atomId,
+    status: 'completed',
+    aspectUpdates: task.aspectIds.map((aspectId) => ({ aspectId, status: 'resolved', completedByAtomIds: [task.atomId] })),
+  };
 }
 
 function syntheticDigest(sourceId: string, sourceKind: PlanningReduceDigestSourceKind, targetPromptBytes: number, criterionIds: string[], aspectIds: string[]): PlanningReduceDigest {
