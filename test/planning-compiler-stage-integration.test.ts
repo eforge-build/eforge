@@ -6,7 +6,7 @@ import type { CompilePreflightRisk, PlanningDecompositionLimits } from '@eforge-
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 import { resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
 import { getCompileStage } from '@eforge-build/engine/pipeline';
-import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, validateCompilerDiagnostics, type CompilerDiagnostics, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { makePipelineCtx, collect, TEST_PIPELINE } from './pipeline-helpers.js';
 import { StubHarness } from './stub-harness.js';
@@ -47,8 +47,54 @@ describe('bounded planner compiler stage integration', () => {
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/orchestration.yaml'))).resolves.toContain('module-reduce-000-001');
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/architecture.md'))).resolves.toContain('Reduced stage synthesis.');
     expect(harness.calls.filter((call) => call.stage === 'planner').every((call) => call.tools === 'none')).toBe(true);
+    const diagnostics = JSON.parse(await readFileText(path.join(cwd, 'eforge/plans/bounded-stage/compiler-diagnostics.json'))) as CompilerDiagnostics;
+    expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
+    expect(diagnostics.compilerStatus).toBe('complete');
+    expect(diagnostics.planSetName).toBe('bounded-stage');
+    expect(diagnostics.repair.status).toBe('not-needed');
+  });
+
+  it('writes compiler diagnostics to disk even when an unresolvable localization gap fails the compile', async () => {
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
+    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` using bounded compiler evidence.']);
+    const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
+    const harness = new StubHarness([
+      composerResponse(),
+      atomSubmission(completedOutput(task)),
+      reduceSubmission(sourceGapOutput(task, 'gap-owner')),
+      atomSubmission(completedOutput(task)),
+      reduceSubmission(sourceGapOutput(task, 'gap-owner-after-repair')),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-blocked',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    await expect(collect(getCompileStage('planner')(ctx))).rejects.toThrow(/source localization repair exhausted/);
+
+    const diagnostics = JSON.parse(await readFileText(path.join(cwd, 'eforge/plans/bounded-stage-blocked/compiler-diagnostics.json'))) as CompilerDiagnostics;
+    expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
+    expect(diagnostics.compilerStatus).toBe('incomplete');
+    expect(diagnostics.repair.status).toBe('exhausted');
+    expect(diagnostics.repair.attempts.at(-1)).toEqual(expect.objectContaining({ status: 'exhausted', residueSynthesisBlocked: true }));
+    expect(diagnostics.residue.synthesisBlocked).toBe(true);
+    expect(diagnostics.validationErrors.some((error) => error.includes('source localization repair exhausted:gap-owner-after-repair'))).toBe(true);
   });
 });
+
+function sourceGapOutput(task: PlanningAtomTask, gapId: string): PlanningReduceOutput {
+  return {
+    nodeId: 'reduce-000-001',
+    status: 'incomplete',
+    compactSummary: `Missing localized owner path for ${task.atomId}.`,
+    gaps: [{ gapId, title: 'Missing localized owner path', criterionIds: task.criterionIds, aspectIds: task.aspectIds, description: 'Missing localized owner path prevents source-grounded product planning.', representationRequired: true, issueKind: 'missing-owner-path', sourceLocalizationSignal: true, affectedAtomIds: [task.atomId] }],
+  };
+}
 
 function expectedTasks(content: string, limits: PlanningDecompositionLimits): PlanningAtomTask[] {
   const inventory = deriveSourceInventory({ content, hash: hash(content), path: undefined });

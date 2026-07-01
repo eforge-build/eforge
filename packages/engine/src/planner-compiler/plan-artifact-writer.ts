@@ -5,6 +5,8 @@ import type { PlanFile } from '../events.js';
 import { injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig, parsePlanFile, writePlanSet } from '../plan.js';
 import type { PipelineComposition, PlanSetSubmission } from '../schemas.js';
 import { validatePlanSetSubmission } from '../schemas.js';
+import { writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
+import { COMPILER_DIAGNOSTICS_ARTIFACT, type CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import type { PlanningArtifactSynthesisResult, PlanningSynthesizedModulePlan } from './plan-artifact-synthesis.js';
 
 export interface WritePlanningCompilerArtifactsInput {
@@ -16,6 +18,7 @@ export interface WritePlanningCompilerArtifactsInput {
   pipeline: PipelineComposition;
   artifacts: PlanningArtifactSynthesisResult;
   tiers?: Record<string, unknown>;
+  diagnostics?: CompilerDiagnostics;
 }
 
 export interface WritePlanningCompilerArtifactsResult {
@@ -36,6 +39,7 @@ export async function writePlanningCompilerArtifacts(input: WritePlanningCompile
   await mkdir(planDir, { recursive: true });
   await writeFile(resolve(planDir, 'architecture.md'), input.artifacts.architectureMarkdown, 'utf8');
   await writeFile(resolve(planDir, 'acceptance-coverage.md'), input.artifacts.acceptanceCoverageMarkdown, 'utf8');
+  if (input.diagnostics) await writeCompilerDiagnosticsArtifact({ cwd: input.cwd, outputDir: input.outputDir, planSetName: input.planSetName, diagnostics: input.diagnostics });
 
   const orchPath = resolve(planDir, 'orchestration.yaml');
   await injectPipelineIntoOrchestrationYaml(orchPath, input.pipeline, input.baseBranch, input.diffBaseRef);
@@ -44,7 +48,7 @@ export async function writePlanningCompilerArtifacts(input: WritePlanningCompile
   return {
     plans: plans.map(plan => ({ ...plan, dependsOn: orchestration.plans.find(candidate => candidate.id === plan.id)?.dependsOn ?? [] })),
     planConfigs: orchestration.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review })),
-    artifactPaths: ['architecture.md', 'acceptance-coverage.md', 'orchestration.yaml', ...plans.map(plan => `${plan.id}.md`)],
+    artifactPaths: ['architecture.md', 'acceptance-coverage.md', ...(input.diagnostics ? [COMPILER_DIAGNOSTICS_ARTIFACT] : []), 'orchestration.yaml', ...plans.map(plan => `${plan.id}.md`)],
   };
 }
 

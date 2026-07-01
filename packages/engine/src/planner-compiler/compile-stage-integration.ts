@@ -6,6 +6,8 @@ import { resolvePlanningDecompositionLimits } from '../config.js';
 import { parseOrchestrationConfig } from '../plan.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
+import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
+import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type RunBoundedPlannerCompilerInput } from './compiler-runner.js';
 import { synthesizePlanningArtifacts } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
@@ -33,6 +35,9 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     throw err;
   }
 
+  const compilerDiagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: ctx.planSetName });
+  yield* writeCompilerDiagnosticsBestEffort(ctx, compilerDiagnostics);
+
   if (compilerResult.status === 'failed') {
     const reason = `Bounded planner compiler failed: ${compilerResult.validationErrors.join('; ') || compilerResult.map.failedAtomIds.join(',') || compilerResult.reduce.validationErrors.join('; ') || 'unknown failure'}`;
     yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };
@@ -55,6 +60,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     pipeline: boundedCompilerPipeline(ctx),
     artifacts,
     tiers: ctx.config.agents.tiers,
+    diagnostics: compilerDiagnostics,
   });
 
   ctx.pipeline = boundedCompilerPipeline(ctx);
@@ -71,6 +77,15 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   const orch = await parseOrchestrationConfig(orchPath);
   const planConfigs = orch.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review }));
   yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans: validation.plans, planConfigs };
+}
+
+async function* writeCompilerDiagnosticsBestEffort(ctx: PipelineContext, diagnostics: CompilerDiagnostics): AsyncGenerator<EforgeEvent> {
+  try {
+    await writeCompilerDiagnosticsArtifact({ cwd: ctx.cwd, outputDir: ctx.config.plan.outputDir, planSetName: ctx.planSetName, diagnostics });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Failed to write compiler diagnostics: ${message}`, source: 'artifact-validation' };
+  }
 }
 
 async function* runCompilerAndStreamEvents(input: RunBoundedPlannerCompilerInput): AsyncGenerator<EforgeEvent, BoundedPlannerCompilerResult> {

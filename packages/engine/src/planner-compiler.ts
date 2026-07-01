@@ -8,6 +8,8 @@ export { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource,
 export { derivePlanningAtomBudget } from './planner-compiler/budgets.js';
 export { runBoundedPlannerCompilerCompileStage } from './planner-compiler/compile-stage-integration.js';
 export { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type BoundedPlannerCompilerStatus, type RunBoundedPlannerCompilerInput } from './planner-compiler/compiler-runner.js';
+export { buildCompilerDiagnostics, serializeCompilerDiagnostics, writeCompilerDiagnosticsArtifact, type BuildCompilerDiagnosticsInput, type WriteCompilerDiagnosticsArtifactInput } from './planner-compiler/compiler-diagnostics.js';
+export { COMPILER_DIAGNOSTICS_ARTIFACT, COMPILER_DIAGNOSTICS_VERSION, CompilerDiagnosticsSchema, MAX_COMPILER_DIAGNOSTICS_BYTES, validateCompilerDiagnostics, type CompilerDiagnostics, type CompilerDiagnosticsConflict, type CompilerDiagnosticsGap, type CompilerDiagnosticsOmittedCounts, type CompilerDiagnosticsRepairAttempt } from './planner-compiler/compiler-diagnostics-contracts.js';
 export type { PlannerCompilerEventSink } from './planner-compiler/event-sink.js';
 export { synthesizePlanningArtifacts, type PlanningArtifactOrchestration, type PlanningArtifactSynthesisResult, type PlanningSynthesizedModulePlan, type SynthesizePlanningArtifactsInput } from './planner-compiler/plan-artifact-synthesis.js';
 export { writePlanningCompilerArtifacts, type WritePlanningCompilerArtifactsInput, type WritePlanningCompilerArtifactsResult } from './planner-compiler/plan-artifact-writer.js';
