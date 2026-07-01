@@ -5,10 +5,21 @@ import { relative, resolve } from 'node:path';
 import type { CompileArtifactSummary, OrchestrationConfig, PlanFile } from '../events.js';
 import { MAX_COMPILE_RISK_LIST_ITEMS } from '../events.js';
 import { parseExpeditionIndex, parseOrchestrationConfig, parsePlanFile, validatePlanSet } from '../plan.js';
+import { COMPILER_DIAGNOSTICS_ARTIFACT } from '../planner-compiler/compiler-diagnostics-contracts.js';
 import type { PipelineContext } from '../pipeline/types.js';
+import { validateCompilerCohesion } from './compiler-cohesion-validation.js';
 
 export const MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES = 4_096;
 export const MAX_COMPILE_ARTIFACT_DETAIL_BYTES = 512;
+
+export interface ValidateCompileArtifactsOptions {
+  /**
+   * 'require' fails validation when compiler-diagnostics.json is absent (bounded
+   * planner compiler path). 'auto' runs the compiler cohesion checks only when the
+   * artifact exists, so legacy plan sets validate exactly as before.
+   */
+  compilerArtifacts?: 'require' | 'auto';
+}
 
 export type CompileArtifactValidationResult =
   | {
@@ -39,8 +50,10 @@ export type ExpeditionModuleInputValidationResult =
       moduleCount: number;
     };
 
+// --- eforge:region compile-artifact-validation ---
 export async function validateCompileArtifacts(
   ctx: PipelineContext,
+  options?: ValidateCompileArtifactsOptions,
 ): Promise<CompileArtifactValidationResult> {
   const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
   const orchPath = resolve(planDir, 'orchestration.yaml');
@@ -108,6 +121,16 @@ export async function validateCompileArtifacts(
       pushBounded(summary.invalidPlanFiles, planRel);
       details.push(`${planRel}: ${errorMessage(err)}`);
     }
+  }
+
+  const diagnosticsPath = resolve(planDir, COMPILER_DIAGNOSTICS_ARTIFACT);
+  const diagnosticsExists = existsSync(diagnosticsPath);
+  if ((options?.compilerArtifacts ?? 'auto') === 'require' && !diagnosticsExists) {
+    details.push(`missing ${COMPILER_DIAGNOSTICS_ARTIFACT} at ${rel(ctx, diagnosticsPath)}`);
+  } else if (diagnosticsExists && summary.missingPlanFileCount === 0 && summary.invalidPlanCount === 0) {
+    const cohesion = await validateCompilerCohesion({ planDir, rel: (path) => rel(ctx, path), orchestration: orchConfig, plans });
+    details.push(...cohesion.details);
+    warnings.push(...cohesion.warnings);
   }
 
   if (summary.missingPlanFileCount > 0 || summary.invalidPlanCount > 0 || details.length > 0) {
@@ -178,7 +201,9 @@ export async function validateExpeditionModuleInputs(
 
   return { ok: true, moduleCount: indexIds.size };
 }
+// --- eforge:endregion compile-artifact-validation ---
 
+// --- eforge:region compile-artifact-validation-helpers ---
 async function skippedCompileResult(ctx: PipelineContext, orchestrationExists: boolean, orchPath: string): Promise<CompileArtifactValidationResult> {
   if (!orchestrationExists) {
     return { ok: true, skipped: true, summary: emptyArtifactSummary(false), plans: [], warnings: [] };
@@ -291,3 +316,4 @@ function rel(ctx: PipelineContext, path: string): string {
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+// --- eforge:endregion compile-artifact-validation-helpers ---

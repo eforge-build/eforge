@@ -66,7 +66,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   ctx.pipeline = boundedCompilerPipeline(ctx);
   ctx.expeditionModules = [];
   ctx.plans = written.plans;
-  const validation = await validateCompileArtifacts(ctx);
+  const validation = await validateCompileArtifacts(ctx, { compilerArtifacts: 'require' });
   for (const warning of validation.warnings) yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };
   if (!validation.ok) {
     yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: validation.message };

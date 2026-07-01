@@ -52,11 +52,13 @@ function architecturePlans(modulePlans: PlanningSynthesizedModulePlan[], planIds
   }));
 }
 
+// Only implementation plans own evidence through atoms; residue plans intersect the
+// same criteria but claim paths solely through their explicit localizedOwnerPaths.
 function plansByAtomId(result: BoundedPlannerCompilerResult, modulePlans: PlanningSynthesizedModulePlan[], planIds: Map<string, string>): Map<string, string[]> {
   const byAtom = new Map<string, string[]>();
   for (const atom of result.atomGraph.atoms) {
     const matched = modulePlans
-      .filter((module) => intersects(module.aspectIds, atom.facetIds) || intersects(module.criterionIds, atom.criterionIds))
+      .filter((module) => !module.residue && (intersects(module.aspectIds, atom.facetIds) || intersects(module.criterionIds, atom.criterionIds)))
       .map((module) => planIdFor(planIds, module.moduleId));
     byAtom.set(atom.atomId, uniq(matched));
   }
@@ -82,10 +84,12 @@ function fileOwnershipEntries(result: BoundedPlannerCompilerResult, modulePlans:
     const planId = planIdFor(planIds, module.moduleId);
     for (const path of residuePlanIds.get(module.moduleId) ?? []) {
       const existing = entries.get(path);
-      if (existing) {
-        if (!existing.ownerPlanIds.includes(planId)) entries.set(path, { ...existing, ownerPlanIds: uniq([...existing.ownerPlanIds, planId]).slice(0, 16) });
-      } else {
+      if (!existing) {
         entries.set(path, { path: bounded(path, 500), ownerPlanIds: [planId], consumerPlanIds: [], shared: false, reason: 'residue localized owner' });
+      } else if (existing.ownerPlanIds.length > 0 && !existing.ownerPlanIds.includes(planId)) {
+        entries.set(path, { ...existing, consumerPlanIds: uniq([...existing.consumerPlanIds, planId]).slice(0, 32) });
+      } else if (existing.ownerPlanIds.length === 0) {
+        entries.set(path, { ...existing, ownerPlanIds: [planId] });
       }
     }
   }
