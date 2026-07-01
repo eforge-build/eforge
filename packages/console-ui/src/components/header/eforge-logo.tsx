@@ -27,8 +27,9 @@ function pulseDuration(activeBuilds: number): number {
 /**
  * The eforge "e" rendered as a little forge: the ring is the hearth, the
  * crossbar is the workpiece, and the ring's interior is the glowing cavity.
- * Idle = the familiar green mark; building = ignite, then a warm forge with a
- * white-hot workpiece pulsing faster the more builds run.
+ * Idle = the familiar green mark; building = ignite, then run hot with a
+ * white-hot workpiece pulsing faster the more builds run. The ring keeps the
+ * brand green throughout -- the heat (amber) stays inside the hearth.
  */
 export function EforgeLogo({ size = 24, title = 'eforge', activeBuilds = 0 }: EforgeLogoProps) {
   const active = activeBuilds > 0;
