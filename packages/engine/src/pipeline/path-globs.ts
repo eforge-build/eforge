@@ -5,19 +5,14 @@ function escapeRegexChar(ch: string): string {
   return /[|\\{}()[\]^$+?.]/.test(ch) ? `\\${ch}` : ch;
 }
 
-function expandBraceAlternates(pattern: string): string {
-  return pattern.replace(/\{([^{}]+)\}/g, (_match, body: string) => `(${body.split(',').map((part) => part.trim().split('').map(escapeRegexChar).join('')).join('|')})`);
-}
-
-function globToRegex(pattern: string): RegExp {
-  let out = '^';
-  const expanded = expandBraceAlternates(pattern.replace(/\\/g, '/'));
-  for (let i = 0; i < expanded.length; i += 1) {
-    const ch = expanded[i];
-    const next = expanded[i + 1];
+function appendGlobRegex(pattern: string): string {
+  let out = '';
+  for (let i = 0; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    const next = pattern[i + 1];
     if (ch === '*') {
       if (next === '*') {
-        const after = expanded[i + 2];
+        const after = pattern[i + 2];
         if (after === '/') {
           out += '(?:.*/)?';
           i += 2;
@@ -34,12 +29,26 @@ function globToRegex(pattern: string): RegExp {
       out += '[^/]';
       continue;
     }
-    if (ch === '(' || ch === ')' || ch === '|') {
-      out += ch;
-      continue;
-    }
     out += escapeRegexChar(ch);
   }
+  return out;
+}
+
+function globToRegex(pattern: string): RegExp {
+  let out = '^';
+  const normalized = pattern.replace(/\\/g, '/');
+  let segmentStart = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    if (normalized[i] !== '{') continue;
+    const close = normalized.indexOf('}', i + 1);
+    if (close <= i + 1) continue;
+    out += appendGlobRegex(normalized.slice(segmentStart, i));
+    const body = normalized.slice(i + 1, close);
+    out += `(${body.split(',').map((part) => appendGlobRegex(part.trim())).join('|')})`;
+    i = close;
+    segmentStart = close + 1;
+  }
+  out += appendGlobRegex(normalized.slice(segmentStart));
   out += '$';
   return new RegExp(out);
 }

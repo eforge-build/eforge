@@ -298,7 +298,7 @@ describe('buildAgentRuntimeRegistry — runtime choices', () => {
     expect(runtime.harness).toBeDefined();
   });
 
-  it('keeps the existing forRoleResolved plus resolveAgentConfig call pattern choice-aware', async () => {
+  it('keeps split registry/config resolution choice-aware when the selected recipe is passed through', async () => {
     const config = resolveConfig({
       agents: {
         tiers: {
@@ -317,9 +317,9 @@ describe('buildAgentRuntimeRegistry — runtime choices', () => {
     const registry = await buildAgentRuntimeRegistry(config, { mcpServers: FAKE_MCP, toolbelts: { 'ui-tools': { mcpServers: ['playwright'] } } });
     const planEntry = { name: 'UI', body: 'component' };
     const { toolbeltSummary, selection } = registry.forRoleResolved('builder', planEntry, { pathHints: ['web/app/page.tsx'] });
-    const agentConfig = resolveAgentConfig('builder', config, planEntry, toolbeltSummary);
-
     expect(selection?.choiceRef).toBe('implementation.ui');
+    const agentConfig = resolveAgentConfig('builder', config, planEntry, toolbeltSummary, selection?.effectiveRecipe, selection?.tier, selection?.tierSource);
+
     expect(agentConfig.model.id).toBe('claude-opus-4-7');
     expect(agentConfig.effort).toBe('high');
     expect(agentConfig.toolbelt).toBe('ui-tools');

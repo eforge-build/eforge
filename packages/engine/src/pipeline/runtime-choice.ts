@@ -47,12 +47,23 @@ function stripChoiceFields(recipe: TierConfig): EffectiveAgentRecipe {
   return rest;
 }
 
-function overlayRecipe(base: EffectiveAgentRecipe, overlay?: TierChoiceOverlay): EffectiveAgentRecipe {
+function mergePiConfig(base: EffectiveAgentRecipe['pi'], overlay: TierChoiceOverlay['pi']): EffectiveAgentRecipe['pi'] {
+  if (!base && !overlay) return undefined;
+  return {
+    ...base,
+    ...overlay,
+    ...(base?.extensions || overlay?.extensions ? { extensions: { ...base?.extensions, ...overlay?.extensions } } : {}),
+    ...(base?.compaction || overlay?.compaction ? { compaction: { ...base?.compaction, ...overlay?.compaction } } : {}),
+    ...(base?.retry || overlay?.retry ? { retry: { ...base?.retry, ...overlay?.retry } } : {}),
+  };
+}
+
+export function overlayEffectiveAgentRecipe(base: EffectiveAgentRecipe, overlay?: TierChoiceOverlay): EffectiveAgentRecipe {
   if (!overlay) return { ...base };
   return {
     ...base,
     ...overlay,
-    ...(base.pi || overlay.pi ? { pi: { ...base.pi, ...overlay.pi } } : {}),
+    ...(base.pi || overlay.pi ? { pi: mergePiConfig(base.pi, overlay.pi) } : {}),
     ...(base.claudeSdk || overlay.claudeSdk ? { claudeSdk: { ...base.claudeSdk, ...overlay.claudeSdk } } : {}),
   } as EffectiveAgentRecipe;
 }
@@ -84,10 +95,15 @@ function collectPaths(metadata: RuntimeChoiceInvocationMetadata, planEntry?: Pla
   for (const value of metadata.shardRoots ?? []) paths.add(value);
   for (const value of metadata.shardFiles ?? []) paths.add(value);
   if (planEntry?.filePath) paths.add(planEntry.filePath);
-  const shards = planEntry?.agents?.builder?.shards ?? [];
-  for (const shard of shards) {
-    for (const root of shard.roots ?? []) paths.add(root);
-    for (const file of shard.files ?? []) paths.add(file);
+  const hasInvocationShardPaths = (metadata.shardRoots?.length ?? 0) > 0 || (metadata.shardFiles?.length ?? 0) > 0;
+  if (!hasInvocationShardPaths && (metadata.shardIds?.length ?? 0) > 0) {
+    const shardIds = new Set(metadata.shardIds);
+    const shards = planEntry?.agents?.builder?.shards ?? [];
+    for (const shard of shards) {
+      if (!shardIds.has(shard.id)) continue;
+      for (const root of shard.roots ?? []) paths.add(root);
+      for (const file of shard.files ?? []) paths.add(file);
+    }
   }
   return [...paths];
 }
@@ -154,7 +170,7 @@ export function resolveRuntimeChoiceForInvocation(
   const selected = selectChoice(tier, tierRecipe, role, metadata, planEntry);
   const base = stripChoiceFields(tierRecipe);
   const overlay = selected.choice === 'default' ? undefined : tierRecipe.choices?.[selected.choice];
-  const effectiveRecipe = overlayRecipe(base, overlay);
+  const effectiveRecipe = overlayEffectiveAgentRecipe(base, overlay);
   return { tier, tierSource, ...selected, effectiveRecipe };
 }
 // --- eforge:endregion plan-01-runtime-choice-core ---

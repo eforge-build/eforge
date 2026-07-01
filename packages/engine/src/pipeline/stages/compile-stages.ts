@@ -82,7 +82,7 @@ async function* runPlannerAttempt(
   agentConfig: ResolvedAgentConfig,
 ): AsyncGenerator<EforgeEvent> {
   const { tracker, end, error } = createStageSpanWiring('planner', ctx.tracing, { source: ctx.sourceContent, planSet: ctx.planSetName });
-  const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner');
+  const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
   const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'planner', agentConfig);
   const plannerInspectionBudget = derivePlannerInspectionBudget({
     hardLimits: contextGuard.limits,
@@ -208,7 +208,7 @@ async function* runModulePlannerAttempt(
   modSpan.setInput({ moduleId: mod.id, description: mod.description });
   const modTracker = createToolTracker(modSpan);
 
-  const { harness: modulePlannerHarness, toolbeltSummary: modulePlannerTb } = ctx.agentRuntimes.forRoleResolved('module-planner');
+  const { harness: modulePlannerHarness, toolbeltSummary: modulePlannerTb } = ctx.agentRuntimes.forRoleResolved('module-planner', undefined, { phase: 'compile', stage: 'module-planner' });
   try {
     for await (const event of runModulePlanner({
       cwd: ctx.cwd,
@@ -290,8 +290,8 @@ registerCompileStage({
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   // Run pipeline composition first (fast LLM call to determine scope and stages)
-  const { harness: composerHarness, toolbeltSummary: composerTb } = ctx.agentRuntimes.forRoleResolved('pipeline-composer');
-  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
+  const { harness: composerHarness, toolbeltSummary: composerTb, selection: composerSelection } = ctx.agentRuntimes.forRoleResolved('pipeline-composer', undefined, { phase: 'compile', stage: 'pipeline-composer' });
+  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb, composerSelection?.effectiveRecipe, composerSelection?.tier, composerSelection?.tierSource);
   const composerContextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'pipeline-composer', composerConfig);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
@@ -358,8 +358,8 @@ registerCompileStage({
     return;
   }
 
-  const { toolbeltSummary: plannerTbStage } = ctx.agentRuntimes.forRoleResolved('planner');
-  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, plannerTbStage);
+  const { toolbeltSummary: plannerTbStage, selection: plannerSelection } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
+  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, plannerTbStage, plannerSelection?.effectiveRecipe, plannerSelection?.tier, plannerSelection?.tierSource);
   const initialInput: PlannerContinuationInput = {
     sideEffects: {
       cwd: ctx.cwd,
@@ -416,10 +416,10 @@ registerCompileStage({
 }, async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
-  const { harness: planReviewerHarness, toolbeltSummary: planReviewerTb } = ctx.agentRuntimes.forRoleResolved('plan-reviewer');
-  const { harness: planEvaluatorHarness, toolbeltSummary: planEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('plan-evaluator');
-  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, undefined, planReviewerTb);
-  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, undefined, planEvaluatorTb);
+  const { harness: planReviewerHarness, toolbeltSummary: planReviewerTb, selection: planReviewerSelection } = ctx.agentRuntimes.forRoleResolved('plan-reviewer', undefined, { phase: 'compile', stage: 'plan-review' });
+  const { harness: planEvaluatorHarness, toolbeltSummary: planEvaluatorTb, selection: planEvaluatorSelection } = ctx.agentRuntimes.forRoleResolved('plan-evaluator', undefined, { phase: 'compile', stage: 'plan-evaluate' });
+  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, undefined, planReviewerTb, planReviewerSelection?.effectiveRecipe, planReviewerSelection?.tier, planReviewerSelection?.tierSource);
+  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, undefined, planEvaluatorTb, planEvaluatorSelection?.effectiveRecipe, planEvaluatorSelection?.tier, planEvaluatorSelection?.tierSource);
   const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 
@@ -522,8 +522,8 @@ registerCompileStage({
   const { waves } = resolveDependencyGraph(plansForGraph);
   const moduleMap = new Map(ctx.expeditionModules.map((m) => [m.id, m]));
   const completedPlans = new Map<string, string>(); // moduleId -> plan file content
-  const { toolbeltSummary: modulePlannerTbStage } = ctx.agentRuntimes.forRoleResolved('module-planner');
-  const agentConfig = resolveAgentConfig('module-planner', ctx.config, undefined, modulePlannerTbStage);
+  const { toolbeltSummary: modulePlannerTbStage, selection: modulePlannerSelection } = ctx.agentRuntimes.forRoleResolved('module-planner', undefined, { phase: 'compile', stage: 'module-planner' });
+  const agentConfig = resolveAgentConfig('module-planner', ctx.config, undefined, modulePlannerTbStage, modulePlannerSelection?.effectiveRecipe, modulePlannerSelection?.tier, modulePlannerSelection?.tierSource);
   const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'module-planner', agentConfig);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)

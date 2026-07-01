@@ -20,6 +20,7 @@ import type { EforgeConfig, ModelRef, ResolvedAgentConfig, AgentTier, ShardScope
 import type { EffortLevel, ThinkingConfig } from '../harness.js';
 import type { ToolbeltSummary } from '../agent-runtime-registry.js';
 import type { EffectiveAgentRecipe } from './runtime-choice.js';
+import { resolveRuntimeChoiceForInvocation } from './runtime-choice.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
 /**
@@ -146,13 +147,18 @@ export function resolveAgentConfig(
   resolvedTierSource?: Provenance,
 ): ResolvedAgentConfig {
   // Step 1: tier
+  const inferredSelection = !effectiveRecipe && !(resolvedTier && resolvedTierSource)
+    ? resolveRuntimeChoiceForInvocation(role, config, planEntry, {})
+    : undefined;
   const resolved = resolvedTier && resolvedTierSource
     ? { tier: resolvedTier, tierSource: resolvedTierSource }
-    : resolveTierForRole(role, config, planEntry);
+    : inferredSelection
+      ? { tier: inferredSelection.tier, tierSource: inferredSelection.tierSource }
+      : resolveTierForRole(role, config, planEntry);
   const { tier, tierSource } = resolved;
 
   // Step 2: tier recipe or runtime-choice effective recipe
-  const tierRecipe = (effectiveRecipe ?? config.agents.tiers?.[tier]) as TierConfig | undefined;
+  const tierRecipe = (effectiveRecipe ?? inferredSelection?.effectiveRecipe ?? config.agents.tiers?.[tier]) as TierConfig | undefined;
   if (!tierRecipe) {
     throw new Error(
       `Role "${role}" resolves to tier "${tier}" but no tier recipe is configured. ` +

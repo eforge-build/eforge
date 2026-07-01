@@ -17,7 +17,6 @@ import type { EffectiveAgentRecipe, RuntimeChoiceInvocationMetadata, RuntimeChoi
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource, McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeSDKHarness } from './harnesses/claude-sdk.js';
-import { resolveTierForRole } from './pipeline/agent-config.js';
 import { resolveRuntimeChoiceForInvocation } from './pipeline/runtime-choice.js';
 
 // ---------------------------------------------------------------------------
@@ -379,17 +378,9 @@ export async function buildAgentRuntimeRegistry(
     // --- eforge:endregion plan-01-runtime-choice-core ---
   }
 
-  function resolveDefaultForRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness {
-    const { tier } = resolveTierForRole(role, config, planEntry);
-    const tierRecipe = config.agents.tiers?.[tier];
-    if (!tierRecipe) throw new Error(`Role "${role}" resolves to tier "${tier}" but no tier recipe is configured.`);
-    const { choices: _choices, routing: _routing, ...defaultRecipe } = tierRecipe;
-    return instanceForTier(tier, defaultRecipe as TierConfig).harness;
-  }
-
   const registry: AgentRuntimeRegistry = {
     forRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness {
-      return resolveDefaultForRole(role, planEntry);
+      return resolveForRole(role, planEntry).harness;
     },
     forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection: RuntimeChoiceSelection } {
       return resolveForRole(role, planEntry, metadata);

@@ -25,10 +25,9 @@ export function resolveAgentRuntimeForInvocation(
   metadata: RuntimeChoiceInvocationMetadata = {},
 ): ResolvedAgentRuntimeForInvocation {
   const selection = resolveRuntimeChoiceForInvocation(role, config, planEntry, metadata);
-  if (!registry.forEffectiveRecipe) {
-    throw new Error('Agent runtime registry does not support effective recipe lookup.');
-  }
-  const { harness, toolbeltSummary } = registry.forEffectiveRecipe(selection.tier, selection.effectiveRecipe);
+  const { harness, toolbeltSummary } = registry.forEffectiveRecipe
+    ? registry.forEffectiveRecipe(selection.tier, selection.effectiveRecipe)
+    : registry.forRoleResolved(role, planEntry, metadata);
   const agentConfig = resolveAgentConfig(
     role,
     config,

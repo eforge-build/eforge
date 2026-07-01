@@ -13,6 +13,7 @@ import { sanitizeProfileName, parseRawConfigLegacy, REVIEW_PERSPECTIVES } from '
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 import type { ShardScope } from './schemas.js';
+import { overlayEffectiveAgentRecipe, type EffectiveAgentRecipe } from './pipeline/runtime-choice.js';
 import {
   resolveNamedSet,
   resolveLayeredSingletons,
@@ -332,12 +333,7 @@ export const tierConfigSchema = tierRecipeBaseSchema.extend({
       ctx.addIssue({ code: 'custom', message: 'Runtime choice name "default" is reserved for the implicit tier default', path: ['choices', choiceName] });
       continue;
     }
-    const effective = {
-      ...data,
-      ...overlay,
-      ...(data.pi || overlay.pi ? { pi: { ...data.pi, ...overlay.pi } } : {}),
-      ...(data.claudeSdk || overlay.claudeSdk ? { claudeSdk: { ...data.claudeSdk, ...overlay.claudeSdk } } : {}),
-    };
+    const effective = overlayEffectiveAgentRecipe(data as EffectiveAgentRecipe, overlay);
     if (!effective.harness) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective harness after inheritance`, path: ['choices', choiceName, 'harness'] });
     if (!effective.model) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective model after inheritance`, path: ['choices', choiceName, 'model'] });
     if (!effective.effort) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective effort after inheritance`, path: ['choices', choiceName, 'effort'] });
@@ -553,12 +549,42 @@ const eforgeConfigBaseSchema = z.object({
 });
 
 // --- eforge:region plan-01-runtime-choice-core ---
-function collectRuntimeChoiceConfigErrors(data: { agents?: { tiers?: Record<string, unknown> } }, options: { validateUnknownChoices?: boolean } = {}): string[] {
+function collectEffectiveRecipeConfigErrors(recipe: unknown, path: string): string[] {
+  const errors: string[] = [];
+  const parsed = tierRecipeBaseSchema.safeParse(recipe);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push(`${path}${issue.path.length > 0 ? `.${issue.path.join('.')}` : ''}: ${issue.message}`);
+    }
+    return errors;
+  }
+  if (parsed.data.harness === 'pi' && parsed.data.claudeSdk !== undefined) {
+    errors.push(`${path}.claudeSdk: Tier with harness "pi" cannot include "claudeSdk" configuration.`);
+  }
+  if (parsed.data.harness === 'claude-sdk' && parsed.data.pi !== undefined) {
+    errors.push(`${path}.pi: Tier with harness "claude-sdk" cannot include "pi" configuration.`);
+  }
+  if (parsed.data.harness === 'pi' && (!parsed.data.pi?.provider || parsed.data.pi.provider.trim() === '')) {
+    errors.push(`${path}.pi.provider: Tier with harness "pi" requires non-empty "pi.provider".`);
+  }
+  return errors;
+}
+
+function collectRuntimeChoiceConfigErrors(data: { agents?: { tiers?: Record<string, unknown> } }, options: { validateUnknownChoices?: boolean; validateEffectiveRecipes?: boolean } = {}): string[] {
   const errors: string[] = [];
   for (const [tierName, tierValue] of Object.entries(data.agents?.tiers ?? {})) {
     if (!tierValue || typeof tierValue !== 'object') continue;
     const tier = tierValue as { choices?: Record<string, unknown>; routing?: { rules?: Array<{ choice?: unknown; name?: unknown }> } };
     const choices = tier.choices ?? {};
+    if (options.validateEffectiveRecipes === true) {
+      const { choices: _choices, routing: _routing, ...baseRecipe } = tier as Record<string, unknown>;
+      errors.push(...collectEffectiveRecipeConfigErrors(baseRecipe, `agents.tiers.${tierName}`));
+      for (const [choiceName, overlay] of Object.entries(choices)) {
+        if (!overlay || typeof overlay !== 'object') continue;
+        const effective = overlayEffectiveAgentRecipe(baseRecipe as EffectiveAgentRecipe, overlay as NonNullable<TierConfig['choices']>[string]);
+        errors.push(...collectEffectiveRecipeConfigErrors(effective, `agents.tiers.${tierName}.choices.${choiceName}`));
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(choices, 'default')) {
       errors.push(`agents.tiers.${tierName}.choices.default: Runtime choice name "default" is reserved for the implicit tier default`);
     }
@@ -578,21 +604,21 @@ function collectRuntimeChoiceConfigErrors(data: { agents?: { tiers?: Record<stri
 }
 
 function addRuntimeChoiceConfigIssues(data: { agents?: { tiers?: Record<string, unknown> } }, ctx: z.RefinementCtx): void {
-  for (const error of collectRuntimeChoiceConfigErrors(data, { validateUnknownChoices: true })) {
+  for (const error of collectRuntimeChoiceConfigErrors(data)) {
     const [pathText, ...messageParts] = error.split(': ');
     ctx.addIssue({ code: 'custom', message: messageParts.join(': '), path: pathText.split('.') });
   }
 }
 
 function assertMergedRuntimeChoiceConfig(data: { agents?: { tiers?: Record<string, unknown> } }, label = 'config'): void {
-  const errors = collectRuntimeChoiceConfigErrors(data, { validateUnknownChoices: true });
+  const errors = collectRuntimeChoiceConfigErrors(data, { validateUnknownChoices: true, validateEffectiveRecipes: true });
   if (errors.length > 0) {
     throw new ConfigValidationError(`Invalid ${label}: ${errors.join('; ')}`);
   }
 }
 // --- eforge:endregion plan-01-runtime-choice-core ---
 
-/** Exported schema. Cross-field validation is performed in tierConfigSchema and runtime-choice config validation. */
+/** Exported schema. Cross-field validation is performed in tierConfigSchema; unknown runtime-choice references are validated after config layers are merged. */
 export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine(addRuntimeChoiceConfigIssues);
 
 // ---------------------------------------------------------------------------
@@ -1263,11 +1289,15 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
+  const label = context === 'profile' ? 'profile' : 'config';
   if (!result.success) {
-    const label = context === 'profile' ? 'profile' : 'config';
     throw new ConfigValidationError(
       `Invalid ${label}: ` + z.prettifyError(result.error),
     );
+  }
+  const runtimeChoiceErrors = collectRuntimeChoiceConfigErrors(result.data as { agents?: { tiers?: Record<string, unknown> } });
+  if (runtimeChoiceErrors.length > 0) {
+    throw new ConfigValidationError(`Invalid ${label}: ${runtimeChoiceErrors.join('; ')}`);
   }
   return stripUndefinedSections(result.data);
 }
@@ -2650,9 +2680,36 @@ export async function validateConfigFile(
     }
     const partial = result.data as PartialEforgeConfig;
     // --- eforge:region plan-01-runtime-choice-core ---
-    errors.push(...collectRuntimeChoiceConfigErrors(partial as { agents?: { tiers?: Record<string, unknown> } }));
+    let mergedForCrossReferences = partial;
+    try {
+      let globalConfig: PartialEforgeConfig = {};
+      let projectConfig: PartialEforgeConfig = {};
+      let localConfig: PartialEforgeConfig = {};
+      const configYamlLayers = await resolveLayeredSingletons('config.yaml', { cwd: projectRoot, configDir: dirname(configPath) });
+      for (const { scope, path } of configYamlLayers) {
+        const layerRaw = await readFile(path, 'utf-8');
+        const layerData = parseYaml(layerRaw);
+        if (layerData && typeof layerData === 'object') {
+          const layerPartial = parseRawConfig(layerData as Record<string, unknown>);
+          if (scope === 'user') globalConfig = layerPartial;
+          else if (scope === 'project-team') projectConfig = layerPartial;
+          else localConfig = layerPartial;
+        }
+      }
+      const { name } = await resolveActiveProfileName(dirname(configPath), projectConfig, globalConfig, projectRoot);
+      let profileConfig: PartialEforgeConfig | null = null;
+      if (name) {
+        const profileResult = await loadProfile(dirname(configPath), name, projectRoot);
+        profileConfig = profileResult?.profile ?? null;
+      }
+      const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
+      mergedForCrossReferences = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
+    } catch (err) {
+      errors.push(`Failed to validate merged config layers: ${(err as Error).message}`);
+    }
+    errors.push(...collectRuntimeChoiceConfigErrors(mergedForCrossReferences as { agents?: { tiers?: Record<string, unknown> } }, { validateUnknownChoices: true }));
     // --- eforge:endregion plan-01-runtime-choice-core ---
-    const toolbeltErrors = validateToolbeltReferences(partial, mcpProbe);
+    const toolbeltErrors = validateToolbeltReferences(mergedForCrossReferences, mcpProbe);
     errors.push(...toolbeltErrors);
   }
 

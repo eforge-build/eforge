@@ -25,10 +25,10 @@ export async function* runArchitectureReviewCycleStage(ctx: PipelineContext): As
   const architectureContent = await readArchitectureContent(ctx, false);
   if (architectureContent === undefined) return;
 
-  const { harness: archReviewerHarness, toolbeltSummary: archReviewerTb } = ctx.agentRuntimes.forRoleResolved('architecture-reviewer');
-  const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator');
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb);
+  const { harness: archReviewerHarness, toolbeltSummary: archReviewerTb, selection: archReviewerSelection } = ctx.agentRuntimes.forRoleResolved('architecture-reviewer', undefined, { phase: 'compile', stage: 'architecture-review' });
+  const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb, selection: archEvaluatorSelection } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator', undefined, { phase: 'compile', stage: 'architecture-evaluate' });
+  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb, archReviewerSelection?.effectiveRecipe, archReviewerSelection?.tier, archReviewerSelection?.tierSource);
+  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb, archEvaluatorSelection?.effectiveRecipe, archEvaluatorSelection?.tier, archEvaluatorSelection?.tierSource);
   const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 
@@ -90,10 +90,10 @@ export async function* runCohesionReviewCycleStage(ctx: PipelineContext): AsyncG
   if (ctx.expeditionModules.length === 0) return;
 
   const architectureContent = await readArchitectureContent(ctx, true) ?? '';
-  const { harness: cohesionReviewerHarness, toolbeltSummary: cohesionReviewerTb } = ctx.agentRuntimes.forRoleResolved('cohesion-reviewer');
-  const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator');
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb);
+  const { harness: cohesionReviewerHarness, toolbeltSummary: cohesionReviewerTb, selection: cohesionReviewerSelection } = ctx.agentRuntimes.forRoleResolved('cohesion-reviewer', undefined, { phase: 'compile', stage: 'cohesion-review' });
+  const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb, selection: cohesionEvaluatorSelection } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator', undefined, { phase: 'compile', stage: 'cohesion-evaluate' });
+  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb, cohesionReviewerSelection?.effectiveRecipe, cohesionReviewerSelection?.tier, cohesionReviewerSelection?.tierSource);
+  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb, cohesionEvaluatorSelection?.effectiveRecipe, cohesionEvaluatorSelection?.tier, cohesionEvaluatorSelection?.tierSource);
   const modulesPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}/modules`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 

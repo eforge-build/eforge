@@ -7,7 +7,6 @@
  * agent-run augmentation. Toolbelt filtering remains owned by
  * AgentRuntimeRegistry and applies only to project MCP server maps.
  */
-
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
@@ -16,7 +15,6 @@ import type { AgentHarness, AgentRunOptions, CustomTool } from '../harness.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { AgentRunRegistration, NativeExtensionRegistry, ToolRegistration } from './types.js';
 import type { TObject } from '@sinclair/typebox';
-
 // ---------------------------------------------------------------------------
 // Local SDK-mirror types (avoid importing from @eforge-build/extension-sdk to
 // prevent rootDir violations in the engine's per-package tsconfig)

@@ -12,8 +12,8 @@ import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 
 export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContext): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting bounded planner compiler...' };
-  const { harness, toolbeltSummary } = ctx.agentRuntimes.forRoleResolved('planner');
-  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, toolbeltSummary);
+  const { harness, toolbeltSummary, selection } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
+  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, toolbeltSummary, selection?.effectiveRecipe, selection?.tier, selection?.tierSource);
   let compilerResult: BoundedPlannerCompilerResult;
   try {
     compilerResult = yield* runCompilerAndStreamEvents({

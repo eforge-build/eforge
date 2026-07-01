@@ -1,10 +1,8 @@
 /**
  * Built-in build stages — all ten build stage registrations plus shared inner helpers.
  */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-
 import type { ReviewFixIssueReference } from '@eforge-build/client';
 import type { EforgeEvent, ReviewIssue } from '../../events.js';
 import type { BuildStageSpec, ShardScope } from '../../config.js';
@@ -57,22 +55,17 @@ import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
 import { enforceShardScope, shardClaimsFile } from './shard-scope.js';
-
 export { enforceShardScope };
-
 const exec = promisify(execFile);
-
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
 function hasTestStages(build: BuildStageSpec[]): boolean {
   return build.some((spec) => {
     if (Array.isArray(spec)) return spec.some((s) => s.startsWith('test'));
     return spec.startsWith('test');
   });
 }
-
 async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
   try {
     const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
@@ -83,7 +76,6 @@ async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
     return false;
   }
 }
-
 async function unstageEvaluationCandidateChanges(cwd: string): Promise<void> {
   try {
     await exec('git', ['diff', '--cached', '--quiet'], { cwd });
@@ -96,12 +88,10 @@ async function unstageEvaluationCandidateChanges(cwd: string): Promise<void> {
     throw err;
   }
 }
-
 function hasOnlyReviewerBackendIssues(issues: ReviewIssue[]): boolean {
   return issues.length > 0 && issues.every(issue => issue.category === 'review-contract' &&
     issue.file === 'reviewer-output' && /^Reviewer perspective ".+" failed:/.test(issue.description));
 }
-
 /** Per-retry builder span + event processing. Span and tracker created per-attempt. */
 async function* runBuilderAttempt(
   input: BuilderContinuationInput,
@@ -140,7 +130,6 @@ async function* runBuilderAttempt(
     throw err;
   }
 }
-
 /** Per-retry evaluator span + event processing. Span and tracker created per-attempt. */
 function isRetryableNoVerdictsResult(
   result: BuilderEvaluationResult | undefined,
@@ -152,7 +141,6 @@ function isRetryableNoVerdictsResult(
     result.verdicts.length === 0 &&
     (input.evaluationSnapshot?.files.length ?? 0) > 0;
 }
-
 async function* runEvaluatorAttempt(
   input: EvaluatorContinuationInput,
   ctx: BuildStageContext,
@@ -197,7 +185,6 @@ async function* runEvaluatorAttempt(
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
     });
-
     while (true) {
       const next = await evaluator.next();
       if (next.done) {
@@ -220,11 +207,9 @@ async function* runEvaluatorAttempt(
     throw err;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Inner stage helpers (called by composite stages)
 // ---------------------------------------------------------------------------
-
 type LastBuildEvaluation = {
   ran: boolean;
   accepted: number;
@@ -232,31 +217,24 @@ type LastBuildEvaluation = {
   review: number;
   files: EvaluationFileVerdictSummary[];
 } & EvaluationIssueOutcomeCounts;
-
 type BuildStageContextWithEvaluation = BuildStageContext & {
   __plan02LastBuildEvaluation?: LastBuildEvaluation;
 };
-
 type BuildStageContextWithReviewFixIssueReferences = BuildStageContext & {
   __plan04ReviewFixIssueReferences?: ReviewFixIssueReference[];
 };
-
 function setLastReviewFixIssueReferences(ctx: BuildStageContext, references: ReviewFixIssueReference[] | undefined): void {
   (ctx as BuildStageContextWithReviewFixIssueReferences).__plan04ReviewFixIssueReferences = references && references.length > 0 ? references : undefined;
 }
-
 function getLastReviewFixIssueReferences(ctx: BuildStageContext): ReviewFixIssueReference[] | undefined {
   return (ctx as BuildStageContextWithReviewFixIssueReferences).__plan04ReviewFixIssueReferences;
 }
-
 function setLastBuildEvaluation(ctx: BuildStageContext, evaluation: LastBuildEvaluation): void {
   (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation = evaluation;
 }
-
 function getLastBuildEvaluation(ctx: BuildStageContext): LastBuildEvaluation | undefined {
   return (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation;
 }
-
 function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
   return {
     resolvedIssueOutcomes: 0,
@@ -269,7 +247,6 @@ function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
     blockingIssueOutcomes: 0,
   };
 }
-
 function lastBuildEvaluationNotRun(): LastBuildEvaluation {
   return { ran: false, accepted: 0, rejected: 0, review: 0, files: [], ...emptyIssueOutcomeCounts() };
 }
@@ -283,7 +260,6 @@ async function restoreOriginalBuilderCommitState(snapshot: EvaluationSnapshot): 
     await exec('git', ['reset', '--soft', snapshot.originalHead], { cwd: snapshot.cwd });
   }
 }
-
 async function restoreOriginalBuilderCommitStateUnlessDrifted(
   ctx: BuildStageContext,
   snapshot: EvaluationSnapshot,
@@ -302,7 +278,6 @@ async function restoreOriginalBuilderCommitStateUnlessDrifted(
   await restoreOriginalBuilderCommitState(snapshot);
   return undefined;
 }
-
 type ReviewStageMetadata = {
   parallel: boolean;
   activePerspectives: string[];
@@ -310,7 +285,6 @@ type ReviewStageMetadata = {
   perspectiveErrors: string[];
   completeIssueCount: number;
 };
-
 async function* reviewStageInner(
   ctx: BuildStageContext,
   overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[]; round?: number },
@@ -325,7 +299,6 @@ async function* reviewStageInner(
     perspectiveErrors: [],
     completeIssueCount: 0,
   };
-
   // Emit review-strategy decision before dispatching to the reviewer
   if (strategy === 'auto') {
     const snapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
@@ -348,7 +321,6 @@ async function* reviewStageInner(
       source: 'config',
     });
   }
-
   const { agentConfig: reviewerAgentConfig, harness: reviewerHarness, toolbeltSummary: reviewerTb } = resolveAgentRuntimeForInvocation(
     'reviewer',
     ctx.config,
@@ -360,7 +332,6 @@ async function* reviewStageInner(
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
-
   // Capture a worktree snapshot before dispatching reviewers so we can detect
   // and discard any mutations they make (reviewers must be non-mutating).
   // Non-git directories (e.g. narrow unit tests) cannot be snapshotted, but a
@@ -386,7 +357,6 @@ async function* reviewStageInner(
   }
   // Buffer the aggregate complete event; yield lifecycle/perspective events normally.
   let bufferedReviewComplete: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> | undefined;
-
   try {
     for await (const event of runParallelReview({
       planContent: ctx.planFile.body,
@@ -451,7 +421,6 @@ async function* reviewStageInner(
       ...(round !== undefined ? { round } : {}),
     };
   }
-
   // Check for reviewer-introduced worktree mutations and restore if found.
   let driftIssue: ReviewIssue | undefined;
   if (reviewWorktreeSnapshot !== undefined) {
@@ -478,22 +447,17 @@ async function* reviewStageInner(
       }
     }
   }
-
   // Augment the buffered complete event with the drift issue (if any), then yield it.
   const finalIssues = driftIssue ? [...(bufferedReviewComplete?.issues ?? []), driftIssue] : (bufferedReviewComplete?.issues ?? []);
   const finalIssuesWithIds = assignReviewIssueIds(finalIssues, { round, lane: 'review-contract' });
-
   const completeEvent: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> = bufferedReviewComplete
     ? { ...bufferedReviewComplete, issues: finalIssuesWithIds }
     : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssuesWithIds, ...(round !== undefined ? { round } : {}) };
-
   ctx.reviewIssues = completeEvent.issues;
   metadata.completeIssueCount = completeEvent.issues.length;
   yield completeEvent;
-
   return metadata;
 }
-
 async function* evaluateStageInner(
   ctx: BuildStageContext,
   overrides?: { strictness?: 'strict' | 'standard' | 'lenient'; round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
@@ -505,12 +469,10 @@ async function* evaluateStageInner(
     ctx.buildFailed = true;
     return;
   }
-
   if (!(await hasEvaluationCandidateChanges(ctx.worktreePath))) {
     setLastBuildEvaluation(ctx, lastBuildEvaluationNotRun());
     return;
   }
-
   let snapshot: EvaluationSnapshot;
   try {
     snapshot = await prepareEvaluationSnapshot(ctx.worktreePath, ctx.preImplementCommit ?? 'HEAD~1');
@@ -519,16 +481,13 @@ async function* evaluateStageInner(
     ctx.buildFailed = true;
     return;
   }
-
   if (snapshot.files.length === 0) {
     await restoreOriginalBuilderCommitState(snapshot);
     setLastBuildEvaluation(ctx, lastBuildEvaluationNotRun());
     return;
   }
-
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
   const round = overrides?.round;
-
   // Emit evaluator-strictness decision at the start of every evaluator run
   // source is 'default' when the value is 'standard' and no explicit override was provided,
   // otherwise 'config' (user-configured or stage-level override)
@@ -540,7 +499,6 @@ async function* evaluateStageInner(
     strictness,
     source: strictnessSource,
   });
-
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
@@ -555,7 +513,6 @@ async function* evaluateStageInner(
   const evaluatorPolicy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
   let result: BuilderEvaluationResult | undefined;
   let suppressedTerminalFailure: Extract<EforgeEvent, { type: 'plan:build:failed' }> | undefined;
-
   try {
     const evaluator = withRetry<EvaluatorContinuationInput, BuilderEvaluationResult | undefined>(
       (input) => runEvaluatorAttempt(input, ctx, strictness),
@@ -585,7 +542,6 @@ async function* evaluateStageInner(
     ctx.buildFailed = true;
     return;
   }
-
   if (!result || result.failed || result.verdicts.length === 0) {
     const driftFailure = await restoreOriginalBuilderCommitStateUnlessDrifted(ctx, snapshot);
     if (driftFailure) {
@@ -596,7 +552,6 @@ async function* evaluateStageInner(
     ctx.buildFailed = true;
     return;
   }
-
   try {
     const application = await applyEvaluationVerdicts(snapshot, result.verdicts, {
       commitMessage: `feat(${ctx.planId}): ${ctx.planFile.name}`,
@@ -633,7 +588,6 @@ async function* evaluateStageInner(
     ctx.buildFailed = true;
   }
 }
-
 /** Per-retry review-fixer span + event processing. Span and tracker created per attempt. */
 async function* runReviewFixerAttempt(
   input: ReviewFixerContinuationInput,
@@ -683,14 +637,12 @@ async function* runReviewFixerAttempt(
     throw err;
   }
 }
-
 async function* reviewFixStageInner(
   ctx: BuildStageContext,
   options?: { round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
 ): AsyncGenerator<EforgeEvent> {
   setLastReviewFixIssueReferences(ctx, undefined);
   if (ctx.reviewIssues.length === 0) return;
-
   // Snapshot HEAD at stage entry — used as baseRef for agent:activity attribution
   let fixerBaseRef: string | undefined;
   try {
@@ -699,9 +651,7 @@ async function* reviewFixStageInner(
   } catch {
     // Not available — skip activity emission
   }
-
   let fixerAgentId: string | undefined;
-
   // Resolve maxContinuations: per-plan > global config > default (3)
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const reviewFixerPolicy: RetryPolicy<ReviewFixerContinuationInput> = {
@@ -714,7 +664,6 @@ async function* reviewFixStageInner(
     ...(options?.round !== undefined ? { round: options.round } : {}),
     reviewFixerOptions: {},
   };
-
   try {
     for await (const event of withRetry(
       (input) => runReviewFixerAttempt(input, ctx, (id) => { fixerAgentId = id; }, options?.validationRepairContext),
@@ -741,7 +690,6 @@ async function* reviewFixStageInner(
     }
     // All other errors are non-fatal — swallow silently
   }
-
   // Emit agent:activity for the review fixer with exact attribution.
   // The review-fixer does NOT commit — its changes live in the working tree,
   // so we must diff against the working tree (not baseRef...HEAD).
@@ -793,7 +741,6 @@ async function* structuralValidationFixStageInner(ctx: BuildStageContext, valida
     const activity = await emitAgentActivity({ cwd: ctx.worktreePath, baseRef, planId: ctx.planId, agentId, agent: 'validation-fixer', attribution: 'exact', mode: 'working-tree' }); if (activity) yield activity;
   } catch { /* non-critical */ }
 }
-
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   const { agentConfig, harness: testerHarness, toolbeltSummary: testerTb } = resolveAgentRuntimeForInvocation(
     'tester',
@@ -832,11 +779,9 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
     if (err instanceof Error && err.name === 'AbortError') throw err;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Shard helpers
 // ---------------------------------------------------------------------------
-
 /**
  * Determine whether a shard claims a given file path.
  * Roots are matched by path prefix (with or without trailing slash).
@@ -880,7 +825,6 @@ async function* runBuilderShardAttempt(
     throw err;
   }
 }
-
 /** Run a single shard with its own retry policy. Yields all events including plan:build:failed on exhaustion. */
 async function* runShardAttempt(
   shard: ShardScope,
@@ -890,7 +834,6 @@ async function* runShardAttempt(
   maxContinuations: number,
 ): AsyncGenerator<EforgeEvent> {
   const shardPolicy = buildShardPolicy(shard.id, maxContinuations + 1);
-
   const initialInput: BuilderShardContinuationInput = {
     worktreePath: ctx.worktreePath,
     baseBranch: ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch,
@@ -899,7 +842,6 @@ async function* runShardAttempt(
     shardScope: shard,
     builderOptions: {},
   };
-
   try {
     for await (const event of withRetry(
       (input) => runBuilderShardAttempt(input, ctx, runtime, parallelStages),
@@ -912,11 +854,9 @@ async function* runShardAttempt(
     yield toBuildFailedEvent(ctx.planId, err);
   }
 }
-
 // ---------------------------------------------------------------------------
 // Built-in Build Stages
 // ---------------------------------------------------------------------------
-
 registerBuildStage({
   name: 'implement',
   phase: 'build',
@@ -932,7 +872,6 @@ registerBuildStage({
   } catch {
     // Fresh repo or no commits — evaluator will fall back to HEAD~1
   }
-
   // Resolve maxContinuations: per-plan > global config > default (3)
   const builderRuntime = resolveAgentRuntimeForInvocation(
     'builder',
@@ -952,9 +891,7 @@ registerBuildStage({
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
-
   const shards = agentConfig.shards;
-
   if (!shards || shards.length === 0) {
     // -----------------------------------------------------------------------
     // Single-builder flow (unchanged from before sharding was added)
@@ -965,15 +902,12 @@ registerBuildStage({
       planId: ctx.planId,
       builderOptions: {},
     };
-
     // Policy with a per-plan override for maxAttempts (prior behavior: maxContinuations + 1).
     const builderPolicy: RetryPolicy<BuilderContinuationInput> = {
       ...(DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>),
       maxAttempts: maxContinuations + 1,
     };
-
     let lastBuilderAgentId: string | undefined;
-
     try {
       for await (const event of withRetry(
         (input) => runBuilderAttempt(input, ctx, builderRuntimeWithPrompt, parallelStages, verificationScope),
@@ -995,7 +929,6 @@ registerBuildStage({
       ctx.buildFailed = true;
       return;
     }
-
     // Emit agent:activity for the single builder with exact attribution
     if (lastBuilderAgentId && ctx.preImplementCommit) {
       try {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveAgentConfig, resolveRuntimeChoiceForInvocation, pathMatchesGlob } from '@eforge-build/engine/pipeline';
-import { resolveConfig, DEFAULT_CONFIG, DEFAULT_TIER_MAX_TURNS, parseRawConfig, ConfigValidationError } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, DEFAULT_TIER_MAX_TURNS, parseRawConfig, ConfigValidationError, mergePartialConfigs } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
 // resolveAgentConfig — tier recipes drive harness, model, effort
@@ -319,8 +319,85 @@ describe('runtime choice config and resolver', () => {
     expect(() => parseRawConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', choices: { ui: { routing: {} } } } } } })).toThrow(/Unrecognized key: "routing"[\s\S]*agents\.tiers\.implementation\.choices\.ui/);
     expect(() => parseRawConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', choices: { ui: { choices: {} } } } } } })).toThrow(/Unrecognized key: "choices"[\s\S]*agents\.tiers\.implementation\.choices\.ui/);
     expect(() => parseRawConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', choices: { ui: { effort: 'high' } }, routing: { rules: [{ name: 'bad', choice: 'review.ui', when: { keywords: ['ui'] } }] } } } } })).toThrow(/routing.*rules.*0.*choice/s);
-    expect(() => parseRawConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', routing: { rules: [{ name: 'unknown', choice: 'ui', when: { keywords: ['ui'] } }] } } } } })).toThrow(/unknown choice "ui"/);
+    expect(() => resolveConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', routing: { rules: [{ name: 'unknown', choice: 'ui', when: { keywords: ['ui'] } }] } } } } })).toThrow(/unknown choice "ui"/);
     expect(() => parseRawConfig({ agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', routing: { rules: [{ name: 'empty', choice: 'default', when: {} }] } } } } })).toThrow(/when block/);
+  });
+
+  it('validates unknown routing choices after config layers are merged', () => {
+    const choicesLayer = parseRawConfig({
+      agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', choices: { ui: { effort: 'high' } } } } },
+    });
+    const routingLayer = parseRawConfig({
+      agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium', routing: { rules: [{ name: 'ui', choice: 'ui', when: { keywords: ['ui'] } }] } } } },
+    });
+
+    const config = resolveConfig(mergePartialConfigs(choicesLayer, routingLayer));
+    expect(resolveRuntimeChoiceForInvocation('builder', config, { name: 'UI', body: '' }, { keywordText: 'ui' }).choiceRef).toBe('implementation.ui');
+    expect(() => resolveConfig(routingLayer)).toThrow(/unknown choice "ui"/);
+  });
+
+  it('limits plan-entry shard paths to the current invocation', () => {
+    const routed = resolveConfig({
+      agents: {
+        tiers: {
+          implementation: {
+            harness: 'claude-sdk' as const,
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            choices: { ui: { effort: 'high' as const }, backend: { model: 'qwen3-coder' } },
+            routing: { rules: [
+              { name: 'ui-paths', choice: 'ui', when: { pathGlobs: ['web/**'] } },
+              { name: 'backend-paths', choice: 'backend', when: { pathGlobs: ['packages/engine/**'] } },
+            ] },
+          },
+        },
+      },
+    });
+    const planEntry = { agents: { builder: { shards: [
+      { id: 'ui', roots: ['web'], files: ['web/app/page.tsx'] },
+      { id: 'backend', roots: ['packages/engine'], files: ['packages/engine/src/config.ts'] },
+    ] } } };
+
+    expect(resolveRuntimeChoiceForInvocation('builder', routed, planEntry, { shardIds: ['backend'] }).matchedRule).toBe('backend-paths');
+    expect(resolveRuntimeChoiceForInvocation('builder', routed, planEntry, { shardIds: ['ui'] }).matchedRule).toBe('ui-paths');
+  });
+
+  it('deep-merges nested pi choice overlays', () => {
+    const routed = resolveConfig({
+      agents: {
+        tiers: {
+          implementation: {
+            harness: 'pi' as const,
+            pi: {
+              provider: 'anthropic',
+              extensions: { autoDiscover: false, include: ['base'] },
+              compaction: { enabled: true, threshold: 1000 },
+              retry: { maxRetries: 2, backoffMs: 50 },
+            },
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            choices: { local: { pi: { provider: 'local', extensions: { exclude: ['ambient'] }, compaction: { threshold: 2000 }, retry: { backoffMs: 100 } } } },
+            routing: { rules: [{ name: 'local', choice: 'local', when: { keywords: ['local'] } }] },
+          },
+        },
+      },
+    });
+
+    const recipe = resolveRuntimeChoiceForInvocation('builder', routed, { name: 'Local', body: '' }, { keywordText: 'local' }).effectiveRecipe;
+    expect(recipe.pi?.extensions).toEqual({ autoDiscover: false, include: ['base'], exclude: ['ambient'] });
+    expect(recipe.pi?.compaction).toEqual({ enabled: true, threshold: 2000 });
+    expect(recipe.pi?.retry).toEqual({ maxRetries: 2, backoffMs: 100 });
+  });
+
+  it('re-validates merged effective recipes after config layers are merged', () => {
+    const piLayer = parseRawConfig({
+      agents: { tiers: { implementation: { harness: 'pi', pi: { provider: 'anthropic' }, model: 'm', effort: 'medium' } } },
+    });
+    const claudeLayer = parseRawConfig({
+      agents: { tiers: { implementation: { harness: 'claude-sdk', model: 'm', effort: 'medium' } } },
+    });
+
+    expect(() => resolveConfig(mergePartialConfigs(piLayer, claudeLayer))).toThrow(/harness "claude-sdk" cannot include "pi"/);
   });
 });
 // --- eforge:endregion plan-01-runtime-choice-core ---
