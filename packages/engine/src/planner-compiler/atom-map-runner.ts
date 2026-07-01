@@ -16,6 +16,7 @@ export interface RunPlanningAtomMapInput { graph: PlanningAtomGraph; inventory?:
 export interface PlanningAtomMapResult { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 
 interface AtomRunResult { output: PlanningAtomOutput; events: EforgeEvent[]; validationErrors: string[] }
+interface AtomSettled { atomId: string; result?: AtomRunResult; error?: unknown }
 
 export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promise<PlanningAtomMapResult> {
   const briefValidation = input.sharedBrief ? validateSharedPlanningBrief(input.sharedBrief, input.graph) : { ok: true as const, errors: [] };
@@ -32,23 +33,61 @@ export async function runPlanningAtomMap(input: RunPlanningAtomMapInput): Promis
   const emit = (event: EforgeEvent): void => { input.onEvent?.(event); events.push(event); };
   emit(buildMapReduceAtomsEvent(input.graph));
 
+  const running = new Map<string, Promise<AtomSettled>>();
+  const failFastController = new AbortController();
+  const runInput = { ...input, abortSignal: composeAbortSignal(input.abortSignal, failFastController.signal) };
+
   while (true) {
-    const decision = selectReadyAtoms(input, tasks, completed, failed, skipped);
-    if (decision.readyAtomIds.length === 0) return finish(input, { outputs, events, completed, failed, skipped, validationErrors, iterations, blockedAtoms: decision.blockedAtoms, readyAtomIds: decision.readyAtomIds });
-    iterations += 1;
-    for (const atomId of decision.readyAtomIds) emit(buildMapReduceAtomStatusEvent(atomId, 'running'));
-    const acceptedFindings = outputs.flatMap((output) => output.sharedFindings ?? []);
-    const batchResults = await Promise.all(decision.readyAtomIds.map((atomId) => runAtom(input, requireTask(tasks, atomId), acceptedFindings)));
-    for (const result of batchResults) {
-      outputs.push(result.output);
-      events.push(...result.events);
-      validationErrors.push(...result.validationErrors);
-      const terminal = atomTerminalStatus(result.output.status, result.validationErrors.length);
-      if (terminal === 'completed') completed.add(result.output.atomId);
-      else if (terminal === 'skipped') skipped.add(result.output.atomId);
-      else failed.add(result.output.atomId);
-      emit(buildMapReduceAtomStatusEvent(result.output.atomId, terminal, atomStatusReason(result)));
+    const decision = selectReadyAtoms(input, tasks, completed, failed, skipped, running);
+    if (decision.readyAtomIds.length > 0) iterations += 1;
+    for (const atomId of decision.readyAtomIds) {
+      emit(buildMapReduceAtomStatusEvent(atomId, 'running'));
+      const acceptedFindings = outputs.flatMap((output) => output.sharedFindings ?? []);
+      running.set(atomId, runAtom(runInput, requireTask(tasks, atomId), acceptedFindings).then((result) => ({ atomId, result }), (error) => ({ atomId, error })));
     }
+
+    if (running.size === 0) return finish(input, { outputs, events, completed, failed, skipped, validationErrors, iterations, blockedAtoms: decision.blockedAtoms, readyAtomIds: decision.readyAtomIds });
+
+    const settled = await Promise.race(running.values());
+    running.delete(settled.atomId);
+    if (settled.error) {
+      if (isAbortError(settled.error) && !failFastController.signal.aborted) throw settled.error;
+      const task = requireTask(tasks, settled.atomId);
+      applyAtomResult({ result: { output: failedOutput(task, settled.error), events: [], validationErrors: [`atom planner failed:${settled.atomId}:${settled.error instanceof Error ? settled.error.message : String(settled.error)}`] }, outputs, events, validationErrors, completed, failed, skipped, emit });
+    } else {
+      applyAtomResult({ result: settled.result!, outputs, events, validationErrors, completed, failed, skipped, emit });
+    }
+
+    if (failed.size > 0) {
+      failFastController.abort();
+      cancelRunningAtoms({ running, tasks, outputs, completed, failed, skipped, emit, reason: 'cancelled after atom failure' });
+      const terminalDecision = selectReadyAtoms(input, tasks, completed, failed, skipped, new Map());
+      return finish(input, { outputs, events, completed, failed, skipped, validationErrors, iterations, blockedAtoms: terminalDecision.blockedAtoms, readyAtomIds: terminalDecision.readyAtomIds });
+    }
+  }
+}
+
+function applyAtomResult(input: { result: AtomRunResult; outputs: PlanningAtomOutput[]; events: EforgeEvent[]; validationErrors: string[]; completed: Set<string>; failed: Set<string>; skipped: Set<string>; emit: (event: EforgeEvent) => void }): void {
+  input.outputs.push(input.result.output);
+  input.events.push(...input.result.events);
+  input.validationErrors.push(...input.result.validationErrors);
+  const terminal = atomTerminalStatus(input.result.output.status, input.result.validationErrors.length);
+  if (terminal === 'completed') input.completed.add(input.result.output.atomId);
+  else if (terminal === 'skipped') input.skipped.add(input.result.output.atomId);
+  else input.failed.add(input.result.output.atomId);
+  input.emit(buildMapReduceAtomStatusEvent(input.result.output.atomId, terminal, atomStatusReason(input.result)));
+}
+
+function cancelRunningAtoms(input: { running: Map<string, Promise<AtomSettled>>; tasks: Map<string, PlanningAtomTask>; outputs: PlanningAtomOutput[]; completed: Set<string>; failed: Set<string>; skipped: Set<string>; emit: (event: EforgeEvent) => void; reason: string }): void {
+  const atomIds = [...input.running.keys()].sort();
+  void Promise.allSettled([...input.running.values()]);
+  input.running.clear();
+  for (const atomId of atomIds) {
+    if (input.completed.has(atomId) || input.failed.has(atomId) || input.skipped.has(atomId)) continue;
+    const output = failedOutput(requireTask(input.tasks, atomId), new Error(input.reason));
+    input.outputs.push(output);
+    input.failed.add(atomId);
+    input.emit(buildMapReduceAtomStatusEvent(atomId, 'failed', input.reason));
   }
 }
 
@@ -101,8 +140,9 @@ function finish(input: RunPlanningAtomMapInput, state: { outputs: PlanningAtomOu
   };
 }
 
-function selectReadyAtoms(input: RunPlanningAtomMapInput, tasks: Map<string, PlanningAtomTask>, completed: Set<string>, failed: Set<string>, skipped: Set<string>): { readyAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[] } {
-  const base = selectReadyPlanningAtoms({ graph: input.graph, completedAtomIds: completed, failedAtomIds: failed, skippedAtomIds: skipped, parallelism: input.graph.atoms.length });
+function selectReadyAtoms(input: RunPlanningAtomMapInput, tasks: Map<string, PlanningAtomTask>, completed: Set<string>, failed: Set<string>, skipped: Set<string>, running: Map<string, Promise<AtomSettled>>): { readyAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[] } {
+  const parallelism = input.parallelism ?? input.graph.limits.parallelism;
+  const base = selectReadyPlanningAtoms({ graph: input.graph, completedAtomIds: completed, failedAtomIds: failed, runningAtomIds: running.keys(), skippedAtomIds: skipped, parallelism: input.graph.atoms.length });
   const sharedBlocked: BlockedPlanningAtom[] = [];
   const candidates: string[] = [];
   for (const atomId of base.readyAtomIds) {
@@ -110,8 +150,22 @@ function selectReadyAtoms(input: RunPlanningAtomMapInput, tasks: Map<string, Pla
     if (missingPrerequisites.length > 0) sharedBlocked.push({ atomId, blockedByAtomIds: missingPrerequisites });
     else candidates.push(atomId);
   }
-  const capacity = Math.max(0, input.parallelism ?? input.graph.limits.parallelism);
+  const capacity = Math.max(0, parallelism - running.size);
   return { readyAtomIds: candidates.slice(0, capacity), blockedAtoms: [...base.blockedAtoms, ...sharedBlocked].sort((a, b) => a.atomId.localeCompare(b.atomId)) };
+}
+
+function composeAbortSignal(parent: AbortSignal | undefined, child: AbortSignal): AbortSignal {
+  if (!parent) return child;
+  const anyAbortSignal = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (anyAbortSignal) return anyAbortSignal([parent, child]);
+  const controller = new AbortController();
+  const abort = (): void => { controller.abort(); };
+  if (parent.aborted || child.aborted) abort();
+  else {
+    parent.addEventListener('abort', abort, { once: true });
+    child.addEventListener('abort', abort, { once: true });
+  }
+  return controller.signal;
 }
 
 function failedOutput(task: PlanningAtomTask, err: unknown): PlanningAtomOutput {

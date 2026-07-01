@@ -5,7 +5,7 @@ import { safeParseWithSchema } from '@eforge-build/client';
 import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput, type PlanningAtomOutputStatus, type PlanningAtomPlanFragment, type PlanningAtomModuleCandidate } from './atom-planning-contracts.js';
 import { DEFAULT_PLANNING_REDUCE_LIMITS } from './reduce-contracts.js';
-import { coercePlanningReduceDigest, deriveReduceDigestTotalByteLimit, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
+import { coercePlanningReduceDigest, deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningAspectCoverageUpdate } from './coverage-accounting.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
@@ -21,6 +21,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
   const materialization = materializePlanningAtomSource({ sourceContent: input.sourceContent, task: input.task });
   if (materialization.errors.length > 0) throw new Error(materialization.errors.join('; '));
 
+  assertFeasibleReduceDigestBudget(input.task);
   const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_ATOM_OUTPUT_TOOL);
   const prompt = formatPlanningAtomPrompt(input.task, materialization, input.acceptedSharedFindings ?? [], sourceEvidenceRecordsForAtom(input.sourceEvidenceBundle, input.task.atomId), submitToolName);
   const events: EforgeEvent[] = [];
@@ -127,6 +128,12 @@ Call ${submitToolName} with an object matching its schema.
 
 function atomReduceDigestPromptByteLimit(task: PlanningAtomTask): number {
   return task.reduceDigestPromptBudgetBytes ?? deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: DEFAULT_PLANNING_REDUCE_LIMITS.maxReducePromptBytes });
+}
+
+function assertFeasibleReduceDigestBudget(task: PlanningAtomTask): void {
+  const assigned = atomReduceDigestPromptByteLimit(task);
+  const minimum = minimumReduceDigestPromptByteLength({ sourceId: task.atomId, sourceKind: 'atom', criterionIds: task.criterionIds, aspectIds: task.aspectIds });
+  if (assigned < minimum) throw new Error(`reduce digest prompt budget impossible:${task.atomId}:minimum ${minimum} > assigned ${assigned}`);
 }
 
 function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAtomTask, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {

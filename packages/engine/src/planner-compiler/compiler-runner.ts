@@ -68,7 +68,12 @@ function compilerValidationErrors(sourceEvidenceBundle: PlanningSourceEvidenceBu
 
 function compilerStatus(map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, validationErrors: string[]): BoundedPlannerCompilerStatus {
   if (residue.validationErrors.length > 0) return 'failed';
+  if (map.failedAtomIds.length > 0 && !hasSourceEvidenceResidue(residue)) return 'failed';
   if (residue.candidates.length > 0) return 'complete-with-residue';
   if (validationErrors.length > 0) return 'incomplete';
   return map.mapComplete && reduce.reduceComplete ? 'complete' : 'incomplete';
+}
+
+function hasSourceEvidenceResidue(residue: PlanningResidueSynthesis): boolean {
+  return residue.candidates.some((candidate) => candidate.reason === 'source-evidence-missing' || candidate.reason === 'source-evidence-too-large' || candidate.reason === 'source-evidence-read-error' || candidate.reason === 'source-evidence-budget-exceeded');
 }

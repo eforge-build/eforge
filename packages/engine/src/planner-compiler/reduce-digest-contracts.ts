@@ -18,6 +18,7 @@ export const REDUCE_DIGEST_PROMPT_BUDGETING = {
 } as const;
 
 export interface DeriveReduceDigestTotalByteLimitInput { maxReducePromptBytes: number; minReduceFanIn?: number }
+export interface MinimumReduceDigestPromptByteLengthInput { sourceId: string; sourceKind: PlanningReduceDigestSourceKind; criterionIds: string[]; aspectIds: string[]; status?: PlanningReduceDigestStatus }
 
 export function deriveReduceDigestTotalByteLimit(input: DeriveReduceDigestTotalByteLimitInput): number {
   const fanIn = Math.max(1, input.minReduceFanIn ?? REDUCE_DIGEST_PROMPT_BUDGETING.minReduceFanIn);
@@ -127,6 +128,17 @@ export function reduceDigestPromptByteLength(digest: PlanningReduceDigest): numb
   return utf8ByteLength(reduceDigestPromptText(digest));
 }
 
+export function minimumReduceDigestPromptByteLength(input: MinimumReduceDigestPromptByteLengthInput): number {
+  return reduceDigestPromptByteLength({
+    sourceId: input.sourceId,
+    sourceKind: input.sourceKind,
+    status: input.status ?? 'completed',
+    summary: 'x',
+    criterionIds: nonEmptyOrFallback(input.criterionIds, 'ac-budget'),
+    aspectIds: nonEmptyOrFallback(input.aspectIds, 'ac-budget:general:general'),
+  });
+}
+
 export function clonePlanningReduceDigest(digest: PlanningReduceDigest): PlanningReduceDigest {
   return {
     ...digest,
@@ -177,4 +189,9 @@ function requiredString(value: unknown, label: string): string {
   const text = stringValue(value);
   if (text === undefined) throw new Error(`Missing ${label}`);
   return text;
+}
+
+function nonEmptyOrFallback(values: string[], fallback: string): string[] {
+  const filtered = values.filter((value) => value.trim().length > 0);
+  return filtered.length > 0 ? filtered : [fallback];
 }

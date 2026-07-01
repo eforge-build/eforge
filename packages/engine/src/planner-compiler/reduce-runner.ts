@@ -13,6 +13,7 @@ export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: P
 export interface PlanningReduceResult { graphId: string; rootNodeId?: string; tree: PlanningReduceTree; outputs: PlanningReduceOutput[]; finalOutput?: PlanningReduceOutput; conflicts: PlanningReduceConflict[]; gaps: PlanningReduceGap[]; validationErrors: string[]; reduceComplete: boolean; events: EforgeEvent[]; iterations: number }
 
 interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeEvent[]; validationErrors: string[] }
+interface ReduceSettled { nodeId: string; result?: ReduceRunResult; error?: unknown }
 
 export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<PlanningReduceResult> {
   const limits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.limits ?? {}) };
@@ -27,27 +28,60 @@ export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<
   const emit = (event: EforgeEvent): void => { input.onEvent?.(event); events.push(event); };
   emit(buildMapReduceReduceTreeEvent(tree));
 
-  for (const depth of reduceDepths(tree)) {
-    const runnable = tree.nodes.filter((node) => node.depth === depth && node.inputNodeIds.every((childId) => completedNodeIds(outputs).has(childId)));
-    const blocked = tree.nodes.filter((node) => node.depth === depth && !runnable.includes(node));
-    for (const node of blocked) {
-      const error = `reduce node blocked by incomplete child:${node.inputNodeIds.join(',')}`;
-      outputs.push(incompleteOutput(node.nodeId, error));
-      emit(buildMapReduceReduceStatusEvent(node.nodeId, 'incomplete', error));
+  const running = new Map<string, Promise<ReduceSettled>>();
+  const failFastController = new AbortController();
+  const runInput = { ...input, abortSignal: composeAbortSignal(input.abortSignal, failFastController.signal) };
+  const parallelism = Math.max(1, input.graph.limits.parallelism);
+
+  while (outputs.length + running.size < tree.nodes.length || running.size > 0) {
+    const ready = readyReduceNodes(tree, outputs, running, parallelism);
+    if (ready.length > 0) iterations += 1;
+    for (const node of ready) {
+      emit(buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
+      running.set(node.nodeId, runReduceNode(runInput, tree, node.nodeId, outputs).then((result) => ({ nodeId: node.nodeId, result }), (error) => ({ nodeId: node.nodeId, error })));
     }
-    if (runnable.length === 0) continue;
-    iterations += 1;
-    for (const node of runnable) emit(buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
-    const results = await Promise.all(runnable.map((node) => runReduceNode(input, tree, node.nodeId, outputs)));
-    for (const result of results) {
-      outputs.push(result.output);
-      events.push(...result.events);
-      validationErrors.push(...result.validationErrors);
-      emit(buildMapReduceReduceStatusEvent(result.output.nodeId, result.output.status, result.output.error));
+
+    if (running.size === 0) {
+      markBlockedReduceNodes(tree, outputs, emit);
+      break;
+    }
+
+    const settled = await Promise.race(running.values());
+    running.delete(settled.nodeId);
+    if (settled.error) {
+      if (isAbortError(settled.error) && !failFastController.signal.aborted) throw settled.error;
+      applyReduceResult({ result: failedReduceRun(settled.nodeId, settled.error), outputs, events, validationErrors, emit });
+    } else {
+      applyReduceResult({ result: settled.result!, outputs, events, validationErrors, emit });
+    }
+
+    if (outputs.some((output) => output.status === 'failed')) {
+      failFastController.abort();
+      cancelRunningReducers({ running, outputs, emit, reason: 'cancelled after reduce failure' });
+      break;
     }
   }
 
   return finish(input, tree, outputs, events, validationErrors, iterations);
+}
+
+function applyReduceResult(input: { result: ReduceRunResult; outputs: PlanningReduceOutput[]; events: EforgeEvent[]; validationErrors: string[]; emit: (event: EforgeEvent) => void }): void {
+  input.outputs.push(input.result.output);
+  input.events.push(...input.result.events);
+  input.validationErrors.push(...input.result.validationErrors);
+  input.emit(buildMapReduceReduceStatusEvent(input.result.output.nodeId, input.result.output.status, input.result.output.error));
+}
+
+function cancelRunningReducers(input: { running: Map<string, Promise<ReduceSettled>>; outputs: PlanningReduceOutput[]; emit: (event: EforgeEvent) => void; reason: string }): void {
+  const nodeIds = [...input.running.keys()].sort();
+  void Promise.allSettled([...input.running.values()]);
+  input.running.clear();
+  for (const nodeId of nodeIds) {
+    if (input.outputs.some((output) => output.nodeId === nodeId)) continue;
+    const output = failedOutput(nodeId, input.reason);
+    input.outputs.push(output);
+    input.emit(buildMapReduceReduceStatusEvent(nodeId, 'failed', input.reason));
+  }
 }
 
 async function runReduceNode(input: RunPlanningReduceInput, tree: PlanningReduceTree, nodeId: string, outputs: PlanningReduceOutput[]): Promise<ReduceRunResult> {
@@ -94,8 +128,24 @@ function buildTaskForNode(tree: PlanningReduceTree, nodeId: string, atomOutputs:
   );
 }
 
-function reduceDepths(tree: PlanningReduceTree): number[] {
-  return [...new Set(tree.nodes.map((node) => node.depth))].sort((a, b) => a - b);
+function readyReduceNodes(tree: PlanningReduceTree, outputs: PlanningReduceOutput[], running: Map<string, Promise<ReduceSettled>>, parallelism: number): PlanningReduceTree['nodes'] {
+  const terminal = new Set(outputs.map((output) => output.nodeId));
+  const completed = completedNodeIds(outputs);
+  const capacity = Math.max(0, parallelism - running.size);
+  if (capacity === 0) return [];
+  return tree.nodes
+    .filter((node) => !terminal.has(node.nodeId) && !running.has(node.nodeId) && node.inputNodeIds.every((childId) => completed.has(childId)))
+    .sort((a, b) => a.depth - b.depth || a.nodeId.localeCompare(b.nodeId))
+    .slice(0, capacity);
+}
+
+function markBlockedReduceNodes(tree: PlanningReduceTree, outputs: PlanningReduceOutput[], emit: (event: EforgeEvent) => void): void {
+  const terminal = new Set(outputs.map((output) => output.nodeId));
+  for (const node of tree.nodes.filter((candidate) => !terminal.has(candidate.nodeId)).sort((a, b) => a.depth - b.depth || a.nodeId.localeCompare(b.nodeId))) {
+    const error = `reduce node blocked by incomplete child:${node.inputNodeIds.join(',')}`;
+    outputs.push(incompleteOutput(node.nodeId, error));
+    emit(buildMapReduceReduceStatusEvent(node.nodeId, 'incomplete', error));
+  }
 }
 
 function completedNodeIds(outputs: PlanningReduceOutput[]): Set<string> {
@@ -112,6 +162,11 @@ function hasRepresentationRequiredGaps(outputs: PlanningReduceOutput[]): boolean
   return outputs.some((output) => output.gaps?.some((gap) => gap.representationRequired));
 }
 
+function failedReduceRun(nodeId: string, err: unknown): ReduceRunResult {
+  const message = err instanceof Error ? err.message : String(err);
+  return { output: failedOutput(nodeId, message), events: [], validationErrors: [`reduce failed:${nodeId}:${message}`] };
+}
+
 function failedOutput(nodeId: string, error: string): PlanningReduceOutput {
   return { nodeId, status: 'failed', compactSummary: '', error };
 }
@@ -122,4 +177,18 @@ function incompleteOutput(nodeId: string, error: string): PlanningReduceOutput {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
+}
+
+function composeAbortSignal(parent: AbortSignal | undefined, child: AbortSignal): AbortSignal {
+  if (!parent) return child;
+  const anyAbortSignal = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (anyAbortSignal) return anyAbortSignal([parent, child]);
+  const controller = new AbortController();
+  const abort = (): void => { controller.abort(); };
+  if (parent.aborted || child.aborted) abort();
+  else {
+    parent.addEventListener('abort', abort, { once: true });
+    child.addEventListener('abort', abort, { once: true });
+  }
+  return controller.signal;
 }

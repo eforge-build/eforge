@@ -6,7 +6,7 @@ import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
-import { coercePlanningReduceDigest, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import { coercePlanningReduceDigest, minimumReduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -15,6 +15,7 @@ export interface PlanningReducerResult { output: PlanningReduceOutput; events: E
 const SUBMIT_REDUCE_OUTPUT_TOOL = 'submit_reduce_output';
 
 export async function runPlanningReducer(input: RunPlanningReducerInput): Promise<PlanningReducerResult> {
+  assertFeasibleReduceDigestBudget(input.task);
   const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_REDUCE_OUTPUT_TOOL);
   const prompt = formatPlanningReducerPrompt(input.task, submitToolName);
   if (utf8ByteLength(prompt) > input.task.budget.maxReducePromptBytes) throw new Error(`reduce prompt budget exceeded:${input.task.node.nodeId}`);
@@ -64,6 +65,11 @@ export async function runPlanningReducer(input: RunPlanningReducerInput): Promis
   }
 
   throw new Error(`Reducer did not call ${submitToolName}`);
+}
+
+function assertFeasibleReduceDigestBudget(task: PlanningReduceTask): void {
+  const minimum = minimumReduceDigestPromptByteLength({ sourceId: task.node.nodeId, sourceKind: 'reduce', criterionIds: task.node.criterionIds, aspectIds: task.node.aspectIds });
+  if (task.budget.maxReduceDigestPromptBytes < minimum) throw new Error(`reduce digest prompt budget impossible:${task.node.nodeId}:minimum ${minimum} > assigned ${task.budget.maxReduceDigestPromptBytes}`);
 }
 
 export function formatPlanningReducerPrompt(task: PlanningReduceTask, submitToolName = SUBMIT_REDUCE_OUTPUT_TOOL): string {

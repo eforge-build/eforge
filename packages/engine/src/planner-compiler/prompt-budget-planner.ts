@@ -21,7 +21,7 @@ export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduce
   const limits = normalizePlanningReduceBudget({ ...input.limits, maxInputsPerReduce: minFanIn });
   const pseudoMap = { outputs: input.graph.atoms.map((atom) => atomPlaceholderOutput(atom.atomId, atom.criterionIds)), coverage: emptyCoverage() };
   const tree = buildPlanningReduceTree({ graph: input.graph, mapResult: pseudoMap, limits });
-  const slots = tree.nodes.filter((node) => node.depth === 0).map((node) => maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs, childOutputs: [] }));
+  const slots = tree.nodes.filter((node) => node.depth === 0).map((node) => maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }));
   return slots.length > 0 ? Math.max(1, Math.min(...slots)) : limits.maxReduceDigestPromptBytes;
 }
 
