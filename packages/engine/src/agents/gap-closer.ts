@@ -1,6 +1,7 @@
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
+import type { RuntimeChoiceRouterRegistration } from '../extensions/types.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type OrchestrationConfig, type PlanFile } from '../events.js';
 import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../config.js';
 import { DEFAULT_REVIEW } from '../config.js';
@@ -25,11 +26,15 @@ export interface GapCloserContext extends SdkPassthroughConfig {
     orchConfig: OrchestrationConfig;
     planFileMap: Map<string, PlanFile>;
     agentRuntimes: AgentRuntimeRegistry;
+    extensionRuntimeChoiceRouters?: RuntimeChoiceRouterRegistration[];
+    configProfileName?: string | null;
+    extensionConfigDir?: string;
   };
   /** Function to run the build pipeline */
   runBuildPipeline: (ctx: import('../pipeline.js').BuildStageContext) => AsyncGenerator<EforgeEvent>;
   verbose?: boolean;
   abortController?: AbortController;
+  maxTurns?: number;
 }
 
 /**
@@ -56,7 +61,7 @@ export async function* runGapCloser(
 
   // Stage 1: Plan generation
   const agentConfig = resolveAgentConfig('gap-closer', options.pipelineContext.config);
-  const maxTurns = agentConfig.maxTurns ?? 20;
+  const maxTurns = options.maxTurns ?? agentConfig.maxTurns ?? 20;
 
   let planMarkdown: string | undefined;
 
@@ -111,7 +116,7 @@ export async function* runGapCloser(
   yield { timestamp: new Date().toISOString(), type: 'gap_close:plan_ready', planBody: planMarkdown, gaps: options.gaps };
 
   // Stage 2: Execute the generated plan via runBuildPipeline
-  const { config, pipeline, tracing, planSetName, orchConfig, planFileMap, agentRuntimes } = options.pipelineContext;
+  const { config, pipeline, tracing, planSetName, orchConfig, planFileMap, agentRuntimes, extensionRuntimeChoiceRouters, configProfileName, extensionConfigDir } = options.pipelineContext;
 
   const syntheticPlanFile: PlanFile = {
     id: 'gap-close',
@@ -147,6 +152,9 @@ export async function* runGapCloser(
     build,
     review,
     modelTracker: new ModelTracker(),
+    extensionRuntimeChoiceRouters,
+    configProfileName,
+    extensionConfigDir,
   };
 
   let sawBuildFailure = false;

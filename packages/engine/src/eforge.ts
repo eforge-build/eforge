@@ -902,6 +902,9 @@ export class EforgeEngine {
         buildPipeline,
         verbose,
         abortController,
+        extensionRuntimeChoiceRouters: this.extensionRegistry.runtimeChoiceRouters,
+        configProfileName: this.configProfile.name,
+        extensionConfigDir: this.configDir,
         ...(options.prdFilePath !== undefined ? { prdFilePath: options.prdFilePath } : {}),
       });
 
@@ -2615,6 +2618,9 @@ export class EforgeEngine {
         buildPipeline,
         verbose,
         abortController,
+        extensionRuntimeChoiceRouters: this.extensionRegistry.runtimeChoiceRouters,
+        configProfileName: this.configProfile.name,
+        extensionConfigDir: this.configDir,
         ...(options.schedulerOwned && resolvedResumePrdContent !== undefined ? { prdContent: resolvedResumePrdContent.content, prdSourceLabel: resolvedResumePrdContent.label, allowInventoryFallback: true } : {}),
       });
 

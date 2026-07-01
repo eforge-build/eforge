@@ -4,11 +4,15 @@ import { resolve } from 'node:path';
 import type { EforgeEvent, OrchestrationConfig, PlanFile } from '../events.js';
 import type { EforgeConfig } from '../config.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
+import type { RuntimeChoiceRouterRegistration } from '../extensions/types.js';
+import type { RuntimeChoiceRouterRuntimeOptions } from '../extensions/runtime-choice-router.js';
+import type { RuntimeChoiceInvocationMetadata } from '../pipeline/runtime-choice.js';
+import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
 import { runPrdValidator } from '../agents/prd-validator.js';
 import { runAcceptanceUnknownResolver } from '../agents/acceptance-unknown-resolver.js';
 import { runGapCloser } from '../agents/gap-closer.js';
 import { buildPrdValidatorDiff } from '../prd-validator-diff.js';
-import { createToolTracker, resolveAgentConfig, runBuildPipeline } from '../pipeline.js';
+import { createToolTracker, runBuildPipeline } from '../pipeline.js';
 import type { AcceptanceUnknownResolver, GapCloser, PrdValidator } from '../orchestrator.js';
 import type { createTracingContext } from '../tracing.js';
 import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
@@ -39,6 +43,9 @@ export interface CreatePrdValidationWiringOptions extends PrdValidationSourceInp
   buildPipeline: OrchestrationConfig['pipeline'];
   verbose?: boolean;
   abortController?: AbortController;
+  extensionRuntimeChoiceRouters?: RuntimeChoiceRouterRegistration[];
+  configProfileName?: string | null;
+  extensionConfigDir?: string;
 }
 
 export interface PrdValidationWiring {
@@ -124,6 +131,27 @@ function expectedCriteriaFromPlanFiles(planFileMap: Map<string, PlanFile>): Expe
   return allCriteria;
 }
 
+function runtimeChoiceRouterOptions(options: CreatePrdValidationWiringOptions, invocationCwd: string): RuntimeChoiceRouterRuntimeOptions | undefined {
+  const routers = options.extensionRuntimeChoiceRouters ?? [];
+  return routers.length === 0
+    ? undefined
+    : {
+        routers,
+        profileName: options.configProfileName ?? 'default',
+        cwd: invocationCwd,
+        configDir: options.extensionConfigDir,
+        timeoutMs: options.config.extensions.eventHookTimeoutMs,
+      };
+}
+
+function prdSummary(prdContent: string): string {
+  return prdContent.trim().slice(0, 1_200);
+}
+
+function gapTaskSummary(gaps: readonly { requirement: string; explanation: string }[]): string {
+  return gaps.map((gap) => `${gap.requirement}: ${gap.explanation}`).join('\n').slice(0, 2_000);
+}
+
 function createPrdValidator(
   options: CreatePrdValidationWiringOptions,
   prdContent: string,
@@ -168,7 +196,14 @@ function createPrdValidator(
     });
     const prdTracker = createToolTracker(prdSpan);
     try {
-      const prdValidatorConfig = resolveAgentConfig('prd-validator', config);
+      const metadata: RuntimeChoiceInvocationMetadata = {
+        phase: 'standalone',
+        stage: 'prd-validator',
+        prdSummary: prdSummary(prdContent),
+        changedFiles: built.files.map((file) => file.path),
+        pathHints: built.files.map((file) => file.path),
+      };
+      const { agentConfig: prdValidatorConfig, harness: prdValidatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('prd-validator', config, agentRuntimes, undefined, metadata, runtimeChoiceRouterOptions(options, validatorCwd));
       for await (const event of runPrdValidator({
         ...prdValidatorConfig,
         cwd: validatorCwd,
@@ -177,7 +212,8 @@ function createPrdValidator(
         verbose,
         abortController,
         phase: 'standalone',
-        harness: agentRuntimes.forRole('prd-validator'),
+        stage: 'prd-validator',
+        harness: prdValidatorHarness,
         expectedAcceptanceCriteria,
         validationCommandEvidence: validatorContext?.validationCommandEvidence,
         lane,
@@ -208,7 +244,15 @@ function createAcceptanceUnknownResolver(options: CreatePrdValidationWiringOptio
     resolverSpan.setInput({ unknownCriteria: request.unknownCriteria.map((criterion) => criterion.id), validationCommandCount: request.validationCommandEvidence?.length ?? 0, totalBytes: built.totalBytes, summarizedCount: built.summarizedCount });
     const resolverTracker = createToolTracker(resolverSpan);
     try {
-      const result = yield* runAcceptanceUnknownResolver({ ...resolveAgentConfig('prd-validator', config), cwd: resolverCwd, unknownCriteria: request.unknownCriteria, acceptanceVerdicts: request.acceptanceVerdicts, validationCommandEvidence: request.validationCommandEvidence, implementationDiffContext: built.renderedText, verbose, abortController, phase: 'standalone', harness: agentRuntimes.forRole('prd-validator') });
+      const metadata: RuntimeChoiceInvocationMetadata = {
+        phase: 'standalone',
+        stage: 'acceptance-unknown-resolver',
+        changedFiles: built.files.map((file) => file.path),
+        pathHints: built.files.map((file) => file.path),
+        taskSummary: request.unknownCriteria.map((criterion) => `${criterion.id}: ${criterion.text}`).join('\n'),
+      };
+      const { agentConfig: resolverConfig, harness: resolverHarness } = await resolveAgentRuntimeForInvocationWithExtensions('prd-validator', config, agentRuntimes, undefined, metadata, runtimeChoiceRouterOptions(options, resolverCwd));
+      const result = yield* runAcceptanceUnknownResolver({ ...resolverConfig, cwd: resolverCwd, unknownCriteria: request.unknownCriteria, acceptanceVerdicts: request.acceptanceVerdicts, validationCommandEvidence: request.validationCommandEvidence, implementationDiffContext: built.renderedText, verbose, abortController, phase: 'standalone', stage: 'acceptance-unknown-resolver', harness: resolverHarness });
       resolverTracker.cleanup();
       resolverSpan.end();
       return result;
@@ -227,7 +271,14 @@ function createGapCloser(options: CreatePrdValidationWiringOptions, prdContent: 
     gapSpan.setInput({ gapCount: gaps.length, completionPercent });
     const gapTracker = createToolTracker(gapSpan);
     try {
-      const gapCloserConfig = resolveAgentConfig('gap-closer', config);
+      const metadata: RuntimeChoiceInvocationMetadata = {
+        phase: 'standalone',
+        stage: 'gap-closer',
+        prdSummary: prdSummary(prdContent),
+        taskSummary: gapTaskSummary(gaps),
+        keywordText: gapTaskSummary(gaps),
+      };
+      const { agentConfig: gapCloserConfig, harness: gapCloserHarness } = await resolveAgentRuntimeForInvocationWithExtensions('gap-closer', config, agentRuntimes, undefined, metadata, runtimeChoiceRouterOptions(options, gapCloserCwd));
       for await (const event of runGapCloser({
         ...gapCloserConfig,
         cwd: gapCloserCwd,
@@ -235,7 +286,8 @@ function createGapCloser(options: CreatePrdValidationWiringOptions, prdContent: 
         prdContent,
         completionPercent,
         phase: 'standalone',
-        harness: agentRuntimes.forRole('gap-closer'),
+        stage: 'gap-closer',
+        harness: gapCloserHarness,
         pipelineContext: {
           config,
           pipeline: buildPipeline,
@@ -244,6 +296,9 @@ function createGapCloser(options: CreatePrdValidationWiringOptions, prdContent: 
           orchConfig,
           planFileMap,
           agentRuntimes,
+          extensionRuntimeChoiceRouters: options.extensionRuntimeChoiceRouters,
+          configProfileName: options.configProfileName,
+          extensionConfigDir: options.extensionConfigDir,
         },
         runBuildPipeline,
         verbose,
