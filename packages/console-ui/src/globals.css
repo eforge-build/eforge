@@ -113,27 +113,24 @@
 /* The mark is a little forge. The ring is the hearth, the crossbar is the
    workpiece being forged, and the ring's interior is the glowing cavity:
    - idle (daemon stopped): cold, unlit green
-   - igniting (`eforge ignite` / daemon start): the forge ring heats up
-   - lit (running): the ring glows warm, the workpiece pulses white-hot, and the
-     cavity throbs amber — the system reads as hot and active. */
+   - igniting (`eforge ignite` / daemon start): the ring flares green
+   - lit (running): the ring holds a steady green glow, the workpiece pulses
+     white-hot, and the cavity throbs amber — the heat stays inside the hearth
+     while the ring keeps the brand green. */
 
-/* Forge ring lights like heated steel, settling to a warm hot-forge glow. */
+/* Forge ring flares green on ignition, then settles to a steady green glow.
+   The heat (amber) stays inside the hearth -- the ring itself never goes amber. */
 @keyframes eforge-ring-ignite {
   0%   { color: #2a5f24; filter: drop-shadow(0 0 0 transparent); }
-  30%  { color: #67f553; filter: drop-shadow(0 0 3px rgba(103, 245, 83, 0.7)); }
-  55%  {
-    color: #ffd9a0;
-    filter: drop-shadow(0 0 4px #ffe9c2) drop-shadow(0 0 10px #ff7a2d)
-      drop-shadow(0 0 18px rgba(255, 90, 30, 0.65));
-  }
-  100% { color: #ef8a33; filter: drop-shadow(0 0 4px rgba(255, 140, 50, 0.6)); }
+  45%  { color: #b6ffab; filter: drop-shadow(0 0 6px rgba(103, 245, 83, 0.9)); }
+  100% { color: #67f553; filter: drop-shadow(0 0 3px rgba(103, 245, 83, 0.55)); }
 }
-/* Lit forge ring: a slow warm breath. */
+/* Lit forge ring: a slow green breath. */
 @keyframes eforge-ring-breath {
-  0%, 100% { color: #cf6a2a; filter: drop-shadow(0 0 3px rgba(255, 120, 40, 0.5)); }
+  0%, 100% { color: #5bd94a; filter: drop-shadow(0 0 2px rgba(103, 245, 83, 0.45)); }
   50% {
-    color: #ef8a33;
-    filter: drop-shadow(0 0 5px rgba(255, 140, 50, 0.7)) drop-shadow(0 0 10px rgba(255, 90, 30, 0.4));
+    color: #7dff6a;
+    filter: drop-shadow(0 0 5px rgba(103, 245, 83, 0.8)) drop-shadow(0 0 9px rgba(103, 245, 83, 0.35));
   }
 }
 /* Workpiece: a white-hot heartbeat. */
@@ -180,7 +177,7 @@
   .eforge-bar,
   .eforge-cavity { animation: none !important; }
   .eforge-ring[data-state='igniting'],
-  .eforge-ring[data-state='lit'] { color: #ef8a33; }
+  .eforge-ring[data-state='lit'] { color: #67f553; }
   .eforge-bar[data-state='lit'] { color: #ffe9c2; }
   .eforge-cavity[data-state='lit'] { opacity: 0.45; }
 }

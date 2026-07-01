@@ -9,11 +9,11 @@ import { EforgeLogo } from './eforge-logo';
  *
  * It is driven by build activity via the `activeBuilds` count:
  * - **0** — idle: the familiar green mark
- * - **1+** — a build is running: the forge ignites (ring heats up), then settles
- *   into a warm hot-forge glow with a white-hot, pulsing workpiece and a
+ * - **1+** — a build is running: the forge ignites (ring flares green), then
+ *   settles into a steady green glow with a white-hot, pulsing workpiece and a
  *   throbbing amber cavity. The workpiece heartbeat **quickens** the more builds
  *   run (≈1.6s at one build, down to a 0.6s floor), while the ring keeps its
- *   steady forge breath.
+ *   steady green breath — the heat stays inside the hearth.
  *
  * Respects `prefers-reduced-motion`: animations are suppressed and each state
  * renders as a static frame.
@@ -42,7 +42,7 @@ export const Active: Story = {
   args: { size: 24, activeBuilds: 1 },
 };
 
-/** Large active render — inspect the white-hot workpiece, warm ring, and amber cavity. */
+/** Large active render — inspect the white-hot workpiece, green ring, and amber cavity. */
 export const Large: Story = {
   args: { size: 120, activeBuilds: 1 },
 };
