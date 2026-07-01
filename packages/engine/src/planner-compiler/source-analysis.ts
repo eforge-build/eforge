@@ -4,14 +4,18 @@ import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type Expecte
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
 export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }
 
-const SUBSYSTEMS = ['engine', 'client', 'console', 'cli', 'input', 'test', 'docs', 'plugin', 'pi', 'monitor', 'web', 'scopes'];
+// --- eforge:region plan-01-source-localization-foundation ---
+const GENERIC_SURFACE_TERMS = ['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'api'];
+const PATH_LIKE_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g;
 const INTERFACE_PATTERNS: Array<[string, RegExp]> = [
-  ['event-schemas', /event\s+schema|event\s+variant|wire\s+event/i],
-  ['config-contract', /config\s+contract|configuration\s+schema|compile\.planningUnit|planningUnit/i],
-  ['route-contracts', /route\s+constant|api\s+route|\/api\//i],
-  ['client-api', /client\s+api|@eforge-build\/client|daemon\s+http\s+client/i],
-  ['data-model', /data\s+model|shared\s+model|wire\s+shape/i],
+  ['schema-contract', /\b(?:schema|contract|interface)s?\b|\bwire\s+shape\b|\bdata\s+model\b/i],
+  ['configuration', /\b(?:config(?:uration)?|settings|options)\b/i],
+  ['route-api', /\b(?:route|endpoint)s?\b|\bapi\s+surface\b|\/api\//i],
+  ['command-surface', /\b(?:command|cli|handler)s?\b/i],
+  ['ui-surface', /\b(?:ui|component|view|page|screen)s?\b/i],
+  ['extension-surface', /\b(?:plugin|extension|contribution|hook)s?\b/i],
 ];
+// --- eforge:endregion plan-01-source-localization-foundation ---
 
 export function utf8ByteLength(value: string): number { return new TextEncoder().encode(value).length; }
 export function hashText(value: string): string { return createHash('sha256').update(value).digest('hex'); }
@@ -68,20 +72,36 @@ function locateRequirement(criterion: ExpectedAcceptanceCriterion, lines: Markdo
   };
 }
 
+// --- eforge:region plan-01-source-localization-foundation ---
 export function inferSubsystemHints(value: string): string[] {
   const lower = value.toLowerCase();
-  const hits = SUBSYSTEMS.filter((name) => new RegExp(`\\b${name}\\b|packages/${name}|${name}-`, 'i').test(lower));
-  return [...new Set(hits.length > 0 ? hits : ['general'])].sort();
+  const hints = new Set<string>();
+  for (const term of GENERIC_SURFACE_TERMS) if (new RegExp(`\\b${term}s?\\b`, 'i').test(lower)) hints.add(term);
+  for (const pathValue of pathLikeValues(value)) {
+    const segments = pathValue.split('/').filter(Boolean);
+    for (const segment of meaningfulPathSegments(segments)) hints.add(stableSlug(segment));
+  }
+  return [...hints].filter((hint) => hint && hint !== 'general').sort().slice(0, 8).concat(hints.size === 0 ? ['general'] : []);
 }
 
 export function inferInterfaceKeys(value: string): string[] {
-  return INTERFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([key]) => key).sort();
+  const keys = new Set(INTERFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([key]) => key));
+  for (const surface of GENERIC_SURFACE_TERMS) if (new RegExp(`\\b${surface}s?\\b`, 'i').test(value)) keys.add(surface);
+  return [...keys].sort();
 }
 
 export function inferSharedFileKeys(value: string): string[] {
-  const paths = new Set<string>();
-  for (const match of value.matchAll(/(?:packages|test|web|eforge-plugin|docs)\/[A-Za-z0-9._/-]+/g)) {
-    paths.add(match[0].replace(/[),.;:]+$/g, ''));
-  }
-  return [...paths].sort();
+  return pathLikeValues(value).filter((candidate) => candidate.includes('/') && !candidate.endsWith('/')).sort();
 }
+
+function pathLikeValues(value: string): string[] {
+  return [...new Set([...value.matchAll(PATH_LIKE_RE)].map((match) => match[0].replace(/^\.\//, '').replace(/[),.;:]+$/g, '')))].sort();
+}
+
+function meaningfulPathSegments(segments: string[]): string[] {
+  const genericContainers = new Set(['packages', 'apps', 'services', 'src', 'lib', 'test', 'tests', 'docs', 'web', 'cmd']);
+  return segments
+    .map((segment) => segment.replace(/\.[A-Za-z0-9]+$/, ''))
+    .filter((segment) => segment.length > 1 && !genericContainers.has(segment) && !/^index|main$/.test(segment));
+}
+// --- eforge:endregion plan-01-source-localization-foundation ---

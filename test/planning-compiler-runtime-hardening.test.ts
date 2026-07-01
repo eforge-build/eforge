@@ -58,7 +58,7 @@ describe('bounded planner compiler runtime hardening', () => {
 
   it('keeps generated planning artifacts and broad directories out of source evidence materialization', async () => {
     const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
-    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` and ignores packages plus eforge/plans/old/orchestration.yaml.']);
+    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` and ignores broad package roots plus eforge/plans/old/orchestration.yaml.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([

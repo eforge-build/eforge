@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
-import type { CompilePreflightRisk, EforgeEvent } from '@eforge-build/engine/events';
+import type { AgentRole, CompilePreflightRisk, EforgeEvent } from '@eforge-build/engine/events';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { getCompileStage } from '@eforge-build/engine/pipeline';
 import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { makePipelineCtx, TEST_PIPELINE } from './pipeline-helpers.js';
@@ -80,10 +81,8 @@ function directPlanResponse(id: string): StubResponse {
   };
 }
 
-function compilerResponses(content: string, cfg = config()): StubResponse[] {
-  const tasks = expectedTasks(content, cfg);
-  const outputs = tasks.map(completedOutput);
-  return [...outputs.map(atomSubmission), reduceSubmission(completedReduceOutput(outputs))];
+function compilerHarness(responses: StubResponse[], content: string, cfg = config()): AgentHarness & Pick<StubHarness, 'prompts' | 'calls'> {
+  return new DynamicCompilerHarness(responses, expectedTasks(content, cfg));
 }
 
 function expectedTasks(content: string, cfg = config()): PlanningAtomTask[] {
@@ -119,12 +118,54 @@ function completedReduceOutput(outputs: PlanningAtomOutput[]) {
   };
 }
 
-function atomSubmission(output: PlanningAtomOutput): StubResponse {
-  return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
-}
+class DynamicCompilerHarness implements AgentHarness {
+  private readonly delegate: StubHarness;
+  private readonly taskById: Map<string, PlanningAtomTask>;
+  private readonly outputs: PlanningAtomOutput[];
+  readonly prompts: string[] = [];
+  readonly calls: AgentRunOptions[] = [];
 
-function reduceSubmission(output: ReturnType<typeof completedReduceOutput>): StubResponse {
-  return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
+  constructor(responses: StubResponse[], tasks: PlanningAtomTask[]) {
+    this.delegate = new StubHarness(responses);
+    this.taskById = new Map(tasks.map((task) => [task.atomId, task]));
+    this.outputs = tasks.map(completedOutput);
+  }
+
+  effectiveCustomToolName(name: string): string { return name; }
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    const toolNames = new Set((options.customTools ?? []).map((tool) => tool.name));
+    if (toolNames.has('submit_atom_output') || toolNames.has('submit_reduce_output')) {
+      this.prompts.push(options.prompt);
+      this.calls.push(options);
+      yield* this.runDynamicTool(options, agent, planId, toolNames.has('submit_atom_output') ? 'atom' : 'reduce');
+      return;
+    }
+    for await (const event of this.delegate.run(options, agent, planId)) yield event;
+    this.prompts.splice(0, this.prompts.length, ...this.delegate.prompts);
+    this.calls.splice(0, this.calls.length, ...this.delegate.calls);
+  }
+
+  private async *runDynamicTool(options: AgentRunOptions, agent: AgentRole, planId: string | undefined, kind: 'atom' | 'reduce'): AsyncGenerator<EforgeEvent> {
+    const agentId = crypto.randomUUID();
+    yield { type: 'agent:start', planId, agent, agentId, model: 'stub-model', harness: 'claude-sdk', harnessSource: 'tier', tier: 'stub', tierSource: 'tier', timestamp: new Date().toISOString() };
+    const output = kind === 'atom' ? this.atomOutputForPrompt(options.prompt) : completedReduceOutput(this.outputs);
+    const tool = kind === 'atom' ? 'submit_atom_output' : 'submit_reduce_output';
+    const toolUseId = `submit-${kind === 'atom' ? output.atomId : output.nodeId}`;
+    yield { type: 'agent:tool_use', planId, agentId, agent, tool, toolUseId, input: output };
+    const customTool = (options.customTools ?? []).find((candidate) => candidate.name === tool);
+    const toolOutput = customTool ? await customTool.handler(output) : 'ok';
+    yield { type: 'agent:tool_result', planId, agentId, agent, tool, toolUseId, output: toolOutput };
+    yield { type: 'agent:result', planId, agent, result: { durationMs: 100, durationApiMs: 80, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} } };
+    yield { type: 'agent:stop', planId, agent, agentId, timestamp: new Date().toISOString() };
+  }
+
+  private atomOutputForPrompt(prompt: string): PlanningAtomOutput {
+    const atomId = /"atomId": "([^"]+)"/.exec(prompt)?.[1];
+    const task = atomId ? this.taskById.get(atomId) : undefined;
+    if (!task) throw new Error(`missing dynamic atom task:${atomId ?? 'unknown'}`);
+    return completedOutput(task);
+  }
 }
 
 function hash(value: string): string {
@@ -135,7 +176,7 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
   it('routes overflow-risk bounded-decomposition through the canonical compiler without a broad root planner prompt', async () => {
     const content = source();
     const cfg = config();
-    const harness = new StubHarness([composer(), ...compilerResponses(content, cfg)]);
+    const harness = compilerHarness([composer()], content, cfg);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
       sourceContent: content,
@@ -159,11 +200,10 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
   it('falls back to the bounded compiler when an elevated direct planner run trips the live guard', async () => {
     const content = source();
     const cfg = config();
-    const harness = new StubHarness([
+    const harness = compilerHarness([
       composer(),
       { events: [{ kind: 'usage', usage: { input: 101, total: 101 }, numTurns: 1 }] },
-      ...compilerResponses(content, cfg),
-    ]);
+    ], content, cfg);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
       sourceContent: content,
@@ -180,7 +220,7 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
     expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
-    expect(harness.prompts[1]).toContain(sentinel);
+    expect(harness.prompts.some((prompt) => prompt.includes(sentinel))).toBe(true);
     expect(harness.calls.slice(2).every((call) => call.tools === 'none')).toBe(true);
   });
 

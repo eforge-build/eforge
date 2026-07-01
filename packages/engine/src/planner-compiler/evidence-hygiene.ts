@@ -11,9 +11,11 @@ export interface PlanningEvidenceCandidate {
   reason: string;
 }
 
-const GENERATED_FILE_RE = /(?:^|\/)(?:planner-inspection-handoff\.json|output\.json|orchestration\.ya?ml|graph\.json)$/;
-const PATH_RE = /(?:\.\/[^\s`'"),;:]+|(?:packages|test|web|docs|eforge-plugin|eforge)\/[^\s`'"),;:]+)/g;
-const BROAD_DIRECTORIES = new Set(['.', './', 'packages', 'packages/', 'test', 'test/', 'docs', 'docs/', 'web', 'web/', 'eforge', 'eforge/']);
+// --- eforge:region plan-01-source-localization-foundation ---
+const GENERATED_FILE_RE = /(?:^|\/)(?:planner-inspection-handoff\.json|output\.json|orchestration\.ya?ml|graph\.json)$|(?:^|\/)plans\/[^/]+\/(?:architecture\.md|acceptance-coverage\.md)$/;
+const PATH_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?:\/[A-Za-z0-9._-]+)*\/?/g;
+const BROAD_DIRECTORIES = new Set(['.', './', 'src', 'src/', 'lib', 'lib/', 'packages', 'packages/', 'apps', 'apps/', 'services', 'services/', 'test', 'test/', 'tests', 'tests/', 'docs', 'docs/']);
+// --- eforge:endregion plan-01-source-localization-foundation ---
 
 export function extractEvidenceCandidatesFromText(text: string): PlanningEvidenceCandidate[] {
   return rankEvidenceCandidates([...text.matchAll(PATH_RE)].map((match) => match[0]));
@@ -52,15 +54,18 @@ export function evidenceSlug(value: string): string {
 }
 
 export function isGeneratedPlanningArtifactPath(path: string): boolean {
-  return path.startsWith('eforge/plans/') || path.includes('/.decomposition/') || GENERATED_FILE_RE.test(path);
+  return path.includes('/.decomposition/') || path.startsWith('.decomposition/') || GENERATED_FILE_RE.test(path);
 }
 
 function candidate(raw: string, value: string, kind: PlanningEvidenceKind, actionable: boolean, rank: number, reason: string): PlanningEvidenceCandidate {
   return { raw, value, kind, actionable, rank, reason };
 }
 
+// --- eforge:region plan-01-source-localization-foundation ---
 function isBroadDirectory(value: string): boolean {
-  return BROAD_DIRECTORIES.has(value) || /^packages\/[A-Za-z0-9_-]+\/?$/.test(value) || /^test\/?$/.test(value);
+  if (BROAD_DIRECTORIES.has(value)) return true;
+  const segments = value.replace(/\/$/, '').split('/').filter(Boolean);
+  return !looksLikeFile(value) && segments.length <= 2 && ['packages', 'apps', 'services', 'workspace', 'modules'].includes(segments[0] ?? '');
 }
 
 function looksLikeFile(value: string): boolean {
@@ -68,11 +73,11 @@ function looksLikeFile(value: string): boolean {
 }
 
 function fileRank(value: string): number {
-  if (value.startsWith('packages/')) return 100;
-  if (value.startsWith('test/')) return 90;
-  if (value.startsWith('eforge-plugin/')) return 85;
-  if (value.startsWith('web/')) return 80;
-  if (value.startsWith('docs/')) return 70;
+  const lower = value.toLowerCase();
+  if (/\b(schema|contract|interface|route|command|handler)\b/.test(lower)) return 100;
+  if (/(^|\/)(test|tests|__tests__)\//.test(lower) || /\.(test|spec)\./.test(lower)) return 90;
+  if (/(^|\/)(docs?|guides?)\//.test(lower) || /readme\.md$/.test(lower)) return 80;
+  if (/\b(config|settings)\b|\.(json|ya?ml|toml)$/.test(lower)) return 75;
   return 60;
 }
 
@@ -80,3 +85,4 @@ function directoryRank(value: string): number {
   if (value.split('/').length >= 4) return 50;
   return 30;
 }
+// --- eforge:endregion plan-01-source-localization-foundation ---
