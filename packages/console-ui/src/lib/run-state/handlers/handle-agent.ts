@@ -88,6 +88,9 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     startedAt: event.timestamp,
     endedAt: null,
     durationMs: null,
+    // --- eforge:region plan-02-live-efficiency-surfaces ---
+    durationApiMs: null,
+    // --- eforge:endregion plan-02-live-efficiency-surfaces ---
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,
@@ -243,6 +246,9 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   const updatedThread: AgentThread = {
     ...matchedThread,
     durationMs: result.durationMs,
+    // --- eforge:region plan-02-live-efficiency-surfaces ---
+    durationApiMs: result.durationApiMs ?? null,
+    // --- eforge:endregion plan-02-live-efficiency-surfaces ---
     inputTokens: result.usage?.input ?? null,
     outputTokens: result.usage?.output ?? null,
     totalTokens: result.usage?.total ?? null,

@@ -3,7 +3,7 @@ import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, Message
 import { formatNumber } from '@/lib/run-state/format';
 import { cn } from '@/lib/utils';
 import { AnimatedCounter } from './animated-counter';
-import type { SessionProfile } from '@/lib/run-state';
+import type { RunEfficiencyMetrics, SessionProfile } from '@/lib/run-state';
 import { ProfileBadge } from '@/components/profile/profile-badge';
 
 interface SummaryCardsProps {
@@ -23,6 +23,9 @@ interface SummaryCardsProps {
   isComplete?: boolean;
   isFailed?: boolean;
   profile?: SessionProfile | null;
+  // --- eforge:region plan-02-live-efficiency-surfaces ---
+  efficiency?: RunEfficiencyMetrics;
+  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 }
 
 function StatGroup({ children }: { children: React.ReactNode }) {
@@ -49,6 +52,9 @@ export function SummaryCards({
   isComplete,
   isFailed,
   profile,
+  // --- eforge:region plan-02-live-efficiency-surfaces ---
+  efficiency,
+  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 }: SummaryCardsProps) {
   const statusAccent = isFailed ? 'red' : isComplete ? 'green' : 'blue';
   const statusIcon = isFailed
@@ -60,6 +66,27 @@ export function SummaryCards({
 
   const formatTokens = useCallback((n: number) => formatNumber(n), []);
   const formatCost = useCallback((n: number) => `$${(n / 10000).toFixed(4)}`, []);
+
+  // --- eforge:region plan-02-live-efficiency-surfaces ---
+  const formatEfficiency = useCallback((label: string, value: number | null) => {
+    if (value == null) return 'unavailable';
+    switch (label) {
+      case 'output generation rate': return `${Math.round(value)} out tok/s`;
+      case 'token traffic': return `${Math.round(value)} tok/min`;
+      case 'cost burn': return `$${value.toFixed(2)}/min`;
+      case 'output tokens / $': return `${Math.round(value)} out tok/$`;
+      case 'cache context': return `${Math.round(value)}% cache`;
+      default: return value.toLocaleString();
+    }
+  }, []);
+  const efficiencyMetrics = efficiency ? [
+    efficiency.outputGenerationRate,
+    efficiency.tokenTraffic,
+    efficiency.costBurn,
+    efficiency.outputTokensPerDollar,
+    efficiency.cacheContext,
+  ] : [];
+  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -137,6 +164,26 @@ export function SummaryCards({
           </StatGroup>
         </>
       )}
+      {/* --- eforge:region plan-02-live-efficiency-surfaces --- */}
+      {efficiencyMetrics.map((metric) => (
+        <StatGroup key={metric.label}>
+          <Separator />
+          <span
+            className={cn(
+              'rounded-full border px-1.5 py-0.5 text-10px',
+              metric.availability === 'partial' && 'border-yellow/40 text-yellow',
+              metric.availability === 'unavailable' && 'border-border text-text-dim',
+              metric.availability === 'available' && 'border-border/80 text-text-bright',
+            )}
+            title={`${metric.formula}. ${metric.detail}${metric.sampleCounts ? ` Samples: ${metric.sampleCounts.included}/${metric.sampleCounts.total}.` : ''}`}
+          >
+            <span className="text-text-dim">{metric.label}: </span>
+            {formatEfficiency(metric.label, metric.value)}
+          </span>
+        </StatGroup>
+      ))}
+      {/* --- eforge:endregion plan-02-live-efficiency-surfaces --- */}
+
       {filesChanged > 0 && (
         <>
           <Separator />

@@ -31,6 +31,16 @@ describe('efficiency metric formulas', () => {
     expect(computeCachePercentage(250, 1000)).toBe(25);
   });
 
+  it('returns null instead of coercing missing or invalid numerators to zero', () => {
+    for (const numerator of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(computeOutputGenerationRate(numerator, 1000)).toBeNull();
+      expect(computeTotalTokenTrafficRate(numerator, 1000)).toBeNull();
+      expect(computeCostBurnRate(numerator, 60_000)).toBeNull();
+      expect(computeOutputTokensPerDollar(numerator, 1)).toBeNull();
+      expect(computeCachePercentage(numerator, 100)).toBeNull();
+    }
+  });
+
   it('preserves numeric zero when the numerator is available', () => {
     expect(computeOutputGenerationRate(0, 1000)).toBe(0);
     expect(computeTotalTokenTrafficRate(0, 1000)).toBe(0);

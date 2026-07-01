@@ -43,6 +43,10 @@ export type {
 
 // Selectors
 export { getSummaryStats } from './selectors/summary-stats';
+// --- eforge:region plan-02-live-efficiency-surfaces ---
+export { selectRunEfficiencyMetrics } from './selectors/efficiency';
+export type { EfficiencyAvailability, EfficiencyMetric, EfficiencySampleCounts, RunEfficiencyMetrics } from './selectors/efficiency';
+// --- eforge:endregion plan-02-live-efficiency-surfaces ---
 export {
   selectPlanStatusCounts,
   selectCurrentStageForPlan,

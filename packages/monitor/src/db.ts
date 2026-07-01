@@ -773,8 +773,7 @@ export function openDatabase(dbPath: string): MonitorDB {
         )
         .get(...runIds) as unknown as { count: number };
 
-      const hasTokens =
-        usageRow.totalInput !== null || usageRow.totalOutput !== null || usageRow.totalTokens !== null;
+      const hasTokens = usageRow.totalInput !== null || usageRow.totalOutput !== null || usageRow.totalTokens !== null;
 
       return {
         lastUsedAt: lastUsedRow.lastUsedAt ?? undefined,
@@ -793,20 +792,15 @@ export function openDatabase(dbPath: string): MonitorDB {
       };
     },
     getDailySpend(windowDays) {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
       return stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
     },
     getModelSpend(windowDays) {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
       return stmts.getModelSpend.all(start.toISOString()) as unknown as ModelSpend[];
     },
 
-    getEfficiencyAnalytics(windowDays) {
-      const window = Math.min(90, Math.max(1, Math.floor(windowDays)));
+    getEfficiencyAnalytics(windowDays) { const window = Math.min(90, Math.max(1, Math.floor(windowDays)));
       const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1));
       const startedAt = start.toISOString();
       const runs = (stmts.getEfficiencyRuns.all(startedAt) as unknown as RunRow[]).map(rowToRunInfo);
@@ -819,9 +813,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       return aggregateEfficiencyAnalytics({ runs, events, profileEvents: profileRows.map(rowToEventRecord), profileRunSessionIds, sessionMetadata: rowsToSessionMetadata(metadataRows), windowDays: window, startedAt, endedAt: new Date().toISOString() });
     },
 
-    close() {
-      db.close();
-    },
+    close() { db.close(); },
   };
 }
 // --- eforge:endregion monitor-db-api ---
