@@ -1,0 +1,85 @@
+name: planner-compiler-map-to-reduce-pipelining
+description: Implement planner compiler map-to-reduce pipelining with upfront
+  reduce-tree planning, integrated atom/reducer scheduling, fail-fast handling,
+  and Console/run-state level terminology updates.
+base_branch: eforge/per-invocation-runtime-choice-routing
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- planning-map-reduce-pipeline-runner.test.ts
+    planning-reduce-runner.test.ts planning-compiler-runner.test.ts
+    planning-shared-brief.test.ts planning-map-reduce-events.test.ts
+    handle-map-reduce.test.ts
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-engine-pipelined-scheduler
+    name: Engine Pipelined Map/Reduce Scheduler
+    depends_on: []
+    branch: planner-compiler-map-to-reduce-pipelining/plan-01-engine-pipelined-scheduler
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Concurrent atom/reducer scheduling changes require careful
+          preservation of existing planner compiler result shapes, fail-fast
+          behavior, and prompt-budget validation.
+      tester:
+        effort: high
+        rationale: Scheduler behavior depends on event order, cancellation, and
+          shared-brief gating, which need focused tests with controllable
+          harness timing.
+      reviewer:
+        effort: high
+        rationale: Review must check concurrency edge cases and compatibility with
+          existing map/reduce contracts.
+  - id: plan-02-console-level-terminology
+    name: Console Reduce Level Terminology
+    depends_on: []
+    branch: planner-compiler-map-to-reduce-pipelining/plan-02-console-level-terminology
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - validate
+      - test-write
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a cohesive but non-trivial scheduler/refactor effort
+    touching planner-compiler orchestration, reducer planning, event timing,
+    Console terminology, and focused tests, so excursion fits better than
+    expedition. A planner plus plan-review-cycle should catch dependency and
+    scope issues without delegated module planning. The build includes
+    implementation, the required validation provider gate, test generation,
+    test-cycle for the explicit scheduler/event/failure test requirements, and a
+    review-cycle. Code and test perspectives target the main risks: scheduler
+    correctness, fail-fast behavior, event ordering, and regression coverage."
