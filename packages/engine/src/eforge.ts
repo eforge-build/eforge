@@ -74,7 +74,7 @@ import type { CompletionRegistry } from './artifacts/completions.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
-import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
+import { stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
 import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
@@ -513,40 +513,59 @@ export class EforgeEngine {
 
     yield { timestamp: new Date().toISOString(), type: 'enqueue:start', source };
 
-    // Run formatter agent to normalize content
+    // First ask the LLM for explicit ACs in the submitted source. If there are
+    // none, format rough input and infer ACs from that normalized context.
     let formattedBody = sourceContent;
     try {
-      const formatterConfig = resolveAgentConfig('formatter', this.config);
-      const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, phase: 'standalone', harness: this.agentRuntimes.forRole('formatter') });
-      let result = await gen.next();
-      while (!result.done) {
-        yield result.value;
-        result = await gen.next();
-      }
-      if (result.value?.body) {
-        formattedBody = result.value.body;
-      }
-
-      // Infer title from formatted content (or from name override)
-      const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
-
       const extractorConfig = resolveAgentConfig('prd-validator', this.config);
-      const extractorGen = runAcceptanceCriteriaExtractor({
+      const sourceExtractorGen = runAcceptanceCriteriaExtractor({
         ...extractorConfig,
         cwd,
-        prdContent: formattedBody,
+        prdContent: sourceContent,
         verbose,
         abortController,
         phase: 'standalone',
         harness: this.agentRuntimes.forRole('prd-validator'),
-        allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+        allowNoAcceptanceCriteria: true,
+        explicitOnly: true,
       });
-      let extractorResult = await extractorGen.next();
-      while (!extractorResult.done) {
-        yield extractorResult.value;
-        extractorResult = await extractorGen.next();
+      let sourceExtractorResult = await sourceExtractorGen.next();
+      while (!sourceExtractorResult.done) {
+        yield sourceExtractorResult.value;
+        sourceExtractorResult = await sourceExtractorGen.next();
       }
-      const acceptanceCriteriaInventory = extractorResult.value;
+      let acceptanceCriteriaInventory: CanonicalAcceptanceCriteriaInventory | undefined = sourceExtractorResult.value;
+
+      if (acceptanceCriteriaInventory.criteria.length === 0) {
+        const formatterConfig = resolveAgentConfig('formatter', this.config);
+        const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, phase: 'standalone', harness: this.agentRuntimes.forRole('formatter') });
+        let result = await gen.next();
+        while (!result.done) {
+          yield result.value;
+          result = await gen.next();
+        }
+        if (result.value?.body) formattedBody = result.value.body;
+
+        const formattedExtractorGen = runAcceptanceCriteriaExtractor({
+          ...extractorConfig,
+          cwd,
+          prdContent: formattedBody,
+          verbose,
+          abortController,
+          phase: 'standalone',
+          harness: this.agentRuntimes.forRole('prd-validator'),
+          allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+        });
+        let formattedExtractorResult = await formattedExtractorGen.next();
+        while (!formattedExtractorResult.done) {
+          yield formattedExtractorResult.value;
+          formattedExtractorResult = await formattedExtractorGen.next();
+        }
+        acceptanceCriteriaInventory = formattedExtractorResult.value;
+      }
+
+      // Infer title from formatted content (or from name override)
+      const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
 
       // When an explicit afterQueueId is provided, classify the upstream and
       // skip dependency-detector output. Otherwise, run dependency detection.

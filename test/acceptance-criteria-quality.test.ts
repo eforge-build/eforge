@@ -375,7 +375,8 @@ function makePrdBody(acLines: string[]): string {
 
 describe('EforgeEngine.enqueue — canonical extractor quality gate', () => {
   async function makeEngine(tmpDir: string, formattedBody: string, extractorOutput: string): Promise<EforgeEngine> {
-    const harness = new StubHarness([{ text: formattedBody }, { text: extractorOutput }]);
+    const noExplicitCriteria = JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] });
+    const harness = new StubHarness([{ text: noExplicitCriteria }, { text: formattedBody }, { text: extractorOutput }]);
     return EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,

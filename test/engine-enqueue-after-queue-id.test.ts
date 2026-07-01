@@ -67,6 +67,10 @@ function validFormattedPrd(): string {
   ].join('\n');
 }
 
+function emptyExplicitExtractorOutput(): string {
+  return JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] });
+}
+
 function validExtractorOutput(): string {
   return JSON.stringify({
     version: 1,
@@ -90,7 +94,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     await setupProject(tmpDir);
     await writeActiveQueuePrd(tmpDir, 'upstream-build');
 
-    const harness = new StubHarness([{ text: validFormattedPrd() }, { text: validExtractorOutput() }]);
+    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -114,7 +118,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     await writeActiveQueuePrd(tmpDir, 'explicit-upstream');
     await writeActiveQueuePrd(tmpDir, 'other-queued-build');
 
-    const harness = new StubHarness([{ text: validFormattedPrd() }, { text: validExtractorOutput() }]);
+    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -126,7 +130,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       events.push(event);
     }
 
-    expect(harness.calls).toHaveLength(2);
+    expect(harness.calls).toHaveLength(3);
     expect(events.some((event) => event.type === 'enqueue:complete')).toBe(true);
     const complete = findEnqueueComplete(events);
     expect(complete).toBeDefined();
@@ -156,7 +160,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       'eforge:end-acceptance-criteria-inventory -->',
     ].join('\n'), 'utf-8');
 
-    const harness = new StubHarness([{ text: validFormattedPrd() }, { text: validExtractorOutput() }, { text: '[]' }]);
+    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }, { text: '[]' }]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -169,9 +173,9 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     }
 
     expect(events.some((event) => event.type === 'enqueue:complete')).toBe(true);
-    expect(harness.calls).toHaveLength(3);
-    expect(harness.prompts[2]).toContain('Visible queued PRD prose.');
-    expect(harness.prompts[2]).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(harness.calls).toHaveLength(4);
+    expect(harness.prompts[3]).toContain('Visible queued PRD prose.');
+    expect(harness.prompts[3]).not.toContain('eforge:acceptance-criteria-inventory');
   });
 
   it('strips hidden inventory blocks from staleness assessor PRD content', async () => {

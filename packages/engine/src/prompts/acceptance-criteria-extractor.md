@@ -21,6 +21,9 @@ JSON shape:
 
 Rules:
 
+- {{extractionModeInstructions}}
+- Explicit criteria can appear in any structure or wording; do not rely on a specific Markdown heading shape.
+- Do not treat `Scope`, `Approach`, `Code Impact`, `Design Decisions`, assumptions, validation plans, implementation notes, file/path inventories, exclusions, documentation notes, or other supporting context as explicit criteria unless the author clearly marks the item as a done/acceptance requirement.
 - Extract only true acceptance criteria: observable outcomes, command outcomes, API/file/event behavior, or validation requirements.
 - Keep criteria flat. Do not emit grouping labels such as "Tests cover:".
 - Do not emit bare command fragments. Convert only when the PRD states the expected outcome, for example "`pnpm type-check` exits 0".

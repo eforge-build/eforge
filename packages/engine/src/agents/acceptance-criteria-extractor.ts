@@ -13,6 +13,8 @@ export interface AcceptanceCriteriaExtractorOptions extends SdkPassthroughConfig
   abortController?: AbortController;
   maxTurns?: number;
   allowNoAcceptanceCriteria?: boolean;
+  /** When true, extract only author-explicit acceptance/done criteria and do not infer from context. */
+  explicitOnly?: boolean;
 }
 
 export async function* runAcceptanceCriteriaExtractor(
@@ -21,6 +23,9 @@ export async function* runAcceptanceCriteriaExtractor(
   const prompt = await loadPrompt('acceptance-criteria-extractor', {
     prd: options.prdContent,
     minConfidence: String(AC_EXTRACTION_MIN_CONFIDENCE),
+    extractionModeInstructions: options.explicitOnly
+      ? 'Extract only acceptance/done criteria that the author explicitly identifies as acceptance criteria, done criteria, completion criteria, or required validation. Do not infer criteria from scope, implementation notes, file lists, or general context. If no explicit criteria are present, return an empty criteria array.'
+      : 'First extract acceptance/done criteria that the author explicitly identifies. If none are explicit, determine a minimal set of concrete acceptance criteria from the PRD context.',
   }, options.promptAppend);
 
   let fullText = '';
