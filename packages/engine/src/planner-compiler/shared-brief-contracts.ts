@@ -6,12 +6,10 @@ import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './s
 export type SharedPlanningBriefSectionKind = 'evidence' | 'interface' | 'dependency' | 'avoidance';
 
 export interface SharedPlanningBriefLimits { maxTotalBriefBytes: number; maxSectionBytes: number; maxSectionsPerAtom: number; maxSharedFindingsPerAtom: number; maxSharedFindingBytes: number }
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string }
 export interface PlanningEvidenceOwnership extends PlanningEvidenceLocalizationMetadata { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
 export interface PlanningAtomBriefEvidenceSummary extends PlanningEvidenceLocalizationMetadata { path: string; shared: boolean; primaryAtomId?: string; consumerAtomIds: string[] }
 export interface PlanningSharedEvidenceRef extends PlanningEvidenceLocalizationMetadata { path: string; primaryAtomId: string; sectionId: string }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 export interface PlanningSharedInterfaceRef { key: string; primaryAtomId: string; sectionId: string }
 export interface PlanningAtomBriefSection { sectionId: string; kind: SharedPlanningBriefSectionKind; primaryAtomId?: string; content: string; byteLength: number }
 export interface PlanningAtomBrief { atomId: string; ownedEvidencePaths: string[]; localEvidencePaths: string[]; ownedInterfaceKeys: string[]; sharedEvidenceRefs: PlanningSharedEvidenceRef[]; sharedInterfaceRefs: PlanningSharedInterfaceRef[]; prerequisiteAtomIds: string[]; sectionIds: string[]; sections: PlanningAtomBriefSection[]; evidenceSummaries?: PlanningAtomBriefEvidenceSummary[]; byteLength: number }

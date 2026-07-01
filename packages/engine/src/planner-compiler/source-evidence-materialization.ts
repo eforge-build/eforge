@@ -72,7 +72,6 @@ function baseRecord(ownership: PlanningEvidenceOwnership, status: PlanningSource
   return { path: ownership.path, status, referencedByAtomIds: [...ownership.referencedByAtomIds], ...(ownership.primaryAtomId ? { primaryAtomId: ownership.primaryAtomId } : {}), shared: ownership.shared, deliveredToAtomIds: [], ...localizationMetadata(ownership), ...extra };
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 function localizationMetadata(ownership: PlanningEvidenceOwnership): Partial<PlanningSourceEvidenceRecord> {
   return {
     ...(ownership.localizationNeedIds ? { localizationNeedIds: [...ownership.localizationNeedIds] } : {}),
@@ -94,7 +93,6 @@ function evidenceBudgetNotes(byteLength: number, excerptByteLength: number, limi
 function mapToSortedRecord(map: Map<string, number>): Record<string, number> {
   return Object.fromEntries([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function deliveryAtoms(ownership: PlanningEvidenceOwnership): string[] {
   return ownership.shared ? (ownership.primaryAtomId ? [ownership.primaryAtomId] : []) : [...ownership.referencedByAtomIds].sort();

@@ -7,11 +7,9 @@ import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './s
 export type PlanningSourceEvidenceStatus = 'materialized' | 'missing' | 'non-actionable' | 'directory' | 'too-large' | 'read-error' | 'budget-exceeded';
 
 export interface PlanningSourceEvidenceLimits { maxFilesTotal: number; maxFilesPerAtom: number; maxBytesTotal: number; maxBytesPerFile: number; maxExcerptBytesPerFile: number; maxEvidenceBytesPerAtom: number }
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 export interface PlanningSourceEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; budgetNotes?: string[]; accountedByteLength?: number }
 export interface PlanningSourceEvidenceRecord extends PlanningSourceEvidenceLocalizationMetadata { path: string; status: PlanningSourceEvidenceStatus; referencedByAtomIds: string[]; primaryAtomId?: string; shared: boolean; deliveredToAtomIds: string[]; byteLength?: number; excerptByteLength?: number; contentExcerpt?: string; reason?: string; error?: string }
 export interface PlanningSourceEvidenceBundle { graphId: string; sourceHash: string; records: PlanningSourceEvidenceRecord[]; byAtomId: Record<string, string[]>; bytesByAtomId?: Record<string, number>; filesByAtomId?: Record<string, number>; totalBytes: number; limits: PlanningSourceEvidenceLimits; validationErrors: string[] }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 export interface ValidatePlanningSourceEvidenceBundleInput { graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; bundle: PlanningSourceEvidenceBundle; limits?: PlanningSourceEvidenceLimits }
 export type PlanningSourceEvidenceValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
 
@@ -36,11 +34,9 @@ export function sourceEvidenceRecordsForAtom(bundle: PlanningSourceEvidenceBundl
   return bundle.records.filter((record) => paths.has(record.path)).map((record) => recordForAtom(record, atomId));
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 export function sourceEvidenceByteLengthForAtom(bundle: PlanningSourceEvidenceBundle | undefined, atomId: string): number {
   return bundle?.bytesByAtomId?.[atomId] ?? 0;
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function validateRecords(records: PlanningSourceEvidenceRecord[], ownership: Map<string, SharedPlanningBrief['evidenceOwnership'][number]>, atomIds: Set<string>, limits: PlanningSourceEvidenceLimits, errors: string[]): void {
   validateUnique('source evidence record', records.map((record) => record.path), errors);
@@ -74,7 +70,6 @@ function recordForAtom(record: PlanningSourceEvidenceRecord, atomId: string): Pl
   return cloneRecord(withoutExcerpt);
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 function cloneRecord(record: PlanningSourceEvidenceRecord): PlanningSourceEvidenceRecord {
   return {
     ...record,
@@ -84,7 +79,6 @@ function cloneRecord(record: PlanningSourceEvidenceRecord): PlanningSourceEviden
     ...(record.budgetNotes ? { budgetNotes: [...record.budgetNotes] } : {}),
   };
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function validateUnique(kind: string, ids: string[], errors: string[]): void {
   const seen = new Set<string>();

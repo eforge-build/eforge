@@ -31,7 +31,6 @@ function deriveEvidenceOwnership(graph: PlanningAtomGraph, localization?: Source
   return [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, item]) => ownershipForPath(path, [...item.atomIds], graph, item));
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus }
 
 function addLocalizedOwnership(record: SourceLocalizationRecord, graph: PlanningAtomGraph, byPath: Map<string, OwnershipAccumulator>): void {
@@ -102,7 +101,6 @@ function bestStatus(a: SourceLocalizationStatus | undefined, b: SourceLocalizati
   const rank: Record<SourceLocalizationStatus, number> = { resolved: 5, partial: 4, 'budget-exceeded': 3, unresolved: 2, ignored: 1 };
   return !a || rank[b] > rank[a] ? b : a;
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function choosePrimaryAtom(atomIds: string[], graph: PlanningAtomGraph): PlanningAtom {
   const atoms = atomIds.map((atomId) => requireAtom(graph, atomId));
@@ -181,7 +179,6 @@ function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceO
   }).sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 function evidenceRefMetadata(entry: PlanningEvidenceOwnership): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale'> {
   return {
     ...(entry.localizationNeedIds ? { localizationNeedIds: [...entry.localizationNeedIds] } : {}),
@@ -201,7 +198,6 @@ function evidenceSummary(entry: PlanningEvidenceOwnership): PlanningAtomBriefEvi
     ...evidenceRefMetadata(entry),
   };
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function sectionIdsForAtom(atomId: string, sections: SharedPlanningBriefSection[], paths: string[], sectionByEvidencePath: Map<string, string>): string[] {
   const evidenceSections = paths.flatMap((path) => sectionByEvidencePath.get(path) ? [sectionByEvidencePath.get(path)!] : []);

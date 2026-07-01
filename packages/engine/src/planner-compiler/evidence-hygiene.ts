@@ -11,11 +11,9 @@ export interface PlanningEvidenceCandidate {
   reason: string;
 }
 
-// --- eforge:region plan-01-source-localization-foundation ---
 const GENERATED_FILE_RE = /(?:^|\/)(?:planner-inspection-handoff\.json|output\.json|orchestration\.ya?ml|graph\.json)$|(?:^|\/)plans\/[^/]+\/(?:architecture\.md|acceptance-coverage\.md)$/;
 const PATH_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?:\/[A-Za-z0-9._-]+)*\/?/g;
 const BROAD_DIRECTORIES = new Set(['.', './', 'src', 'src/', 'lib', 'lib/', 'packages', 'packages/', 'apps', 'apps/', 'services', 'services/', 'test', 'test/', 'tests', 'tests/', 'docs', 'docs/']);
-// --- eforge:endregion plan-01-source-localization-foundation ---
 
 export function extractEvidenceCandidatesFromText(text: string): PlanningEvidenceCandidate[] {
   return rankEvidenceCandidates([...text.matchAll(PATH_RE)].map((match) => match[0]));
@@ -61,7 +59,6 @@ function candidate(raw: string, value: string, kind: PlanningEvidenceKind, actio
   return { raw, value, kind, actionable, rank, reason };
 }
 
-// --- eforge:region plan-01-source-localization-foundation ---
 function isBroadDirectory(value: string): boolean {
   if (BROAD_DIRECTORIES.has(value)) return true;
   const segments = value.replace(/\/$/, '').split('/').filter(Boolean);
@@ -85,4 +82,3 @@ function directoryRank(value: string): number {
   if (value.split('/').length >= 4) return 50;
   return 30;
 }
-// --- eforge:endregion plan-01-source-localization-foundation ---

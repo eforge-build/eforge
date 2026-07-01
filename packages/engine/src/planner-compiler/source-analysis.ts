@@ -4,7 +4,6 @@ import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type Expecte
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
 export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }
 
-// --- eforge:region plan-01-source-localization-foundation ---
 const GENERIC_SURFACE_TERMS = ['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'api'];
 const PATH_LIKE_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g;
 const INTERFACE_PATTERNS: Array<[string, RegExp]> = [
@@ -15,7 +14,6 @@ const INTERFACE_PATTERNS: Array<[string, RegExp]> = [
   ['ui-surface', /\b(?:ui|component|view|page|screen)s?\b/i],
   ['extension-surface', /\b(?:plugin|extension|contribution|hook)s?\b/i],
 ];
-// --- eforge:endregion plan-01-source-localization-foundation ---
 
 export function utf8ByteLength(value: string): number { return new TextEncoder().encode(value).length; }
 export function hashText(value: string): string { return createHash('sha256').update(value).digest('hex'); }
@@ -72,7 +70,6 @@ function locateRequirement(criterion: ExpectedAcceptanceCriterion, lines: Markdo
   };
 }
 
-// --- eforge:region plan-01-source-localization-foundation ---
 export function inferSubsystemHints(value: string): string[] {
   const lower = value.toLowerCase();
   const hints = new Set<string>();
@@ -104,4 +101,3 @@ function meaningfulPathSegments(segments: string[]): string[] {
     .map((segment) => segment.replace(/\.[A-Za-z0-9]+$/, ''))
     .filter((segment) => segment.length > 1 && !genericContainers.has(segment) && !/^index|main$/.test(segment));
 }
-// --- eforge:endregion plan-01-source-localization-foundation ---

@@ -20,9 +20,7 @@ export const PlanningSharedFindingSchema = Type.Object({ findingId: boundedStrin
 export const PlanningAtomOutputSchema = Type.Object({ atomId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('skipped'), Type.Literal('failed')]), aspectUpdates: Type.Array(PlanningAspectCoverageUpdateSchema, { maxItems: 128 }), reduceDigest: Type.Optional(PlanningReduceDigestSchema), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), sharedFindings: Type.Optional(Type.Array(PlanningSharedFindingSchema, { maxItems: 8 })), discoveredEvidencePaths: Type.Optional(Type.Array(boundedString(500), { maxItems: 64 })), compactHandoff: Type.Optional(boundedString(8_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
 export type PlanningAtomOutputSubmission = Static<typeof PlanningAtomOutputSchema>;
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 export interface PlanningAtomLocalizedEvidenceSummary { path: string; status: PlanningSourceEvidenceStatus; localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; excerptByteLength?: number; byteLength?: number; delivered: boolean; budgetNotes?: string[] }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; reduceDigestPromptBudgetBytes?: number; sharedBrief?: PlanningAtomBrief; localizedEvidence?: PlanningAtomLocalizedEvidenceSummary[] }
 export interface PlanningAtomPlanFragment { fragmentId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnFragmentIds?: string[] }
 export interface PlanningAtomModuleCandidate { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; validationExpectation: string; dependsOnModuleIds?: string[] }
@@ -167,7 +165,6 @@ function briefForAtom(sharedBrief: SharedPlanningBrief | undefined, atomId: stri
   return atomBrief ? { ...atomBrief, ownedEvidencePaths: [...atomBrief.ownedEvidencePaths], localEvidencePaths: [...atomBrief.localEvidencePaths], ownedInterfaceKeys: [...atomBrief.ownedInterfaceKeys], sharedEvidenceRefs: atomBrief.sharedEvidenceRefs.map((ref) => ({ ...ref, ...(ref.localizationNeedIds ? { localizationNeedIds: [...ref.localizationNeedIds] } : {}) })), sharedInterfaceRefs: atomBrief.sharedInterfaceRefs.map((ref) => ({ ...ref })), prerequisiteAtomIds: [...atomBrief.prerequisiteAtomIds], sectionIds: [...atomBrief.sectionIds], sections: atomBrief.sections.map((section) => ({ ...section })), ...(atomBrief.evidenceSummaries ? { evidenceSummaries: atomBrief.evidenceSummaries.map((summary) => ({ ...summary, consumerAtomIds: [...summary.consumerAtomIds], ...(summary.localizationNeedIds ? { localizationNeedIds: [...summary.localizationNeedIds] } : {}) })) } : {}) } : undefined;
 }
 
-// --- eforge:region plan-02-localized-evidence-pipeline ---
 function localizedEvidenceForAtom(bundle: PlanningSourceEvidenceBundle | undefined, atomId: string): PlanningAtomLocalizedEvidenceSummary[] {
   return sourceEvidenceRecordsForAtom(bundle, atomId).map((record) => localizedEvidenceSummary(record, atomId)).sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -187,7 +184,6 @@ function localizedEvidenceSummary(record: PlanningSourceEvidenceRecord, atomId: 
     ...(record.budgetNotes ? { budgetNotes: [...record.budgetNotes] } : {}),
   };
 }
-// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function duplicateAspectUpdateErrors(outputs: PlanningAtomOutput[]): string[] {
   const byAspect = new Map<string, string[]>();

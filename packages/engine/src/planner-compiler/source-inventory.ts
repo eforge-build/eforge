@@ -8,11 +8,9 @@ import type { SourceLocalizationNeedKind } from './source-localization-contracts
 export interface SourceInventoryInput { content: string; hash?: string; path?: string; preflightRisk?: CompilePreflightRisk; pipelineComposition?: PipelineComposition }
 export interface SourceInventoryHeading { line: number; depth: number; title: string; path: string[]; byteStart: number; byteEnd: number }
 export interface SourceInventoryCriterion { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; evidencePaths: string[]; dependencyHints: string[]; evidence: string }
-// --- eforge:region plan-01-source-localization-foundation ---
 export interface SourceInventoryGlobalNeed { id: string; kind: SourceLocalizationNeedKind; query: string; criterionIds: string[]; subsystemHints: string[]; interfaceKeys: string[]; reason: string }
 export interface SourceInventorySummary { sourceHash: string; sourcePath?: string; byteLength: number; lineCount: number; criterionCount: number; headingCount: number; subsystemHints: string[]; interfaceKeys: string[]; actionableEvidenceCount: number; globalLocalizationNeedCount: number }
 export interface SourceInventory { sourceHash: string; sourcePath?: string; byteLength: number; lineCount: number; headings: SourceInventoryHeading[]; criteria: SourceInventoryCriterion[]; evidenceCandidates: PlanningEvidenceCandidate[]; subsystemHints: string[]; interfaceKeys: string[]; globalLocalizationNeeds: SourceInventoryGlobalNeed[]; summary: SourceInventorySummary }
-// --- eforge:endregion plan-01-source-localization-foundation ---
 
 export function deriveSourceInventory(input: SourceInventoryInput): SourceInventory {
   const sourceHash = input.hash ?? hashText(input.content);
@@ -111,7 +109,6 @@ function inferDependencyHints(value: string): string[] {
   return [...hints].sort();
 }
 
-// --- eforge:region plan-01-source-localization-foundation ---
 function deriveGlobalLocalizationNeeds(criteria: SourceInventoryCriterion[], candidates: PlanningEvidenceCandidate[], subsystemHints: string[], interfaceKeys: string[]): SourceInventoryGlobalNeed[] {
   const needs: SourceInventoryGlobalNeed[] = [];
   for (const candidate of candidates.filter((item) => item.actionable)) needs.push(globalNeed(`evidence-${stableSlug(candidate.value)}`, candidate.kind === 'directory' ? 'directory' : 'literal-path', candidate.value, criteriaForEvidence(criteria, candidate.value), inferSubsystemHints(candidate.value), inferInterfaceKeys(candidate.value), candidate.reason));
@@ -128,4 +125,3 @@ function criteriaForEvidence(criteria: SourceInventoryCriterion[], value: string
 function criteriaForInterface(criteria: SourceInventoryCriterion[], key: string): string[] { return criteria.filter((criterion) => criterion.interfaceKeys.includes(key)).map((criterion) => criterion.id); }
 function criteriaForSubsystem(criteria: SourceInventoryCriterion[], key: string): string[] { return criteria.filter((criterion) => criterion.subsystemHints.includes(key)).map((criterion) => criterion.id); }
 function dedupeGlobalNeeds(needs: SourceInventoryGlobalNeed[]): SourceInventoryGlobalNeed[] { return [...new Map(needs.map((item) => [item.id, item])).values()]; }
-// --- eforge:endregion plan-01-source-localization-foundation ---
