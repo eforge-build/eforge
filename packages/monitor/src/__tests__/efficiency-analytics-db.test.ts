@@ -117,8 +117,8 @@ describe('MonitorDB.getEfficiencyAnalytics', () => {
 
     const summary = db.getEfficiencyAnalytics(7);
     expect(summary.models).toEqual(expect.arrayContaining([
-      expect.objectContaining({ model: 'a', totalCostUsd: 1, outputTokens: 50, speedExcludedSampleCount: 1, outputTokensPerSecondP50: null }),
-      expect.objectContaining({ model: 'b', totalCostUsd: 2, outputTokens: 100, speedExcludedSampleCount: 1, outputTokensPerSecondP95: null }),
+      expect.objectContaining({ model: 'a', totalCostUsd: 1, outputTokens: 50, speedExcludedSampleCount: 1, costPerMinuteUsd: null, outputTokensPerSecondP50: null }),
+      expect.objectContaining({ model: 'b', totalCostUsd: 2, outputTokens: 100, speedExcludedSampleCount: 1, costPerMinuteUsd: null, outputTokensPerSecondP95: null }),
     ]));
   });
 
@@ -133,6 +133,18 @@ describe('MonitorDB.getEfficiencyAnalytics', () => {
     const summary = db.getEfficiencyAnalytics(7);
     expect(summary.profiles.map((row) => row.profileName)).toEqual(['first']);
     expect(summary.missingProfileAttributionCount).toBe(1);
+  });
+
+  it('uses the first session profile from an older same-session run', () => {
+    insertRun(db, 'run-old-profile', 'session-shared', 'completed', tsDaysAgo(30));
+    insertProfile(db, 'run-old-profile', 'older-first', tsDaysAgo(30));
+    insertRun(db, 'run-recent-work', 'session-shared');
+    insertProfile(db, 'run-recent-work', 'recent-second');
+    insertResult(db, 'run-recent-work', result({ cost: 1, output: 10, input: 10 }));
+
+    const summary = db.getEfficiencyAnalytics(7);
+    expect(summary.profiles).toEqual([expect.objectContaining({ profileName: 'older-first', totalCostUsd: 1 })]);
+    expect(summary.runCount).toBe(1);
   });
 
   it('rolls up one speed sample per session before profile percentiles', () => {

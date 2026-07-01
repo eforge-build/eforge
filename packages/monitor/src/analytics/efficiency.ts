@@ -19,6 +19,8 @@ import type { EventRecord } from '../db.js';
 interface AggregateEfficiencyOptions {
   runs: RunInfo[];
   events: EventRecord[];
+  profileEvents?: EventRecord[];
+  profileRunSessionIds?: Record<string, string>;
   sessionMetadata: Record<string, SessionMetadata>;
   windowDays: number;
   startedAt: string;
@@ -42,6 +44,9 @@ interface RollupAccumulator {
   cacheReadSampleCount: number;
   costUsd: number;
   costSampleCount: number;
+  costDurationUsd: number;
+  costDurationApiMs: number;
+  costDurationSampleCount: number;
   tokenSampleCount: number;
   durationApiMs: number;
   durationSampleCount: number;
@@ -67,6 +72,9 @@ interface SessionSample {
   cacheReadSampleCount: number;
   costUsd: number;
   costSampleCount: number;
+  costDurationUsd: number;
+  costDurationApiMs: number;
+  costDurationSampleCount: number;
   tokenSampleCount: number;
   durationApiMs: number;
   durationSampleCount: number;
@@ -80,7 +88,13 @@ export function aggregateEfficiencyAnalytics(options: AggregateEfficiencyOptions
   const byRunId = new Map(options.runs.map((run) => [run.id, run]));
   const agentResults = collectAgentResults(options.events, byRunId);
   const models = aggregateModels(agentResults);
-  const profileAggregation = aggregateProfiles(options.runs, options.events, agentResults, options.sessionMetadata);
+  const profileAggregation = aggregateProfiles(
+    options.runs,
+    options.profileEvents ?? options.events,
+    agentResults,
+    options.sessionMetadata,
+    options.profileRunSessionIds ?? {},
+  );
 
   return {
     windowDays: options.windowDays,
@@ -147,9 +161,10 @@ function aggregateProfiles(
   events: EventRecord[],
   agentResults: AgentResultInfo[],
   sessionMetadata: Record<string, SessionMetadata>,
+  profileRunSessionIds: Record<string, string>,
 ): { rows: EfficiencyProfileRollup[]; missingProfileAttributionCount: number } {
   const byRunId = new Map(runs.map((run) => [run.id, run]));
-  const profileBySession = resolveProfilesBySession(events, sessionMetadata, byRunId);
+  const profileBySession = resolveProfilesBySession(events, sessionMetadata, byRunId, profileRunSessionIds);
   const samples = buildSessionSamples(runs, agentResults, profileBySession);
   const rows = new Map<string, RollupAccumulator>();
   let missingProfileAttributionCount = 0;
@@ -207,6 +222,9 @@ function ensureSessionSample(
     cacheReadSampleCount: 0,
     costUsd: 0,
     costSampleCount: 0,
+    costDurationUsd: 0,
+    costDurationApiMs: 0,
+    costDurationSampleCount: 0,
     tokenSampleCount: 0,
     durationApiMs: 0,
     durationSampleCount: 0,
@@ -225,8 +243,14 @@ function sessionSampleHasData(sample: SessionSample): boolean {
 
 function addResultToSessionSample(sample: SessionSample, result: Record<string, unknown>): void {
   const usage = objectValue(result.usage);
-  addNumberToSample(readNumber(result.totalCostUsd), (value) => { sample.costUsd += value; sample.costSampleCount += 1; });
+  const costUsd = readNumber(result.totalCostUsd);
+  addNumberToSample(costUsd, (value) => { sample.costUsd += value; sample.costSampleCount += 1; });
   const durationApiMs = readNumber(result.durationApiMs);
+  if (costUsd !== null && durationApiMs !== null && durationApiMs > 0) {
+    sample.costDurationUsd += costUsd;
+    sample.costDurationApiMs += durationApiMs;
+    sample.costDurationSampleCount += 1;
+  }
   if (durationApiMs !== null && durationApiMs > 0) {
     sample.durationApiMs += durationApiMs;
     sample.durationSampleCount += 1;
@@ -260,7 +284,15 @@ function addModelUsage(
   addNumberToAccumulator(acc, 'outputTokens', 'outputTokenSampleCount', usage.outputTokens);
   addNumberToAccumulator(acc, 'totalTokens', 'totalTokenSampleCount', usage.totalTokens);
   addNumberToAccumulator(acc, 'cacheReadTokens', 'cacheReadSampleCount', usage.cacheReadTokens);
-  addNumberToSample(usage.costUsd, (value) => { acc.costUsd += value; acc.costSampleCount += 1; });
+  addNumberToSample(usage.costUsd, (value) => {
+    acc.costUsd += value;
+    acc.costSampleCount += 1;
+    if (speedDurationApiMs !== null) {
+      acc.costDurationUsd += value;
+      acc.costDurationApiMs += speedDurationApiMs;
+      acc.costDurationSampleCount += 1;
+    }
+  });
   if (speedDurationApiMs !== null) {
     addSpeedSamples(acc, usage.outputTokens, usage.totalTokens, speedDurationApiMs);
   } else if (speedExcluded) {
@@ -285,6 +317,9 @@ function addSessionSample(acc: RollupAccumulator, sample: SessionSample): void {
   acc.cacheReadSampleCount += sample.cacheReadSampleCount;
   acc.costUsd += sample.costUsd;
   acc.costSampleCount += sample.costSampleCount > 0 ? 1 : 0;
+  acc.costDurationUsd += sample.costDurationUsd;
+  acc.costDurationApiMs += sample.costDurationApiMs;
+  acc.costDurationSampleCount += sample.costDurationSampleCount > 0 ? 1 : 0;
   acc.tokenSampleCount += sample.tokenSampleCount > 0 ? 1 : 0;
   acc.durationUnavailableCount += sample.durationUnavailableCount;
   if (sample.durationApiMs > 0) {
@@ -335,12 +370,13 @@ function resolveProfilesBySession(
   events: EventRecord[],
   metadata: Record<string, SessionMetadata>,
   byRunId: Map<string, RunInfo>,
+  profileRunSessionIds: Record<string, string>,
 ): Map<string, string | null> {
   const profiles = new Map<string, string | null>();
   for (const event of [...events].sort((a, b) => a.id - b.id)) {
     if (event.type !== 'session:profile' || event.runId === null) continue;
     const run = byRunId.get(event.runId);
-    const sessionId = run?.sessionId ?? event.runId;
+    const sessionId = profileRunSessionIds[event.runId] ?? run?.sessionId ?? event.runId;
     if (profiles.has(sessionId)) continue;
     const data = parseObject(event.data);
     profiles.set(sessionId, readString(data.profileName));
@@ -394,7 +430,7 @@ function finishRollup(acc: RollupAccumulator) {
     cacheReadTokens,
     totalCostUsd,
     costPerRunUsd: totalCostUsd !== null ? totalCostUsd / Math.max(1, acc.runIds.size) : null,
-    costPerMinuteUsd: computeCostBurnRate(totalCostUsd, acc.durationApiMs),
+    costPerMinuteUsd: computeCostBurnRate(acc.costDurationSampleCount > 0 ? acc.costDurationUsd : null, acc.costDurationApiMs),
     outputTokensPerDollar: computeOutputTokensPerDollar(outputTokens, totalCostUsd),
     cachePercentage: computeCachePercentage(cacheReadTokens, inputTokens),
     outputTokensPerSecondP50: nearestRankPercentile(acc.outputRateSamples, 50),
@@ -416,6 +452,9 @@ function createAccumulator(): RollupAccumulator {
     cacheReadSampleCount: 0,
     costUsd: 0,
     costSampleCount: 0,
+    costDurationUsd: 0,
+    costDurationApiMs: 0,
+    costDurationSampleCount: 0,
     tokenSampleCount: 0,
     durationApiMs: 0,
     durationSampleCount: 0,
