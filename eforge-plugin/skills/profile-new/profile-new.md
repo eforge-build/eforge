@@ -109,6 +109,52 @@ Then assign `toolbelt: browser-ui` to `implementation` and `review`, and `toolbe
 
 When toolbelt fields are set, include them in `agents.tiers` in the Step 3 preview and in the Step 4 create payload.
 
+### Step 2c: Configure implementation runtime choices (optional)
+
+Ask: "Would you like this profile to add per-invocation runtime choices for implementation work?"
+
+- **Skip / default** — every implementation invocation uses the `implementation` tier default.
+- **Add UI/backend choices** — create `implementation.ui` and `implementation.backend` choices with ordered declarative routing rules.
+
+Use runtime choices when the same built-in tier needs tier-local overlays. The four built-in tiers remain the role-routing axis; choices are selected only after a role resolves to its tier. The existing tier recipe is the implicit `default` choice (`implementation.default`), and named choices inherit from that tier default.
+
+For the UI/backend preset, first ensure `browser-ui` is a declared project toolbelt using the same checks from Step 2b (required MCP server present or auto-added, then `tools.toolbelts.browser-ui` written to config). If it cannot be declared, omit `toolbelt: browser-ui` from the `ui` choice or reuse an already-declared implementation toolbelt instead of creating an invalid reference.
+
+Then add:
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+      choices:
+        backend:
+          model: qwen3-coder
+          pi:
+            provider: local
+          toolbelt: none
+        ui:
+          effort: high
+          toolbelt: browser-ui
+      routing:
+        rules:
+          - name: ui-paths
+            choice: ui
+            when:
+              pathGlobs: ["packages/console-ui/**", "web/**", "**/*.{tsx,jsx,css}"]
+              keywords: ["ui", "frontend", "browser", "component"]
+          - name: backend-paths
+            choice: backend
+            when:
+              pathGlobs: ["packages/engine/**", "packages/client/**", "packages/monitor/**"]
+```
+
+Declarative rules run before extension runtime-choice routers. Extension router failures fall back to `default` and do not fail the build. `registerProfileRouter` still selects the active profile before build dispatch; it is separate from per-invocation runtime-choice routing. `onAgentRun` can observe selected choice metadata, but cannot change the selected harness, model, provider, effort, or toolbelt. Events expose non-secret runtime-choice metadata.
+
 ### Step 3: Preview the profile
 
 Show the user a rendered preview of the YAML that will land in the chosen scope directory. Example Pi-first profile:
@@ -199,7 +245,14 @@ Call `mcp__eforge__eforge_profile` with:
   agents: {
     tiers: {
       planning:       { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
-      implementation: { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+      implementation: {
+        harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>",
+        choices?: {
+          backend?: { harness?, model?, effort?, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+          ui?: { harness?, model?, effort?, pi?: { provider }, toolbelt?: "none" | "<preset>" },
+        },
+        routing?: { rules: [{ name, choice, when: { pathGlobs?, keywords?, roles?, phase?, stage?, shardIds?, shardRoots? } }] },
+      },
       review:         { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
       evaluation:     { harness, model, effort, pi?: { provider }, toolbelt?: "none" | "<preset>" },
     }

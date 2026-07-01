@@ -7,7 +7,7 @@ description: TypeScript and JavaScript extensions that observe lifecycle behavio
 
 eforge has a broad extension surface around a small build-engine kernel. Input surfaces, first-party `eforge-playbooks` playbook workflows, session plans, profile toolbelts, shell hooks, host integrations, wrapper apps, and native TypeScript extensions can shape how work is authored, routed, governed, observed, and integrated without moving those concerns into the engine.
 
-Native eforge extensions are one typed mechanism in that broader surface: TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, custom tools, typed actions, declarative Console contributions, sandboxed Console workstations, integration commands, and deep links with full TypeScript inference.
+Native eforge extensions are one typed mechanism in that broader surface: TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, runtime-choice routers, input sources, PRD enrichers, reviewer perspectives, validation providers, custom tools, typed actions, declarative Console contributions, sandboxed Console workstations, integration commands, and deep links with full TypeScript inference.
 
 Extensions are **not sandboxed**. A loaded native extension executes in the same Node process as eforge and has the same filesystem, environment, and network access as the daemon. Only enable extensions from sources you trust.
 
@@ -42,7 +42,7 @@ A typical extension workflow has four parts:
 When an LLM or assisted authoring flow creates an extension, keep the loop explicit and auditable:
 
 1. **Scaffold locally** with `eforge extension new <name>` (usually project-local `.eforge/extensions/`) and keep the first version small.
-2. **Author against supported V1 surfaces**: event hooks, agent-run context/tools, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, actions, declarative System contributions, and source-authored sandboxed Console workstations with iframe `srcDoc` or `frameBundle` plus `window.eforge.invokeAction` / `@eforge-build/extension-sdk/browser`.
+2. **Author against supported V1 surfaces**: event hooks, agent-run context/tools, policy gates, profile routers, runtime-choice routers, input sources, PRD enrichers, reviewer perspectives, validation providers, actions, declarative System contributions, and source-authored sandboxed Console workstations with iframe `srcDoc` or `frameBundle` plus `window.eforge.invokeAction` / `@eforge-build/extension-sdk/browser`.
 3. **Validate statically** with `eforge extension validate <name-or-path>` before reload.
 4. **Test behavior** with `eforge extension test <name-or-path>` and, for event hooks, a fixture or `--run latest` replay.
 5. **Trust only after inspection**: for project/team extensions, read the source and then run `eforge extension trust <name>` so the local `.eforge/extension-trust.json` records the reviewed hash.
@@ -381,11 +381,11 @@ Add `--json` to CLI commands for machine-readable provenance. The same data is e
 
 ## Runtime support today
 
-The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and pre-build `registerProfileRouter` dispatch are available.
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, and per-invocation `registerRuntimeChoiceRouter` dispatch after declarative runtime-choice rules are available.
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
 
-Event replay testing is also available through `eforge extension test`. Replay execution is a dry run for `onEvent` hooks only: it invokes matching event handlers against fixture or monitor DB events and records emitted handler diagnostics, but it does not execute custom tools, policy gates, profile routers, input sources, reviewer perspectives, validation providers, or agent-run hooks. Those non-event registrations are summarized separately in the test result; this replay limitation does not reflect whether the capability runs during normal engine execution.
+Event replay testing is also available through `eforge extension test`. Replay execution is a dry run for `onEvent` hooks only: it invokes matching event handlers against fixture or monitor DB events and records emitted handler diagnostics, but it does not execute custom tools, policy gates, profile routers, runtime-choice routers, input sources, reviewer perspectives, validation providers, or agent-run hooks. Those non-event registrations are summarized separately in the test result; this replay limitation does not reflect whether the capability runs during normal engine execution.
 
 ### Actions, Console contributions, commands, and deep links
 
@@ -518,6 +518,7 @@ Unsupported extension capability families are still recorded as registration met
 | `beforePlanMerge` - policy gate before plan worktree merge | Yes | Yes | Yes (blocking policy gate) |
 | `beforeFinalMerge` - policy gate before final feature merge | Yes | Yes | Yes (blocking policy gate) |
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
+| `registerRuntimeChoiceRouter` | Yes | Yes | Yes (per-invocation runtime-choice dispatch after declarative rules) |
 | `registerInputSource` | Yes | Yes | Yes (extension-aware enqueue preprocessing) |
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |

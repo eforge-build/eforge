@@ -220,7 +220,7 @@ The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exa
 
 **Runtime status:** registration is captured at load time and matching events are dispatched at runtime. Dispatch is non-blocking with respect to the engine pipeline: handlers cannot alter, block, or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields; monitor recording sees those diagnostics before shell hooks run.
 
-**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and non-event registration summaries. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, input sources, reviewer perspectives, or validation providers.
+**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and non-event registration summaries. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, runtime-choice routers, input sources, reviewer perspectives, or validation providers.
 
 ---
 
@@ -265,6 +265,12 @@ interface AgentRunContext extends EforgeExtensionContext {
   stage?: string;   // e.g. 'implement', 'review', 'planner', 'module-planner'
   // Runtime metadata (read-only):
   harness?: 'claude-sdk' | 'pi';
+  runtimeChoice?: string;
+  runtimeChoiceQualified?: string;
+  runtimeChoiceSource?: 'default' | 'rule' | 'extension-router' | 'fallback';
+  runtimeChoiceRule?: string;
+  runtimeChoiceRouter?: string;
+  runtimeChoiceFallbackReason?: 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
   toolbelt?: string | null;
   toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
@@ -300,6 +306,8 @@ Multiple extensions append in registration order. Each handler runs with a confi
 **Fail-open behavior:** a handler that throws an error emits an `extension:agent-context:failed` event; a handler that exceeds the timeout emits an `extension:agent-context:timeout` event. In both cases that handler's prompt/tool changes are skipped and the agent run continues. Diagnostic events carry metadata (extension name, role, tier, phase, stage, fragment count) but never the prompt fragment text.
 
 **Tool injection and availability tuning:** returning `tools` injects extension-defined tools only for the current run. Returning `allowedTools` and `disallowedTools` additively tunes the harness allow/deny lists for the current run; deny wins when the same name appears in both. Use `ctx.effectiveToolName(name)` when prompt text needs to mention the harness-visible name for an extension tool.
+
+**Runtime-choice boundary:** `onAgentRun` can observe the selected runtime choice through the read-only `runtimeChoice*` fields, but it runs after runtime selection. It cannot change the harness, model, provider, effort, toolbelt, or selected choice for the current invocation; use declarative `agents.tiers.<tier>.routing.rules` or `registerRuntimeChoiceRouter` for runtime-choice selection.
 
 **Runtime status:** Yes. Prompt context, per-run extension tool injection, and per-run tool availability tuning are applied at runtime.
 
@@ -678,6 +686,60 @@ eforge.registerProfileRouter({
 ```
 
 See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a complete three-tier fallback example with env-var-driven profile names.
+
+---
+
+### `registerRuntimeChoiceRouter(spec)`
+
+Register a function that can select a tier-local runtime choice for an individual agent invocation after role-to-tier resolution and after declarative routing rules decline to match. This is a separate layer from `registerProfileRouter`: profile routers select the active profile before build dispatch, while runtime-choice routers select among choices already declared inside the selected tier.
+
+**Signature:**
+
+```ts
+registerRuntimeChoiceRouter(spec: RuntimeChoiceRouterSpec): void
+registerRuntimeChoiceRouter(name: string, handler: RuntimeChoiceRouterHandler): void
+```
+
+**`RuntimeChoiceRouterSpec`:**
+
+```ts
+interface RuntimeChoiceRouterSpec {
+  name: string;
+  resolveRuntimeChoice: (ctx: RuntimeChoiceRouterContext) => RuntimeChoiceRouterResult | string | null | undefined | Promise<RuntimeChoiceRouterResult | string | null | undefined>;
+}
+
+interface RuntimeChoiceRouterContext extends EforgeExtensionContext {
+  role: AgentRole;
+  tier: string;
+  profile: string;
+  availableChoices: Array<{ name: string; qualified: string }>;
+  phase?: string;
+  stage?: string;
+  planId?: string;
+  planName?: string;
+  planSummary?: string;
+  prdTitle?: string;
+  prdSummary?: string;
+  taskSummary?: string;
+  keywordText?: string;
+  pathHints?: string[];
+  changedFiles?: string[];
+  shardIds?: string[];
+  shardRoots?: string[];
+  shardFiles?: string[];
+}
+
+interface RuntimeChoiceRouterResult {
+  choice?: string;
+  decline?: boolean;
+  reason?: string;
+  confidence?: number;
+}
+```
+
+Return a choice name, `{ choice }`, `null`, `undefined`, or `{ decline: true }`. Choice names must resolve within the already-selected tier: use `default`, a tier-local name such as `ui`, or the same-tier qualified form such as `implementation.ui`. Cross-tier choices and unknown choices are invalid.
+
+**Runtime status:** `Yes (per agent invocation)`. Declarative `agents.tiers.<tier>.routing.rules` run first; if a rule matches, runtime-choice routers are not invoked. If no rule matches, routers are invoked in registration order. Declines continue to the next router. A router error, timeout, invalid result, or unknown choice falls back to the tier `default` choice for that invocation and does not fail the build. Non-secret selection metadata is exposed on `agent:start` events and on `onAgentRun` context as `runtimeChoice*` fields.
 
 ---
 
@@ -1407,7 +1469,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, daemon-owned action agent tasks, agent task contribution declarations, daemon-owned action build queue handoffs, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family; daemon-owned task diagnostics use the `extension:agent-task:*` event family with sanitized metadata. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, caller-supplied arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are future or unsupported runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, runtime-choice-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, daemon-owned action agent tasks, agent task contribution declarations, daemon-owned action build queue handoffs, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family; daemon-owned task diagnostics use the `extension:agent-task:*` event family with sanitized metadata. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, caller-supplied arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are future or unsupported runtime work.
 
 ---
 

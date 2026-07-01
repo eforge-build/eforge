@@ -51,7 +51,7 @@ agents:
 
 **Required fields per tier:** `harness`, `model`, `effort`.
 
-**Optional per tier:** `pi.provider` (required when `harness: pi`), `pi.resources` (`isolated` by default, or `ambient` to opt into ambient Pi resources), `pi.thinkingLevel`, `pi.extensions`, `pi.compaction`, `pi.retry`, `thinking` (boolean, enables extended thinking), `fallbackModel`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, and `toolbelt` (named MCP bundle or `none`).
+**Optional per tier:** `pi.provider` (required when `harness: pi`), `pi.resources` (`isolated` by default, or `ambient` to opt into ambient Pi resources), `pi.thinkingLevel`, `pi.extensions`, `pi.compaction`, `pi.retry`, `thinking` (boolean, enables extended thinking), `fallbackModel`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `toolbelt` (named MCP bundle or `none`), and tier-local runtime `choices`/`routing`.
 
 **Metadata fields** (`description`, `whenToUse`, `tags`) are descriptive only - they surface in list and show commands but do not affect runtime behavior.
 
@@ -128,6 +128,45 @@ The active profile sets the baseline. Other mechanisms can override it in specif
 
 When a profile router selects a profile, a `queue:profile:selected` event is emitted. If the router selects a profile name that does not exist, `queue:profile:invalid-selection` is emitted and the build proceeds under the active profile or defaults.
 
+Build-level profile routing is separate from per-invocation runtime-choice routing. `registerProfileRouter` chooses which profile is active before build dispatch; runtime choices select among `choices` declared inside the selected tier for each agent invocation. `onAgentRun` can observe selected choice metadata, but it cannot change the harness, model, provider, effort, or toolbelt for that run.
+
+## Runtime choices inside profiles
+
+The four built-in tiers remain the role-routing axis. Existing tier recipe fields equal that tier's implicit `default` choice. Named choices inherit from the tier default and override only the fields they list. Choices are selected after a role resolves to a tier.
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+      choices:
+        backend:
+          model: qwen3-coder
+          pi:
+            provider: local
+          toolbelt: none
+        ui:
+          effort: high
+          toolbelt: browser-ui
+      routing:
+        rules:
+          - name: ui-paths
+            choice: ui
+            when:
+              pathGlobs: ["packages/console-ui/**", "web/**", "**/*.{tsx,jsx,css}"]
+              keywords: ["ui", "frontend", "browser", "component"]
+          - name: backend-paths
+            choice: backend
+            when:
+              pathGlobs: ["packages/engine/**", "packages/client/**", "packages/monitor/**"]
+```
+
+Declarative rules run in order before extension runtime-choice routers. If a rule matches, routers are skipped. If no rule or router selects a named choice, or a router errors, times out, or returns an invalid choice, eforge falls back to `default` for that invocation and does not fail the build. Events expose non-secret runtime-choice metadata such as selected choice, source, rule/router name, and fallback reason.
+
 ## Harnesses
 
 Two harnesses ship with eforge:
@@ -202,4 +241,5 @@ User-scope profiles (`~/.config/eforge/profiles/`) apply across all projects on 
 - [Configuration](/docs/configuration) - `eforge/config.yaml` team defaults that profiles override
 - [Playbooks](/docs/playbooks) - run recurring workflows with a profile baked in
 - [Extensions API - registerProfileRouter](/docs/extensions-api) - automate profile selection per build
+- [Extensions API - registerRuntimeChoiceRouter](/docs/extensions-api) - automate tier-local runtime choice selection per invocation
 - [Configuration Reference - Toolbelts](/reference/config#toolbelts) - full toolbelt schema

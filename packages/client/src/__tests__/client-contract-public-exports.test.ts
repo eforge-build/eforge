@@ -172,9 +172,9 @@ describe('client contract public exports', () => {
   });
 
   it('feature-gates the daemon API version for the latest breaking client contract', () => {
-    expect(client.DAEMON_API_VERSION).toBe(80);
-    expect(browser.DAEMON_API_VERSION).toBe(80);
+    expect(client.DAEMON_API_VERSION).toBe(81);
+    expect(browser.DAEMON_API_VERSION).toBe(81);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('v80: adds planning:decomposition:* event variants');
+    expect(source).toContain('v81: requires runtime-choice event and extension-summary fields');
   });
 });

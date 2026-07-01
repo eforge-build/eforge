@@ -248,6 +248,117 @@ describe('toolbelt field pass-through', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildProfileCreatePayload — runtime choices and routing
+// ---------------------------------------------------------------------------
+
+describe('runtime choices and routing pass-through', () => {
+  it('serializes implementation.ui, implementation.backend, and ordered routing rules', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'implementation-routing',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'pi', provider: 'openrouter', modelId: 'anthropic/claude-opus-4-6',   effort: 'high' },
+        implementation: { harness: 'pi', provider: 'openrouter', modelId: 'anthropic/claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'pi', provider: 'openrouter', modelId: 'anthropic/claude-opus-4-6',   effort: 'high' },
+        evaluation:     { harness: 'pi', provider: 'openrouter', modelId: 'anthropic/claude-opus-4-6',   effort: 'high' },
+      },
+      runtimeChoices: {
+        implementation: {
+          choices: {
+            backend: {
+              modelId: 'qwen3-coder',
+              provider: 'local',
+              toolbelt: 'none',
+            },
+            ui: {
+              effort: 'high',
+              toolbelt: 'browser-ui',
+            },
+          },
+          routing: {
+            rules: [
+              {
+                name: 'ui-paths',
+                choice: 'ui',
+                when: {
+                  pathGlobs: ['packages/console-ui/**', 'web/**', '**/*.{tsx,jsx,css}'],
+                  keywords: ['ui', 'frontend', 'browser', 'component'],
+                },
+              },
+              {
+                name: 'backend-paths',
+                choice: 'backend',
+                when: {
+                  pathGlobs: ['packages/engine/**', 'packages/client/**', 'packages/monitor/**'],
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(payload.agents.tiers.implementation.choices).toEqual({
+      backend: {
+        pi: { provider: 'local' },
+        model: 'qwen3-coder',
+        toolbelt: 'none',
+      },
+      ui: {
+        effort: 'high',
+        toolbelt: 'browser-ui',
+      },
+    });
+    expect(payload.agents.tiers.implementation.routing).toEqual({
+      rules: [
+        {
+          name: 'ui-paths',
+          choice: 'ui',
+          when: {
+            pathGlobs: ['packages/console-ui/**', 'web/**', '**/*.{tsx,jsx,css}'],
+            keywords: ['ui', 'frontend', 'browser', 'component'],
+          },
+        },
+        {
+          name: 'backend-paths',
+          choice: 'backend',
+          when: {
+            pathGlobs: ['packages/engine/**', 'packages/client/**', 'packages/monitor/**'],
+          },
+        },
+      ],
+    });
+    expect((payload.agents.tiers.planning as Record<string, unknown>)['choices']).toBeUndefined();
+    expect((payload.agents.tiers.review as Record<string, unknown>)['routing']).toBeUndefined();
+  });
+
+  it('supports inherited choices that override only effort and toolbelt', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'inherited-ui',
+      scope: 'local',
+      tiers: {
+        planning:       { harness: 'pi', provider: 'openrouter', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'pi', provider: 'openrouter', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'pi', provider: 'openrouter', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'pi', provider: 'openrouter', modelId: 'model-d', effort: 'low' },
+      },
+      runtimeChoices: {
+        implementation: {
+          choices: {
+            ui: { effort: 'high', toolbelt: 'browser-ui' },
+          },
+        },
+      },
+    });
+
+    expect(payload.agents.tiers.implementation.choices?.ui).toEqual({
+      effort: 'high',
+      toolbelt: 'browser-ui',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildProfileCreatePayload — metadata pass-through
 // ---------------------------------------------------------------------------
 

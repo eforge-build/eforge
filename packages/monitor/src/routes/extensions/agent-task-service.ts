@@ -213,6 +213,8 @@ export class ExtensionAgentTaskService {
       const curationContributions = await this.resolveBacklogCurationContributions({ owner: contribution.owner, registry: options.registry });
       return await runBacklogCurationMapReduceTask({
         ...plannerConfig,
+        resolvedHarness: plannerConfig.harness,
+        harnessSource: plannerConfig.harnessSource,
         harness: resolverHarness,
         cwd,
         taskId: options.taskId,
@@ -242,6 +244,8 @@ export class ExtensionAgentTaskService {
     let sawProgress = false;
     const task = runResolvedAgentTask({
       ...plannerConfig,
+      resolvedHarness: plannerConfig.harness,
+      harnessSource: plannerConfig.harnessSource,
       harness,
       cwd,
       promptTemplate: resolved.prompt && resolved.prompt.trim().length > 0 ? resolved.prompt : contribution.promptTemplate,

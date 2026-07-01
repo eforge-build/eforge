@@ -44,6 +44,7 @@ Runtime-supported capability families:
 - `onAgentRun` prompt context, per-run tools, and per-run allowed/disallowed tuning.
 - `defineExtensionTool` + `registerTool` + returning `tools` from `onAgentRun` for runtime custom tool injection. `registerTool` alone is provenance capture; runtime tool injection requires returning the tool from `onAgentRun`.
 - `registerProfileRouter` pre-build profile selection.
+- `registerRuntimeChoiceRouter` per-invocation tier-local runtime choice selection after declarative `agents.tiers.<tier>.routing.rules` decline to match.
 - `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` blocking policy gates. `require-approval` currently blocks because no approval workflow/UI/state exists, and policy gate contexts are read-only snapshots. These helpers do not sandbox extension code; extensions are trusted unsandboxed code.
 - `registerInputSource` input source adapters — supply PRD/build-source artifacts from external systems via `eforge://input/<adapter>/<id>` URIs. Adapter selection is by `name` match. Input-source failures (null return or throw) are fatal to enqueue; design adapters to return instructional content when credentials are absent.
 - `registerPrdEnricher` PRD enrichers — mutate or augment PRD content before queue write. Enrichers run in registration order for every preprocessed source; failures are fail-open (`extension:prd-enricher:failed`). Gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath`.

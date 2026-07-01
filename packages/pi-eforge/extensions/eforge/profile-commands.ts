@@ -11,7 +11,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { API_ROUTES, buildPath } from "@eforge-build/client";
 import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
-import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload, type TierRecipeEntry } from "./profile-payload";
+import { buildProfileCreatePayload, type TierSelection, type TierRuntimeChoicesSelection } from "./profile-payload";
+import { buildYamlPreview } from "./profile-yaml-preview";
 import { TOOLBELT_PRESETS, findMissingServers, applyToolbeltPresetToTiers, applyNoMcpAccessToTiers } from "./toolbelt-presets";
 import { readMcpServers, addPlaywrightServer, upsertToolbeltInConfig } from "./toolbelt-config-files";
 
@@ -36,6 +37,54 @@ interface ProfileListData {
   profiles: ProfileEntry[];
   active: string | null;
   source: string;
+}
+
+async function ensureBrowserUiToolbelt(ctx: UIContext): Promise<boolean> {
+  const preset = TOOLBELT_PRESETS.find((p) => p.id === 'browser-ui');
+  if (!preset) return false;
+
+  let existingServers: Record<string, unknown> = {};
+  try {
+    existingServers = readMcpServers(ctx.cwd);
+  } catch {
+    // Non-fatal: if .mcp.json is malformed, continue without auto-add.
+  }
+
+  const missing = findMissingServers(preset, existingServers);
+  if (missing.length > 0) {
+    const autoAddChoice = await showSelectOverlay(ctx, 'eforge - Add MCP Servers for UI Runtime Choice?', [
+      { value: 'yes', label: 'Yes, add automatically', description: `Add ${missing.join(', ')} to .mcp.json` },
+      { value: 'no', label: 'No, omit browser-ui toolbelt', description: preset.setupHint },
+    ]);
+    if (autoAddChoice !== 'yes') return false;
+
+    for (const serverName of missing) {
+      const serverConfig = preset.autoAdd?.servers[serverName];
+      if (!serverConfig) return false;
+      try {
+        if (serverName === 'playwright') addPlaywrightServer(ctx.cwd, serverConfig);
+      } catch (err) {
+        await showInfoOverlay(
+          ctx,
+          'eforge - Warning',
+          `Could not auto-add ${serverName} to .mcp.json:\n\n${err instanceof Error ? err.message : String(err)}\n\nThe UI runtime choice will omit the browser-ui toolbelt.`,
+        );
+        return false;
+      }
+    }
+  }
+
+  try {
+    upsertToolbeltInConfig(ctx.cwd, preset);
+    return true;
+  } catch (err) {
+    await showInfoOverlay(
+      ctx,
+      'eforge - Warning',
+      `Could not update eforge/config.yaml:\n\n${err instanceof Error ? err.message : String(err)}\n\nThe UI runtime choice will omit the browser-ui toolbelt.`,
+    );
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -340,78 +389,6 @@ async function pickCustomTier(
   return { harness, provider, modelId, effort };
 }
 
-// Extended types for buildYamlPreview to handle optional toolbelt assignments
-// that may be present in profile configs loaded from the daemon.
-interface TierPreviewEntry extends TierRecipeEntry {
-  toolbelt?: string;
-}
-
-interface ProfilePreviewPayload {
-  metadata?: ProfileCreatePayload['metadata'];
-  agents: {
-    tiers: Record<string, TierPreviewEntry>;
-  };
-  tools?: {
-    toolbelts?: Record<string, { description?: string; mcpServers: string[] }>;
-  };
-}
-
-/** Build a human-readable YAML preview of the profile payload. */
-function buildYamlPreview(payload: ProfilePreviewPayload): string {
-  const lines: string[] = ["```yaml"];
-  if (payload.metadata) {
-    const m = payload.metadata;
-    if (m.description) {
-      lines.push(`description: ${JSON.stringify(m.description)}`);
-    }
-    if (m.whenToUse?.length) {
-      lines.push('whenToUse:');
-      for (const w of m.whenToUse) {
-        lines.push(`  - ${JSON.stringify(w)}`);
-      }
-    }
-    if (m.tags?.length) {
-      lines.push('tags:');
-      for (const t of m.tags) {
-        lines.push(`  - ${JSON.stringify(t)}`);
-      }
-    }
-  }
-  lines.push("agents:");
-  lines.push("  tiers:");
-  for (const [tier, entry] of Object.entries(payload.agents.tiers)) {
-    lines.push(`    ${tier}:`);
-    lines.push(`      harness: ${entry.harness}`);
-    if (entry.pi?.provider) {
-      lines.push(`      pi:`);
-      lines.push(`        provider: ${entry.pi.provider}`);
-    }
-    lines.push(`      model: ${entry.model}`);
-    lines.push(`      effort: ${entry.effort}`);
-    if (entry.toolbelt !== undefined) {
-      lines.push(`      toolbelt: ${entry.toolbelt}`);
-    }
-  }
-  if (payload.tools?.toolbelts && Object.keys(payload.tools.toolbelts).length > 0) {
-    lines.push("tools:");
-    lines.push("  toolbelts:");
-    for (const [name, tb] of Object.entries(payload.tools.toolbelts)) {
-      lines.push(`    ${name}:`);
-      if (tb.description) {
-        lines.push(`      description: ${JSON.stringify(tb.description)}`);
-      }
-      if (tb.mcpServers.length > 0) {
-        lines.push("      mcpServers:");
-        for (const server of tb.mcpServers) {
-          lines.push(`        - ${server}`);
-        }
-      }
-    }
-  }
-  lines.push("```");
-  return lines.join("\n");
-}
-
 export async function handleProfileNewCommand(
   pi: ExtensionAPI,
   ctx: UIContext | null,
@@ -636,6 +613,58 @@ export async function handleProfileNewCommand(
     }
   }
 
+  // --- eforge:region plan-03-runtime-choice-docs-integrations ---
+  // Step 7: Optional implementation-tier runtime choices and routing.
+  const runtimeChoices: Partial<Record<TierName, TierRuntimeChoicesSelection>> = {};
+  const runtimeChoice = await showSelectOverlay(ctx, 'eforge - Implementation Runtime Choices?', [
+    {
+      value: 'add-ui-backend',
+      label: 'Add UI/backend implementation choices',
+      description: 'Create implementation.ui and implementation.backend with path/keyword routing rules',
+    },
+    {
+      value: 'skip',
+      label: 'Skip runtime choices',
+      description: 'Use each tier default for every agent invocation',
+    },
+  ]);
+  if (!runtimeChoice) return;
+
+  if (runtimeChoice === 'add-ui-backend') {
+    const backendChoice = tiers.implementation.harness === 'pi'
+      ? { modelId: 'qwen3-coder', provider: 'local', toolbelt: 'none' }
+      : { harness: 'pi' as const, modelId: 'qwen3-coder', provider: 'local', toolbelt: 'none' };
+    const uiChoice = await ensureBrowserUiToolbelt(ctx)
+      ? { effort: 'high', toolbelt: 'browser-ui' }
+      : { effort: 'high', ...(tiers.implementation.toolbelt && tiers.implementation.toolbelt !== 'none' ? { toolbelt: tiers.implementation.toolbelt } : {}) };
+    runtimeChoices.implementation = {
+      choices: {
+        backend: backendChoice,
+        ui: uiChoice,
+      },
+      routing: {
+        rules: [
+          {
+            name: 'ui-paths',
+            choice: 'ui',
+            when: {
+              pathGlobs: ['packages/console-ui/**', 'web/**', '**/*.{tsx,jsx,css}'],
+              keywords: ['ui', 'frontend', 'browser', 'component'],
+            },
+          },
+          {
+            name: 'backend-paths',
+            choice: 'backend',
+            when: {
+              pathGlobs: ['packages/engine/**', 'packages/client/**', 'packages/monitor/**'],
+            },
+          },
+        ],
+      },
+    };
+  }
+  // --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
+
   // Build the daemon payload
   const payload = buildProfileCreatePayload({
     name,
@@ -646,6 +675,7 @@ export async function handleProfileNewCommand(
       review: tiers.review,
       evaluation: tiers.evaluation,
     },
+    runtimeChoices,
   });
 
   // YAML preview

@@ -78,6 +78,43 @@ Pi is the recommended harness for new profiles. The engine still has current com
 
 **Thinking**: Add `thinking: true` to a tier to enable extended thinking. It is coerced to adaptive mode for models that only support adaptive thinking.
 
+### Runtime choices
+
+The four built-in tiers remain the role-routing axis. The existing tier recipe equals that tier's implicit `default` choice. Named choices under `agents.tiers.<tier>.choices` inherit from the tier default and override only the fields they list. Choices are selected after a role resolves to its tier.
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+      choices:
+        backend:
+          model: qwen3-coder
+          pi:
+            provider: local
+          toolbelt: none
+        ui:
+          effort: high
+          toolbelt: browser-ui
+      routing:
+        rules:
+          - name: ui-paths
+            choice: ui
+            when:
+              pathGlobs: ["packages/console-ui/**", "web/**", "**/*.{tsx,jsx,css}"]
+              keywords: ["ui", "frontend", "browser", "component"]
+          - name: backend-paths
+            choice: backend
+            when:
+              pathGlobs: ["packages/engine/**", "packages/client/**", "packages/monitor/**"]
+```
+
+Routing rules run in order before extension runtime-choice routers. If no rule or router selects a named choice, or a router errors, times out, or returns an invalid choice, eforge falls back to `default` for that invocation and does not fail the build. `registerProfileRouter` is still build-level profile selection before dispatch; `onAgentRun` can observe selected runtime-choice metadata but cannot change harness, model, provider, effort, or toolbelt.
+
 ## Using the Pi Harness
 
 Pi is the recommended provider-flexible execution harness for new eforge setup. Set `harness: pi` and add a `pi.provider` block:

@@ -47,6 +47,61 @@ eforge merges configuration from three tiers (highest precedence first):
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
 
+## Runtime Choices and Routing
+
+`agents.tiers.<tier>` defines the default runtime recipe for roles assigned to that tier. A tier can also declare tier-local `choices` overlays and ordered `routing.rules` to select a choice per agent invocation. The implicit `default` choice is the tier recipe itself.
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+      choices:
+        ui:
+          model: anthropic/claude-opus-4-6
+          effort: high
+          toolbelt: browser-ui
+        backend:
+          model: openai/gpt-5.4
+          pi:
+            provider: openrouter
+      routing:
+        rules:
+          - name: ui-paths
+            choice: ui
+            when:
+              pathGlobs: ["web/**", "packages/console-ui/**"]
+          - name: backend-keywords
+            choice: implementation.backend
+            when:
+              keywords: ["api", "database"]
+```
+
+| Field | Description |
+|-------|-------------|
+| `agents.tiers.<tier>.choices.<choice>` | Optional named runtime-choice overlay. Choice names are lowercase slugs starting with a letter; `default` is reserved for the implicit tier default. |
+| `agents.tiers.<tier>.choices.<choice>.harness` | Optional harness override. If omitted, inherited from the tier default. |
+| `agents.tiers.<tier>.choices.<choice>.model` | Optional model override. If omitted, inherited from the tier default. |
+| `agents.tiers.<tier>.choices.<choice>.effort` | Optional effort override. If omitted, inherited from the tier default. |
+| `agents.tiers.<tier>.choices.<choice>.pi` / `.claudeSdk` | Optional harness-specific overrides. The effective recipe must match the selected harness. |
+| `agents.tiers.<tier>.choices.<choice>.toolbelt` | Optional toolbelt override for this choice; uses the same `tools.toolbelts` names or `none` as tier-level `toolbelt`. |
+| `agents.tiers.<tier>.routing.rules` | Ordered runtime-choice routing rules. The first matching rule selects its `choice`; if no rule matches, eforge uses `default` or an extension-router/fallback decision when configured. |
+| `agents.tiers.<tier>.routing.rules[].name` | Required human-readable rule identifier, surfaced in runtime-choice metadata. |
+| `agents.tiers.<tier>.routing.rules[].choice` | Required choice reference: `default`, a tier-local choice name such as `ui`, or a qualified same-tier reference such as `implementation.ui`. Cross-tier references are rejected. |
+| `agents.tiers.<tier>.routing.rules[].when.roles` | Match agent roles assigned to this tier. |
+| `agents.tiers.<tier>.routing.rules[].when.phase` | Match invocation phases such as `compile` or `build`. |
+| `agents.tiers.<tier>.routing.rules[].when.stage` | Match invocation stage names. |
+| `agents.tiers.<tier>.routing.rules[].when.pathGlobs` | Match plan or shard paths using path globs. |
+| `agents.tiers.<tier>.routing.rules[].when.keywords` | Match invocation keywords. |
+| `agents.tiers.<tier>.routing.rules[].when.shardIds` | Match compile shard identifiers. |
+| `agents.tiers.<tier>.routing.rules[].when.shardRoots` | Match compile shard root paths. |
+
+Choice overlays inherit from the containing tier default before validation, so a choice may specify only the fields it changes. After inheritance, every effective recipe must have a valid `harness`, `model`, `effort`, and harness-specific provider/config. Routing rules are tier-local: they cannot select a choice declared under another tier. The `when` block must include at least one predicate group; groups are combined as a match for that rule, and rules are evaluated in list order.
+
 ## Toolbelts
 
 `tools.toolbelts` declares named bundles of project MCP servers that tiers can opt into with `agents.tiers.<tier>.toolbelt`. Toolbelts are intended for profiles that need a focused capability set, such as browser automation for UI implementation and review.

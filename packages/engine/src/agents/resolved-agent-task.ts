@@ -1,4 +1,5 @@
 import type { AgentRole, EforgeEvent } from '../events.js';
+import type { AgentTier } from '../config.js';
 import { isAlwaysYieldedAgentEvent } from '../events.js';
 import type { AgentHarness, CustomTool, SdkPassthroughConfig, ToolPreset } from '../harness.js';
 import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
@@ -15,6 +16,14 @@ export interface ResolvedAgentTaskOptions<TResult> extends SdkPassthroughConfig 
   role?: AgentRole;
   tools?: ToolPreset;
   customTools?: CustomTool[];
+  resolvedHarness?: 'claude-sdk' | 'pi';
+  harnessSource?: 'tier';
+  tier?: AgentTier;
+  tierSource?: 'tier' | 'role' | 'plan';
+  toolbelt?: string | null;
+  toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
+  projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  projectMcpServerNames?: string[];
   verbose?: boolean;
   abortController?: AbortController;
   maxTurns?: number;
@@ -59,6 +68,14 @@ export async function* runResolvedAgentTask<TResult>(
         tools: options.tools ?? 'read-only',
         customTools: options.customTools,
         abortSignal: options.abortController?.signal,
+        harness: options.resolvedHarness,
+        harnessSource: options.harnessSource,
+        tier: options.tier,
+        tierSource: options.tierSource,
+        toolbelt: options.toolbelt,
+        toolbeltSource: options.toolbeltSource,
+        projectMcpSelection: options.projectMcpSelection,
+        projectMcpServerNames: options.projectMcpServerNames,
         ...sdkOptions,
       },
       role,

@@ -56,8 +56,7 @@ import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../g
 import { toBuildFailedEvent } from '../error-translator.js';
 import { enforceShardScope, shardClaimsFile } from './shard-scope.js';
 export { enforceShardScope };
-const exec = promisify(execFile);
-// ---------------------------------------------------------------------------
+const exec = promisify(execFile); // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 function runtimeChoiceRouterOptions(ctx: BuildStageContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }

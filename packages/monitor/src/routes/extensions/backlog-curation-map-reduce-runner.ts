@@ -55,6 +55,8 @@ export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughCon
   taskId: string;
   input: EforgePlanPlanningDraftInput;
   harness: AgentHarness;
+  resolvedHarness?: 'claude-sdk' | 'pi';
+  harnessSource?: 'tier';
   sourceBundle: BacklogCurationMapReduceSourceBundle;
   providerHooks: BacklogCurationMapReduceProviderHooks;
   runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity;

@@ -44,5 +44,7 @@
  * (v79 is a case 1 bump: removes the planning-task playbook draft wire field.)
  * (v80 is a case 1 bump: adds closed-union planning:decomposition:* SSE
  * event variants, so stale clients must be rejected before parsing sessions.)
+ * (v81 is a case 1 bump: agent:start events require runtime choice
+ * metadata, and extension registration summaries require runtimeChoiceRouters.)
  */
-export const DAEMON_API_VERSION = 80; // v80: adds planning:decomposition:* event variants.
+export const DAEMON_API_VERSION = 81; // v81: requires runtime-choice event and extension-summary fields.

@@ -158,6 +158,9 @@ it('accepts all six built-in perspectives in parallel:start', () => {
       harnessSource: 'tier',
       tier: 'review',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'review.default',
+      runtimeChoiceSource: 'default',
       perspective: 'accessibility',
     });
     expect(result.success).toBe(true);
