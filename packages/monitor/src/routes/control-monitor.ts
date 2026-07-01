@@ -48,6 +48,9 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'sessionMetadata',
   'runs',
   'spend',
+  // --- eforge:region plan-01-efficiency-analytics-foundation ---
+  'efficiencyAnalytics',
+  // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   'runSummary',
   'runState',
   'plans',

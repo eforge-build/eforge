@@ -27,6 +27,9 @@ export {
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
 } from './extension-agent-tasks/constants.js';
 export { isTransientTransportError } from './transient-transport.js';
+// --- eforge:region plan-01-efficiency-analytics-foundation ---
+export * from './efficiency-metrics.js';
+// --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 export type {
   ApiRoute,
   EnqueueRequest,

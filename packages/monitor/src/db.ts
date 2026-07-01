@@ -3,7 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DAEMON_EVENT_TYPES } from '@eforge-build/client';
-import type { DailySpend, ModelSpend, RunInfo, SessionMetadata } from '@eforge-build/client';
+import type { DailySpend, EfficiencyAnalyticsSummary, ModelSpend, RunInfo, SessionMetadata } from '@eforge-build/client';
+import { aggregateEfficiencyAnalytics } from './analytics/efficiency.js';
 
 /** Raw DB row shape for the `runs` table — snake_case columns as returned by SQLite. */
 interface RunRow {
@@ -181,18 +182,13 @@ export interface MonitorDB {
     recentCostUsd?: number;
     recentQuotaErrors: number;
   } | null;
-  /**
-   * Token + dollar spend aggregated per local calendar day over the last
-   * `windowDays` days (inclusive of today). Days with no spend are omitted;
-   * callers fill gaps. Ordered oldest -> newest.
-   */
+  /** Token + dollar spend per local day, oldest -> newest. */
   getDailySpend(windowDays: number): DailySpend[];
-  /**
-   * Per-model token + dollar spend aggregated over the last `windowDays` days
-   * (inclusive of today). Ordered by cost descending. Empty when no agent
-   * results carry per-model usage in the window.
-   */
+  /** Per-model token + dollar spend over the window, cost descending. */
   getModelSpend(windowDays: number): ModelSpend[];
+  // --- eforge:region plan-01-efficiency-analytics-foundation ---
+  getEfficiencyAnalytics(windowDays: number): EfficiencyAnalyticsSummary;
+  // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   close(): void;
 }
 
@@ -789,23 +785,36 @@ export function openDatabase(dbPath: string): MonitorDB {
       };
     },
     getDailySpend(windowDays) {
-      // Local start-of-day for the oldest day in the window, as an ISO cutoff
-      // so the timestamp filter stays index-friendly. Day grouping itself uses
-      // date(timestamp, 'localtime') so boundaries match the user's wall clock.
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
-      const rows = stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
-      return rows;
+      return stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
     },
     getModelSpend(windowDays) {
-      // Same local start-of-day ISO cutoff as getDailySpend so the per-model
-      // window aligns exactly with the daily rollup.
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
       return stmts.getModelSpend.all(start.toISOString()) as unknown as ModelSpend[];
     },
+
+    // --- eforge:region plan-01-efficiency-analytics-foundation ---
+    getEfficiencyAnalytics(windowDays) {
+      const window = Math.min(90, Math.max(1, Math.floor(windowDays)));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1));
+      const startedAt = start.toISOString();
+      const allRuns = this.getRuns();
+      const eventsByRunId = new Map<string, EventRecord[]>();
+      const runIdsWithWindowEvents = new Set<string>();
+      for (const run of allRuns) {
+        const runEvents = this.getEvents(run.id).filter((event) => event.timestamp >= startedAt);
+        eventsByRunId.set(run.id, runEvents);
+        if (runEvents.length > 0) runIdsWithWindowEvents.add(run.id);
+      }
+      const runs = allRuns.filter((run) => run.startedAt >= startedAt || runIdsWithWindowEvents.has(run.id));
+      const events = runs.flatMap((run) => eventsByRunId.get(run.id) ?? []);
+      return aggregateEfficiencyAnalytics({ runs, events, sessionMetadata: this.getSessionMetadataBatch(), windowDays: window, startedAt, endedAt: new Date().toISOString() });
+    },
+    // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 
     close() {
       db.close();

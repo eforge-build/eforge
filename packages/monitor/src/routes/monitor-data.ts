@@ -23,5 +23,19 @@ export function createMonitorDataRoutes(context: MonitorContext): RouteDefinitio
         modelsToday: context.db.getModelSpend(1),
       });
     } }),
+    // --- eforge:region plan-01-efficiency-analytics-foundation ---
+    defineRoute({ routeKey: 'efficiencyAnalytics', method: 'GET', pattern: API_ROUTES.efficiencyAnalytics, security: readSecurity, handler: (ctx) => {
+      sendJson(ctx.res, context.db.getEfficiencyAnalytics(clampWindowDays(ctx.query.get('days'))));
+    } }),
+    // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   ];
 }
+
+// --- eforge:region plan-01-efficiency-analytics-foundation ---
+function clampWindowDays(rawDays: string | null): number {
+  if (rawDays === null) return 7;
+  const raw = Number(rawDays);
+  if (!Number.isFinite(raw)) return 7;
+  return Math.min(90, Math.max(1, Math.floor(raw)));
+}
+// --- eforge:endregion plan-01-efficiency-analytics-foundation ---

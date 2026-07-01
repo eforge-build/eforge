@@ -62,6 +62,9 @@ export const API_ROUTES = {
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
   spend: '/api/spend',
+  // --- eforge:region plan-01-efficiency-analytics-foundation ---
+  efficiencyAnalytics: '/api/efficiency-analytics',
+  // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   events: '/api/events/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',

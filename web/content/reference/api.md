@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces, not kernel-owned planning capabilities. `sessionPlan` and `sessionPlanSet` route families remain daemon API producer surfaces for project-local planning artifacts. Playbooks are owned by the first-party `eforge-playbooks` extension and are reached through generic extension contribution manifest/action invocation routes, not playbook-specific daemon or client APIs.
 
-Total routes: 86
+Total routes: 87
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -28,6 +28,7 @@ Total routes: 86
 | `daemonEvents` | `/api/daemon-events` |
 | `daemonStop` | `/api/daemon/stop` |
 | `diff` | `/api/diff/:sessionId/:planId` |
+| `efficiencyAnalytics` | `/api/efficiency-analytics` |
 | `enqueue` | `/api/enqueue` |
 | `events` | `/api/events/:runId` |
 | `extensionActionInvoke` | `/api/extensions/actions/invoke` |
