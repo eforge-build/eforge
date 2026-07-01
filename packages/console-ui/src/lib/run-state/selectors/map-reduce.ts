@@ -36,13 +36,14 @@ export interface MapReduceSummary {
   graphId: string;
   atomCounts: MapReduceAtomCounts;
   reduceCounts: MapReduceReduceCounts;
-  maxDepth: number;
+  /** Highest reduce level for presentation (1-indexed from the wire maxDepth). */
+  maxLevel: number;
   /**
-   * Lowest reduce depth that still has a queued or running node, i.e. the wave
-   * currently in flight. Null once every reduce node is terminal (or there are
-   * no reduce nodes yet).
+   * Lowest reduce level that still has a queued or running node (1-indexed for
+   * display). Null once every reduce node is terminal (or there are no reduce
+   * nodes yet).
    */
-  currentWave: number | null;
+  currentLevel: number | null;
   tokensIn: number;
   tokensOut: number;
   totalTokens: number;
@@ -70,14 +71,14 @@ export function buildMapReduceSummary(
   }
 
   const reduceCounts = emptyReduceCounts();
-  let currentWave: number | null = null;
+  let currentDepth: number | null = null;
   for (const nodeId of mapReduce.reduceOrder) {
     const node = mapReduce.reduceNodes[nodeId];
     if (!node) continue;
     reduceCounts.total += 1;
     reduceCounts[node.status] += 1;
-    if ((node.status === 'queued' || node.status === 'running') && (currentWave === null || node.depth < currentWave)) {
-      currentWave = node.depth;
+    if ((node.status === 'queued' || node.status === 'running') && (currentDepth === null || node.depth < currentDepth)) {
+      currentDepth = node.depth;
     }
   }
 
@@ -97,8 +98,8 @@ export function buildMapReduceSummary(
     graphId: mapReduce.graphId,
     atomCounts,
     reduceCounts,
-    maxDepth: mapReduce.maxDepth,
-    currentWave,
+    maxLevel: mapReduce.maxDepth + 1,
+    currentLevel: currentDepth === null ? null : currentDepth + 1,
     tokensIn,
     tokensOut,
     totalTokens: tokensIn + tokensOut,
@@ -133,24 +134,24 @@ export interface MapReduceBoardNode {
   /** Reduce fan-in; present only on `kind: 'reduce'`. */
   inputAtomIds?: string[];
   inputNodeIds?: string[];
-  /** Reduce wave depth; present only on `kind: 'reduce'`. */
+  /** Reduce depth from the wire event; present only on `kind: 'reduce'`. */
   depth?: number;
   thread: MapReduceBoardThread | null;
 }
 
 /**
- * A collapsible board section: the map-atoms group, or one reduce wave. Stacked
- * top-to-bottom in the board (decision #5 — vertical sections, not columns).
+ * A collapsible board section: the map-atoms group, or one reduce level.
+ * Stacked top-to-bottom in the board (decision #5 — vertical sections, not columns).
  */
 export interface MapReduceBoardSection {
-  /** Stable key: `atoms` or `reduce-wave-<depth>`. */
+  /** Stable key: `atoms` or `reduce-level-<depth>`. */
   key: string;
   title: string;
   kind: 'atoms' | 'reduce';
-  /** Reduce wave depth (0-indexed); null for the atoms section. */
+  /** Reduce depth from the wire event (0-indexed); null for the atoms section. */
   depth: number | null;
   nodes: MapReduceBoardNode[];
-  /** True when any node in this section is queued or running — the active wave. */
+  /** True when any node in this section is queued or running — the active level. */
   active: boolean;
 }
 
@@ -174,7 +175,7 @@ const ATOM_ACTIVE: ReadonlySet<PlanningMapReduceAtomStatus> = new Set(['queued',
 const REDUCE_ACTIVE: ReadonlySet<PlanningMapReduceReduceStatus> = new Set(['queued', 'running']);
 
 /**
- * Builds the stage board: a `Map atoms` section followed by one `Reduce wave N`
+ * Builds the stage board: a `Map atoms` section followed by one `Reduce level N`
  * section per reduce depth (ascending), with each node enriched by its agent
  * thread. Pure, so Storybook fixtures the output directly. Per-node cost/tokens
  * come from `agentThreads`; structure and status come from `mapReduce`.
@@ -211,7 +212,7 @@ export function buildMapReduceBoard(
     { key: 'atoms', title: `Map atoms (${atomNodes.length})`, kind: 'atoms', depth: null, nodes: atomNodes, active: atomsActive },
   ];
 
-  // Group reduce nodes by depth (ascending) into one section per wave.
+  // Group reduce nodes by wire depth (ascending) into one section per display level.
   const byDepth = new Map<number, MapReduceBoardNode[]>();
   const activeByDepth = new Map<number, boolean>();
   for (const nodeId of mapReduce.reduceOrder) {
@@ -235,9 +236,9 @@ export function buildMapReduceBoard(
 
   for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
     sections.push({
-      key: `reduce-wave-${depth}`,
-      // 1-indexed display ("wave 1" reads as the first wave, not "0").
-      title: `Reduce wave ${depth + 1}`,
+      key: `reduce-level-${depth}`,
+      // 1-indexed display ("level 1" reads as the first level, not "0").
+      title: `Reduce level ${depth + 1}`,
       kind: 'reduce',
       depth,
       nodes: byDepth.get(depth)!,

@@ -168,7 +168,9 @@ export interface MapReduceAtomNode {
 
 /**
  * A single reduce-tree node, folded from the `planning:map-reduce:reduce-tree`
- * snapshot and updated by `planning:map-reduce:reduce:status` events.
+ * snapshot and updated by `planning:map-reduce:reduce:status` events. `depth`
+ * mirrors the 0-indexed wire event field; Console presentation groups these as
+ * 1-indexed reduce levels.
  */
 export interface MapReduceReduceNode {
   nodeId: string;
@@ -194,6 +196,7 @@ export interface MapReduceOrchestration {
   atoms: Record<string, MapReduceAtomNode>;
   atomOrder: string[];
   rootNodeId?: string;
+  /** 0-indexed max depth from the wire event; selectors expose display levels. */
   maxDepth: number;
   nodeCount: number;
   reduceNodes: Record<string, MapReduceReduceNode>;

@@ -29,7 +29,7 @@ type Story = StoryObj<typeof meta>;
  * vertical stage board, with the Board/Timeline toggle. "Timeline" swaps in the
  * same `PipelineSection` the rest of the app uses, so the two views are
  * reviewable together. Map phase is mid-flight (atom-003 running, atom-004
- * skipped, atom-005 queued) with reduce wave 0 running and the root queued.
+ * skipped, atom-005 queued) with reduce level 1 running and the root queued.
  */
 export const Board: Story = {
   args: {

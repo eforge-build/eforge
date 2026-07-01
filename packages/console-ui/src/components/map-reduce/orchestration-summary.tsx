@@ -2,9 +2,9 @@
  * Compact map/reduce orchestration summary card (Phase 2).
  *
  * Renders the at-a-glance health of a large-plan bounded-compiler run: how many
- * map atoms are running / done / skipped / failed, which reduce wave is in
+ * map atoms are running / done / skipped / failed, which reduce level is in
  * flight, node totals, and the tokens/cost concentrated in the planner agents.
- * The full stage/wave board is Phase 3; this card alone resolves the original
+ * The full stage/level board is Phase 3; this card alone resolves the original
  * "wall of rows" complaint by giving structure without per-row noise.
  *
  * Pure presentational component: takes a precomputed `MapReduceSummary`
@@ -57,14 +57,12 @@ function formatCost(usd: number): string {
 }
 
 export function OrchestrationSummary({ summary, className }: OrchestrationSummaryProps) {
-  const { atomCounts, reduceCounts, maxDepth, currentWave } = summary;
-  // Depth is 0-indexed internally; display 1-indexed so "wave 1 / 3" reads as
-  // "the first of three waves" rather than the ambiguous "0 / 2".
-  const waveLabel = reduceCounts.total === 0
+  const { atomCounts, reduceCounts, maxLevel, currentLevel } = summary;
+  const levelLabel = reduceCounts.total === 0
     ? '-'
-    : currentWave === null
+    : currentLevel === null
       ? 'done'
-      : `${currentWave + 1} / ${maxDepth + 1}`;
+      : `${currentLevel} / ${maxLevel}`;
 
   return (
     <div className={cn('rounded-md border border-border bg-bg-secondary/40 px-3 py-2.5 flex flex-col gap-2.5', className)}>
@@ -99,7 +97,7 @@ export function OrchestrationSummary({ summary, className }: OrchestrationSummar
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5 border-t border-border/50 text-11px">
         <span className="inline-flex items-center gap-1 text-text-dim">
           <GitMerge className="w-3 h-3" />
-          wave <span className="font-mono tabular-nums text-text-bright">{waveLabel}</span>
+          level <span className="font-mono tabular-nums text-text-bright">{levelLabel}</span>
         </span>
         <span className="inline-flex items-center gap-1 text-text-dim">
           <Zap className="w-3 h-3" />

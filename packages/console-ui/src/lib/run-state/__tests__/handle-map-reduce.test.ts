@@ -150,13 +150,14 @@ describe('buildMapReduceSummary', () => {
     };
   }
 
-  it('counts atom and reduce statuses and identifies the in-flight wave', () => {
+  it('counts atom and reduce statuses from an interleaved state and identifies the in-flight level', () => {
     const summary = buildMapReduceSummary(baseState().mapReduce!, []);
     // Full count objects (not partial) so zero-valued buckets are also pinned.
+    // The reduce tree/status folded while atom-b is still running and atom-c is skipped.
     expect(summary.atomCounts).toEqual({ total: 3, queued: 0, running: 1, completed: 1, skipped: 1, failed: 0 });
     expect(summary.reduceCounts).toEqual({ total: 2, queued: 1, running: 1, completed: 0, failed: 0, incomplete: 0 });
-    expect(summary.currentWave).toBe(0);
-    expect(summary.maxDepth).toBe(1);
+    expect(summary.currentLevel).toBe(1);
+    expect(summary.maxLevel).toBe(2);
   });
 
   it('sums tokens and cost only from member agent threads', () => {
@@ -172,7 +173,7 @@ describe('buildMapReduceSummary', () => {
     expect(summary.costUsd).toBeCloseTo(1.5, 5);
   });
 
-  it('reports currentWave null once all reduce nodes are terminal', () => {
+  it('reports currentLevel null once all reduce nodes are terminal', () => {
     const state = eforgeReducer(baseState(), {
       type: 'ADD_EVENT',
       event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'completed' }),
@@ -183,7 +184,7 @@ describe('buildMapReduceSummary', () => {
       event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-001', status: 'completed' }),
       eventId: 'e8',
     });
-    expect(buildMapReduceSummary(done.mapReduce!, []).currentWave).toBeNull();
+    expect(buildMapReduceSummary(done.mapReduce!, []).currentLevel).toBeNull();
   });
 });
 
@@ -209,18 +210,18 @@ describe('buildMapReduceBoard', () => {
 
   it('produces a Map atoms section followed by one section per reduce depth, ascending', () => {
     const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    expect(board.sections.map((s) => s.key)).toEqual(['atoms', 'reduce-wave-0', 'reduce-wave-1']);
+    expect(board.sections.map((s) => s.key)).toEqual(['atoms', 'reduce-level-0', 'reduce-level-1']);
     expect(board.sections[0].kind).toBe('atoms');
     expect(board.sections[1].depth).toBe(0);
     expect(board.sections[2].depth).toBe(1);
-    // Wave labels are 1-indexed for display.
-    expect(board.sections[1].title).toBe('Reduce wave 1');
-    expect(board.sections[2].title).toBe('Reduce wave 2');
+    // Level labels are 1-indexed for display.
+    expect(board.sections[1].title).toBe('Reduce level 1');
+    expect(board.sections[2].title).toBe('Reduce level 2');
   });
 
   it('marks a section active when it has a queued or running node', () => {
     const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    // atom-b running -> atoms active; reduce-000 running -> wave 0 active; wave 1 only queued -> active.
+    // atom-b running -> atoms active; reduce-000 running -> level 1 active; level 2 only queued -> active.
     expect(board.sections[0].active).toBe(true);
     expect(board.sections[1].active).toBe(true);
     expect(board.sections[2].active).toBe(true);

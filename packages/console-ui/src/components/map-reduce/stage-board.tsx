@@ -1,11 +1,12 @@
 /**
  * Vertical stage board for a map/reduce run (Phase 3, decision #5).
  *
- * Sections stack top-to-bottom — `Map atoms`, then one `Reduce wave N` per
- * depth — rather than horizontal columns, because 14-22 nodes read better
- * vertically in the panel height and avoid horizontal scroll. Each section is a
- * collapsible group; the active wave (a section with a queued/running node) is
- * expanded by default. Node click bubbles `onSelect(planId)` for log filtering.
+ * Sections stack top-to-bottom — `Map atoms`, then one `Reduce level N` per
+ * reduce-tree depth — rather than horizontal columns, because 14-22 nodes read
+ * better vertically in the panel height and avoid horizontal scroll. Each
+ * section is a collapsible group; the active level (a section with a
+ * queued/running node) is expanded by default. Node click bubbles
+ * `onSelect(planId)` for log filtering.
  *
  * Pure presentational: takes a precomputed `MapReduceBoard`
  * (`buildMapReduceBoard(state.mapReduce, state.agentThreads)`).
