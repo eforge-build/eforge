@@ -25,6 +25,8 @@ Reformat the input above into the following standard sections:
 - **Output only the formatted content.** No preamble, no commentary, no explanations. Just the formatted PRD sections.
 - If a section has no relevant content from the input, include the heading with "N/A" as the body, except omit `## Manual Verification Notes` when there are no manual-only or visual-only details to preserve.
 - Use markdown formatting (headings, lists, code blocks) for readability.
+- If the input already has an `## Acceptance Criteria` section, preserve its semantic cardinality. You may lightly reword malformed bullets, but do not expand implementation details, scope lists, file/path inventories, exclusions, test plans, or documentation notes into new hard-gated acceptance criteria.
+- Treat `## Scope`, `## Approach`, `## Code Impact`, `## Design Decisions`, validation plans, assumptions, and documentation notes as supporting context unless the input explicitly presents an item as a done criterion.
 
 ## Acceptance Criteria Rules
 

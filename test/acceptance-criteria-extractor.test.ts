@@ -77,6 +77,16 @@ describe('runAcceptanceCriteriaExtractor', () => {
       while (!result.done) result = await gen.next();
     }).rejects.toThrow(/produced no output/);
   });
+
+  it('can ask for explicit-only extraction before enqueue formatting', async () => {
+    const harness = new StubHarness([{ text: JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] }) }]);
+    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: 'Fix the widget from context', explicitOnly: true, allowNoAcceptanceCriteria: true });
+    let result = await gen.next();
+    while (!result.done) result = await gen.next();
+
+    expect(result.value.criteria).toEqual([]);
+    expect(harness.prompts[0]).toContain('Do not infer criteria from scope, implementation notes, file lists, or general context');
+  });
 });
 
 // ---------------------------------------------------------------------------

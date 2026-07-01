@@ -36,6 +36,10 @@ function formattedPrd(): string {
   ].join('\n');
 }
 
+function emptyExplicitExtractorOutput(): string {
+  return JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] });
+}
+
 function extractorOutput(): string {
   return JSON.stringify({
     version: 1,
@@ -64,7 +68,7 @@ describe('EforgeEngine.enqueue postMerge queue metadata', () => {
     await setupProject(tmpDir);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
-      agentRuntimes: new StubHarness([{ text: formattedPrd() }, { text: extractorOutput() }]),
+      agentRuntimes: new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: formattedPrd() }, { text: extractorOutput() }]),
       config: { plugins: { enabled: false } },
     });
 
@@ -89,7 +93,7 @@ describe('EforgeEngine.enqueue postMerge queue metadata', () => {
     await setupProject(tmpDir);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
-      agentRuntimes: new StubHarness([{ text: formattedPrd() }, { text: extractorOutput() }]),
+      agentRuntimes: new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: formattedPrd() }, { text: extractorOutput() }]),
       config: { plugins: { enabled: false } },
     });
 
