@@ -1,7 +1,7 @@
 import type { ExtensionDiagnostic, ExtensionEntry, ExtensionListResponse, ExtensionRegistrationSummary } from '@eforge-build/client';
 
 export const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
-  eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
+  eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, runtimeChoiceRouters: 0, inputSources: 0,
   prdEnrichers: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0,
   actions: 0, agentTasks: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0,
 };

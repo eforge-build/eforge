@@ -61,6 +61,7 @@ export interface NativeExtensionRegistryProjection {
     agentRunHooks: number;
     policyGates: number;
     profileRouters: number;
+    runtimeChoiceRouters: number;
     inputSources: number;
     reviewerPerspectives: number;
     validationProviders: number;
@@ -181,6 +182,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       agentRunHooks: registry.agentRunHooks.length,
       policyGates: registry.policyGates.length,
       profileRouters: registry.profileRouters.length,
+      runtimeChoiceRouters: registry.runtimeChoiceRouters.length,
       inputSources: registry.inputSources.length,
       reviewerPerspectives: registry.reviewerPerspectives.length,
       validationProviders: registry.validationProviders.length,

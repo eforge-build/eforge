@@ -247,7 +247,7 @@ describe('runtime choice config and resolver', () => {
   it('falls back deterministically to default when no rule matches', () => {
     const result = resolveRuntimeChoiceForInvocation('builder', config, { name: 'Docs', body: 'copy editing' }, { pathHints: ['docs/readme.md'] });
     expect(result.choiceRef).toBe('implementation.default');
-    expect(result.fallbackReason).toBe('no routing rule matched; selected implicit default choice');
+    expect(result.fallbackReason).toBe('no-match');
   });
 
   it('resolves overridden tier before evaluating choices', () => {

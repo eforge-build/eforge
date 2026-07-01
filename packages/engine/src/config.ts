@@ -4,11 +4,9 @@ import { promisify } from 'node:util';
 import { resolve, dirname, basename, extname, join as pathJoin } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-
 const execFileAsync = promisify(execFile);
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
-
 import { sanitizeProfileName, parseRawConfigLegacy, REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
@@ -27,16 +25,13 @@ export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
 export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolvePlanningDecompositionLimits } from './compile-resilience/planning-decomposition-limits.js';
 export type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export type { ShardScope } from './schemas.js';
-
 // Re-export shared types from @eforge-build/client so engine-internal callers
 // (plan.ts, eforge.ts, pipeline.ts, compiler.ts, events.ts, agents/*) can keep
 // importing from this module. The client package is the single owner.
 export type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
-
 // ---------------------------------------------------------------------------
 // Zod Schemas — single source of truth for config types
 // ---------------------------------------------------------------------------
-
 /** Agent roles matching the AgentRole union in events.ts. */
 export const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
@@ -48,17 +43,13 @@ export const AGENT_ROLES = [
   'gap-closer',
   'recovery-analyst',
 ] as const;
-
 const agentRoleSchema = z.enum(AGENT_ROLES);
-
 /** Agent tiers group agent roles by workload type for batch configuration. */
 export const AGENT_TIERS = ['planning', 'implementation', 'review', 'evaluation'] as const;
 export type AgentTier = (typeof AGENT_TIERS)[number];
 export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
-
 /** Built-in global fallback when neither a role nor its tier sets maxTurns. */
 export const DEFAULT_AGENT_MAX_TURNS = 50;
-
 /** Built-in max-turn defaults for each agent tier. */
 export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
   planning: 80,
@@ -66,11 +57,8 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
   review: 60,
   evaluation: DEFAULT_AGENT_MAX_TURNS,
 });
-
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
-
 const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
-
 const compileConfigSchema = z.object({
   planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
   planningUnitMaxDepth: boundedPositiveIntegerConfigSchema('planningUnitMaxDepth').optional(),
@@ -84,22 +72,17 @@ const compileConfigSchema = z.object({
   planningUnitMaxSubsystemsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSubsystemsPerUnit').optional(),
   planningUnitMaxSplitAttemptsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSplitAttemptsPerUnit').optional(),
 }).strict().describe('Context-managed compile planning-unit limits');
-
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas
 // ---------------------------------------------------------------------------
-
 /** Reserved toolbelt names that users cannot declare in tools.toolbelts. */
 export const RESERVED_TOOLBELT_NAMES = new Set(['none']);
-
 /** Valid toolbelt name pattern: letters, digits, dot, underscore, or dash. */
 const toolbeltNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/);
-
 const toolbeltConfigSchema = z.object({
   description: z.string().optional(),
   mcpServers: z.array(z.string().min(1)).nonempty(),
 });
-
 const toolsConfigSchema = z.object({
   toolbelts: z.record(z.string(), toolbeltConfigSchema).optional(),
 }).superRefine((data, ctx) => {
@@ -121,7 +104,6 @@ const toolsConfigSchema = z.object({
     }
   }
 });
-
 // ---------------------------------------------------------------------------
 // ModelRef — model references
 // ---------------------------------------------------------------------------
@@ -701,6 +683,7 @@ export interface ResolvedAgentConfig {
   tier: AgentTier;
   /** Provenance of the tier value. */
   tierSource: 'tier' | 'role' | 'plan';
+  runtimeChoice?: string; runtimeChoiceQualified?: string; runtimeChoiceSource?: import('./pipeline/runtime-choice.js').RuntimeChoiceSource; runtimeChoiceRule?: string; runtimeChoiceRouter?: string; runtimeChoiceFallbackReason?: import('./pipeline/runtime-choice.js').RuntimeChoiceFallbackReason;
   /** Resolved model ref. Provider is spliced from tier.pi.provider for pi harness. */
   model: ModelRef;
   /** Resolved effort level. */

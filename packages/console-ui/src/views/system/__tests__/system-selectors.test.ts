@@ -130,7 +130,7 @@ function makeExtension(
     source: 'project-team',
     status: 'loaded',
     shadows: [],
-    registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
+    registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, runtimeChoiceRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     diagnostics: [],
     ...overrides,
   };
@@ -173,7 +173,7 @@ describe('selectExtensionsNeedingTrust', () => {
         makeExtension({ name: 'external-changed', scope: 'external', trustState: 'changed' }),
       ],
       diagnostics: [],
-      totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
+      totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, runtimeChoiceRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     };
     const selected = selectExtensionsNeedingTrust(response).map((e) => e.name);
     expect(selected).toEqual(['untrusted-pt', 'changed-pt', 'legacy-pt']);

@@ -181,7 +181,7 @@ export interface ExtensionDiagnostic { severity: ExtensionDiagnosticSeverity; co
 export interface ExtensionShadow { name: string; path: string; entrypoint?: string; scope: Exclude<ExtensionScope, 'external'>; format?: ExtensionFormat; layout?: ExtensionLayout }
 
 export interface ExtensionRegistrationSummary {
-  eventHooks: number; agentRunHooks: number; policyGates: number; profileRouters: number; inputSources: number; reviewerPerspectives: number; validationProviders: number; tools: number; prdEnrichers: number;
+  eventHooks: number; agentRunHooks: number; policyGates: number; profileRouters: number; runtimeChoiceRouters: number; inputSources: number; reviewerPerspectives: number; validationProviders: number; tools: number; prdEnrichers: number;
   actions: number; agentTasks: number; consoleContributions: number; consoleWorkstations: number; integrationCommands: number; deepLinks: number;
 }
 
@@ -279,7 +279,7 @@ export type ExtensionTestDiagnosticEvent = Extract<
 >;
 
 export type ExtensionTestDeferredRegistrationFamily =
-  | 'agentRunHooks' | 'policyGates' | 'profileRouters' | 'inputSources' | 'reviewerPerspectives' | 'validationProviders' | 'tools' | 'prdEnrichers'
+  | 'agentRunHooks' | 'policyGates' | 'profileRouters' | 'runtimeChoiceRouters' | 'inputSources' | 'reviewerPerspectives' | 'validationProviders' | 'tools' | 'prdEnrichers'
   | 'actions' | 'agentTasks' | 'consoleContributions' | 'consoleWorkstations' | 'integrationCommands' | 'deepLinks';
 
 export interface ExtensionTestDeferredRegistrationSummary {

@@ -40,6 +40,12 @@ export async function* runResolvedAgentTask<TResult>(
     fallbackModel: options.fallbackModel,
     allowedTools,
     disallowedTools: options.disallowedTools,
+    runtimeChoice: options.runtimeChoice,
+    runtimeChoiceQualified: options.runtimeChoiceQualified,
+    runtimeChoiceSource: options.runtimeChoiceSource,
+    runtimeChoiceRule: options.runtimeChoiceRule,
+    runtimeChoiceRouter: options.runtimeChoiceRouter,
+    runtimeChoiceFallbackReason: options.runtimeChoiceFallbackReason,
     phase: options.phase,
     stage: options.stage,
   });

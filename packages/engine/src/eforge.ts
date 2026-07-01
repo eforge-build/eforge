@@ -215,7 +215,7 @@ export class EforgeEngine {
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
     this.extensionRegistry = extensionRegistry ?? {
-      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], actions: [], agentTasks: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [],
+      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], runtimeChoiceRouters: [], inputSources: [], prdEnrichers: [], reviewerPerspectives: [], validationProviders: [], tools: [], actions: [], agentTasks: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [],
     };
     this.extensionDiagnostics = extensionDiagnostics;
     this.profileUsageProvider = options.profileUsageProvider;
@@ -437,6 +437,9 @@ export class EforgeEngine {
         moduleBuildConfigs: new Map(),
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
         extensionValidationProviders: this.extensionRegistry.validationProviders,
+        extensionRuntimeChoiceRouters: this.extensionRegistry.runtimeChoiceRouters,
+        configProfileName: this.configProfile.name,
+        extensionConfigDir: this.configDir,
       };
       compileCtx = ctx;
 
@@ -744,6 +747,9 @@ export class EforgeEngine {
       const abortController = options.abortController;
       const extensionReviewerPerspectives = this.extensionRegistry.reviewerPerspectives;
       const extensionValidationProviders = this.extensionRegistry.validationProviders;
+      const extensionRuntimeChoiceRouters = this.extensionRegistry.runtimeChoiceRouters;
+      const configProfileName = this.configProfile.name;
+      const extensionConfigDir = this.configDir;
 
       // Use the pipeline persisted in orchestration.yaml during compile
       const buildPipeline = orchConfig.pipeline;
@@ -803,6 +809,9 @@ export class EforgeEngine {
           review: planReview,
           extensionReviewerPerspectives: extensionReviewerPerspectives,
           extensionValidationProviders: extensionValidationProviders,
+          extensionRuntimeChoiceRouters,
+          configProfileName,
+          extensionConfigDir,
         };
 
         yield* runBuildPipeline(buildCtx);

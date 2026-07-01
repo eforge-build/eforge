@@ -35,6 +35,8 @@ import type {
   FinalMergePolicyGateHandler,
   AgentRunHandler,
   ProfileRouterSpec,
+  RuntimeChoiceRouterHandler,
+  RuntimeChoiceRouterSpec,
   InputSourceAdapter,
   PrdEnricher,
   ReviewerPerspectiveSpec,
@@ -226,6 +228,10 @@ export interface EforgeExtensionAPI {
    * ```
    */
   registerProfileRouter(spec: ProfileRouterSpec): void;
+
+  /** Register a fail-open per-invocation runtime choice router. */
+  registerRuntimeChoiceRouter(name: string, handler: RuntimeChoiceRouterHandler): void;
+  registerRuntimeChoiceRouter(spec: RuntimeChoiceRouterSpec): void;
 
   /**
    * Register a custom input source adapter that fetches build input artifacts

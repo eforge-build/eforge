@@ -28,7 +28,7 @@ import type { ResolvedAgentConfig } from '../../config.js';
 
 import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
-import { resolveAgentConfig } from '../agent-config.js';
+import { resolveAgentRuntimeForInvocationWithExtensions, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
 import { createToolTracker, createStageSpanWiring } from '../span-wiring.js';
 import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
 import { runReviewCycle } from '../runners.js';
@@ -51,6 +51,8 @@ function mergePromptAppend(configured: string | undefined, preflightAppend: stri
 }
 
 function shouldFallbackToBoundedPlannerCompiler(f: CompileScopeContextFailure): boolean { return f.stage === 'planner' && f.source === 'live-context-guard' && !f.artifacts.orchestrationExists && f.artifacts.validPlanCount === 0 && f.recovery.action === 'bounded-decomposition'; }
+
+function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
 
 async function resolveModelAwareCompileContextGuardOptions(
   ctx: PipelineContext,
@@ -79,10 +81,10 @@ async function resolveModelAwareCompileContextGuardOptions(
 async function* runPlannerAttempt(
   input: PlannerContinuationInput,
   ctx: PipelineContext,
-  agentConfig: ResolvedAgentConfig,
+  runtime: ResolvedAgentRuntimeForInvocation,
 ): AsyncGenerator<EforgeEvent> {
+  const { agentConfig, harness: plannerHarness, toolbeltSummary: plannerTb } = runtime;
   const { tracker, end, error } = createStageSpanWiring('planner', ctx.tracing, { source: ctx.sourceContent, planSet: ctx.planSetName });
-  const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
   const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'planner', agentConfig);
   const plannerInspectionBudget = derivePlannerInspectionBudget({
     hardLimits: contextGuard.limits,
@@ -192,9 +194,10 @@ async function* runModulePlannerAttempt(
   ctx: PipelineContext,
   architectureContent: string,
   completedPlans: Map<string, string>,
-  agentConfig: ResolvedAgentConfig,
+  runtime: ResolvedAgentRuntimeForInvocation,
   contextGuard: CompileContextGuardOptions,
 ): AsyncGenerator<EforgeEvent> {
+  const { agentConfig, harness: modulePlannerHarness, toolbeltSummary: modulePlannerTb } = runtime;
   // Gather completed dependency plan content from earlier waves
   const depContent = mod.dependsOn
     .map((depId) => completedPlans.get(depId))
@@ -208,7 +211,6 @@ async function* runModulePlannerAttempt(
   modSpan.setInput({ moduleId: mod.id, description: mod.description });
   const modTracker = createToolTracker(modSpan);
 
-  const { harness: modulePlannerHarness, toolbeltSummary: modulePlannerTb } = ctx.agentRuntimes.forRoleResolved('module-planner', undefined, { phase: 'compile', stage: 'module-planner' });
   try {
     for await (const event of runModulePlanner({
       cwd: ctx.cwd,
@@ -290,8 +292,7 @@ registerCompileStage({
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   // Run pipeline composition first (fast LLM call to determine scope and stages)
-  const { harness: composerHarness, toolbeltSummary: composerTb, selection: composerSelection } = ctx.agentRuntimes.forRoleResolved('pipeline-composer', undefined, { phase: 'compile', stage: 'pipeline-composer' });
-  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb, composerSelection?.effectiveRecipe, composerSelection?.tier, composerSelection?.tierSource);
+  const { agentConfig: composerConfig, harness: composerHarness } = await resolveAgentRuntimeForInvocationWithExtensions('pipeline-composer', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'pipeline-composer' }, runtimeChoiceRouterOptions(ctx));
   const composerContextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'pipeline-composer', composerConfig);
   const composerOptions: PipelineComposerOptions = {
     source: ctx.sourceContent,
@@ -358,8 +359,6 @@ registerCompileStage({
     return;
   }
 
-  const { toolbeltSummary: plannerTbStage, selection: plannerSelection } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
-  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, plannerTbStage, plannerSelection?.effectiveRecipe, plannerSelection?.tier, plannerSelection?.tierSource);
   const initialInput: PlannerContinuationInput = {
     sideEffects: {
       cwd: ctx.cwd,
@@ -371,7 +370,10 @@ registerCompileStage({
   };
   const plannerPolicy = DEFAULT_RETRY_POLICIES.planner as RetryPolicy<PlannerContinuationInput>;
   try {
-    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+    yield* withRetry(async function* (input) {
+      const runtime = await resolveAgentRuntimeForInvocationWithExtensions('planner', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'planner' }, runtimeChoiceRouterOptions(ctx));
+      yield* runPlannerAttempt(input, ctx, runtime);
+    }, plannerPolicy, initialInput);
   } catch (err) {
     const contextError = await toCompileScopeContextError(ctx, err, 'planner');
     if (!contextError) throw err;
@@ -389,7 +391,10 @@ registerCompileStage({
     if (selectCompilePlanningStrategy({ risk: ctx.compilePreflight, selectedScope: ctx.pipeline.scope }) === 'context-managed-decomposition') {
       yield* runBoundedPlannerCompilerCompileStage(ctx);
       return; }
-    yield* withRetry((input) => runPlannerAttempt(input, ctx, agentConfig), plannerPolicy, initialInput);
+    yield* withRetry(async function* (input) {
+      const runtime = await resolveAgentRuntimeForInvocationWithExtensions('planner', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'planner' }, runtimeChoiceRouterOptions(ctx));
+      yield* runPlannerAttempt(input, ctx, runtime);
+    }, plannerPolicy, initialInput);
   }
 
   // Fail loudly if the planner produced expedition modules but compile-expedition
@@ -416,10 +421,8 @@ registerCompileStage({
 }, async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
-  const { harness: planReviewerHarness, toolbeltSummary: planReviewerTb, selection: planReviewerSelection } = ctx.agentRuntimes.forRoleResolved('plan-reviewer', undefined, { phase: 'compile', stage: 'plan-review' });
-  const { harness: planEvaluatorHarness, toolbeltSummary: planEvaluatorTb, selection: planEvaluatorSelection } = ctx.agentRuntimes.forRoleResolved('plan-evaluator', undefined, { phase: 'compile', stage: 'plan-evaluate' });
-  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, undefined, planReviewerTb, planReviewerSelection?.effectiveRecipe, planReviewerSelection?.tier, planReviewerSelection?.tierSource);
-  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, undefined, planEvaluatorTb, planEvaluatorSelection?.effectiveRecipe, planEvaluatorSelection?.tier, planEvaluatorSelection?.tierSource);
+  const { agentConfig: reviewerConfig, harness: planReviewerHarness } = await resolveAgentRuntimeForInvocationWithExtensions('plan-reviewer', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'plan-review' }, runtimeChoiceRouterOptions(ctx));
+  const { agentConfig: evaluatorConfig, harness: planEvaluatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('plan-evaluator', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'plan-evaluate' }, runtimeChoiceRouterOptions(ctx));
   const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 
@@ -522,10 +525,6 @@ registerCompileStage({
   const { waves } = resolveDependencyGraph(plansForGraph);
   const moduleMap = new Map(ctx.expeditionModules.map((m) => [m.id, m]));
   const completedPlans = new Map<string, string>(); // moduleId -> plan file content
-  const { toolbeltSummary: modulePlannerTbStage, selection: modulePlannerSelection } = ctx.agentRuntimes.forRoleResolved('module-planner', undefined, { phase: 'compile', stage: 'module-planner' });
-  const agentConfig = resolveAgentConfig('module-planner', ctx.config, undefined, modulePlannerTbStage, modulePlannerSelection?.effectiveRecipe, modulePlannerSelection?.tier, modulePlannerSelection?.tierSource);
-  const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'module-planner', agentConfig);
-
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
     const waveModuleIds = waves[waveIdx];
@@ -533,7 +532,11 @@ registerCompileStage({
 
     const waveTasks: ParallelTask<EforgeEvent>[] = waveModuleIds.map((modId) => ({
       id: modId,
-      run: () => runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, agentConfig, contextGuard),
+      run: async function* () {
+        const runtime = await resolveAgentRuntimeForInvocationWithExtensions('module-planner', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'module-planner' }, runtimeChoiceRouterOptions(ctx));
+        const contextGuard = await resolveModelAwareCompileContextGuardOptions(ctx, 'module-planner', runtime.agentConfig);
+        yield* runModulePlannerAttempt(moduleMap.get(modId)!, ctx, architectureContent, completedPlans, runtime, contextGuard);
+      },
     }));
 
     yield* runParallel(waveTasks, { rethrowIf: (err) => err instanceof CompileScopeContextError });

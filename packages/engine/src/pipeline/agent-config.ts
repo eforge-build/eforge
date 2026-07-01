@@ -19,7 +19,7 @@ import type { AgentRole } from '../events.js';
 import type { EforgeConfig, ModelRef, ResolvedAgentConfig, AgentTier, ShardScope, TierConfig } from '../config.js';
 import type { EffortLevel, ThinkingConfig } from '../harness.js';
 import type { ToolbeltSummary } from '../agent-runtime-registry.js';
-import type { EffectiveAgentRecipe } from './runtime-choice.js';
+import type { EffectiveAgentRecipe, RuntimeChoiceSelection } from './runtime-choice.js';
 import { resolveRuntimeChoiceForInvocation } from './runtime-choice.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
@@ -145,6 +145,7 @@ export function resolveAgentConfig(
   effectiveRecipe?: EffectiveAgentRecipe,
   resolvedTier?: AgentTier,
   resolvedTierSource?: Provenance,
+  runtimeChoiceSelection?: RuntimeChoiceSelection,
 ): ResolvedAgentConfig {
   // Step 1: tier
   const inferredSelection = !effectiveRecipe && !(resolvedTier && resolvedTierSource)
@@ -228,11 +229,20 @@ export function resolveAgentConfig(
   const fallbackModel = tierRecipe.fallbackModel;
 
   // Build initial result.
+  const choiceMetadata = runtimeChoiceSelection ?? inferredSelection;
   const result: ResolvedAgentConfig = {
     harness,
     harnessSource: 'tier',
     tier,
     tierSource,
+    ...(choiceMetadata !== undefined ? {
+      runtimeChoice: choiceMetadata.choice,
+      runtimeChoiceQualified: choiceMetadata.choiceRef,
+      runtimeChoiceSource: choiceMetadata.source,
+      ...(choiceMetadata.matchedRule !== undefined && { runtimeChoiceRule: choiceMetadata.matchedRule }),
+      ...(choiceMetadata.router !== undefined && { runtimeChoiceRouter: choiceMetadata.router }),
+      ...(choiceMetadata.fallbackReason !== undefined && { runtimeChoiceFallbackReason: choiceMetadata.fallbackReason }),
+    } : {}),
     model,
     effort,
     effortSource,

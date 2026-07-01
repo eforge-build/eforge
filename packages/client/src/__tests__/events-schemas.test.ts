@@ -251,6 +251,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'standard',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'standard.default',
+      runtimeChoiceSource: 'default',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled', budget_tokens: 10000 },
     };
@@ -276,6 +279,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'fast',
       tierSource: 'role',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'fast.default',
+      runtimeChoiceSource: 'default',
     });
     expect(result.success).toBe(true);
   });
@@ -291,6 +297,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'standard',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'standard.default',
+      runtimeChoiceSource: 'default',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled', budget_tokens: 10000 },
     };

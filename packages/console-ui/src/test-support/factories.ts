@@ -223,7 +223,7 @@ export function validationSwimlaneBugRunState(): RunState {
     eventAt('2024-01-15T10:00:00.000Z', { type: 'session:start', sessionId: 'sess-validation-bug' }),
     eventAt('2024-01-15T10:00:01.000Z', { type: 'phase:start', sessionId: 'sess-validation-bug', runId: 'run-validation-bug', planSet: 'validation-swimlane-bug', command: 'build' }),
     eventAt('2024-01-15T10:00:02.000Z', { type: 'planning:start', sessionId: 'sess-validation-bug', label: 'Validation swimlane bug PRD', source: '# Validation swimlane bug repro' }),
-    eventAt('2024-01-15T10:00:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'max.default', runtimeChoiceSource: 'default' }),
     eventAt('2024-01-15T10:00:25.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner', result: { durationMs: 22_000, durationApiMs: 20_000, numTurns: 1, totalCostUsd: 0.03, usage: { input: 180_000, output: 45_000, total: 225_000, cacheRead: 20_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Planning complete.' } }),
     eventAt('2024-01-15T10:00:25.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner' }),
     eventAt('2024-01-15T10:00:30.000Z', {
@@ -232,11 +232,11 @@ export function validationSwimlaneBugRunState(): RunState {
       plans: [{ id: 'plan-01', name: 'Acceptance Recovery Evidence', dependsOn: [], branch: 'fix/plan-01', body: 'Implement acceptance evidence', filePath: '.eforge/plans/plan-01.md' }],
       planConfigs: [{ id: 'plan-01', build: ['implement', 'test-cycle', 'review-cycle'] }],
     }),
-    eventAt('2024-01-15T10:00:31.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:31.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'balanced.default', runtimeChoiceSource: 'default' }),
     eventAt('2024-01-15T10:01:00.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator', result: { durationMs: 29_000, durationApiMs: 27_000, numTurns: 1, totalCostUsd: 0.02, usage: { input: 120_000, output: 30_000, total: 150_000, cacheRead: 0, cacheCreation: 0 }, modelUsage: {}, resultText: 'Plan fixes accepted.' } }),
     eventAt('2024-01-15T10:01:00.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator' }),
     eventAt('2024-01-15T10:01:02.000Z', { type: 'plan:status:change', sessionId: 'sess-validation-bug', planId: 'plan-01', status: 'running' }),
-    eventAt('2024-01-15T10:01:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+    eventAt('2024-01-15T10:01:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'max.default', runtimeChoiceSource: 'default' }),
     eventAt('2024-01-15T10:03:00.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder', result: { durationMs: 117_000, durationApiMs: 110_000, numTurns: 3, totalCostUsd: 0.08, usage: { input: 650_000, output: 170_000, total: 820_000, cacheRead: 300_000, cacheCreation: 20_000 }, modelUsage: {}, resultText: 'Implementation complete.' } }),
     eventAt('2024-01-15T10:03:00.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder' }),
     eventAt('2024-01-15T10:03:01.000Z', { type: 'plan:status:change', sessionId: 'sess-validation-bug', planId: 'plan-01', status: 'completed' }),
@@ -247,7 +247,7 @@ export function validationSwimlaneBugRunState(): RunState {
     eventAt('2024-01-15T10:03:45.000Z', { type: 'validation:command:complete', sessionId: 'sess-validation-bug', command: 'pnpm test', exitCode: 0, output: 'ok' }),
     eventAt('2024-01-15T10:03:45.000Z', { type: 'validation:complete', sessionId: 'sess-validation-bug', passed: true }),
     eventAt('2024-01-15T10:03:46.000Z', { type: 'prd_validation:start', sessionId: 'sess-validation-bug' }),
-    eventAt('2024-01-15T10:03:47.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'validation', agentId: 'agent-prd-validator', agent: 'prd-validator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:03:47.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'validation', agentId: 'agent-prd-validator', agent: 'prd-validator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'balanced.default', runtimeChoiceSource: 'default' }),
   ];
 
   return runStateFromEvents(events.map((event, i) => ({ event, eventId: `validation-bug-${i + 1}` })));
@@ -293,19 +293,19 @@ export function mapReduceRunState(): RunState {
 
     // Map phase: atom-001 + atom-002 done, atom-003 running, atom-004 skipped, atom-005 queued.
     eventAt('2024-01-15T10:00:04.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-001', status: 'running' }),
-    eventAt('2024-01-15T10:00:04.000Z', { type: 'agent:start', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:04.000Z', { type: 'agent:start', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'balanced.default', runtimeChoiceSource: 'default' }),
     eventAt('2024-01-15T10:00:40.000Z', { type: 'agent:result', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner', result: { durationMs: 36_000, durationApiMs: 34_000, numTurns: 2, totalCostUsd: 0.21, usage: { input: 142_000, output: 38_000, total: 180_000, cacheRead: 40_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Contract drafted.' } }),
     eventAt('2024-01-15T10:00:40.000Z', { type: 'agent:stop', sessionId, planId: 'atom-001', agentId: 'agent-atom-001', agent: 'planner' }),
     eventAt('2024-01-15T10:00:41.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-001', status: 'completed' }),
 
     eventAt('2024-01-15T10:00:42.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-002', status: 'running' }),
-    eventAt('2024-01-15T10:00:42.000Z', { type: 'agent:start', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:42.000Z', { type: 'agent:start', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'balanced.default', runtimeChoiceSource: 'default' }),
     eventAt('2024-01-15T10:01:30.000Z', { type: 'agent:result', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner', result: { durationMs: 48_000, durationApiMs: 45_000, numTurns: 3, totalCostUsd: 0.34, usage: { input: 210_000, output: 56_000, total: 266_000, cacheRead: 80_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Schema migrated.' } }),
     eventAt('2024-01-15T10:01:30.000Z', { type: 'agent:stop', sessionId, planId: 'atom-002', agentId: 'agent-atom-002', agent: 'planner' }),
     eventAt('2024-01-15T10:01:31.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-002', status: 'completed' }),
 
     eventAt('2024-01-15T10:01:32.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-003', status: 'running' }),
-    eventAt('2024-01-15T10:01:32.000Z', { type: 'agent:start', sessionId, planId: 'atom-003', agentId: 'agent-atom-003', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:01:32.000Z', { type: 'agent:start', sessionId, planId: 'atom-003', agentId: 'agent-atom-003', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'balanced.default', runtimeChoiceSource: 'default' }),
 
     eventAt('2024-01-15T10:01:33.000Z', { type: 'planning:map-reduce:atom:status', sessionId, atomId: 'atom-004', status: 'skipped', reason: 'no acceptance criteria mapped' }),
 
@@ -323,7 +323,7 @@ export function mapReduceRunState(): RunState {
       ],
     }),
     eventAt('2024-01-15T10:01:35.000Z', { type: 'planning:map-reduce:reduce:status', sessionId, nodeId: 'reduce-000', status: 'running' }),
-    eventAt('2024-01-15T10:01:35.000Z', { type: 'agent:start', sessionId, planId: 'reduce-000', agentId: 'agent-reduce-000', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+    eventAt('2024-01-15T10:01:35.000Z', { type: 'agent:start', sessionId, planId: 'reduce-000', agentId: 'agent-reduce-000', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role', runtimeChoice: 'default', runtimeChoiceQualified: 'max.default', runtimeChoiceSource: 'default' }),
   ];
 
   return runStateFromEvents(events.map((event, i) => ({ event, eventId: `map-reduce-${i + 1}` })));

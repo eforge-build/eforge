@@ -5051,7 +5051,7 @@ Total variants: 248
 | `expedition:module:complete` | `moduleId` |
 | `expedition:compile:start` | - |
 | `expedition:compile:complete` | `plans` |
-| `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `projectMcpSelection`, `projectMcpServerNames`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource`, `toolbelt`, `toolbeltSource` |
+| `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `projectMcpSelection`, `projectMcpServerNames`, `runtimeChoice`, `runtimeChoiceFallbackReason`, `runtimeChoiceQualified`, `runtimeChoiceRouter`, `runtimeChoiceRule`, `runtimeChoiceSource`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource`, `toolbelt`, `toolbeltSource` |
 | `agent:warning` | `agent`, `agentId`, `code`, `message`, `planId` |
 | `agent:stop` | `agent`, `agentId`, `error`, `planId` |
 | `agent:usage` | `agent`, `agentId`, `costUsd`, `final`, `numTurns`, `planId`, `usage` |

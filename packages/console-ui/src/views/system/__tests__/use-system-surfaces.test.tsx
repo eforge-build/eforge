@@ -9,7 +9,7 @@ function emptyTotals() {
     eventHooks: 0,
     agentRunHooks: 0,
     policyGates: 0,
-    profileRouters: 0,
+    profileRouters: 0, runtimeChoiceRouters: 0,
     inputSources: 0,
     reviewerPerspectives: 0,
     validationProviders: 0,

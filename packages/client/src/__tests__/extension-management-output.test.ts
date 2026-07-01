@@ -16,7 +16,7 @@ const registrations: ExtensionRegistrationSummary = {
   eventHooks: 1,
   agentRunHooks: 1,
   policyGates: 1,
-  profileRouters: 1,
+  profileRouters: 1, runtimeChoiceRouters: 1,
   inputSources: 1,
   reviewerPerspectives: 1,
   validationProviders: 1,

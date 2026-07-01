@@ -19,14 +19,12 @@ import type { TObject } from '@sinclair/typebox';
 // Local SDK-mirror types (avoid importing from @eforge-build/extension-sdk to
 // prevent rootDir violations in the engine's per-package tsconfig)
 // ---------------------------------------------------------------------------
-
 interface ExtensionTool {
   name: string;
   description: string;
   inputSchema: TObject;
   handler: (input: unknown) => Promise<string> | string;
 }
-
 /** Mirror of AgentRunAugmentation from @eforge-build/extension-sdk */
 interface AgentRunAugmentation {
   promptAppend?: string;
@@ -40,6 +38,7 @@ interface AgentRunContext {
   role: string;
   tier?: string;
   profile: string;
+  runtimeChoice?: string; runtimeChoiceQualified?: string; runtimeChoiceSource?: 'default' | 'rule' | 'extension-router' | 'fallback'; runtimeChoiceRule?: string; runtimeChoiceRouter?: string; runtimeChoiceFallbackReason?: 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
   planId?: string;
   phase?: string;
   stage?: string;
@@ -276,6 +275,7 @@ function buildAgentRunContext(
     ...(options.tier !== undefined && { tier: options.tier }),
     profile: profileName,
     ...(planId !== undefined && { planId }),
+    ...(options.runtimeChoice !== undefined && { runtimeChoice: options.runtimeChoice }), ...(options.runtimeChoiceQualified !== undefined && { runtimeChoiceQualified: options.runtimeChoiceQualified }), ...(options.runtimeChoiceSource !== undefined && { runtimeChoiceSource: options.runtimeChoiceSource }), ...(options.runtimeChoiceRule !== undefined && { runtimeChoiceRule: options.runtimeChoiceRule }), ...(options.runtimeChoiceRouter !== undefined && { runtimeChoiceRouter: options.runtimeChoiceRouter }), ...(options.runtimeChoiceFallbackReason !== undefined && { runtimeChoiceFallbackReason: options.runtimeChoiceFallbackReason }),
     ...(options.phase !== undefined && { phase: options.phase }),
     ...(options.stage !== undefined && { stage: options.stage }),
     ...(options.harness !== undefined && { harness: options.harness }),

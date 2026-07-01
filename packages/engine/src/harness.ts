@@ -5,6 +5,8 @@ import { isTransientTransportError } from '@eforge-build/client';
 import { classifyProviderContextError } from './compile-resilience/provider-context.js';
 
 export type ToolPreset = 'coding' | 'read-only' | 'none';
+export type RuntimeChoiceSource = 'default' | 'rule' | 'extension-router' | 'fallback';
+export type RuntimeChoiceFallbackReason = 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
 
 // ---------------------------------------------------------------------------
 // SDK Passthrough Types
@@ -33,6 +35,12 @@ export interface SdkPassthroughConfig {
   disallowedTools?: string[];
   /** Text appended to the agent prompt after variable substitution. Not passed to the backend SDK. */
   promptAppend?: string;
+  runtimeChoice?: string;
+  runtimeChoiceQualified?: string;
+  runtimeChoiceSource?: RuntimeChoiceSource;
+  runtimeChoiceRule?: string;
+  runtimeChoiceRouter?: string;
+  runtimeChoiceFallbackReason?: RuntimeChoiceFallbackReason;
   /**
    * Build phase context for extension hooks. Values: 'compile' | 'build' | 'standalone'.
    * Not forwarded to the backend SDK.
@@ -137,6 +145,12 @@ export interface AgentRunOptions {
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
   thinkingOriginal?: ThinkingConfig;
+  runtimeChoice?: string;
+  runtimeChoiceQualified?: string;
+  runtimeChoiceSource?: RuntimeChoiceSource;
+  runtimeChoiceRule?: string;
+  runtimeChoiceRouter?: string;
+  runtimeChoiceFallbackReason?: RuntimeChoiceFallbackReason;
   /** The resolved tier for this role. Stamped from resolveAgentConfig. */
   tier?: string;
   /** Provenance of the resolved tier value. */

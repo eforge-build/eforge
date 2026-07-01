@@ -145,6 +145,12 @@ export class StubHarness implements AgentHarness {
       harnessSource: options.harnessSource ?? 'tier',
       tier: options.tier ?? 'stub',
       tierSource: options.tierSource ?? 'tier',
+      runtimeChoice: options.runtimeChoice ?? 'default',
+      runtimeChoiceQualified: options.runtimeChoiceQualified ?? `${options.tier ?? 'stub'}.default`,
+      runtimeChoiceSource: options.runtimeChoiceSource ?? 'default',
+      ...(options.runtimeChoiceRule !== undefined && { runtimeChoiceRule: options.runtimeChoiceRule }),
+      ...(options.runtimeChoiceRouter !== undefined && { runtimeChoiceRouter: options.runtimeChoiceRouter }),
+      ...(options.runtimeChoiceFallbackReason !== undefined && { runtimeChoiceFallbackReason: options.runtimeChoiceFallbackReason }),
       timestamp: new Date().toISOString(),
     };
 

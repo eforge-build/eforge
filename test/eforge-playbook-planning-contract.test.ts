@@ -21,7 +21,7 @@ function registry(options: { planCapabilityVersion?: string; planProviderName?: 
       source: 'explicit',
       strategy: 'jiti',
       capabilities: [{ name: 'eforge.plan.planning-workstation', version: options.planCapabilityVersion }],
-      registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, agentTasks: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
+      registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, runtimeChoiceRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, agentTasks: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     });
   }
   return { ...state, extensions, candidates: [] };

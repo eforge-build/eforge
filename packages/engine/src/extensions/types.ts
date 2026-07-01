@@ -94,6 +94,9 @@ export interface NativeExtensionInstallProvenance {
 export type EventPattern = string;
 export type ExtensionHandler = (...args: never[]) => unknown;
 export interface ProfileRouterSpec { name: string; selectBuildProfile?: ExtensionHandler; resolve?: ExtensionHandler }
+// --- eforge:region plan-02-runtime-choice-events-extensions ---
+export interface RuntimeChoiceRouterSpec { name: string; resolveRuntimeChoice: ExtensionHandler }
+// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
 export interface InputSourceAdapter { name: string; description: string; fetch: ExtensionHandler }
 export interface ReviewerPerspectiveApplicability {
   fileGlobs?: string[];
@@ -205,6 +208,9 @@ export interface EforgeExtensionAPIShape {
   beforePlanMerge(handler: ExtensionHandler): void;
   beforeFinalMerge(handler: ExtensionHandler): void;
   registerProfileRouter(spec: ProfileRouterSpec): void;
+  // --- eforge:region plan-02-runtime-choice-events-extensions ---
+  registerRuntimeChoiceRouter(nameOrSpec: RuntimeChoiceRouterSpec | string, handler?: ExtensionHandler): void;
+  // --- eforge:endregion plan-02-runtime-choice-events-extensions ---
   registerInputSource(adapter: InputSourceAdapter): void;
   registerPrdEnricher(enricher: PrdEnricherSpec): void;
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
@@ -333,6 +339,9 @@ export type PolicyGateRegistration = BaseExtensionRegistration<'policyGate', Ext
   registrationIndex: number;
 };
 export type ProfileRouterRegistration = BaseExtensionRegistration<'profileRouter', ProfileRouterSpec> & { name: string };
+// --- eforge:region plan-02-runtime-choice-events-extensions ---
+export type RuntimeChoiceRouterRegistration = BaseExtensionRegistration<'runtimeChoiceRouter', RuntimeChoiceRouterSpec> & { name: string };
+// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
 export type InputSourceRegistration = BaseExtensionRegistration<'inputSource', InputSourceAdapter> & { name: string };
 export type ReviewerPerspectiveRegistration = BaseExtensionRegistration<'reviewerPerspective', ReviewerPerspectiveSpec> & { name: string };
 export type ValidationProviderRegistration = BaseExtensionRegistration<'validationProvider', ValidationProviderSpec> & { name: string };
@@ -351,6 +360,9 @@ export interface NativeExtensionRecorderState {
   agentRunHooks: AgentRunRegistration[];
   policyGates: PolicyGateRegistration[];
   profileRouters: ProfileRouterRegistration[];
+  // --- eforge:region plan-02-runtime-choice-events-extensions ---
+  runtimeChoiceRouters: RuntimeChoiceRouterRegistration[];
+  // --- eforge:endregion plan-02-runtime-choice-events-extensions ---
   inputSources: InputSourceRegistration[];
   reviewerPerspectives: ReviewerPerspectiveRegistration[];
   validationProviders: ValidationProviderRegistration[];
@@ -384,6 +396,9 @@ export interface LoadedNativeExtension {
     agentRunHooks: number;
     policyGates: number;
     profileRouters: number;
+    // --- eforge:region plan-02-runtime-choice-events-extensions ---
+    runtimeChoiceRouters: number;
+    // --- eforge:endregion plan-02-runtime-choice-events-extensions ---
     inputSources: number;
     reviewerPerspectives: number;
     validationProviders: number;

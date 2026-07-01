@@ -555,7 +555,7 @@ function planningRegistryForOwner(extensionName: string, extensionPath: string):
   const owner = { extensionName, extensionPath };
   return {
     agentTasks: [{ kind: 'agentTask', ...owner, localId: 'planning-draft', id: `${extensionName}:planning-draft`, value: { id: 'planning-draft', title: 'Planning draft', inputSchema: EforgePlanPlanningDraftInputSchema, outputSchema: EforgePlanPlanningDraftResultSchema, prompt: { kind: 'asset' as const, asset: 'prompts/planning.md' }, resolvePrompt: (ctx: any) => ({ variables: { topic: ctx.input.topic, sourceText: ctx.input.sourceText ?? '(none)' }, run: { role: 'planner', tools: [{ name: ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result', description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input: unknown) => { (ctx as any).submitted = input; return 'submitted'; } }] }, getResult: () => (ctx as any).submitted, missingResultMessage: 'missing result' }) } }],
-    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
+    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], runtimeChoiceRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
   } as NativeExtensionRegistry;
 }
 
@@ -613,7 +613,7 @@ class SubmitHarness implements AgentHarness {
     await this.onRun?.(options, agent, planId);
     this.calls.push(options);
     const agentId = 'agent-submit';
-    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     const tool = options.customTools?.find((candidate) => candidate.name === 'submit_eforge_plan_planning_result');
     if (tool) {
       yield { type: 'agent:tool_use', agent, planId, agentId, tool: tool.name, toolUseId: 'tool-1', input: this.submission, timestamp: new Date().toISOString() };
@@ -634,7 +634,7 @@ class ProgressSubmitHarness implements AgentHarness {
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     this.calls.push(options);
     const agentId = 'agent-progress';
-    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     const progressTool = options.customTools?.find((candidate) => candidate.name === 'report_eforge_plan_planning_progress');
     if (progressTool) {
       const updates = Array.isArray(this.progress) ? this.progress : [this.progress];
@@ -659,7 +659,7 @@ class FailingHarness implements AgentHarness {
   constructor(private readonly error: Error) {}
   effectiveCustomToolName(name: string): string { return name; }
   async *run(_options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
-    yield { type: 'agent:start', agent, planId, agentId: 'agent-fail', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId: 'agent-fail', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     throw this.error;
   }
 }
@@ -668,7 +668,7 @@ class NoSubmitHarness implements AgentHarness {
   effectiveCustomToolName(name: string): string { return name; }
   async *run(_options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = 'agent-no-submit';
-    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     yield { type: 'agent:result', agent, planId, agentId, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} }, timestamp: new Date().toISOString() };
     yield { type: 'agent:stop', agent, planId, agentId, timestamp: new Date().toISOString() };
   }
@@ -682,7 +682,7 @@ class AbortAwareHarness implements AgentHarness {
   effectiveCustomToolName(name: string): string { return name; }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
-    yield { type: 'agent:start', agent, planId, agentId: 'agent-1', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId: 'agent-1', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     await new Promise<void>((resolve) => {
       options.abortSignal?.addEventListener('abort', () => { this.aborted = true; resolve(); }, { once: true });
       this.resolveStarted();

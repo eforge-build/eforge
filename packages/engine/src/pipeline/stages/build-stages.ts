@@ -48,7 +48,7 @@ import {
   runValidationProviderRecoveryStage,
   type ValidationRecoveryRepairContext,
 } from './validation-provider-recovery.js';
-import { resolveAgentRuntimeForInvocation, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
+import { resolveAgentRuntimeForInvocationWithExtensions, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
 import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
@@ -60,6 +60,7 @@ const exec = promisify(execFile);
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+function runtimeChoiceRouterOptions(ctx: BuildStageContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
 function hasTestStages(build: BuildStageSpec[]): boolean {
   return build.some((spec) => {
     if (Array.isArray(spec)) return spec.some((s) => s.startsWith('test'));
@@ -149,13 +150,13 @@ async function* runEvaluatorAttempt(
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
   const evalTracker = createToolTracker(evalSpan);
-  const { agentConfig: resolvedEvalAgentConfig, harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig: resolvedEvalAgentConfig, harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'evaluator',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'evaluate', changedFiles: input.evaluationSnapshot?.files.map((file) => file.path) },
-  );
+    { phase: 'build', stage: 'evaluate', planId: ctx.planId, changedFiles: input.evaluationSnapshot?.files.map((file) => file.path) },
+    runtimeChoiceRouterOptions(ctx));
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
     const validationRepairContext = typeof input.evaluatorOptions.validationRepairContext === 'string'
@@ -321,13 +322,13 @@ async function* reviewStageInner(
       source: 'config',
     });
   }
-  const { agentConfig: reviewerAgentConfig, harness: reviewerHarness, toolbeltSummary: reviewerTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig: reviewerAgentConfig, harness: reviewerHarness, toolbeltSummary: reviewerTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'reviewer',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'review' },
-  );
+    { phase: 'build', stage: 'review', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const reviewerPromptAppend = appendPromptSection(reviewerAgentConfig.promptAppend, renderReviewerPriorOutcomeContext(getReviewCycleFeedback(ctx)));
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -595,13 +596,13 @@ async function* runReviewFixerAttempt(
   onAgentId: (id: string) => void,
   validationRepairContext?: ValidationRecoveryRepairContext,
 ): AsyncGenerator<EforgeEvent> {
-  const { agentConfig: fixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig: fixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'review-fixer',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'review-fix' },
-  );
+    { phase: 'build', stage: 'review-fix', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const fixerConfigWithPhase = { ...fixerConfig, phase: 'build', stage: 'review-fix' };
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
@@ -713,7 +714,7 @@ async function* reviewFixStageInner(
 async function* structuralValidationFixStageInner(ctx: BuildStageContext, validationRepairContext: ValidationRecoveryRepairContext): AsyncGenerator<EforgeEvent> {
   let baseRef: string | undefined; let agentId: string | undefined;
   try { baseRef = (await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath })).stdout.trim(); } catch { /* non-git unit contexts skip commit rollback/activity */ }
-  const { agentConfig: validationFixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = resolveAgentRuntimeForInvocation('validation-fixer', ctx.config, ctx.agentRuntimes, ctx.planFile, { phase: 'build', stage: 'validate-repair' }); const fixerConfig = { ...validationFixerConfig, phase: 'build', stage: 'validate-repair' };
+  const { agentConfig: validationFixerConfig, harness: fixerHarness, toolbeltSummary: fixerTb } = await resolveAgentRuntimeForInvocationWithExtensions('validation-fixer', ctx.config, ctx.agentRuntimes, ctx.planFile, { phase: 'build', stage: 'validate-repair', planId: ctx.planId }, runtimeChoiceRouterOptions(ctx)); const fixerConfig = { ...validationFixerConfig, phase: 'build', stage: 'validate-repair' };
   const span = ctx.tracing.createSpan('validation-fixer', { planId: ctx.planId, providerName: validationRepairContext.providerName });
   span.setInput({ planId: ctx.planId, providerName: validationRepairContext.providerName, repairStrategy: validationRepairContext.repairStrategy }); const tracker = createToolTracker(span);
   yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: ctx.planId, message: `Running structural validation repair for provider "${validationRepairContext.providerName}". Checkpoint: ${validationRepairContext.checkpoint.directory}` };
@@ -742,13 +743,13 @@ async function* structuralValidationFixStageInner(ctx: BuildStageContext, valida
   } catch { /* non-critical */ }
 }
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const { agentConfig, harness: testerHarness, toolbeltSummary: testerTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig, harness: testerHarness, toolbeltSummary: testerTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'tester',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'test' },
-  );
+    { phase: 'build', stage: 'test', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -873,13 +874,13 @@ registerBuildStage({
     // Fresh repo or no commits — evaluator will fall back to HEAD~1
   }
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const builderRuntime = resolveAgentRuntimeForInvocation(
+  const builderRuntime = await resolveAgentRuntimeForInvocationWithExtensions(
     'builder',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'implement' },
-  );
+    { phase: 'build', stage: 'implement', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   // Inject resume context into the resolved builder prompt when resuming a compiled build.
   const agentConfig = ctx.resumeContext
     ? {
@@ -950,7 +951,6 @@ registerBuildStage({
     // Sharded flow: fan out to N parallel builders, then coordinator phase
     // -----------------------------------------------------------------------
     let anyShardFailed = false;
-
     // Track the last builder agentId seen per shard for agent:activity emission
     const shardAgentIds = new Map<string, string>();
 
@@ -958,7 +958,7 @@ registerBuildStage({
       id: shard.id,
       run: (): AsyncGenerator<EforgeEvent> => {
         async function* trackShardAgentId() {
-          const shardRuntime = resolveAgentRuntimeForInvocation(
+          const shardRuntime = await resolveAgentRuntimeForInvocationWithExtensions(
             'builder',
             ctx.config,
             ctx.agentRuntimes,
@@ -966,12 +966,13 @@ registerBuildStage({
             {
               phase: 'build',
               stage: 'implement',
+              planId: ctx.planId,
               shardIds: [shard.id],
               shardRoots: shard.roots,
               shardFiles: shard.files,
               shardLabels: [shard.id],
             },
-          );
+            runtimeChoiceRouterOptions(ctx));
           const shardAgentConfig = ctx.resumeContext
             ? {
                 ...shardRuntime.agentConfig,
@@ -1329,13 +1330,13 @@ registerBuildStage({
   whenToUse: 'When the plan names new documentation files to create, or describes specific docs to update.',
   costHint: 'medium',
 }, async function* docAuthorStage(ctx) {
-  const { agentConfig, harness: docAuthorHarness, toolbeltSummary: docAuthorTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig, harness: docAuthorHarness, toolbeltSummary: docAuthorTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'doc-author',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'doc-author' },
-  );
+    { phase: 'build', stage: 'doc-author', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const docSpan = ctx.tracing.createSpan('doc-author', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1392,13 +1393,13 @@ registerBuildStage({
     return;
   }
 
-  const { agentConfig, harness: docSyncerHarness, toolbeltSummary: docSyncerTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig, harness: docSyncerHarness, toolbeltSummary: docSyncerTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'doc-syncer',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'doc-sync' },
-  );
+    { phase: 'build', stage: 'doc-sync', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const docSpan = ctx.tracing.createSpan('doc-syncer', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1448,13 +1449,13 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const { agentConfig, harness: testWriterHarness, toolbeltSummary: testWriterTb } = resolveAgentRuntimeForInvocation(
+  const { agentConfig, harness: testWriterHarness, toolbeltSummary: testWriterTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'test-writer',
     ctx.config,
     ctx.agentRuntimes,
     ctx.planFile,
-    { phase: 'build', stage: 'test-write' },
-  );
+    { phase: 'build', stage: 'test-write', planId: ctx.planId },
+    runtimeChoiceRouterOptions(ctx));
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);

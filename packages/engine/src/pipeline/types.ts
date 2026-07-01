@@ -16,7 +16,7 @@ import type { PipelineComposition } from '../schemas.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
-import type { ReviewerPerspectiveRegistration, ValidationProviderRegistration } from '../extensions/types.js';
+import type { ReviewerPerspectiveRegistration, RuntimeChoiceRouterRegistration, ValidationProviderRegistration } from '../extensions/types.js';
 import type { CompilePreflightRisk } from '../events.js';
 import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
 import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
@@ -66,6 +66,10 @@ export interface PipelineContext {
 
   /** Extension validation provider registrations from loaded native extensions. */
   extensionValidationProviders?: ValidationProviderRegistration[];
+
+  extensionRuntimeChoiceRouters?: RuntimeChoiceRouterRegistration[];
+  configProfileName?: string | null;
+  extensionConfigDir?: string;
 
   // Mutable state passed between stages
   plans: PlanFile[];

@@ -4,16 +4,17 @@ import type { EforgeEvent } from '../events.js';
 import { validateCompileArtifacts } from '../compile-resilience/artifact-validation.js';
 import { resolvePlanningDecompositionLimits } from '../config.js';
 import { parseOrchestrationConfig } from '../plan.js';
-import { resolveAgentConfig } from '../pipeline/agent-config.js';
 import type { PipelineContext } from '../pipeline/types.js';
+import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type RunBoundedPlannerCompilerInput } from './compiler-runner.js';
 import { synthesizePlanningArtifacts } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 
+function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
+
 export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContext): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting bounded planner compiler...' };
-  const { harness, toolbeltSummary, selection } = ctx.agentRuntimes.forRoleResolved('planner', undefined, { phase: 'compile', stage: 'planner' });
-  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, toolbeltSummary, selection?.effectiveRecipe, selection?.tier, selection?.tierSource);
+  const { agentConfig, harness } = await resolveAgentRuntimeForInvocationWithExtensions('planner', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'planner' }, runtimeChoiceRouterOptions(ctx));
   let compilerResult: BoundedPlannerCompilerResult;
   try {
     compilerResult = yield* runCompilerAndStreamEvents({
