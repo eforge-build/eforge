@@ -10,11 +10,9 @@ import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { SpendCard } from '@/components/now/spend-card';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
-// --- eforge:region plan-03-historical-analytics-ui-docs ---
 import { EfficiencyAnalyticsCard } from '@/components/now/efficiency-analytics-card';
 import { useEfficiencyAnalytics, type EfficiencyAnalyticsWindowDays } from '@/hooks/use-efficiency-analytics';
 import { selectEfficiencyAnalyticsViewModel } from '@/lib/selectors/efficiency-analytics';
-// --- eforge:endregion plan-03-historical-analytics-ui-docs ---
 import { useSpend } from '@/hooks/use-spend';
 import { useExtensionTrustList } from '@/hooks/use-extension-trust-list';
 import { useExtensionTrustMutation } from '@/hooks/use-extension-trust-mutation';
@@ -60,9 +58,7 @@ interface NowDashboardProps {
 
 export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue, refreshRuns, refreshFailedEnqueues }: NowDashboardProps) {
   const [tick, setTick] = React.useState(() => Date.now());
-  // --- eforge:region plan-03-historical-analytics-ui-docs ---
   const [analyticsWindow, setAnalyticsWindow] = React.useState<EfficiencyAnalyticsWindowDays>(7);
-  // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
 
   React.useEffect(() => {
     const id = setInterval(() => setTick(Date.now()), 5_000);
@@ -89,13 +85,11 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     return selectNowSpendPanel(spendSummary, todayStr);
   }, [spendSummary, tick]);
 
-  // --- eforge:region plan-03-historical-analytics-ui-docs ---
   const analyticsSummary = useEfficiencyAnalytics(analyticsWindow, projectState.runs.length);
   const analyticsModel = React.useMemo(
     () => selectEfficiencyAnalyticsViewModel(analyticsSummary),
     [analyticsSummary],
   );
-  // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
 
   // Recovery payload for the failed-PRD item the user chose to recover; opens
   // the dialog hosted at page root. Failures live in the attention strip now,
@@ -193,13 +187,11 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
           <SpendCard model={spendModel} />
-          {/* --- eforge:region plan-03-historical-analytics-ui-docs --- */}
           <EfficiencyAnalyticsCard
             model={analyticsModel}
             selectedWindow={analyticsWindow}
             onWindowChange={setAnalyticsWindow}
           />
-          {/* --- eforge:endregion plan-03-historical-analytics-ui-docs --- */}
           <MetricsPanel model={model.metrics} />
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>

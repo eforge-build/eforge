@@ -586,9 +586,7 @@ export interface ModelSpend {
   costUsd: number;
 }
 
-// --- eforge:region plan-01-efficiency-analytics-foundation ---
 export type * from './efficiency-analytics-types.js';
-// --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 /** Response body for GET /api/spend?days=N. Days are ordered oldest -> newest. */
 export interface SpendSummary {
   /** Size of the lookback window in days (1-90). */

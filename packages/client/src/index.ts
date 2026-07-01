@@ -12,9 +12,7 @@ export {
   RecoverySidecarRecoveryOptionSchema,
 } from './routes.js';
 export { isTransientTransportError } from './transient-transport.js';
-// --- eforge:region plan-01-efficiency-analytics-foundation ---
 export * from './efficiency-metrics.js';
-// --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 export type {
   ApiRoute,
   EnqueueRequest,
@@ -83,9 +81,7 @@ export {
 export { fetchFailedEnqueues, reenqueueFailedEnqueue, dismissFailedEnqueue } from './browser-failed-enqueue.js';
 export { pauseScheduler, resumeScheduler } from './browser-scheduler.js';
 
-// --- eforge:region plan-01-efficiency-analytics-foundation ---
 export { apiGetEfficiencyAnalytics, apiGetEfficiencyAnalyticsIfRunning } from './api/efficiency-analytics.js';
-// --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 export {
   apiEnqueue,
   apiEnqueueIfRunning,

@@ -23,9 +23,7 @@ interface SummaryCardsProps {
   isComplete?: boolean;
   isFailed?: boolean;
   profile?: SessionProfile | null;
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   efficiency?: RunEfficiencyMetrics;
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 }
 
 function StatGroup({ children }: { children: React.ReactNode }) {
@@ -52,9 +50,7 @@ export function SummaryCards({
   isComplete,
   isFailed,
   profile,
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   efficiency,
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 }: SummaryCardsProps) {
   const statusAccent = isFailed ? 'red' : isComplete ? 'green' : 'blue';
   const statusIcon = isFailed
@@ -67,7 +63,6 @@ export function SummaryCards({
   const formatTokens = useCallback((n: number) => formatNumber(n), []);
   const formatCost = useCallback((n: number) => `$${(n / 10000).toFixed(4)}`, []);
 
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   const formatEfficiency = useCallback((metric: EfficiencyMetric) => {
     if (metric.value == null) return metric.availability === 'partial' ? 'partial' : 'unavailable';
     switch (metric.label) {
@@ -86,7 +81,6 @@ export function SummaryCards({
     efficiency.outputTokensPerDollar,
     efficiency.cacheContext,
   ] : [];
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -164,7 +158,6 @@ export function SummaryCards({
           </StatGroup>
         </>
       )}
-      {/* --- eforge:region plan-02-live-efficiency-surfaces --- */}
       {efficiencyMetrics.map((metric) => (
         <StatGroup key={metric.label}>
           <Separator />
@@ -182,7 +175,6 @@ export function SummaryCards({
           </span>
         </StatGroup>
       ))}
-      {/* --- eforge:endregion plan-02-live-efficiency-surfaces --- */}
 
       {filesChanged > 0 && (
         <>

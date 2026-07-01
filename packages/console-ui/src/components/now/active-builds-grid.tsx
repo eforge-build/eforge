@@ -1,8 +1,6 @@
 import * as React from 'react';
 import { ActiveBuildCard } from './active-build-card';
-// --- eforge:region plan-02-live-efficiency-surfaces ---
 import { ActiveEfficiencySummary } from './active-efficiency-summary';
-// --- eforge:endregion plan-02-live-efficiency-surfaces ---
 import type { NowActiveBuildCard } from '@/lib/selectors/now';
 import type { QueueRowActionCallbacks } from './queue-row-actions';
 
@@ -19,9 +17,7 @@ export function ActiveBuildsGrid({ cards, onNavigate, onPreviewCascade, onApplyC
   // whenever a single build was running, which read as a large empty void.
   return (
     <div className="grid grid-cols-1 gap-5">
-      {/* --- eforge:region plan-02-live-efficiency-surfaces --- */}
       <ActiveEfficiencySummary cards={cards} />
-      {/* --- eforge:endregion plan-02-live-efficiency-surfaces --- */}
       {cards.map((card) => (
         <ActiveBuildCard key={card.sessionId} card={card} onNavigate={onNavigate} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />
       ))}

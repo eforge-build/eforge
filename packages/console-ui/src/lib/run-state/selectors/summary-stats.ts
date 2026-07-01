@@ -7,10 +7,8 @@
 import type { RunState } from '../types';
 import { formatDuration } from '../format';
 import { selectPlanStatusCounts } from './plan-progress';
-// --- eforge:region plan-02-live-efficiency-surfaces ---
 import { selectRunEfficiencyMetrics } from './efficiency';
 import type { RunEfficiencyMetrics } from './efficiency';
-// --- eforge:endregion plan-02-live-efficiency-surfaces ---
 
 export function getSummaryStats(state: RunState): {
   duration: string;
@@ -26,9 +24,7 @@ export function getSummaryStats(state: RunState): {
   filesChanged: number;
   reviewCritical: number;
   reviewWarning: number;
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   efficiency: RunEfficiencyMetrics;
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
 } {
   const end = state.endTime ?? Date.now();
   const duration = state.startTime
@@ -89,8 +85,6 @@ export function getSummaryStats(state: RunState): {
     filesChanged,
     reviewCritical,
     reviewWarning,
-    // --- eforge:region plan-02-live-efficiency-surfaces ---
     efficiency: selectRunEfficiencyMetrics(state, end),
-    // --- eforge:endregion plan-02-live-efficiency-surfaces ---
   };
 }

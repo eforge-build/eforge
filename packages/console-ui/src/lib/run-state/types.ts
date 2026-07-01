@@ -110,9 +110,7 @@ export interface AgentThread {
   startedAt: string;      // ISO from agent:start timestamp
   endedAt: string | null; // ISO from agent:stop timestamp
   durationMs: number | null; // from agent:result
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   durationApiMs: number | null; // from agent:result; provider API duration for efficiency metrics
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
   inputTokens: number | null;
   outputTokens: number | null;
   totalTokens: number | null;

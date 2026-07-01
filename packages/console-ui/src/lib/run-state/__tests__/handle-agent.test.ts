@@ -86,9 +86,7 @@ describe('handle-agent', () => {
       const thread = delta?.agentThreads?.[0];
       expect(thread?.endedAt).toBeNull();
       expect(thread?.durationMs).toBeNull();
-      // --- eforge:region plan-02-live-efficiency-surfaces ---
       expect(thread?.durationApiMs).toBeNull();
-      // --- eforge:endregion plan-02-live-efficiency-surfaces ---
       expect(thread?.inputTokens).toBeNull();
       expect(thread?.outputTokens).toBeNull();
       expect(thread?.totalTokens).toBeNull();
@@ -349,9 +347,7 @@ describe('handle-agent', () => {
       // newerThread (index 1 / agentId a1) should be updated
       expect(threads[1]?.agentId).toBe('a1');
       expect(threads[1]?.durationMs).toBe(12000);
-      // --- eforge:region plan-02-live-efficiency-surfaces ---
       expect(threads[1]?.durationApiMs).toBe(11000);
-      // --- eforge:endregion plan-02-live-efficiency-surfaces ---
       // olderThread (index 0 / agentId a0) should be untouched
       expect(threads[0]?.agentId).toBe('a0');
       expect(threads[0]?.durationMs).toBeNull();

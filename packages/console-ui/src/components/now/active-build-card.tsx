@@ -146,9 +146,7 @@ export function ActiveBuildCard({ card, onNavigate, onPreviewCascade, onApplyCas
   const showStreamBadge = card.streamStatus !== 'connected';
 
   const summaryLabel = progressSummary(card);
-  // --- eforge:region plan-02-live-efficiency-surfaces ---
   const tokensLabel = card.tokens > 0 ? `${compactTokens(card.tokens)} input tok` : null;
-  // --- eforge:endregion plan-02-live-efficiency-surfaces ---
   const costLabel = card.cost > 0 ? `$${card.cost.toFixed(2)}` : null;
   const cacheLabel = card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
   // `durationLabel` (formatDuration) always returns a non-empty string, so

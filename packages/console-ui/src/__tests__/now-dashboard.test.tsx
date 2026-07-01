@@ -56,12 +56,9 @@ describe('NowDashboard', () => {
     expect(screen.getByText('Build health')).toBeDefined();
     expect(screen.queryByText('Open activity log →')).toBeNull();
     expect(screen.getByText('Build history')).toBeDefined();
-    // --- eforge:region plan-03-historical-analytics-ui-docs ---
     expect(screen.getByText('Efficiency analytics')).toBeDefined();
-    // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
   });
 
-  // --- eforge:region plan-03-historical-analytics-ui-docs ---
   it('refetches efficiency analytics through the daemon route when the window changes', async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -99,7 +96,6 @@ describe('NowDashboard', () => {
       globalThis.fetch = originalFetch;
     }
   });
-  // --- eforge:endregion plan-03-historical-analytics-ui-docs ---
 
   it('surfaces failed PRDs in the Needs attention strip with a Recover action, not in the Queue card', () => {
     const state = connectedState({

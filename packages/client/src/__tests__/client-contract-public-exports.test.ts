@@ -65,11 +65,9 @@ describe('client contract public exports', () => {
     expect(browser.dismissFailedEnqueue).toEqual(expect.any(Function));
     expect(browser.pauseScheduler).toEqual(expect.any(Function));
     expect(browser.resumeScheduler).toEqual(expect.any(Function));
-    // --- eforge:region plan-01-efficiency-analytics-foundation ---
     expect(browser.computeOutputGenerationRate).toEqual(expect.any(Function));
     expect(browser.nearestRankPercentile).toEqual(expect.any(Function));
     expect(browser.API_ROUTES.efficiencyAnalytics).toBeDefined();
-    // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   });
 
   it('exports all new node helpers from the main facade', () => {
@@ -93,12 +91,10 @@ describe('client contract public exports', () => {
     expect(client.apiSchedulerPauseIfRunning).toEqual(expect.any(Function));
     expect(client.apiSchedulerResume).toEqual(expect.any(Function));
     expect(client.apiSchedulerResumeIfRunning).toEqual(expect.any(Function));
-    // --- eforge:region plan-01-efficiency-analytics-foundation ---
     expect(client.apiGetEfficiencyAnalytics).toEqual(expect.any(Function));
     expect(client.apiGetEfficiencyAnalyticsIfRunning).toEqual(expect.any(Function));
     expect(client.computeOutputGenerationRate).toEqual(expect.any(Function));
     expect(client.API_ROUTES.efficiencyAnalytics).toBeDefined();
-    // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
   });
 
   it('keeps new request and response wire types exportable from the route barrel', () => {
@@ -144,7 +140,6 @@ describe('client contract public exports', () => {
     const dismissResponse: FailedEnqueueDismissResponse = { dismissed: true, failedEnqueue: { ...failedEnqueue, canReenqueue: false, resolvedAt: '2026-06-19T11:00:00.000Z' }, queue: [], runs: [] };
     const pauseResponse: SchedulerPauseResponse = { enabled: true, watcher: { running: false, pid: null, sessionId: null } };
     const resumeResponse: SchedulerResumeResponse = pauseResponse;
-    // --- eforge:region plan-01-efficiency-analytics-foundation ---
     const efficiencySummary: EfficiencyAnalyticsSummary = {
       windowDays: 7,
       startedAt: '2026-06-13T00:00:00.000Z',
@@ -157,7 +152,6 @@ describe('client contract public exports', () => {
       models: [],
       profiles: [],
     };
-    // --- eforge:endregion plan-01-efficiency-analytics-foundation ---
 
     expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse, efficiencySummary }).toMatchObject({
       recoveryResponse: { plans: [{ status: 'already-current' }] },
