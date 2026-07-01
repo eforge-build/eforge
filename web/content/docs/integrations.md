@@ -184,9 +184,22 @@ Console shows:
 - Header controls that distinguish disabling auto-build from pausing/resuming scheduler launches
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
+- Live efficiency metrics and a historical efficiency analytics Now rail card with selectable 1d, 7d, 14d, 30d, and 90d windows
 - Runtime agent decisions (effort, thinking mode) on stage hover
 - Console Needs attention strip for failed builds, compile scope/context failure banners with optional guard diagnostics or decomposition-exhaustion evidence, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with read-only compile guidance and explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
+
+Efficiency metrics are telemetry proxies from eforge event data, not provider benchmark measurements:
+
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Output generation rate | `sum(output tokens) / sum(API duration seconds)` | Historical rows show p50/p95 over eligible finalized samples. |
+| Token traffic | Live: `(input + output tokens) / elapsed wall-clock minute`; historical: `total tokens / provider API duration seconds` for eligible finalized samples | Use this to understand total token movement, not just generated output. |
+| Cost burn | Live: `total cost / elapsed wall-clock minute`; historical cost/min: `finalized cost / provider API duration minutes` for eligible finalized samples | Distinct from total spend. |
+| Output tokens / $ | `output tokens / total cost` | Unavailable when cost is missing or zero. |
+| Cache context | `cache read tokens / input tokens` | Cache creation tokens are separate context, not cache hits. |
+
+The historical analytics card groups model rows by model plus harness/provider and profile rows by session profile. Rows include p50/p95 output generation rate, cost/run, cost/min, output tokens/$, success/failure counts, and sample counts when available. Sparse data is labeled explicitly: missing values render as `—`, and partial rows call out missing or excluded samples instead of displaying zero. Multi-model builds can split model attribution while still counting once at the profile/run level, so compare model and profile rollups as directional signals rather than exact benchmark rankings.
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
 

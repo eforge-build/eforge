@@ -27,6 +27,7 @@ export {
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
 } from './extension-agent-tasks/constants.js';
 export { isTransientTransportError } from './transient-transport.js';
+export * from './efficiency-metrics.js';
 export type {
   ApiRoute,
   EnqueueRequest,

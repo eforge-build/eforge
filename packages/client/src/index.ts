@@ -12,6 +12,7 @@ export {
   RecoverySidecarRecoveryOptionSchema,
 } from './routes.js';
 export { isTransientTransportError } from './transient-transport.js';
+export * from './efficiency-metrics.js';
 export type {
   ApiRoute,
   EnqueueRequest,
@@ -80,6 +81,7 @@ export {
 export { fetchFailedEnqueues, reenqueueFailedEnqueue, dismissFailedEnqueue } from './browser-failed-enqueue.js';
 export { pauseScheduler, resumeScheduler } from './browser-scheduler.js';
 
+export { apiGetEfficiencyAnalytics, apiGetEfficiencyAnalyticsIfRunning } from './api/efficiency-analytics.js';
 export {
   apiEnqueue,
   apiEnqueueIfRunning,
@@ -253,7 +255,6 @@ export {
   apiApplyQueueRecoveryIfRunning,
 } from './api/queue-recovery.js';
 
-
 export type { StackLayersResponse } from './routes.js';
 export { apiGetStackLayers, apiGetStackLayersIfRunning } from './api/stack.js';
 
@@ -355,7 +356,6 @@ export type {
 } from './session-plan-set.js';
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse, RecoveryAppliedMetadata } from './routes.js';
-
 export type { ContinueRepairRequest, ContinueRepairResponse } from './routes.js';
 export { apiContinueRepair, apiContinueRepairIfRunning } from './api/continue-repair.js';
 
@@ -397,7 +397,6 @@ export {
   DaemonInWorktreeError,
 } from './daemon-client.js';
 export type { DaemonRequestWithStatusResult } from './daemon-client.js';
-
 export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './api-version.js';
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';

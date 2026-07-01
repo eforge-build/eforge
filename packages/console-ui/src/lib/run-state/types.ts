@@ -110,6 +110,7 @@ export interface AgentThread {
   startedAt: string;      // ISO from agent:start timestamp
   endedAt: string | null; // ISO from agent:stop timestamp
   durationMs: number | null; // from agent:result
+  durationApiMs: number | null; // from agent:result; provider API duration for efficiency metrics
   inputTokens: number | null;
   outputTokens: number | null;
   totalTokens: number | null;

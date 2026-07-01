@@ -7,6 +7,8 @@
 import type { RunState } from '../types';
 import { formatDuration } from '../format';
 import { selectPlanStatusCounts } from './plan-progress';
+import { selectRunEfficiencyMetrics } from './efficiency';
+import type { RunEfficiencyMetrics } from './efficiency';
 
 export function getSummaryStats(state: RunState): {
   duration: string;
@@ -22,6 +24,7 @@ export function getSummaryStats(state: RunState): {
   filesChanged: number;
   reviewCritical: number;
   reviewWarning: number;
+  efficiency: RunEfficiencyMetrics;
 } {
   const end = state.endTime ?? Date.now();
   const duration = state.startTime
@@ -82,5 +85,6 @@ export function getSummaryStats(state: RunState): {
     filesChanged,
     reviewCritical,
     reviewWarning,
+    efficiency: selectRunEfficiencyMetrics(state, end),
   };
 }

@@ -73,7 +73,7 @@ eforge build ./docs/my-feature.md
 eforge build --landing-action pr plans/my-feature-prd.md
 ```
 
-The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
+The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, token usage, and efficiency metrics in real time.
 
 Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
 

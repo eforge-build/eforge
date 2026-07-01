@@ -10,6 +10,9 @@ import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { SpendCard } from '@/components/now/spend-card';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
+import { EfficiencyAnalyticsCard } from '@/components/now/efficiency-analytics-card';
+import { useEfficiencyAnalytics, type EfficiencyAnalyticsWindowDays } from '@/hooks/use-efficiency-analytics';
+import { selectEfficiencyAnalyticsViewModel } from '@/lib/selectors/efficiency-analytics';
 import { useSpend } from '@/hooks/use-spend';
 import { useExtensionTrustList } from '@/hooks/use-extension-trust-list';
 import { useExtensionTrustMutation } from '@/hooks/use-extension-trust-mutation';
@@ -55,6 +58,7 @@ interface NowDashboardProps {
 
 export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue, refreshRuns, refreshFailedEnqueues }: NowDashboardProps) {
   const [tick, setTick] = React.useState(() => Date.now());
+  const [analyticsWindow, setAnalyticsWindow] = React.useState<EfficiencyAnalyticsWindowDays>(7);
 
   React.useEffect(() => {
     const id = setInterval(() => setTick(Date.now()), 5_000);
@@ -80,6 +84,12 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     return selectNowSpendPanel(spendSummary, todayStr);
   }, [spendSummary, tick]);
+
+  const analyticsSummary = useEfficiencyAnalytics(analyticsWindow, projectState.runs.length);
+  const analyticsModel = React.useMemo(
+    () => selectEfficiencyAnalyticsViewModel(analyticsSummary),
+    [analyticsSummary],
+  );
 
   // Recovery payload for the failed-PRD item the user chose to recover; opens
   // the dialog hosted at page root. Failures live in the attention strip now,
@@ -177,6 +187,11 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
           <SpendCard model={spendModel} />
+          <EfficiencyAnalyticsCard
+            model={analyticsModel}
+            selectedWindow={analyticsWindow}
+            onWindowChange={setAnalyticsWindow}
+          />
           <MetricsPanel model={model.metrics} />
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>

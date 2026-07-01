@@ -391,9 +391,9 @@ When `stacking.enabled: true`, the artifact branches form a linear chain. Each a
 
 ## Monitor
 
-The web monitor tracks cost, token usage, and progress in real time. Each project's preferred port is deterministically derived from a hash of the project directory within the 4567-4667 range. If that port is already claimed by another running eforge monitor (per the registry at `~/.config/eforge/monitors.json`), the allocator scans the range from the preferred port for the next free port. The actual chosen port is written to the daemon lockfile.
+The web monitor tracks cost, token usage, efficiency metrics, and progress in real time. Each project's preferred port is deterministically derived from a hash of the project directory within the 4567-4667 range. If that port is already claimed by another running eforge monitor (per the registry at `~/.config/eforge/monitors.json`), the allocator scans the range from the preferred port for the next free port. The actual chosen port is written to the daemon lockfile.
 
-**Recording** is decoupled from the dashboard. Every `EforgeEvent` is written to SQLite regardless of whether the web server is running. This means event history is always available for inspection.
+**Recording** is decoupled from the dashboard. Every `EforgeEvent` is written to SQLite regardless of whether the web server is running. This means event history is always available for inspection and historical efficiency analytics.
 
 The **web server** runs as a detached process that survives CLI exit. It polls SQLite for new events and pushes them to the dashboard via Server-Sent Events (SSE). The server stays alive after the last active session ends so browser users can inspect results before it exits.
 

@@ -88,6 +88,7 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     startedAt: event.timestamp,
     endedAt: null,
     durationMs: null,
+    durationApiMs: null,
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,
@@ -243,6 +244,7 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   const updatedThread: AgentThread = {
     ...matchedThread,
     durationMs: result.durationMs,
+    durationApiMs: result.durationApiMs ?? null,
     inputTokens: result.usage?.input ?? null,
     outputTokens: result.usage?.output ?? null,
     totalTokens: result.usage?.total ?? null,

@@ -27,6 +27,7 @@ import type {
   QueueItemCapabilities,
   QueueItemHold,
   QueueItemWithCapabilities,
+  EfficiencyAnalyticsSummary,
 } from '../types.js';
 
 const capabilities: QueueItemCapabilities = {
@@ -64,6 +65,9 @@ describe('client contract public exports', () => {
     expect(browser.dismissFailedEnqueue).toEqual(expect.any(Function));
     expect(browser.pauseScheduler).toEqual(expect.any(Function));
     expect(browser.resumeScheduler).toEqual(expect.any(Function));
+    expect(browser.computeOutputGenerationRate).toEqual(expect.any(Function));
+    expect(browser.nearestRankPercentile).toEqual(expect.any(Function));
+    expect(browser.API_ROUTES.efficiencyAnalytics).toBeDefined();
   });
 
   it('exports all new node helpers from the main facade', () => {
@@ -87,6 +91,10 @@ describe('client contract public exports', () => {
     expect(client.apiSchedulerPauseIfRunning).toEqual(expect.any(Function));
     expect(client.apiSchedulerResume).toEqual(expect.any(Function));
     expect(client.apiSchedulerResumeIfRunning).toEqual(expect.any(Function));
+    expect(client.apiGetEfficiencyAnalytics).toEqual(expect.any(Function));
+    expect(client.apiGetEfficiencyAnalyticsIfRunning).toEqual(expect.any(Function));
+    expect(client.computeOutputGenerationRate).toEqual(expect.any(Function));
+    expect(client.API_ROUTES.efficiencyAnalytics).toBeDefined();
   });
 
   it('keeps new request and response wire types exportable from the route barrel', () => {
@@ -132,14 +140,27 @@ describe('client contract public exports', () => {
     const dismissResponse: FailedEnqueueDismissResponse = { dismissed: true, failedEnqueue: { ...failedEnqueue, canReenqueue: false, resolvedAt: '2026-06-19T11:00:00.000Z' }, queue: [], runs: [] };
     const pauseResponse: SchedulerPauseResponse = { enabled: true, watcher: { running: false, pid: null, sessionId: null } };
     const resumeResponse: SchedulerResumeResponse = pauseResponse;
+    const efficiencySummary: EfficiencyAnalyticsSummary = {
+      windowDays: 7,
+      startedAt: '2026-06-13T00:00:00.000Z',
+      endedAt: '2026-06-19T00:00:00.000Z',
+      agentResultCount: 1,
+      runCount: 1,
+      sessionCount: 1,
+      missingModelAttributionCount: 0,
+      missingProfileAttributionCount: 0,
+      models: [],
+      profiles: [],
+    };
 
-    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse }).toMatchObject({
+    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse, efficiencySummary }).toMatchObject({
       recoveryResponse: { plans: [{ status: 'already-current' }] },
       holdResponse: { item: { capabilities } },
       applyResponse: { target: { status: 'removed' } },
       reenqueueResponse: { spawnedSessionId: 'session-2' },
       dismissResponse: { dismissed: true },
       resumeResponse: pauseResponse,
+      efficiencySummary: { windowDays: 7 },
     });
   });
 

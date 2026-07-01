@@ -43,6 +43,8 @@ export type {
 
 // Selectors
 export { getSummaryStats } from './selectors/summary-stats';
+export { selectRunEfficiencyMetrics } from './selectors/efficiency';
+export type { EfficiencyAvailability, EfficiencyMetric, EfficiencySampleCounts, RunEfficiencyMetrics } from './selectors/efficiency';
 export {
   selectPlanStatusCounts,
   selectCurrentStageForPlan,

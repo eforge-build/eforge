@@ -715,24 +715,26 @@ describe('selectNowActiveBuildCards', () => {
 
   it('exposes tokens and cost from agent:result events in RunState', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const agentStartEvent: EforgeEvent = {
+      type: 'agent:start', agentId: 'agent-1', agent: 'implementor', planId: 'plan-1',
+      timestamp: '2024-01-01T00:00:00.000Z', model: 'test-model',
+    } as unknown as EforgeEvent;
     const agentResultEvent: EforgeEvent = {
-      type: 'agent:result',
-      agent: 'implementor',
+      type: 'agent:result', agentId: 'agent-1', agent: 'implementor', planId: 'plan-1',
       result: {
-        durationMs: 1000,
-        durationApiMs: 900,
-        numTurns: 1,
-        totalCostUsd: 0.005,
+        durationMs: 1000, durationApiMs: 900, numTurns: 1, totalCostUsd: 0.005,
         usage: { input: 200, output: 100, total: 300, cacheRead: 50, cacheCreation: 0 },
         modelUsage: {},
       },
     } as unknown as EforgeEvent;
-    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: agentResultEvent, eventId: '1' });
+    let rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: agentStartEvent, eventId: '1' });
+    rs = eforgeReducer(rs, { type: 'ADD_EVENT', event: agentResultEvent, eventId: '2' });
     const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].tokens).toBe(200);
     expect(cards[0].cost).toBeCloseTo(0.005);
-    // cachePercent = cacheRead / tokensIn * 100 = 50 / 200 * 100 = 25
+    expect(cards[0].efficiency?.outputGenerationRate.value).toBeCloseTo(100 / 0.9);
+    expect(cards[0].efficiency?.tokenTraffic.label).toBe('token traffic');
     expect(cards[0].cachePercent).toBeCloseTo(25);
   });
 });

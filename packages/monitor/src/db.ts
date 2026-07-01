@@ -3,7 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DAEMON_EVENT_TYPES } from '@eforge-build/client';
-import type { DailySpend, ModelSpend, RunInfo, SessionMetadata } from '@eforge-build/client';
+import type { DailySpend, EfficiencyAnalyticsSummary, ModelSpend, RunInfo, SessionMetadata } from '@eforge-build/client';
+import { aggregateEfficiencyAnalytics } from './analytics/efficiency.js';
 
 /** Raw DB row shape for the `runs` table — snake_case columns as returned by SQLite. */
 interface RunRow {
@@ -63,6 +64,41 @@ interface RawEventRow {
   agent: string | null;
   data: string;
   timestamp: string;
+}
+
+interface RawEfficiencyProfileEventRow extends RawEventRow { sessionId: string }
+
+interface SessionMetadataEventRow { type: string; data: string; sessionId: string | null }
+
+function rowsToSessionMetadata(rows: SessionMetadataEventRow[]): Record<string, SessionMetadata> {
+  const result: Record<string, SessionMetadata> = {};
+
+  for (const row of rows) {
+    if (!row.sessionId) continue;
+    if (!result[row.sessionId]) {
+      result[row.sessionId] = { planCount: null, baseProfile: null };
+    }
+    const meta = result[row.sessionId];
+
+    try {
+      const data = JSON.parse(row.data);
+      if (row.type === 'session:profile' && meta.baseProfile === null) {
+        const profileName = data.profileName as string | null | undefined;
+        if (profileName) {
+          meta.baseProfile = profileName;
+        }
+      } else if (row.type === 'planning:complete') {
+        const plans = data.plans as unknown[] | undefined;
+        if (Array.isArray(plans)) {
+          meta.planCount = plans.length;
+        }
+      }
+    } catch {
+      // skip unparseable events
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -181,18 +217,11 @@ export interface MonitorDB {
     recentCostUsd?: number;
     recentQuotaErrors: number;
   } | null;
-  /**
-   * Token + dollar spend aggregated per local calendar day over the last
-   * `windowDays` days (inclusive of today). Days with no spend are omitted;
-   * callers fill gaps. Ordered oldest -> newest.
-   */
+  /** Token + dollar spend per local day, oldest -> newest. */
   getDailySpend(windowDays: number): DailySpend[];
-  /**
-   * Per-model token + dollar spend aggregated over the last `windowDays` days
-   * (inclusive of today). Ordered by cost descending. Empty when no agent
-   * results carry per-model usage in the window.
-   */
+  /** Per-model token + dollar spend over the window, cost descending. */
   getModelSpend(windowDays: number): ModelSpend[];
+  getEfficiencyAnalytics(windowDays: number): EfficiencyAnalyticsSummary;
   close(): void;
 }
 
@@ -431,6 +460,10 @@ export function openDatabase(dbPath: string): MonitorDB {
        GROUP BY m.key, harness, provider
        ORDER BY costUsd DESC`,
     ),
+    getEfficiencyRuns: db.prepare(`SELECT DISTINCT r.id, r.session_id, r.plan_set, r.command, r.status, r.started_at, r.completed_at, r.cwd, r.pid FROM runs r JOIN events e ON e.run_id = r.id WHERE e.type = 'agent:result' AND e.timestamp >= ? ORDER BY r.started_at DESC`),
+    getEfficiencyAgentResultEvents: db.prepare(`SELECT e.id, e.run_id as runId, e.origin, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type = 'agent:result' AND e.timestamp >= ? ORDER BY e.id`),
+    getEfficiencySessionProfileEvents: db.prepare(`SELECT e.id, e.run_id as runId, e.origin, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp, COALESCE(r.session_id, r.id) as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type = 'session:profile' AND COALESCE(r.session_id, r.id) IN (SELECT value FROM json_each(?)) ORDER BY e.id`),
+    getEfficiencySessionMetadataEvents: db.prepare(`SELECT e.type, e.data, COALESCE(r.session_id, r.id) as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('session:profile', 'planning:complete', 'agent:start') AND COALESCE(r.session_id, r.id) IN (SELECT value FROM json_each(?)) ORDER BY e.id`),
     getMaxEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
     ),
@@ -582,36 +615,7 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getSessionMetadataBatch() {
-      const rows = stmts.getSessionMetadataEvents.all() as unknown as { type: string; data: string; sessionId: string }[];
-
-      const result: Record<string, SessionMetadata> = {};
-
-      for (const row of rows) {
-        if (!row.sessionId) continue;
-        if (!result[row.sessionId]) {
-          result[row.sessionId] = { planCount: null, baseProfile: null };
-        }
-        const meta = result[row.sessionId];
-
-        try {
-          const data = JSON.parse(row.data);
-          if (row.type === 'session:profile' && meta.baseProfile === null) {
-            const profileName = data.profileName as string | null | undefined;
-            if (profileName) {
-              meta.baseProfile = profileName;
-            }
-          } else if (row.type === 'planning:complete') {
-            const plans = data.plans as unknown[] | undefined;
-            if (Array.isArray(plans)) {
-              meta.planCount = plans.length;
-            }
-          }
-        } catch {
-          // skip unparseable events
-        }
-      }
-
-      return result;
+      return rowsToSessionMetadata(stmts.getSessionMetadataEvents.all() as unknown as SessionMetadataEventRow[]);
     },
 
     getLatestRunId() {
@@ -769,8 +773,7 @@ export function openDatabase(dbPath: string): MonitorDB {
         )
         .get(...runIds) as unknown as { count: number };
 
-      const hasTokens =
-        usageRow.totalInput !== null || usageRow.totalOutput !== null || usageRow.totalTokens !== null;
+      const hasTokens = usageRow.totalInput !== null || usageRow.totalOutput !== null || usageRow.totalTokens !== null;
 
       return {
         lastUsedAt: lastUsedRow.lastUsedAt ?? undefined,
@@ -789,27 +792,28 @@ export function openDatabase(dbPath: string): MonitorDB {
       };
     },
     getDailySpend(windowDays) {
-      // Local start-of-day for the oldest day in the window, as an ISO cutoff
-      // so the timestamp filter stays index-friendly. Day grouping itself uses
-      // date(timestamp, 'localtime') so boundaries match the user's wall clock.
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
-      const rows = stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
-      return rows;
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      return stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
     },
     getModelSpend(windowDays) {
-      // Same local start-of-day ISO cutoff as getDailySpend so the per-model
-      // window aligns exactly with the daily rollup.
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
       return stmts.getModelSpend.all(start.toISOString()) as unknown as ModelSpend[];
     },
 
-    close() {
-      db.close();
+    getEfficiencyAnalytics(windowDays) { const window = Math.min(90, Math.max(1, Math.floor(windowDays)));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1));
+      const startedAt = start.toISOString();
+      const runs = (stmts.getEfficiencyRuns.all(startedAt) as unknown as RunRow[]).map(rowToRunInfo);
+      const events = (stmts.getEfficiencyAgentResultEvents.all(startedAt) as unknown as RawEventRow[]).map(rowToEventRecord);
+      const sessionIds = [...new Set(runs.map((run) => run.sessionId ?? run.id))];
+      const sessionIdsJson = JSON.stringify(sessionIds);
+      const profileRows = runs.length === 0 ? [] : (stmts.getEfficiencySessionProfileEvents.all(sessionIdsJson) as unknown as RawEfficiencyProfileEventRow[]);
+      const metadataRows = runs.length === 0 ? [] : (stmts.getEfficiencySessionMetadataEvents.all(sessionIdsJson) as unknown as SessionMetadataEventRow[]);
+      const profileRunSessionIds: Record<string, string> = {}; for (const row of profileRows) if (row.runId !== null) profileRunSessionIds[row.runId] = row.sessionId;
+      return aggregateEfficiencyAnalytics({ runs, events, profileEvents: profileRows.map(rowToEventRecord), profileRunSessionIds, sessionMetadata: rowsToSessionMetadata(metadataRows), windowDays: window, startedAt, endedAt: new Date().toISOString() });
     },
+
+    close() { db.close(); },
   };
 }
 // --- eforge:endregion monitor-db-api ---

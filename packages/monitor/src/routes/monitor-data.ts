@@ -23,5 +23,15 @@ export function createMonitorDataRoutes(context: MonitorContext): RouteDefinitio
         modelsToday: context.db.getModelSpend(1),
       });
     } }),
+    defineRoute({ routeKey: 'efficiencyAnalytics', method: 'GET', pattern: API_ROUTES.efficiencyAnalytics, security: readSecurity, handler: (ctx) => {
+      sendJson(ctx.res, context.db.getEfficiencyAnalytics(clampWindowDays(ctx.query.get('days'))));
+    } }),
   ];
+}
+
+function clampWindowDays(rawDays: string | null): number {
+  if (rawDays === null) return 7;
+  const raw = Number(rawDays);
+  if (!Number.isFinite(raw)) return 7;
+  return Math.min(90, Math.max(1, Math.floor(raw)));
 }

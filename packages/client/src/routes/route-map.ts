@@ -62,6 +62,7 @@ export const API_ROUTES = {
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
   spend: '/api/spend',
+  efficiencyAnalytics: '/api/efficiency-analytics',
   events: '/api/events/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',

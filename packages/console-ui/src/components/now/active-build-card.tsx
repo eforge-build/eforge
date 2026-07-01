@@ -146,17 +146,12 @@ export function ActiveBuildCard({ card, onNavigate, onPreviewCascade, onApplyCas
   const showStreamBadge = card.streamStatus !== 'connected';
 
   const summaryLabel = progressSummary(card);
-  const tokensLabel = card.tokens > 0 ? `${compactTokens(card.tokens)} tok` : null;
+  const tokensLabel = card.tokens > 0 ? `${compactTokens(card.tokens)} input tok` : null;
   const costLabel = card.cost > 0 ? `$${card.cost.toFixed(2)}` : null;
   const cacheLabel = card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
-  // Rough token throughput; only meaningful once the build has run a little.
-  const rateLabel =
-    card.tokens > 0 && card.durationMs > 5_000
-      ? `${compactTokens(Math.round(card.tokens / (card.durationMs / 60_000)))}/min`
-      : null;
   // `durationLabel` (formatDuration) always returns a non-empty string, so
   // metricBits is never empty and `metricBits[0]` below is always defined.
-  const metricBits = [durationLabel, tokensLabel, costLabel, cacheLabel, rateLabel].filter(
+  const metricBits = [durationLabel, tokensLabel, costLabel, cacheLabel].filter(
     (bit): bit is string => Boolean(bit),
   );
 

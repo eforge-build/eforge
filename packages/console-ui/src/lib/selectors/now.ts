@@ -18,8 +18,8 @@ import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
 import { toConsolePath } from '@/lib/navigation';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
-import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows, selectPlanLanes, selectPlanningLane } from '@/lib/run-state';
-import type { RunState, PlanStatusCounts, MiniGanttRow, PlanLane, PlanningLane } from '@/lib/run-state';
+import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows, selectPlanLanes, selectPlanningLane, selectRunEfficiencyMetrics } from '@/lib/run-state';
+import type { RunState, PlanStatusCounts, MiniGanttRow, PlanLane, PlanningLane, RunEfficiencyMetrics } from '@/lib/run-state';
 import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
 import type { NowQueueStack } from './queue-stacks';
 import { selectNowQueueSummary } from './queue-summary';
@@ -129,6 +129,8 @@ export interface NowActiveBuildCard {
   cost: number;
   /** Cache hit percentage: cacheRead / tokensIn * 100, or 0 when no input usage. */
   cachePercent: number;
+  /** Live efficiency metrics derived from reduced run state, null until detail connects. */
+  efficiency: RunEfficiencyMetrics | null;
   href: string;
   /** Mini-Gantt rows derived from RunState for the pipeline strip. */
   miniGanttRows: MiniGanttRow[];
@@ -702,6 +704,7 @@ export function selectNowActiveBuildCards(
     let tokens = 0;
     let cost = 0;
     let cachePercent = 0;
+    let efficiency: RunEfficiencyMetrics | null = null;
     let miniGanttRows: MiniGanttRow[] = [];
     let planLanes: PlanLane[] = [];
     let planning: PlanningLane = EMPTY_PLANNING_LANE;
@@ -721,6 +724,7 @@ export function selectNowActiveBuildCards(
       tokens = stats.tokensIn;
       cost = stats.totalCost;
       cachePercent = stats.tokensIn > 0 ? (stats.cacheRead / stats.tokensIn) * 100 : 0;
+      efficiency = selectRunEfficiencyMetrics(rs, now);
       miniGanttRows = selectMiniGanttRows(rs);
       planLanes = selectPlanLanes(rs);
       planning = selectPlanningLane(rs);
@@ -751,6 +755,7 @@ export function selectNowActiveBuildCards(
       tokens,
       cost,
       cachePercent,
+      efficiency,
       href: toConsolePath({ id: 'buildDetail', detailId: sessionId }),
       miniGanttRows,
       planLanes,

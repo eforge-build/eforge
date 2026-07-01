@@ -586,6 +586,7 @@ export interface ModelSpend {
   costUsd: number;
 }
 
+export type * from './efficiency-analytics-types.js';
 /** Response body for GET /api/spend?days=N. Days are ordered oldest -> newest. */
 export interface SpendSummary {
   /** Size of the lookback window in days (1-90). */
