@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-runtime-choice-core ---
 /** Shared invocation helper that resolves config and harness from one effective recipe. */
 
 import type { AgentRole } from '../events.js';
@@ -54,7 +53,6 @@ export function resolveAgentRuntimeForInvocation(
   return resolveRuntimeFromSelection(role, config, registry, planEntry, metadata, selection);
 }
 
-// --- eforge:region plan-02-runtime-choice-events-extensions ---
 export async function resolveAgentRuntimeForInvocationWithExtensions(
   role: AgentRole,
   config: EforgeConfig,
@@ -68,5 +66,3 @@ export async function resolveAgentRuntimeForInvocationWithExtensions(
     : resolveRuntimeChoiceForInvocation(role, config, planEntry, metadata);
   return resolveRuntimeFromSelection(role, config, registry, planEntry, metadata, selection);
 }
-// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
-// --- eforge:endregion plan-01-runtime-choice-core ---

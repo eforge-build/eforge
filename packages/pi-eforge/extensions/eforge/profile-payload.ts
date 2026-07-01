@@ -28,7 +28,6 @@ export interface TierSelection {
   toolbelt?: string;
 }
 
-// --- eforge:region plan-03-runtime-choice-docs-integrations ---
 /** A tier-local choice overlay. Omitted fields inherit from the tier default. */
 export interface RuntimeChoiceSelection {
   harness?: HarnessType;
@@ -60,7 +59,6 @@ export interface TierRuntimeChoicesSelection {
     rules: RuntimeRoutingRuleSelection[];
   };
 }
-// --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
 
 /** Input to buildProfileCreatePayload. */
 export interface ProfileCreateInput {
@@ -75,10 +73,8 @@ export interface ProfileCreateInput {
     review: TierSelection;
     evaluation: TierSelection;
   };
-  // --- eforge:region plan-03-runtime-choice-docs-integrations ---
   /** Optional tier-local runtime choices and ordered routing rules. */
   runtimeChoices?: Partial<Record<TierName, TierRuntimeChoicesSelection>>;
-  // --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
   /** Descriptive metadata for the profile. Does not affect runtime behavior. */
   metadata?: {
     description?: string;
@@ -91,7 +87,6 @@ export interface ProfileCreateInput {
 // Output types
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-03-runtime-choice-docs-integrations ---
 export interface TierChoiceOverlayEntry {
   harness?: HarnessType;
   pi?: { provider: string };
@@ -110,7 +105,6 @@ export interface RuntimeRoutingRuleEntry {
 export interface TierRoutingEntry {
   rules: RuntimeRoutingRuleEntry[];
 }
-// --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
 
 /** A single tier recipe entry in the create payload. */
 export interface TierRecipeEntry {
@@ -120,12 +114,10 @@ export interface TierRecipeEntry {
   effort: string;
   /** Toolbelt name assigned to this tier. Omitted when not set. */
   toolbelt?: string;
-  // --- eforge:region plan-03-runtime-choice-docs-integrations ---
   /** Tier-local overlays that inherit from this tier default. */
   choices?: Record<string, TierChoiceOverlayEntry>;
   /** Ordered declarative routing rules for selecting a tier-local choice. */
   routing?: TierRoutingEntry;
-  // --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
 }
 
 /** The payload sent to POST /api/profile/create. */
@@ -164,7 +156,6 @@ function toTierEntry(sel: TierSelection, runtimeChoices?: TierRuntimeChoicesSele
   if (sel.toolbelt !== undefined) {
     entry.toolbelt = sel.toolbelt;
   }
-  // --- eforge:region plan-03-runtime-choice-docs-integrations ---
   if (runtimeChoices?.choices !== undefined) {
     entry.choices = Object.fromEntries(
       Object.entries(runtimeChoices.choices).map(([name, choice]) => [name, toChoiceEntry(choice)]),
@@ -173,11 +164,9 @@ function toTierEntry(sel: TierSelection, runtimeChoices?: TierRuntimeChoicesSele
   if (runtimeChoices?.routing !== undefined) {
     entry.routing = { rules: runtimeChoices.routing.rules.map((rule) => ({ ...rule, when: { ...rule.when } })) };
   }
-  // --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
   return entry;
 }
 
-// --- eforge:region plan-03-runtime-choice-docs-integrations ---
 function toChoiceEntry(sel: RuntimeChoiceSelection): TierChoiceOverlayEntry {
   const entry: TierChoiceOverlayEntry = {};
   if (sel.harness !== undefined) {
@@ -199,7 +188,6 @@ function toChoiceEntry(sel: RuntimeChoiceSelection): TierChoiceOverlayEntry {
   }
   return entry;
 }
-// --- eforge:endregion plan-03-runtime-choice-docs-integrations ---
 
 /**
  * Build a daemon profileCreate payload from per-tier selections.

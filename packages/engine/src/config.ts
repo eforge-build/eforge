@@ -237,7 +237,6 @@ export const piConfigSchema = z.object({
   }).optional().describe('Retry configuration for Pi API calls'),
 }).describe('Configuration for the Pi coding agent harness');
 
-// --- eforge:region plan-01-runtime-choice-core ---
 const runtimeChoiceNameSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/, 'Choice names must be lowercase slugs starting with a letter');
 
 const tierRecipeShape = {
@@ -335,7 +334,6 @@ export const tierConfigSchema = tierRecipeBaseSchema.extend({
     }
   }
 }).describe('A self-contained tier recipe (harness + model + effort + tuning) with optional runtime choices');
-// --- eforge:endregion plan-01-runtime-choice-core ---
 
 // Local Zod copy of shardScopeSchema for use within Zod-based config schemas.
 // config.ts will be migrated to TypeBox in a follow-up PRD. Mirrors the TypeBox
@@ -530,7 +528,6 @@ const eforgeConfigBaseSchema = z.object({
   landing: landingConfigSchema.optional(),
 });
 
-// --- eforge:region plan-01-runtime-choice-core ---
 function collectEffectiveRecipeConfigErrors(recipe: unknown, path: string): string[] {
   const errors: string[] = [];
   const parsed = tierRecipeBaseSchema.safeParse(recipe);
@@ -598,7 +595,6 @@ function assertMergedRuntimeChoiceConfig(data: { agents?: { tiers?: Record<strin
     throw new ConfigValidationError(`Invalid ${label}: ${errors.join('; ')}`);
   }
 }
-// --- eforge:endregion plan-01-runtime-choice-core ---
 
 /** Exported schema. Cross-field validation is performed in tierConfigSchema; unknown runtime-choice references are validated after config layers are merged. */
 export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine(addRuntimeChoiceConfigIssues);
@@ -2576,7 +2572,6 @@ export function validateToolbeltReferences(
     if (toolbelt !== undefined && toolbelt !== 'none' && !(toolbelt in toolbelts)) {
       errors.push(`agents.tiers.${tierName}.toolbelt references "${toolbelt}", but no tools.toolbelts.${toolbelt} is defined.`);
     }
-    // --- eforge:region plan-01-runtime-choice-core ---
     const choices = (tier as { choices?: Record<string, { toolbelt?: string }> }).choices ?? {};
     for (const [choiceName, choice] of Object.entries(choices)) {
       const choiceToolbelt = choice.toolbelt ?? toolbelt;
@@ -2584,7 +2579,6 @@ export function validateToolbeltReferences(
         errors.push(`agents.tiers.${tierName}.choices.${choiceName}.toolbelt references "${choiceToolbelt}", but no tools.toolbelts.${choiceToolbelt} is defined.`);
       }
     }
-    // --- eforge:endregion plan-01-runtime-choice-core ---
   }
 
   // Check MCP server references
@@ -2662,7 +2656,6 @@ export async function validateConfigFile(
       // best-effort: if .mcp.json can't be read, skip MCP checks
     }
     const partial = result.data as PartialEforgeConfig;
-    // --- eforge:region plan-01-runtime-choice-core ---
     let mergedForCrossReferences = partial;
     try {
       let globalConfig: PartialEforgeConfig = {};
@@ -2691,7 +2684,6 @@ export async function validateConfigFile(
       errors.push(`Failed to validate merged config layers: ${(err as Error).message}`);
     }
     errors.push(...collectRuntimeChoiceConfigErrors(mergedForCrossReferences as { agents?: { tiers?: Record<string, unknown> } }, { validateUnknownChoices: true }));
-    // --- eforge:endregion plan-01-runtime-choice-core ---
     const toolbeltErrors = validateToolbeltReferences(mergedForCrossReferences, mcpProbe);
     errors.push(...toolbeltErrors);
   }

@@ -77,10 +77,8 @@ export interface AgentRuntimeRegistry {
    */
   forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection?: RuntimeChoiceSelection };
 
-  // --- eforge:region plan-01-runtime-choice-core ---
   /** Resolve a harness from an already-selected effective runtime-choice recipe. */
   forEffectiveRecipe?(tierName: string, recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary };
-  // --- eforge:endregion plan-01-runtime-choice-core ---
 }
 
 // ---------------------------------------------------------------------------
@@ -114,11 +112,9 @@ export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
     forRoleResolved(_role: AgentRole, _planEntry?: PlanEntryForRegistry): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
       return { harness, toolbeltSummary: defaultSummary };
     },
-    // --- eforge:region plan-01-runtime-choice-core ---
     forEffectiveRecipe(_tierName: string, _recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
       return { harness, toolbeltSummary: defaultSummary };
     },
-    // --- eforge:endregion plan-01-runtime-choice-core ---
   };
 }
 
@@ -371,11 +367,9 @@ export async function buildAgentRuntimeRegistry(
   }
 
   function resolveForRole(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection: RuntimeChoiceSelection } {
-    // --- eforge:region plan-01-runtime-choice-core ---
     const selection = resolveRuntimeChoiceForInvocation(role, config, planEntry, metadata ?? {});
     const resolved = instanceForTier(selection.tier, selection.effectiveRecipe);
     return { ...resolved, selection };
-    // --- eforge:endregion plan-01-runtime-choice-core ---
   }
 
   const registry: AgentRuntimeRegistry = {
@@ -385,11 +379,9 @@ export async function buildAgentRuntimeRegistry(
     forRoleResolved(role: AgentRole, planEntry?: PlanEntryForRegistry, metadata?: RuntimeChoiceInvocationMetadata): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary; selection: RuntimeChoiceSelection } {
       return resolveForRole(role, planEntry, metadata);
     },
-    // --- eforge:region plan-01-runtime-choice-core ---
     forEffectiveRecipe(tierName: string, recipe: EffectiveAgentRecipe): { harness: AgentHarness; toolbeltSummary: ToolbeltSummary } {
       return instanceForTier(tierName, recipe as TierConfig);
     },
-    // --- eforge:endregion plan-01-runtime-choice-core ---
   };
 
   return registry;

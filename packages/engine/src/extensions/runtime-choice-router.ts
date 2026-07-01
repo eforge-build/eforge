@@ -1,4 +1,3 @@
-// --- eforge:region plan-02-runtime-choice-events-extensions ---
 /** Runtime support for fail-open extension runtime-choice routers. */
 
 import { execFile } from 'node:child_process';
@@ -249,4 +248,3 @@ export async function resolveRuntimeChoiceWithExtensionRouters(
     fallbackReason,
   });
 }
-// --- eforge:endregion plan-02-runtime-choice-events-extensions ---

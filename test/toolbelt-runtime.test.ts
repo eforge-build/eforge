@@ -261,7 +261,6 @@ describe('memoization: toolbelt differences create distinct instances', () => {
   });
 });
 
-// --- eforge:region plan-01-runtime-choice-core ---
 describe('toolbelt resolution: runtime choice effective recipe', () => {
   it('uses the selected choice toolbelt instead of the tier default', async () => {
     const config = resolveConfig({
@@ -289,7 +288,6 @@ describe('toolbelt resolution: runtime choice effective recipe', () => {
     expect(toolbeltSummary.projectMcpServerNames).toEqual(['playwright']);
   });
 });
-// --- eforge:endregion plan-01-runtime-choice-core ---
 
 // ---------------------------------------------------------------------------
 // Error: named toolbelt that cannot be resolved

@@ -202,7 +202,6 @@ describe('resolveAgentConfig maxTurns — tier budgets', () => {
   });
 });
 
-// --- eforge:region plan-01-runtime-choice-core ---
 describe('runtime choice config and resolver', () => {
   const config = resolveConfig({
     agents: {
@@ -400,4 +399,3 @@ describe('runtime choice config and resolver', () => {
     expect(() => resolveConfig(mergePartialConfigs(piLayer, claudeLayer))).toThrow(/harness "claude-sdk" cannot include "pi"/);
   });
 });
-// --- eforge:endregion plan-01-runtime-choice-core ---

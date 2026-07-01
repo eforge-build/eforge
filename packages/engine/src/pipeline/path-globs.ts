@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-runtime-choice-core ---
 /** Focused path-glob matching for runtime-choice routing. */
 
 function escapeRegexChar(ch: string): string {
@@ -69,4 +68,3 @@ export function pathMatchesGlob(path: string, pattern: string): boolean {
 export function anyPathMatchesGlob(paths: readonly string[], patterns: readonly string[]): boolean {
   return paths.some((path) => patterns.some((pattern) => pathMatchesGlob(path, pattern)));
 }
-// --- eforge:endregion plan-01-runtime-choice-core ---

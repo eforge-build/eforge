@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-runtime-choice-core ---
 /** Runtime-choice resolution for tier-local recipe overlays. */
 
 import type { AgentRole } from '../events.js';
@@ -14,10 +13,8 @@ type TierChoiceOverlay = NonNullable<TierConfig['choices']>[string];
 type TierRoutingRule = NonNullable<NonNullable<TierConfig['routing']>['rules']>[number];
 
 export type EffectiveAgentRecipe = Omit<TierConfig, 'choices' | 'routing'>;
-// --- eforge:region plan-02-runtime-choice-events-extensions ---
 export type RuntimeChoiceSource = 'default' | 'rule' | 'extension-router' | 'fallback';
 export type RuntimeChoiceFallbackReason = 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
-// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
 
 export interface RuntimeChoiceInvocationMetadata {
   phase?: string;
@@ -43,11 +40,9 @@ export interface RuntimeChoiceSelection {
   choice: string;
   choiceRef: string;
   matchedRule?: string;
-  // --- eforge:region plan-02-runtime-choice-events-extensions ---
   source: RuntimeChoiceSource;
   router?: string;
   fallbackReason?: RuntimeChoiceFallbackReason;
-  // --- eforge:endregion plan-02-runtime-choice-events-extensions ---
   effectiveRecipe: EffectiveAgentRecipe;
 }
 
@@ -94,7 +89,6 @@ export function canonicalizeChoiceRef(tier: AgentTier, rawChoice: string): { tie
   return { tier, choice: trimmed, ref: `${tier}.${trimmed}` };
 }
 
-// --- eforge:region plan-02-runtime-choice-events-extensions ---
 export function runtimeChoiceExists(tierRecipe: TierConfig, choice: string): boolean {
   return choice === 'default' || Object.prototype.hasOwnProperty.call(tierRecipe.choices ?? {}, choice);
 }
@@ -103,7 +97,6 @@ export function availableRuntimeChoicesForTier(tierRecipe: TierConfig, tier: Age
   const names = ['default', ...Object.keys(tierRecipe.choices ?? {}).sort()];
   return names.map((name) => ({ name, qualified: `${tier}.${name}` }));
 }
-// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
 
 function collectPaths(metadata: RuntimeChoiceInvocationMetadata, planEntry?: PlanEntry): string[] {
   const paths = new Set<string>();
@@ -173,7 +166,6 @@ function selectChoice(tier: AgentTier, tierRecipe: TierConfig, role: AgentRole, 
   return { choice: 'default', choiceRef: `${tier}.default`, source: 'default', fallbackReason: 'no-match' };
 }
 
-// --- eforge:region plan-02-runtime-choice-events-extensions ---
 export interface RuntimeChoiceSelectionOverride {
   choice: string;
   source: RuntimeChoiceSource;
@@ -209,7 +201,6 @@ export function resolveRuntimeChoiceForExplicitChoice(
     effectiveRecipe: overlayEffectiveAgentRecipe(base, overlay),
   };
 }
-// --- eforge:endregion plan-02-runtime-choice-events-extensions ---
 
 export function resolveRuntimeChoiceForInvocation(
   role: AgentRole,
@@ -228,4 +219,3 @@ export function resolveRuntimeChoiceForInvocation(
   const effectiveRecipe = overlayEffectiveAgentRecipe(base, overlay);
   return { tier, tierSource, ...selected, effectiveRecipe };
 }
-// --- eforge:endregion plan-01-runtime-choice-core ---

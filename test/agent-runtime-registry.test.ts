@@ -241,7 +241,6 @@ describe('buildAgentRuntimeRegistry — forRoleResolved toolbelt summary', () =>
   });
 });
 
-// --- eforge:region plan-01-runtime-choice-core ---
 describe('buildAgentRuntimeRegistry — runtime choices', () => {
   it('shares identical effective recipes and separates different providers', async () => {
     const config = resolveConfig({
@@ -325,7 +324,6 @@ describe('buildAgentRuntimeRegistry — runtime choices', () => {
     expect(agentConfig.toolbelt).toBe('ui-tools');
   });
 });
-// --- eforge:endregion plan-01-runtime-choice-core ---
 
 // ---------------------------------------------------------------------------
 // Pi resources isolation — buildPiConfig defaults and agents.bare coercion
