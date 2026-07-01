@@ -36,6 +36,7 @@ describe('bounded planner compiler runner', () => {
     expect(result.map.mapComplete).toBe(true);
     expect(result.reduce.reduceComplete).toBe(true);
     expect(result.residue.candidates).toEqual([]);
+    expect(result.events.filter((event) => event.type.startsWith('planning:map-reduce:')).map((event) => event.type).slice(0, 2)).toEqual(['planning:map-reduce:atoms', 'planning:map-reduce:reduce-tree']);
     expect(harness.calls.every((call) => call.tools === 'none' && call.maxTurns === 3)).toBe(true);
     expect(harness.prompts[0]).toContain('## Source evidence');
     expect(harness.prompts[0]).toContain('export const sourceEvidence = true');

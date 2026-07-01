@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, deriveInitialReduceDigestPromptBudget, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, minimumReduceDigestPromptByteLength, planPromptSafeReduceTree, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, buildPlanningReduceTreeFromAtomTasks, deriveInitialReduceDigestPromptBudget, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, minimumReduceDigestPromptByteLength, planPromptSafeReduceTree, planPromptSafeReduceTreeFromTasks, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -34,6 +34,19 @@ describe('planning reduce runner', () => {
     expect(tree.nodes.map((node) => node.nodeId)).toEqual(['reduce-000-001', 'reduce-000-002', 'reduce-000-003', 'reduce-001-001', 'reduce-001-002', 'reduce-002-001']);
     expect(tree.nodes.find((node) => node.nodeId === tree.rootNodeId)?.criterionIds).toEqual(['ac-001', 'ac-002', 'ac-003', 'ac-004', 'ac-005']);
     expect(tree.nodes.find((node) => node.nodeId === tree.rootNodeId)?.aspectIds.length).toBeGreaterThan(4);
+  });
+
+  it('builds the same deterministic tree shape from atom task metadata before outputs exist', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.', 'web updates `web/e.tsx`.']);
+
+    const outputTree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const taskTree = buildPlanningReduceTreeFromAtomTasks({ graph: data.graph, tasks: data.tasks, limits: reduceLimits });
+    const planned = planPromptSafeReduceTreeFromTasks({ graph: data.graph, tasks: data.tasks, limits: reduceLimits });
+
+    expect(normalizedReduceNodes(taskTree.nodes)).toEqual(normalizedReduceNodes(outputTree.nodes));
+    expect(taskTree.rootNodeId).toBe(outputTree.rootNodeId);
+    expect(taskTree.nodes.find((node) => node.nodeId === taskTree.rootNodeId)?.criterionIds).toEqual(['ac-001', 'ac-002', 'ac-003', 'ac-004', 'ac-005']);
+    expect(planned.ok).toBe(true);
   });
 
   it('unions criterion traceability from both plan fragments and module candidates', () => {
@@ -283,6 +296,10 @@ function validReduceOutput(node: PlanningReduceNode, options: { gap?: boolean; s
     ...(options.gap ? { gaps: [{ gapId: `gap-${node.nodeId}`, title: 'Gap', criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: 'Gap requires representation.', representationRequired: true }] } : {}),
     validationStrategy: 'Run relevant validation.',
   };
+}
+
+function normalizedReduceNodes(nodes: PlanningReduceNode[]) {
+  return nodes.map((node) => ({ nodeId: node.nodeId, depth: node.depth, inputAtomIds: node.inputAtomIds, inputNodeIds: node.inputNodeIds, criterionIds: node.criterionIds, aspectIds: node.aspectIds }));
 }
 
 function oversizedDigestReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {

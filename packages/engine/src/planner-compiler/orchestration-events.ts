@@ -2,9 +2,10 @@
  * Builders for the `planning:map-reduce:*` orchestration events.
  *
  * The bounded planner compiler emits two structural snapshots (atom graph,
- * reduce tree) plus per-node lifecycle status events so consumers can render a
- * dedicated map/reduce orchestration view instead of one Gantt row per atom and
- * reducer. Wire shapes are owned by `@eforge-build/client`; these builders map
+ * reduce tree) before any atom/reducer lifecycle status events; the pipelined
+ * scheduler may then interleave atom and reducer status events chronologically.
+ * Consumers should not assume global map completion precedes reducer status.
+ * Wire shapes are owned by `@eforge-build/client`; these builders map
  * the engine-native graph/tree types onto those shapes and apply the same
  * bounded caps the client schema enforces (so emitted events always validate).
  */
