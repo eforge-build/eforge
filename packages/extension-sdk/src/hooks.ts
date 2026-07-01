@@ -8,6 +8,7 @@
 
 import type { EforgeEvent } from './events.js';
 import type {
+  EforgeExtensionContext,
   EventHookContext,
   AgentRunContext,
   PolicyGateContext,
@@ -213,6 +214,14 @@ export interface ProfileRouterSpec {
 // Re-export ProfileRouterContext for convenience in API signatures
 export type { ProfileRouterContext };
 
+// ---------------------------------------------------------------------------
+// Runtime choice router
+// ---------------------------------------------------------------------------
+
+export interface RuntimeChoiceRouterContext extends EforgeExtensionContext { role: import('@eforge-build/client').AgentRole; tier: string; profile: string; availableChoices: Array<{ name: string; qualified: string }>; phase?: string; stage?: string; planId?: string; planName?: string; planSummary?: string; prdTitle?: string; prdSummary?: string; taskSummary?: string; keywordText?: string; pathHints?: string[]; changedFiles?: string[]; shardIds?: string[]; shardRoots?: string[]; shardFiles?: string[]; }
+export interface RuntimeChoiceRouterResult { choice?: string; decline?: boolean; reason?: string; confidence?: number; }
+export type RuntimeChoiceRouterHandler = (ctx: RuntimeChoiceRouterContext) => RuntimeChoiceRouterResult | string | null | undefined | Promise<RuntimeChoiceRouterResult | string | null | undefined>;
+export interface RuntimeChoiceRouterSpec { name: string; resolveRuntimeChoice: RuntimeChoiceRouterHandler; }
 // ---------------------------------------------------------------------------
 // Input source
 // ---------------------------------------------------------------------------

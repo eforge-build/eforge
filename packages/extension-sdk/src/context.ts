@@ -142,6 +142,12 @@ export interface AgentRunContext extends EforgeExtensionContext {
   tier: string;
   /** Active profile name resolved for this run. */
   profile: string;
+  runtimeChoice?: string;
+  runtimeChoiceQualified?: string;
+  runtimeChoiceSource?: 'default' | 'rule' | 'extension-router' | 'fallback';
+  runtimeChoiceRule?: string;
+  runtimeChoiceRouter?: string;
+  runtimeChoiceFallbackReason?: 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
   /** The plan ID associated with this agent run, if applicable. */
   planId?: string;
   /**

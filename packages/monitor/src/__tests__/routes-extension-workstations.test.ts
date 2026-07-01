@@ -161,7 +161,7 @@ function registryFor(cwd: string): NativeExtensionRegistry {
     eventHooks: [],
     agentRunHooks: [],
     policyGates: [],
-    profileRouters: [],
+    profileRouters: [], runtimeChoiceRouters: [],
     inputSources: [],
     reviewerPerspectives: [],
     validationProviders: [],

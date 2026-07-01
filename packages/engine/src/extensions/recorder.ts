@@ -26,6 +26,7 @@ import type {
   PolicyGateMethod,
   PrdEnricherSpec,
   ProfileRouterSpec,
+  RuntimeChoiceRouterSpec,
   ReviewerPerspectiveSpec,
   ValidationProviderSpec,
 } from './types.js';
@@ -39,6 +40,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     agentRunHooks: [],
     policyGates: [],
     profileRouters: [],
+    runtimeChoiceRouters: [],
     inputSources: [],
     reviewerPerspectives: [],
     validationProviders: [],
@@ -129,6 +131,20 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         return;
       }
       state.profileRouters.push({ kind: 'profileRouter', extensionName, extensionPath, name: spec.name, value: spec as unknown as ProfileRouterSpec });
+    },
+    registerRuntimeChoiceRouter(nameOrSpec: unknown, handler?: unknown): void {
+      const spec = typeof nameOrSpec === 'string'
+        ? { name: nameOrSpec, resolveRuntimeChoice: handler }
+        : nameOrSpec;
+      if (!isObject(spec) || !isNonEmptyString(spec.name) || typeof spec.resolveRuntimeChoice !== 'function') {
+        addDiagnostic(
+          'registerRuntimeChoiceRouter requires (name: string, handler: function) or { name: string, resolveRuntimeChoice: function }',
+          'extension:invalid-registration',
+          isObject(spec) && typeof spec.name === 'string' ? spec.name : undefined,
+        );
+        return;
+      }
+      state.runtimeChoiceRouters.push({ kind: 'runtimeChoiceRouter', extensionName, extensionPath, name: spec.name, value: spec as unknown as RuntimeChoiceRouterSpec });
     },
     registerInputSource(adapter: unknown): void {
       if (!isObject(adapter) || !isNonEmptyString(adapter.name) || !isNonEmptyString(adapter.description) || typeof adapter.fetch !== 'function') {
@@ -260,6 +276,7 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   diagnostics.push(...immediateDiagnostics);
 
   mergeNamedRegistrations(target.profileRouters, source.profileRouters, 'profile router', diagnostics, target.diagnostics);
+  mergeNamedRegistrations(target.runtimeChoiceRouters, source.runtimeChoiceRouters, 'runtime choice router', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.inputSources, source.inputSources, 'input source', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.prdEnrichers, source.prdEnrichers, 'PRD enricher', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);

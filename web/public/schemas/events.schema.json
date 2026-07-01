@@ -12793,7 +12793,10 @@
             "harness",
             "harnessSource",
             "tier",
-            "tierSource"
+            "tierSource",
+            "runtimeChoice",
+            "runtimeChoiceQualified",
+            "runtimeChoiceSource"
           ],
           "properties": {
             "type": {
@@ -12944,6 +12947,62 @@
                 },
                 {
                   "const": "plan",
+                  "type": "string"
+                }
+              ]
+            },
+            "runtimeChoice": {
+              "type": "string"
+            },
+            "runtimeChoiceQualified": {
+              "type": "string"
+            },
+            "runtimeChoiceSource": {
+              "anyOf": [
+                {
+                  "const": "default",
+                  "type": "string"
+                },
+                {
+                  "const": "rule",
+                  "type": "string"
+                },
+                {
+                  "const": "extension-router",
+                  "type": "string"
+                },
+                {
+                  "const": "fallback",
+                  "type": "string"
+                }
+              ]
+            },
+            "runtimeChoiceRule": {
+              "type": "string"
+            },
+            "runtimeChoiceRouter": {
+              "type": "string"
+            },
+            "runtimeChoiceFallbackReason": {
+              "anyOf": [
+                {
+                  "const": "no-match",
+                  "type": "string"
+                },
+                {
+                  "const": "router-declined",
+                  "type": "string"
+                },
+                {
+                  "const": "router-timeout",
+                  "type": "string"
+                },
+                {
+                  "const": "router-error",
+                  "type": "string"
+                },
+                {
+                  "const": "router-invalid-choice",
                   "type": "string"
                 }
               ]
@@ -32294,7 +32353,10 @@
                           "harness",
                           "harnessSource",
                           "tier",
-                          "tierSource"
+                          "tierSource",
+                          "runtimeChoice",
+                          "runtimeChoiceQualified",
+                          "runtimeChoiceSource"
                         ],
                         "properties": {
                           "type": {
@@ -32445,6 +32507,62 @@
                               },
                               {
                                 "const": "plan",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "runtimeChoice": {
+                            "type": "string"
+                          },
+                          "runtimeChoiceQualified": {
+                            "type": "string"
+                          },
+                          "runtimeChoiceSource": {
+                            "anyOf": [
+                              {
+                                "const": "default",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rule",
+                                "type": "string"
+                              },
+                              {
+                                "const": "extension-router",
+                                "type": "string"
+                              },
+                              {
+                                "const": "fallback",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "runtimeChoiceRule": {
+                            "type": "string"
+                          },
+                          "runtimeChoiceRouter": {
+                            "type": "string"
+                          },
+                          "runtimeChoiceFallbackReason": {
+                            "anyOf": [
+                              {
+                                "const": "no-match",
+                                "type": "string"
+                              },
+                              {
+                                "const": "router-declined",
+                                "type": "string"
+                              },
+                              {
+                                "const": "router-timeout",
+                                "type": "string"
+                              },
+                              {
+                                "const": "router-error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "router-invalid-choice",
                                 "type": "string"
                               }
                             ]

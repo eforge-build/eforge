@@ -27,7 +27,6 @@ import type { AgentRole } from '@eforge-build/engine/events';
 import type { AgentTaskRegistration } from '@eforge-build/engine/extensions/index';
 import { runResolvedAgentTask } from '@eforge-build/engine/agents/resolved-agent-task';
 import type { ExtensionAgentTaskOwner } from './agent-task-store.js';
-
 // --- eforge:region backlog-curation-map-reduce-runner ---
 export interface BacklogCurationMapReduceProviderHooks {
   readBacklogCurationItemAuditCache?: (input: CacheKeyInput) => Promise<CacheReadResult>;
@@ -36,7 +35,6 @@ export interface BacklogCurationMapReduceProviderHooks {
   buildBacklogCurationReducerInput?: (globalContext: BacklogCurationMapReduceSourceBundle['globalContext'], outcomes: readonly BacklogCurationMapReduceItemOutcome[], generatedAt?: string) => BacklogCurationMapReduceReducerInput;
   validateBacklogCurationPlanningDraftResult?: (cwd: string, result: EforgePlanPlanningDraftResult, context: { sourceFingerprint: string }) => Promise<string[]> | string[];
 }
-
 export interface BacklogCurationAgentTaskContributionHandle {
   contribution: AgentTaskRegistration;
   owner: ExtensionAgentTaskOwner;
@@ -55,6 +53,8 @@ export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughCon
   taskId: string;
   input: EforgePlanPlanningDraftInput;
   harness: AgentHarness;
+  resolvedHarness?: 'claude-sdk' | 'pi';
+  harnessSource?: 'tier';
   sourceBundle: BacklogCurationMapReduceSourceBundle;
   providerHooks: BacklogCurationMapReduceProviderHooks;
   runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity;

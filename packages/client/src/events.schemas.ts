@@ -73,6 +73,7 @@ export {
 } from './events/shared/schemas.js';
 export { BuildDecisionSchema, PlanningDecisionEventSchema, PlanningDecisionSchema } from './events/decisions.js';
 export { QueueDispatchFailureStageSchema } from './events/queue-events.js';
+export { RuntimeChoiceSourceSchema, RuntimeChoiceFallbackReasonSchema } from './events/shared/agent-fields.js';
 
 export {
   DecompositionFailureEvidenceSchema,

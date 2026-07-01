@@ -456,7 +456,72 @@ agents:
         # resources: isolated  # 'isolated' (default) or 'ambient' — see Headless resource isolation below
       claudeSdk:               # Optional: Claude SDK-specific config (ignored unless harness: claude-sdk)
         disableSubagents: true  # Default: prevent agents in this tier from spawning subagents
+      choices:                 # Optional tier-local runtime choices; named choices inherit from this tier recipe
+        ui:
+          effort: high         # Overlay only fields that differ from the tier default
+          toolbelt: browser-ui
+      routing:                 # Optional ordered rules evaluated before extension runtime-choice routers
+        rules:
+          - name: ui-paths
+            choice: ui         # 'default', '<choice>', or '<tier>.<choice>' within this tier
+            when:
+              pathGlobs: ["**/*.{tsx,jsx,css}"]
+              keywords: ["ui", "frontend", "browser", "component"]
 ```
+
+### Runtime choices and routing
+
+The four built-in tiers (`planning`, `implementation`, `review`, and `evaluation`) remain the role-routing axis. Roles resolve to a tier first through role overrides and engine defaults. Runtime choices are tier-local overlays selected **after** role-to-tier resolution; they do not create new global tiers.
+
+The existing tier recipe equals that tier's implicit `default` choice. A named choice under `agents.tiers.<tier>.choices` inherits from the tier default and overrides only the fields it lists. This inheritance applies before harness-specific validation, so a choice that switches to `harness: pi` must have an effective non-empty `pi.provider`, and a choice that switches to `claude-sdk` cannot keep an effective `pi` block.
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+      choices:
+        backend:
+          model: qwen3-coder
+          pi:
+            provider: local
+          toolbelt: none
+        ui:
+          effort: high
+          toolbelt: browser-ui
+      routing:
+        rules:
+          - name: ui-paths
+            choice: ui
+            when:
+              pathGlobs: ["packages/console-ui/**", "web/**", "**/*.{tsx,jsx,css}"]
+              keywords: ["ui", "frontend", "browser", "component"]
+          - name: backend-paths
+            choice: backend
+            when:
+              pathGlobs: ["packages/engine/**", "packages/client/**", "packages/monitor/**"]
+```
+
+Routing rules are evaluated in order within the already-resolved tier. The first matching rule wins. `choice` may be `default`, a choice name such as `ui`, or a qualified same-tier reference such as `implementation.ui`; cross-tier references are rejected. A rule's `when` block must include at least one predicate group. Predicate groups are ANDed together, while values inside one group are ORed:
+
+- `roles` matches the agent role exactly.
+- `phase` and `stage` match the current pipeline phase/stage string.
+- `pathGlobs` matches path hints, changed files, shard roots/files, and the plan file path.
+- `keywords` performs case-insensitive substring matching over bounded plan, PRD, task, and shard-label text.
+- `shardIds` matches invocation shard ids exactly.
+- `shardRoots` matches shard root paths with glob semantics.
+
+Declarative rules run before extension runtime-choice routers. If a declarative rule matches, extension runtime-choice routers are not consulted for that invocation. If no rule matches, extension routers may select one of the tier's available choices; router declines continue to the next router, while router errors, timeouts, or invalid choices fall back to `default` and do not fail the build. If no rule or router selects a named choice, eforge uses `default` with fallback reason `no-match`.
+
+`registerProfileRouter` is still build-level profile selection: it runs before build dispatch, chooses the active profile for the whole PRD build, and is separate from per-invocation runtime-choice routing inside the selected profile. `onAgentRun` receives read-only runtime-choice metadata (`runtimeChoice`, `runtimeChoiceQualified`, `runtimeChoiceSource`, and optional rule/router/fallback fields) and may append prompt context or tune tools, but it cannot change harness, model, provider, effort, or toolbelt selection for that run.
+
+Validation errors are path-specific. Examples include a reserved `choices.default` name, an unknown routing choice after config layers are merged, a cross-tier qualified choice, an empty `when` block, a named choice whose inherited recipe is missing required `harness`/`model`/`effort`, and a named choice whose effective `toolbelt` does not exist.
+
+`agent:start` events expose non-secret runtime-choice metadata alongside the resolved tier, harness, model, and toolbelt fields. Event metadata identifies the selected choice and whether it came from `default`, a declarative `rule`, an `extension-router`, or a `fallback`; it does not include API keys, provider secrets, or raw profile paths.
 
 ### Pi Backend Tiers
 

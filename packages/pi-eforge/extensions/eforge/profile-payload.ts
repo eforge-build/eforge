@@ -28,6 +28,38 @@ export interface TierSelection {
   toolbelt?: string;
 }
 
+/** A tier-local choice overlay. Omitted fields inherit from the tier default. */
+export interface RuntimeChoiceSelection {
+  harness?: HarnessType;
+  provider?: string;
+  modelId?: string;
+  effort?: string;
+  toolbelt?: string;
+}
+
+export interface RuntimeRoutingPredicate {
+  roles?: string[];
+  phase?: string[];
+  stage?: string[];
+  pathGlobs?: string[];
+  keywords?: string[];
+  shardIds?: string[];
+  shardRoots?: string[];
+}
+
+export interface RuntimeRoutingRuleSelection {
+  name: string;
+  choice: string;
+  when: RuntimeRoutingPredicate;
+}
+
+export interface TierRuntimeChoicesSelection {
+  choices?: Record<string, RuntimeChoiceSelection>;
+  routing?: {
+    rules: RuntimeRoutingRuleSelection[];
+  };
+}
+
 /** Input to buildProfileCreatePayload. */
 export interface ProfileCreateInput {
   /** Profile name (e.g. "pi-anthropic"). */
@@ -41,6 +73,8 @@ export interface ProfileCreateInput {
     review: TierSelection;
     evaluation: TierSelection;
   };
+  /** Optional tier-local runtime choices and ordered routing rules. */
+  runtimeChoices?: Partial<Record<TierName, TierRuntimeChoicesSelection>>;
   /** Descriptive metadata for the profile. Does not affect runtime behavior. */
   metadata?: {
     description?: string;
@@ -53,6 +87,25 @@ export interface ProfileCreateInput {
 // Output types
 // ---------------------------------------------------------------------------
 
+export interface TierChoiceOverlayEntry {
+  harness?: HarnessType;
+  pi?: { provider: string };
+  model?: string;
+  effort?: string;
+  /** Toolbelt name assigned to this choice. Omitted when not set. */
+  toolbelt?: string;
+}
+
+export interface RuntimeRoutingRuleEntry {
+  name: string;
+  choice: string;
+  when: RuntimeRoutingPredicate;
+}
+
+export interface TierRoutingEntry {
+  rules: RuntimeRoutingRuleEntry[];
+}
+
 /** A single tier recipe entry in the create payload. */
 export interface TierRecipeEntry {
   harness: HarnessType;
@@ -61,6 +114,10 @@ export interface TierRecipeEntry {
   effort: string;
   /** Toolbelt name assigned to this tier. Omitted when not set. */
   toolbelt?: string;
+  /** Tier-local overlays that inherit from this tier default. */
+  choices?: Record<string, TierChoiceOverlayEntry>;
+  /** Ordered declarative routing rules for selecting a tier-local choice. */
+  routing?: TierRoutingEntry;
 }
 
 /** The payload sent to POST /api/profile/create. */
@@ -87,7 +144,7 @@ export interface ProfileCreatePayload {
 // Payload builder
 // ---------------------------------------------------------------------------
 
-function toTierEntry(sel: TierSelection): TierRecipeEntry {
+function toTierEntry(sel: TierSelection, runtimeChoices?: TierRuntimeChoicesSelection): TierRecipeEntry {
   const entry: TierRecipeEntry = {
     harness: sel.harness,
     model: sel.modelId,
@@ -95,6 +152,36 @@ function toTierEntry(sel: TierSelection): TierRecipeEntry {
   };
   if (sel.harness === 'pi' && sel.provider) {
     entry.pi = { provider: sel.provider };
+  }
+  if (sel.toolbelt !== undefined) {
+    entry.toolbelt = sel.toolbelt;
+  }
+  if (runtimeChoices?.choices !== undefined) {
+    entry.choices = Object.fromEntries(
+      Object.entries(runtimeChoices.choices).map(([name, choice]) => [name, toChoiceEntry(choice)]),
+    );
+  }
+  if (runtimeChoices?.routing !== undefined) {
+    entry.routing = { rules: runtimeChoices.routing.rules.map((rule) => ({ ...rule, when: { ...rule.when } })) };
+  }
+  return entry;
+}
+
+function toChoiceEntry(sel: RuntimeChoiceSelection): TierChoiceOverlayEntry {
+  const entry: TierChoiceOverlayEntry = {};
+  if (sel.harness !== undefined) {
+    entry.harness = sel.harness;
+  }
+  if (sel.harness === 'pi' && sel.provider) {
+    entry.pi = { provider: sel.provider };
+  } else if (sel.harness === undefined && sel.provider) {
+    entry.pi = { provider: sel.provider };
+  }
+  if (sel.modelId !== undefined) {
+    entry.model = sel.modelId;
+  }
+  if (sel.effort !== undefined) {
+    entry.effort = sel.effort;
   }
   if (sel.toolbelt !== undefined) {
     entry.toolbelt = sel.toolbelt;
@@ -111,17 +198,17 @@ function toTierEntry(sel: TierSelection): TierRecipeEntry {
  * the input, it is preserved as a top-level `metadata` key in the payload.
  */
 export function buildProfileCreatePayload(input: ProfileCreateInput): ProfileCreatePayload {
-  const { name, scope, tiers, metadata } = input;
+  const { name, scope, tiers, metadata, runtimeChoices } = input;
 
   const payload: ProfileCreatePayload = {
     name,
     scope,
     agents: {
       tiers: {
-        planning: toTierEntry(tiers.planning),
-        implementation: toTierEntry(tiers.implementation),
-        review: toTierEntry(tiers.review),
-        evaluation: toTierEntry(tiers.evaluation),
+        planning: toTierEntry(tiers.planning, runtimeChoices?.planning),
+        implementation: toTierEntry(tiers.implementation, runtimeChoices?.implementation),
+        review: toTierEntry(tiers.review, runtimeChoices?.review),
+        evaluation: toTierEntry(tiers.evaluation, runtimeChoices?.evaluation),
       },
     },
   };

@@ -131,6 +131,8 @@ export type {
   ExecuteProfileRoutersOptions,
   BuildProfileRouterContextDeps,
 } from './profile-router-runtime.js';
+export { resolveRuntimeChoiceWithExtensionRouters } from './runtime-choice-router.js';
+export type { RuntimeChoiceRouterRuntimeOptions } from './runtime-choice-router.js';
 export {
   buildFinalMergePolicyGateContext,
   buildPlanMergePolicyGateContext,

@@ -4,15 +4,14 @@ import { promisify } from 'node:util';
 import { resolve, dirname, basename, extname, join as pathJoin } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-
 const execFileAsync = promisify(execFile);
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
-
 import { sanitizeProfileName, parseRawConfigLegacy, REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 import type { ShardScope } from './schemas.js';
+import { overlayEffectiveAgentRecipe, type EffectiveAgentRecipe } from './pipeline/runtime-choice.js';
 import {
   resolveNamedSet,
   resolveLayeredSingletons,
@@ -26,16 +25,13 @@ export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
 export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolvePlanningDecompositionLimits } from './compile-resilience/planning-decomposition-limits.js';
 export type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export type { ShardScope } from './schemas.js';
-
 // Re-export shared types from @eforge-build/client so engine-internal callers
 // (plan.ts, eforge.ts, pipeline.ts, compiler.ts, events.ts, agents/*) can keep
 // importing from this module. The client package is the single owner.
 export type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
-
 // ---------------------------------------------------------------------------
 // Zod Schemas — single source of truth for config types
 // ---------------------------------------------------------------------------
-
 /** Agent roles matching the AgentRole union in events.ts. */
 export const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
@@ -47,17 +43,13 @@ export const AGENT_ROLES = [
   'gap-closer',
   'recovery-analyst',
 ] as const;
-
 const agentRoleSchema = z.enum(AGENT_ROLES);
-
 /** Agent tiers group agent roles by workload type for batch configuration. */
 export const AGENT_TIERS = ['planning', 'implementation', 'review', 'evaluation'] as const;
 export type AgentTier = (typeof AGENT_TIERS)[number];
 export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
-
 /** Built-in global fallback when neither a role nor its tier sets maxTurns. */
 export const DEFAULT_AGENT_MAX_TURNS = 50;
-
 /** Built-in max-turn defaults for each agent tier. */
 export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
   planning: 80,
@@ -65,11 +57,8 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
   review: 60,
   evaluation: DEFAULT_AGENT_MAX_TURNS,
 });
-
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
-
 const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
-
 const compileConfigSchema = z.object({
   planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
   planningUnitMaxDepth: boundedPositiveIntegerConfigSchema('planningUnitMaxDepth').optional(),
@@ -83,22 +72,17 @@ const compileConfigSchema = z.object({
   planningUnitMaxSubsystemsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSubsystemsPerUnit').optional(),
   planningUnitMaxSplitAttemptsPerUnit: boundedPositiveIntegerConfigSchema('planningUnitMaxSplitAttemptsPerUnit').optional(),
 }).strict().describe('Context-managed compile planning-unit limits');
-
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas
 // ---------------------------------------------------------------------------
-
 /** Reserved toolbelt names that users cannot declare in tools.toolbelts. */
 export const RESERVED_TOOLBELT_NAMES = new Set(['none']);
-
 /** Valid toolbelt name pattern: letters, digits, dot, underscore, or dash. */
 const toolbeltNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/);
-
 const toolbeltConfigSchema = z.object({
   description: z.string().optional(),
   mcpServers: z.array(z.string().min(1)).nonempty(),
 });
-
 const toolsConfigSchema = z.object({
   toolbelts: z.record(z.string(), toolbeltConfigSchema).optional(),
 }).superRefine((data, ctx) => {
@@ -120,7 +104,6 @@ const toolsConfigSchema = z.object({
     }
   }
 });
-
 // ---------------------------------------------------------------------------
 // ModelRef — model references
 // ---------------------------------------------------------------------------
@@ -254,14 +237,9 @@ export const piConfigSchema = z.object({
   }).optional().describe('Retry configuration for Pi API calls'),
 }).describe('Configuration for the Pi coding agent harness');
 
-/**
- * A self-contained tier recipe: harness + harness-specific config + model + effort.
- *
- * Each tier owns the entire decision: which harness to run, which model to use,
- * what effort/thinking behavior, and any tool/budget tuning. Tiers cross-reference
- * nothing — there is no shared model class table, no separate runtime registry.
- */
-export const tierConfigSchema = z.object({
+const runtimeChoiceNameSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/, 'Choice names must be lowercase slugs starting with a letter');
+
+const tierRecipeShape = {
   harness: harnessTypeSchema.describe('Which harness to run for roles in this tier'),
   pi: piConfigSchema.optional().describe('Pi-specific configuration (only when harness === "pi")'),
   claudeSdk: claudeSdkConfigSchema.optional().describe('Claude SDK-specific configuration (only when harness === "claude-sdk")'),
@@ -274,27 +252,88 @@ export const tierConfigSchema = z.object({
   disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
   promptAppend: z.string().optional().describe('Text appended to every agent prompt in this tier after variable substitution'),
   toolbelt: z.string().optional().describe('Toolbelt name to activate for roles in this tier (must be declared in tools.toolbelts, or "none" to disable)'),
-}).superRefine((data, ctx) => {
+} satisfies z.ZodRawShape;
+
+const tierRecipeBaseSchema = z.object(tierRecipeShape);
+
+const tierChoiceOverlaySchema = tierRecipeBaseSchema.partial().strict();
+
+const runtimeRoutingWhenSchema = z.object({
+  roles: z.array(agentRoleSchema).nonempty().optional(),
+  phase: z.array(z.string().min(1)).nonempty().optional(),
+  stage: z.array(z.string().min(1)).nonempty().optional(),
+  pathGlobs: z.array(z.string().min(1)).nonempty().optional(),
+  keywords: z.array(z.string().min(1)).nonempty().optional(),
+  shardIds: z.array(z.string().min(1)).nonempty().optional(),
+  shardRoots: z.array(z.string().min(1)).nonempty().optional(),
+}).strict().superRefine((data, ctx) => {
+  if (Object.keys(data).length === 0) {
+    ctx.addIssue({ code: 'custom', message: 'Routing rule when block must include at least one predicate group' });
+  }
+});
+
+const runtimeRoutingRuleSchema = z.object({
+  name: z.string().min(1),
+  choice: z.string().min(1),
+  when: runtimeRoutingWhenSchema,
+}).strict();
+
+const tierRoutingSchema = z.object({
+  rules: z.array(runtimeRoutingRuleSchema),
+}).strict();
+
+function addHarnessSpecificTierRecipeIssues(
+  data: { harness?: 'claude-sdk' | 'pi'; pi?: z.output<typeof piConfigSchema>; claudeSdk?: z.output<typeof claudeSdkConfigSchema> },
+  ctx: z.RefinementCtx,
+  pathPrefix: Array<string | number> = [],
+): void {
   if (data.harness === 'pi' && data.claudeSdk !== undefined) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Tier with harness "pi" cannot include "claudeSdk" configuration.',
-    });
+    ctx.addIssue({ code: 'custom', message: 'Tier with harness "pi" cannot include "claudeSdk" configuration.', path: [...pathPrefix, 'claudeSdk'] });
   }
   if (data.harness === 'claude-sdk' && data.pi !== undefined) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Tier with harness "claude-sdk" cannot include "pi" configuration.',
-    });
+    ctx.addIssue({ code: 'custom', message: 'Tier with harness "claude-sdk" cannot include "pi" configuration.', path: [...pathPrefix, 'pi'] });
   }
   if (data.harness === 'pi' && (!data.pi?.provider || data.pi.provider.trim() === '')) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Tier with harness "pi" requires non-empty "pi.provider".',
-      path: ['pi', 'provider'],
-    });
+    ctx.addIssue({ code: 'custom', message: 'Tier with harness "pi" requires non-empty "pi.provider".', path: [...pathPrefix, 'pi', 'provider'] });
   }
-}).describe('A self-contained tier recipe (harness + model + effort + tuning)');
+}
+
+/**
+ * A self-contained tier recipe: harness + harness-specific config + model + effort,
+ * optionally with tier-local runtime choices and ordered routing rules.
+ */
+export const tierConfigSchema = tierRecipeBaseSchema.extend({
+  choices: z.record(runtimeChoiceNameSchema, tierChoiceOverlaySchema).optional(),
+  routing: tierRoutingSchema.optional(),
+}).strict().superRefine((data, ctx) => {
+  addHarnessSpecificTierRecipeIssues(data, ctx);
+  const tierPath = (ctx as unknown as { path?: Array<string | number> }).path ?? [];
+  const tierName = typeof tierPath[tierPath.length - 1] === 'string' ? String(tierPath[tierPath.length - 1]) : undefined;
+  for (const [choiceName, overlay] of Object.entries(data.choices ?? {})) {
+    if (choiceName === 'default') {
+      ctx.addIssue({ code: 'custom', message: 'Runtime choice name "default" is reserved for the implicit tier default', path: ['choices', choiceName] });
+      continue;
+    }
+    const effective = overlayEffectiveAgentRecipe(data as EffectiveAgentRecipe, overlay);
+    if (!effective.harness) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective harness after inheritance`, path: ['choices', choiceName, 'harness'] });
+    if (!effective.model) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective model after inheritance`, path: ['choices', choiceName, 'model'] });
+    if (!effective.effort) ctx.addIssue({ code: 'custom', message: `Choice "${choiceName}" is missing effective effort after inheritance`, path: ['choices', choiceName, 'effort'] });
+    addHarnessSpecificTierRecipeIssues(effective, ctx, ['choices', choiceName]);
+  }
+  for (const [index, rule] of (data.routing?.rules ?? []).entries()) {
+    const raw = rule.choice.trim();
+    const parts = raw.split('.');
+    const choiceName = parts.length === 2 ? parts[1] : raw;
+    if (parts.length > 2) {
+      ctx.addIssue({ code: 'custom', message: `Routing choice "${raw}" must be "default", a choice name, or "${tierName}.<choice>"`, path: ['routing', 'rules', index, 'choice'] });
+      continue;
+    }
+    if (parts.length === 2 && tierName !== undefined && parts[0] !== tierName) {
+      ctx.addIssue({ code: 'custom', message: `Routing choice "${raw}" crosses tiers; use a choice under "${tierName}"`, path: ['routing', 'rules', index, 'choice'] });
+      continue;
+    }
+  }
+}).describe('A self-contained tier recipe (harness + model + effort + tuning) with optional runtime choices');
 
 // Local Zod copy of shardScopeSchema for use within Zod-based config schemas.
 // config.ts will be migrated to TypeBox in a follow-up PRD. Mirrors the TypeBox
@@ -489,8 +528,76 @@ const eforgeConfigBaseSchema = z.object({
   landing: landingConfigSchema.optional(),
 });
 
-/** Exported schema. Cross-field validation is performed in tierConfigSchema. */
-export const eforgeConfigSchema = eforgeConfigBaseSchema;
+function collectEffectiveRecipeConfigErrors(recipe: unknown, path: string): string[] {
+  const errors: string[] = [];
+  const parsed = tierRecipeBaseSchema.safeParse(recipe);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push(`${path}${issue.path.length > 0 ? `.${issue.path.join('.')}` : ''}: ${issue.message}`);
+    }
+    return errors;
+  }
+  if (parsed.data.harness === 'pi' && parsed.data.claudeSdk !== undefined) {
+    errors.push(`${path}.claudeSdk: Tier with harness "pi" cannot include "claudeSdk" configuration.`);
+  }
+  if (parsed.data.harness === 'claude-sdk' && parsed.data.pi !== undefined) {
+    errors.push(`${path}.pi: Tier with harness "claude-sdk" cannot include "pi" configuration.`);
+  }
+  if (parsed.data.harness === 'pi' && (!parsed.data.pi?.provider || parsed.data.pi.provider.trim() === '')) {
+    errors.push(`${path}.pi.provider: Tier with harness "pi" requires non-empty "pi.provider".`);
+  }
+  return errors;
+}
+
+function collectRuntimeChoiceConfigErrors(data: { agents?: { tiers?: Record<string, unknown> } }, options: { validateUnknownChoices?: boolean; validateEffectiveRecipes?: boolean } = {}): string[] {
+  const errors: string[] = [];
+  for (const [tierName, tierValue] of Object.entries(data.agents?.tiers ?? {})) {
+    if (!tierValue || typeof tierValue !== 'object') continue;
+    const tier = tierValue as { choices?: Record<string, unknown>; routing?: { rules?: Array<{ choice?: unknown; name?: unknown }> } };
+    const choices = tier.choices ?? {};
+    if (options.validateEffectiveRecipes === true) {
+      const { choices: _choices, routing: _routing, ...baseRecipe } = tier as Record<string, unknown>;
+      errors.push(...collectEffectiveRecipeConfigErrors(baseRecipe, `agents.tiers.${tierName}`));
+      for (const [choiceName, overlay] of Object.entries(choices)) {
+        if (!overlay || typeof overlay !== 'object') continue;
+        const effective = overlayEffectiveAgentRecipe(baseRecipe as EffectiveAgentRecipe, overlay as NonNullable<TierConfig['choices']>[string]);
+        errors.push(...collectEffectiveRecipeConfigErrors(effective, `agents.tiers.${tierName}.choices.${choiceName}`));
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(choices, 'default')) {
+      errors.push(`agents.tiers.${tierName}.choices.default: Runtime choice name "default" is reserved for the implicit tier default`);
+    }
+    for (const [index, rule] of (tier.routing?.rules ?? []).entries()) {
+      if (typeof rule.choice !== 'string') continue;
+      const raw = rule.choice.trim();
+      const parts = raw.split('.');
+      const choiceName = parts.length === 2 ? parts[1] : raw;
+      if (parts.length === 2 && parts[0] !== tierName) {
+        errors.push(`agents.tiers.${tierName}.routing.rules.${index}.choice: Routing choice "${raw}" crosses tiers; use a choice under "${tierName}"`);
+      } else if (options.validateUnknownChoices === true && choiceName !== 'default' && !Object.prototype.hasOwnProperty.call(choices, choiceName)) {
+        errors.push(`agents.tiers.${tierName}.routing.rules.${index}.choice: Routing choice "${raw}" references unknown choice "${choiceName}"`);
+      }
+    }
+  }
+  return errors;
+}
+
+function addRuntimeChoiceConfigIssues(data: { agents?: { tiers?: Record<string, unknown> } }, ctx: z.RefinementCtx): void {
+  for (const error of collectRuntimeChoiceConfigErrors(data)) {
+    const [pathText, ...messageParts] = error.split(': ');
+    ctx.addIssue({ code: 'custom', message: messageParts.join(': '), path: pathText.split('.') });
+  }
+}
+
+function assertMergedRuntimeChoiceConfig(data: { agents?: { tiers?: Record<string, unknown> } }, label = 'config'): void {
+  const errors = collectRuntimeChoiceConfigErrors(data, { validateUnknownChoices: true, validateEffectiveRecipes: true });
+  if (errors.length > 0) {
+    throw new ConfigValidationError(`Invalid ${label}: ${errors.join('; ')}`);
+  }
+}
+
+/** Exported schema. Cross-field validation is performed in tierConfigSchema; unknown runtime-choice references are validated after config layers are merged. */
+export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine(addRuntimeChoiceConfigIssues);
 
 // ---------------------------------------------------------------------------
 // Derived TypeScript types — from schemas, not hand-written
@@ -572,6 +679,7 @@ export interface ResolvedAgentConfig {
   tier: AgentTier;
   /** Provenance of the tier value. */
   tierSource: 'tier' | 'role' | 'plan';
+  runtimeChoice?: string; runtimeChoiceQualified?: string; runtimeChoiceSource?: import('./pipeline/runtime-choice.js').RuntimeChoiceSource; runtimeChoiceRule?: string; runtimeChoiceRouter?: string; runtimeChoiceFallbackReason?: import('./pipeline/runtime-choice.js').RuntimeChoiceFallbackReason;
   /** Resolved model ref. Provider is spliced from tier.pi.provider for pi harness. */
   model: ModelRef;
   /** Resolved effort level. */
@@ -949,6 +1057,7 @@ export function resolveConfig(
   fileConfig: PartialEforgeConfig,
   env: Record<string, string | undefined> = process.env,
 ): EforgeConfig {
+  assertMergedRuntimeChoiceConfig(fileConfig as { agents?: { tiers?: Record<string, unknown> } });
   const langfusePublicKey = env.LANGFUSE_PUBLIC_KEY ?? fileConfig.langfuse?.publicKey;
   const langfuseSecretKey = env.LANGFUSE_SECRET_KEY ?? fileConfig.langfuse?.secretKey;
   const langfuseHost = env.LANGFUSE_BASE_URL ?? fileConfig.langfuse?.host ?? DEFAULT_CONFIG.langfuse.host;
@@ -1159,11 +1268,15 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
+  const label = context === 'profile' ? 'profile' : 'config';
   if (!result.success) {
-    const label = context === 'profile' ? 'profile' : 'config';
     throw new ConfigValidationError(
       `Invalid ${label}: ` + z.prettifyError(result.error),
     );
+  }
+  const runtimeChoiceErrors = collectRuntimeChoiceConfigErrors(result.data as { agents?: { tiers?: Record<string, unknown> } });
+  if (runtimeChoiceErrors.length > 0) {
+    throw new ConfigValidationError(`Invalid ${label}: ${runtimeChoiceErrors.join('; ')}`);
   }
   return stripUndefinedSections(result.data);
 }
@@ -1480,6 +1593,7 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
   // Merge sequence: user → project → local (three-tier deep merge)
   const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
+  assertMergedRuntimeChoiceConfig(merged as { agents?: { tiers?: Record<string, unknown> } });
 
   // Toolbelt static validation — fatal: any reference error throws ConfigValidationError
   // so the engine refuses to boot with broken toolbelt configuration.
@@ -1878,7 +1992,6 @@ async function loadProfileFromPath(path: string): Promise<{ profile: PartialEfor
   }
 
   const parsed = result.data as ProfileFileData;
-
   // Build the runtime profile object: known config fields + metadata fields.
   // Config fields are stripped of undefined values (same as stripUndefinedSections).
   // Metadata fields are preserved so extractProfileMetadata() works on the opaque value.
@@ -2084,6 +2197,7 @@ export async function setActiveProfile(
       z.prettifyError(result.error),
     );
   }
+  assertMergedRuntimeChoiceConfig(merged as { agents?: { tiers?: Record<string, unknown> } }, `profile "${name}" merged config`);
 
   // Toolbelt cross-reference validation
   const projectRoot = dirname(configDir);
@@ -2188,6 +2302,7 @@ export async function createAgentRuntimeProfile(
       z.prettifyError(mergedResult.error),
     );
   }
+  assertMergedRuntimeChoiceConfig(merged as { agents?: { tiers?: Record<string, unknown> } }, `profile "${name}" merged config`);
 
   // Toolbelt cross-reference validation
   const createProfileProjectRoot = dirname(configDir);
@@ -2449,14 +2564,19 @@ export function validateToolbeltReferences(
   const errors: string[] = [];
   const toolbelts = merged.tools?.toolbelts ?? {};
 
-  // Check tier references
+  // Check tier and choice effective-recipe references
   const tiers = merged.agents?.tiers ?? {};
   for (const [tierName, tier] of Object.entries(tiers)) {
     if (!tier) continue;
     const toolbelt = (tier as { toolbelt?: string }).toolbelt;
-    if (toolbelt !== undefined && toolbelt !== 'none') {
-      if (!(toolbelt in toolbelts)) {
-        errors.push(`agents.tiers.${tierName}.toolbelt references "${toolbelt}", but no tools.toolbelts.${toolbelt} is defined.`);
+    if (toolbelt !== undefined && toolbelt !== 'none' && !(toolbelt in toolbelts)) {
+      errors.push(`agents.tiers.${tierName}.toolbelt references "${toolbelt}", but no tools.toolbelts.${toolbelt} is defined.`);
+    }
+    const choices = (tier as { choices?: Record<string, { toolbelt?: string }> }).choices ?? {};
+    for (const [choiceName, choice] of Object.entries(choices)) {
+      const choiceToolbelt = choice.toolbelt ?? toolbelt;
+      if (choiceToolbelt !== undefined && choiceToolbelt !== 'none' && !(choiceToolbelt in toolbelts)) {
+        errors.push(`agents.tiers.${tierName}.choices.${choiceName}.toolbelt references "${choiceToolbelt}", but no tools.toolbelts.${choiceToolbelt} is defined.`);
       }
     }
   }
@@ -2536,7 +2656,35 @@ export async function validateConfigFile(
       // best-effort: if .mcp.json can't be read, skip MCP checks
     }
     const partial = result.data as PartialEforgeConfig;
-    const toolbeltErrors = validateToolbeltReferences(partial, mcpProbe);
+    let mergedForCrossReferences = partial;
+    try {
+      let globalConfig: PartialEforgeConfig = {};
+      let projectConfig: PartialEforgeConfig = {};
+      let localConfig: PartialEforgeConfig = {};
+      const configYamlLayers = await resolveLayeredSingletons('config.yaml', { cwd: projectRoot, configDir: dirname(configPath) });
+      for (const { scope, path } of configYamlLayers) {
+        const layerRaw = await readFile(path, 'utf-8');
+        const layerData = parseYaml(layerRaw);
+        if (layerData && typeof layerData === 'object') {
+          const layerPartial = parseRawConfig(layerData as Record<string, unknown>);
+          if (scope === 'user') globalConfig = layerPartial;
+          else if (scope === 'project-team') projectConfig = layerPartial;
+          else localConfig = layerPartial;
+        }
+      }
+      const { name } = await resolveActiveProfileName(dirname(configPath), projectConfig, globalConfig, projectRoot);
+      let profileConfig: PartialEforgeConfig | null = null;
+      if (name) {
+        const profileResult = await loadProfile(dirname(configPath), name, projectRoot);
+        profileConfig = profileResult?.profile ?? null;
+      }
+      const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
+      mergedForCrossReferences = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
+    } catch (err) {
+      errors.push(`Failed to validate merged config layers: ${(err as Error).message}`);
+    }
+    errors.push(...collectRuntimeChoiceConfigErrors(mergedForCrossReferences as { agents?: { tiers?: Record<string, unknown> } }, { validateUnknownChoices: true }));
+    const toolbeltErrors = validateToolbeltReferences(mergedForCrossReferences, mcpProbe);
     errors.push(...toolbeltErrors);
   }
 

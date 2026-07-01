@@ -94,6 +94,7 @@ export interface NativeExtensionInstallProvenance {
 export type EventPattern = string;
 export type ExtensionHandler = (...args: never[]) => unknown;
 export interface ProfileRouterSpec { name: string; selectBuildProfile?: ExtensionHandler; resolve?: ExtensionHandler }
+export interface RuntimeChoiceRouterSpec { name: string; resolveRuntimeChoice: ExtensionHandler }
 export interface InputSourceAdapter { name: string; description: string; fetch: ExtensionHandler }
 export interface ReviewerPerspectiveApplicability {
   fileGlobs?: string[];
@@ -205,6 +206,7 @@ export interface EforgeExtensionAPIShape {
   beforePlanMerge(handler: ExtensionHandler): void;
   beforeFinalMerge(handler: ExtensionHandler): void;
   registerProfileRouter(spec: ProfileRouterSpec): void;
+  registerRuntimeChoiceRouter(nameOrSpec: RuntimeChoiceRouterSpec | string, handler?: ExtensionHandler): void;
   registerInputSource(adapter: InputSourceAdapter): void;
   registerPrdEnricher(enricher: PrdEnricherSpec): void;
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
@@ -333,6 +335,7 @@ export type PolicyGateRegistration = BaseExtensionRegistration<'policyGate', Ext
   registrationIndex: number;
 };
 export type ProfileRouterRegistration = BaseExtensionRegistration<'profileRouter', ProfileRouterSpec> & { name: string };
+export type RuntimeChoiceRouterRegistration = BaseExtensionRegistration<'runtimeChoiceRouter', RuntimeChoiceRouterSpec> & { name: string };
 export type InputSourceRegistration = BaseExtensionRegistration<'inputSource', InputSourceAdapter> & { name: string };
 export type ReviewerPerspectiveRegistration = BaseExtensionRegistration<'reviewerPerspective', ReviewerPerspectiveSpec> & { name: string };
 export type ValidationProviderRegistration = BaseExtensionRegistration<'validationProvider', ValidationProviderSpec> & { name: string };
@@ -351,6 +354,7 @@ export interface NativeExtensionRecorderState {
   agentRunHooks: AgentRunRegistration[];
   policyGates: PolicyGateRegistration[];
   profileRouters: ProfileRouterRegistration[];
+  runtimeChoiceRouters: RuntimeChoiceRouterRegistration[];
   inputSources: InputSourceRegistration[];
   reviewerPerspectives: ReviewerPerspectiveRegistration[];
   validationProviders: ValidationProviderRegistration[];
@@ -384,6 +388,7 @@ export interface LoadedNativeExtension {
     agentRunHooks: number;
     policyGates: number;
     profileRouters: number;
+    runtimeChoiceRouters: number;
     inputSources: number;
     reviewerPerspectives: number;
     validationProviders: number;

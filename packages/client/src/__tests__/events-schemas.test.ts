@@ -251,6 +251,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'standard',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'standard.default',
+      runtimeChoiceSource: 'default',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled', budget_tokens: 10000 },
     };
@@ -276,6 +279,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'fast',
       tierSource: 'role',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'fast.default',
+      runtimeChoiceSource: 'default',
     });
     expect(result.success).toBe(true);
   });
@@ -291,6 +297,9 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       harnessSource: 'tier',
       tier: 'standard',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'standard.default',
+      runtimeChoiceSource: 'default',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled', budget_tokens: 10000 },
     };
@@ -393,6 +402,9 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
       harnessSource: 'tier',
       tier: 'implementation',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'implementation.default',
+      runtimeChoiceSource: 'default',
     });
     expect(result.success).toBe(true);
   });
@@ -408,6 +420,10 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
       harnessSource: 'tier',
       tier: 'implementation',
       tierSource: 'tier',
+      runtimeChoice: 'ui',
+      runtimeChoiceQualified: 'implementation.ui',
+      runtimeChoiceSource: 'rule',
+      runtimeChoiceRule: 'ui-paths',
       toolbelt: 'browser-ui',
       toolbeltSource: 'tier',
       projectMcpSelection: 'toolbelt',
@@ -427,6 +443,10 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
       harnessSource: 'tier',
       tier: 'evaluation',
       tierSource: 'tier',
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'evaluation.default',
+      runtimeChoiceSource: 'fallback',
+      runtimeChoiceFallbackReason: 'no-match',
       toolbelt: null,
       toolbeltSource: 'tier',
       projectMcpSelection: 'none',

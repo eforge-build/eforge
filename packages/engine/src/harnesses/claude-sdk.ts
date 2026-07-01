@@ -213,6 +213,7 @@ export class ClaudeSDKHarness implements AgentHarness {
       harnessSource: 'tier',
       tier: options.tier!,
       tierSource: options.tierSource!,
+      runtimeChoice: options.runtimeChoice, runtimeChoiceQualified: options.runtimeChoiceQualified, runtimeChoiceSource: options.runtimeChoiceSource, runtimeChoiceRule: options.runtimeChoiceRule, runtimeChoiceRouter: options.runtimeChoiceRouter, runtimeChoiceFallbackReason: options.runtimeChoiceFallbackReason,
       effort: options.effort,
       effortSource: options.effortSource,
       thinking: options.thinking,

@@ -430,7 +430,7 @@ class MapReduceHarness implements AgentHarness {
   effectiveCustomToolName(name: string): string { return name; }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
-    yield { type: 'agent:start', agent, planId, agentId: 'agent', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId: 'agent', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     const itemTool = options.customTools?.find((tool) => tool.name === 'submit_eforge_plan_backlog_item_finding');
     const reducerTool = options.customTools?.find((tool) => tool.name === 'submit_eforge_plan_planning_result');
     if (itemTool !== undefined) {

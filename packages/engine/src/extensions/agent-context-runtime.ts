@@ -7,7 +7,6 @@
  * agent-run augmentation. Toolbelt filtering remains owned by
  * AgentRuntimeRegistry and applies only to project MCP server maps.
  */
-
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
@@ -16,19 +15,16 @@ import type { AgentHarness, AgentRunOptions, CustomTool } from '../harness.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { AgentRunRegistration, NativeExtensionRegistry, ToolRegistration } from './types.js';
 import type { TObject } from '@sinclair/typebox';
-
 // ---------------------------------------------------------------------------
 // Local SDK-mirror types (avoid importing from @eforge-build/extension-sdk to
 // prevent rootDir violations in the engine's per-package tsconfig)
 // ---------------------------------------------------------------------------
-
 interface ExtensionTool {
   name: string;
   description: string;
   inputSchema: TObject;
   handler: (input: unknown) => Promise<string> | string;
 }
-
 /** Mirror of AgentRunAugmentation from @eforge-build/extension-sdk */
 interface AgentRunAugmentation {
   promptAppend?: string;
@@ -42,6 +38,7 @@ interface AgentRunContext {
   role: string;
   tier?: string;
   profile: string;
+  runtimeChoice?: string; runtimeChoiceQualified?: string; runtimeChoiceSource?: 'default' | 'rule' | 'extension-router' | 'fallback'; runtimeChoiceRule?: string; runtimeChoiceRouter?: string; runtimeChoiceFallbackReason?: 'no-match' | 'router-declined' | 'router-timeout' | 'router-error' | 'router-invalid-choice';
   planId?: string;
   phase?: string;
   stage?: string;
@@ -278,6 +275,7 @@ function buildAgentRunContext(
     ...(options.tier !== undefined && { tier: options.tier }),
     profile: profileName,
     ...(planId !== undefined && { planId }),
+    ...(options.runtimeChoice !== undefined && { runtimeChoice: options.runtimeChoice }), ...(options.runtimeChoiceQualified !== undefined && { runtimeChoiceQualified: options.runtimeChoiceQualified }), ...(options.runtimeChoiceSource !== undefined && { runtimeChoiceSource: options.runtimeChoiceSource }), ...(options.runtimeChoiceRule !== undefined && { runtimeChoiceRule: options.runtimeChoiceRule }), ...(options.runtimeChoiceRouter !== undefined && { runtimeChoiceRouter: options.runtimeChoiceRouter }), ...(options.runtimeChoiceFallbackReason !== undefined && { runtimeChoiceFallbackReason: options.runtimeChoiceFallbackReason }),
     ...(options.phase !== undefined && { phase: options.phase }),
     ...(options.stage !== undefined && { stage: options.stage }),
     ...(options.harness !== undefined && { harness: options.harness }),
@@ -718,13 +716,16 @@ export function withAgentContextHooks(
     };
   }
 
+  const forEffectiveRecipe: AgentRuntimeRegistry['forEffectiveRecipe'] | undefined = registry.forEffectiveRecipe
+    ? (tierName, recipe) => {
+        const { harness, toolbeltSummary } = registry.forEffectiveRecipe!(tierName, recipe);
+        return { harness: wrapHarness(harness), toolbeltSummary };
+      }
+    : undefined;
+
   return {
-    forRole(role, planEntry) {
-      return wrapHarness(registry.forRole(role, planEntry));
-    },
-    forRoleResolved(role, planEntry) {
-      const { harness, toolbeltSummary } = registry.forRoleResolved(role, planEntry);
-      return { harness: wrapHarness(harness), toolbeltSummary };
-    },
+    forRole(role, planEntry) { return wrapHarness(registry.forRole(role, planEntry)); },
+    forRoleResolved(role, planEntry, metadata) { const { harness, toolbeltSummary, selection } = registry.forRoleResolved(role, planEntry, metadata); return { harness: wrapHarness(harness), toolbeltSummary, ...(selection !== undefined && { selection }) }; },
+    ...(forEffectiveRecipe ? { forEffectiveRecipe } : {}),
   };
 }

@@ -19,6 +19,8 @@ import type { AgentRole } from '../events.js';
 import type { EforgeConfig, ModelRef, ResolvedAgentConfig, AgentTier, ShardScope, TierConfig } from '../config.js';
 import type { EffortLevel, ThinkingConfig } from '../harness.js';
 import type { ToolbeltSummary } from '../agent-runtime-registry.js';
+import type { EffectiveAgentRecipe, RuntimeChoiceSelection } from './runtime-choice.js';
+import { resolveRuntimeChoiceForInvocation } from './runtime-choice.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
 /**
@@ -68,13 +70,13 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
 };
 
 /** Provenance tag for a tunable field. `tier` = from tier recipe; `role` = role override; `plan` = plan-file override. */
-type Provenance = 'tier' | 'role' | 'plan';
+export type Provenance = 'tier' | 'role' | 'plan';
 
 /**
  * Resolve the tier for a given role.
  * Precedence: plan-file tier override > user per-role tier override > built-in AGENT_ROLE_TIERS.
  */
-function resolveTierForRole(
+export function resolveTierForRole(
   role: AgentRole,
   config: EforgeConfig,
   planEntry?: { agents?: Record<string, { tier?: string; [key: string]: unknown }> },
@@ -91,7 +93,7 @@ function resolveTierForRole(
 }
 
 /** Plan-entry shape used by resolveAgentConfig. */
-type PlanEntry = {
+export type PlanEntry = {
   agents?: Record<string, {
     effort?: string;
     thinking?: boolean | object;
@@ -105,6 +107,8 @@ type PlanEntry = {
     [key: string]: unknown;
   }>;
   filePath?: string;
+  body?: string;
+  name?: string;
 };
 
 /** Coerce a raw `thinking` value into a ThinkingConfig, or undefined when absent. */
@@ -138,12 +142,24 @@ export function resolveAgentConfig(
   config: EforgeConfig,
   planEntry?: PlanEntry,
   toolbeltSummary?: ToolbeltSummary,
+  effectiveRecipe?: EffectiveAgentRecipe,
+  resolvedTier?: AgentTier,
+  resolvedTierSource?: Provenance,
+  runtimeChoiceSelection?: RuntimeChoiceSelection,
 ): ResolvedAgentConfig {
   // Step 1: tier
-  const { tier, tierSource } = resolveTierForRole(role, config, planEntry);
+  const inferredSelection = !effectiveRecipe && !(resolvedTier && resolvedTierSource)
+    ? resolveRuntimeChoiceForInvocation(role, config, planEntry, {})
+    : undefined;
+  const resolved = resolvedTier && resolvedTierSource
+    ? { tier: resolvedTier, tierSource: resolvedTierSource }
+    : inferredSelection
+      ? { tier: inferredSelection.tier, tierSource: inferredSelection.tierSource }
+      : resolveTierForRole(role, config, planEntry);
+  const { tier, tierSource } = resolved;
 
-  // Step 2: tier recipe
-  const tierRecipe = config.agents.tiers?.[tier] as TierConfig | undefined;
+  // Step 2: tier recipe or runtime-choice effective recipe
+  const tierRecipe = (effectiveRecipe ?? inferredSelection?.effectiveRecipe ?? config.agents.tiers?.[tier]) as TierConfig | undefined;
   if (!tierRecipe) {
     throw new Error(
       `Role "${role}" resolves to tier "${tier}" but no tier recipe is configured. ` +
@@ -213,11 +229,20 @@ export function resolveAgentConfig(
   const fallbackModel = tierRecipe.fallbackModel;
 
   // Build initial result.
+  const choiceMetadata = runtimeChoiceSelection ?? inferredSelection;
   const result: ResolvedAgentConfig = {
     harness,
     harnessSource: 'tier',
     tier,
     tierSource,
+    ...(choiceMetadata !== undefined ? {
+      runtimeChoice: choiceMetadata.choice,
+      runtimeChoiceQualified: choiceMetadata.choiceRef,
+      runtimeChoiceSource: choiceMetadata.source,
+      ...(choiceMetadata.matchedRule !== undefined && { runtimeChoiceRule: choiceMetadata.matchedRule }),
+      ...(choiceMetadata.router !== undefined && { runtimeChoiceRouter: choiceMetadata.router }),
+      ...(choiceMetadata.fallbackReason !== undefined && { runtimeChoiceFallbackReason: choiceMetadata.fallbackReason }),
+    } : {}),
     model,
     effort,
     effortSource,

@@ -118,7 +118,7 @@ export const validPayloads: EventWireParityFixture[] = [
   {label: 'expedition:module:complete',payload: {type: 'expedition:module:complete',timestamp: '2025-01-01T00:00:00.000Z',moduleId: 'mod-1'},},
   {label: 'expedition:compile:start',payload: {type: 'expedition:compile:start',timestamp: '2025-01-01T00:00:00.000Z'},},
   {label: 'expedition:compile:complete',payload: {type: 'expedition:compile:complete',timestamp: '2025-01-01T00:00:00.000Z',plans: [],},},
-  {label: 'agent:start',payload: {type: 'agent:start',timestamp: '2025-01-01T00:00:00.000Z',agentId: 'agent-1',agent: 'builder',model: 'claude-sonnet-4-5',harness: 'claude-sdk',harnessSource: 'tier',tier: 'standard',tierSource: 'tier',},},
+  {label: 'agent:start',payload: {type: 'agent:start',timestamp: '2025-01-01T00:00:00.000Z',agentId: 'agent-1',agent: 'builder',model: 'claude-sonnet-4-5',harness: 'claude-sdk',harnessSource: 'tier',tier: 'standard',tierSource: 'tier',runtimeChoice: 'default',runtimeChoiceQualified: 'standard.default',runtimeChoiceSource: 'default',},},
   {label: 'agent:warning',payload: {type: 'agent:warning',timestamp: '2025-01-01T00:00:00.000Z',agentId: 'agent-1',agent: 'builder',code: 'WARN001',message: 'context approaching limit',},},
   {label: 'agent:stop',payload: {type: 'agent:stop',timestamp: '2025-01-01T00:00:00.000Z',agentId: 'agent-1',agent: 'builder',},},
   {label: 'agent:usage',payload: {type: 'agent:usage',timestamp: '2025-01-01T00:00:00.000Z',agentId: 'agent-1',agent: 'builder',usage: {input: 1000,output: 500,total: 1500,cacheRead: 200,cacheCreation: 100},costUsd: 0.05,numTurns: 10,},},

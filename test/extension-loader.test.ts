@@ -571,6 +571,7 @@ describe('native extension loader', () => {
         eforge.beforePlanMerge(() => ({ decision: 'allow' }));
         eforge.beforeFinalMerge(() => ({ decision: 'allow' }));
         eforge.registerProfileRouter({ name: 'router', resolve: () => null });
+        eforge.registerRuntimeChoiceRouter({ name: 'runtime-router', resolveRuntimeChoice: () => null });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => null });
         eforge.registerPrdEnricher({ name: 'enricher', description: 'enricher', enrich: async () => null });
         eforge.registerReviewerPerspective({ key: 'custom-perspective', label: 'Custom Perspective', description: 'A custom review perspective', promptFragment: 'Review this' });
@@ -589,6 +590,7 @@ describe('native extension loader', () => {
       expect.objectContaining({ extensionName: 'capture', extensionPath, gateKind: 'final-merge', method: 'beforeFinalMerge', registrationIndex: 2 }),
     ]);
     expect(result.registry.profileRouters).toEqual([expect.objectContaining({ name: 'router', extensionName: 'capture' })]);
+    expect(result.registry.runtimeChoiceRouters).toEqual([expect.objectContaining({ name: 'runtime-router', extensionName: 'capture' })]);
     expect(result.registry.inputSources).toEqual([expect.objectContaining({ name: 'input', extensionName: 'capture' })]);
     expect(result.registry.prdEnrichers).toEqual([expect.objectContaining({ name: 'enricher', extensionName: 'capture' })]);
     expect(result.registry.reviewerPerspectives).toEqual([expect.objectContaining({ name: 'custom-perspective', extensionName: 'capture' })]);
@@ -607,6 +609,7 @@ describe('native extension loader', () => {
       deepLinks: 0,
       policyGates: 3,
       profileRouters: 1,
+      runtimeChoiceRouters: 1,
       inputSources: 1,
       reviewerPerspectives: 1,
       validationProviders: 1,

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
+import type { RuntimeChoiceRouterRegistration } from '@eforge-build/engine/extensions/types';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
@@ -104,6 +105,30 @@ describe('runGapCloser two-stage flow', () => {
     expect(backend.calls[0].tools).toBe('coding');
   });
 
+  it('honors caller-resolved maxTurns and runtime choice metadata for plan generation', async () => {
+    const backend = new StubHarness([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend, {
+      maxTurns: 7,
+      runtimeChoice: 'routed',
+      runtimeChoiceQualified: 'implementation.routed',
+      runtimeChoiceSource: 'extension-router',
+      runtimeChoiceRouter: 'gap-router',
+      model: { id: 'routed-model' },
+    })));
+
+    expect(backend.calls).toHaveLength(1);
+    expect(backend.calls[0].maxTurns).toBe(7);
+    const start = filterEvents(events, 'agent:start').find((event) => event.agent === 'gap-closer');
+    expect(start).toMatchObject({
+      model: 'routed-model',
+      runtimeChoice: 'routed',
+      runtimeChoiceQualified: 'implementation.routed',
+      runtimeChoiceSource: 'extension-router',
+      runtimeChoiceRouter: 'gap-router',
+    });
+  });
+
   it('emits the plan generation gap-closer agent on the gap-close lane', async () => {
     const backend = new StubHarness([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
 
@@ -129,6 +154,39 @@ describe('runGapCloser two-stage flow', () => {
     expect(capturedCtx).toBeDefined();
     expect(capturedCtx!.planId).toBe('gap-close');
     expect(capturedCtx!.build).toEqual(['implement', 'review-cycle']);
+  });
+
+  it('preserves extension runtime-choice router metadata on the synthetic BuildStageContext', async () => {
+    const backend = new StubHarness([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
+    const routers: RuntimeChoiceRouterRegistration[] = [{
+      kind: 'runtimeChoiceRouter',
+      extensionName: 'test-ext',
+      extensionPath: '/ext/router.js',
+      name: 'gap-router',
+      value: { name: 'gap-router', resolveRuntimeChoice: (() => ({ choice: 'default' })) as never },
+    }];
+
+    let capturedCtx: BuildStageContext | undefined;
+    const runBuildPipeline = async function* (ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+      capturedCtx = ctx;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: ctx.planId } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId } as EforgeEvent;
+    };
+
+    await collectEvents(runGapCloser(makeOptions(backend, {
+      runBuildPipeline,
+      pipelineContext: {
+        ...makePipelineContext(),
+        extensionRuntimeChoiceRouters: routers,
+        configProfileName: 'gap-profile',
+        extensionConfigDir: '/tmp/project/.eforge',
+      },
+    })));
+
+    expect(capturedCtx).toBeDefined();
+    expect(capturedCtx!.extensionRuntimeChoiceRouters).toBe(routers);
+    expect(capturedCtx!.configProfileName).toBe('gap-profile');
+    expect(capturedCtx!.extensionConfigDir).toBe('/tmp/project/.eforge');
   });
 
   it('uses final agent result text instead of the last streamed message delta', async () => {

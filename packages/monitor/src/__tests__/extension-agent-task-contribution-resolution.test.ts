@@ -57,6 +57,6 @@ describe('extension agent task contribution resolution', () => {
 function registryWithTask(extensionName: string, extensionPath: string, prompt: { kind: 'asset'; asset: string } | { kind: 'export'; module: string; exportName?: string }): NativeExtensionRegistry {
   return {
     agentTasks: [{ kind: 'agentTask', extensionName, extensionPath, localId: 'export-task', id: `${extensionName}:export-task`, value: { id: 'export-task', title: 'Export task', inputSchema: EforgePlanPlanningDraftInputSchema, outputSchema: EforgePlanPlanningDraftResultSchema, prompt } }],
-    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
+    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], runtimeChoiceRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
   } as NativeExtensionRegistry;
 }

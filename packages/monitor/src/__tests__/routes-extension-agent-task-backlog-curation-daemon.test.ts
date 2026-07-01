@@ -202,7 +202,7 @@ function registryForExtensionRoot(extensionRoot: string) {
       },
     },
   };
-  return { agentTasks: [planningTask, itemTask, reducerTask], actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [] };
+  return { agentTasks: [planningTask, itemTask, reducerTask], actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], runtimeChoiceRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [] };
 }
 
 class DaemonMapReduceHarness implements AgentHarness {
@@ -221,7 +221,7 @@ class DaemonMapReduceHarness implements AgentHarness {
     else if (reducerTool !== undefined) this.reducerPrompts.push(options.prompt);
     else this.genericPlanningPrompts.push(options.prompt);
 
-    yield { type: 'agent:start', agent, planId, agentId: 'agent', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId: 'agent', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     if (itemTool !== undefined) {
       const packet = packets.find((entry) => options.prompt.includes(`\"itemId\": \"${entry.itemId}\"`)) ?? packets[0]!;
       await itemTool.handler({

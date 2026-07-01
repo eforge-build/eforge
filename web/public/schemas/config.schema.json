@@ -244,6 +244,310 @@
               "toolbelt": {
                 "description": "Toolbelt name to activate for roles in this tier (must be declared in tools.toolbelts, or \"none\" to disable)",
                 "type": "string"
+              },
+              "choices": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "harness": {
+                      "type": "string",
+                      "enum": [
+                        "claude-sdk",
+                        "pi"
+                      ],
+                      "description": "Which harness to run for roles in this tier"
+                    },
+                    "pi": {
+                      "description": "Pi-specific configuration (only when harness === \"pi\")",
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "description": "Pi provider name (required when used in a pi tier)",
+                          "type": "string"
+                        },
+                        "apiKey": {
+                          "description": "API key for the Pi provider",
+                          "type": "string"
+                        },
+                        "thinkingLevel": {
+                          "description": "Thinking level for Pi agents",
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh"
+                          ]
+                        },
+                        "resources": {
+                          "description": "Whether ambient Pi resources (project/user/global extensions, skills, prompts, themes) are loaded into eforge agent sessions. Default 'isolated' suppresses all ambient resources; 'ambient' opts in to loading them (use with care — project-local Pi extensions must guard TUI state access for headless SDK contexts).",
+                          "type": "string",
+                          "enum": [
+                            "isolated",
+                            "ambient"
+                          ]
+                        },
+                        "extensions": {
+                          "description": "Pi extension configuration",
+                          "type": "object",
+                          "properties": {
+                            "autoDiscover": {
+                              "description": "Automatically discover Pi extensions",
+                              "type": "boolean"
+                            },
+                            "include": {
+                              "description": "Extension names to include",
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "exclude": {
+                              "description": "Extension names to exclude",
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "paths": {
+                              "description": "Explicit extension directory paths to load",
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "compaction": {
+                          "description": "Context compaction settings",
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "description": "Enable context compaction",
+                              "type": "boolean"
+                            },
+                            "threshold": {
+                              "description": "Token threshold before compaction triggers",
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "retry": {
+                          "description": "Retry configuration for Pi API calls",
+                          "type": "object",
+                          "properties": {
+                            "maxRetries": {
+                              "description": "Maximum retry attempts",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "backoffMs": {
+                              "description": "Initial backoff in milliseconds",
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "claudeSdk": {
+                      "description": "Claude SDK-specific configuration (only when harness === \"claude-sdk\")",
+                      "type": "object",
+                      "properties": {
+                        "disableSubagents": {
+                          "description": "Disable the Task tool so agents cannot spawn subagents. Defaults to true. Claude SDK harness only.",
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "Model identifier for this tier (provider is taken from pi.provider for pi)"
+                    },
+                    "effort": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ],
+                      "description": "Effort level for roles in this tier"
+                    },
+                    "thinking": {
+                      "description": "When true, request thinking; coerced to adaptive for adaptive-only models",
+                      "type": "boolean"
+                    },
+                    "fallbackModel": {
+                      "description": "Fallback model id when primary is unavailable",
+                      "type": "string"
+                    },
+                    "maxTurns": {
+                      "description": "Default maxTurns for roles in this tier",
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "allowedTools": {
+                      "description": "Whitelist of allowed tool names",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "disallowedTools": {
+                      "description": "Blacklist of disallowed tool names",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "promptAppend": {
+                      "description": "Text appended to every agent prompt in this tier after variable substitution",
+                      "type": "string"
+                    },
+                    "toolbelt": {
+                      "description": "Toolbelt name to activate for roles in this tier (must be declared in tools.toolbelts, or \"none\" to disable)",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "routing": {
+                "type": "object",
+                "properties": {
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "choice": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "when": {
+                          "type": "object",
+                          "properties": {
+                            "roles": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "planner",
+                                  "builder",
+                                  "reviewer",
+                                  "review-fixer",
+                                  "evaluator",
+                                  "module-planner",
+                                  "plan-reviewer",
+                                  "plan-evaluator",
+                                  "architecture-reviewer",
+                                  "architecture-evaluator",
+                                  "cohesion-reviewer",
+                                  "cohesion-evaluator",
+                                  "validation-fixer",
+                                  "merge-conflict-resolver",
+                                  "staleness-assessor",
+                                  "formatter",
+                                  "doc-author",
+                                  "doc-syncer",
+                                  "test-writer",
+                                  "tester",
+                                  "prd-validator",
+                                  "dependency-detector",
+                                  "pipeline-composer",
+                                  "gap-closer",
+                                  "recovery-analyst"
+                                ]
+                              }
+                            },
+                            "phase": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "stage": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "pathGlobs": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "keywords": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "shardIds": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "shardRoots": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "choice",
+                        "when"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "rules"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -252,7 +556,7 @@
               "effort"
             ],
             "additionalProperties": false,
-            "description": "A self-contained tier recipe (harness + model + effort + tuning)"
+            "description": "A self-contained tier recipe (harness + model + effort + tuning) with optional runtime choices"
           }
         },
         "roles": {

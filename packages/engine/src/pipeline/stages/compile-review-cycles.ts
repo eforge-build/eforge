@@ -7,8 +7,10 @@ import { runCohesionReview } from '../../agents/cohesion-reviewer.js';
 import { runArchitectureEvaluate, runCohesionEvaluate } from '../../agents/plan-evaluator.js';
 import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
 import { runReviewCycle } from '../runners.js';
-import { resolveAgentConfig } from '../agent-config.js';
 import type { PipelineContext } from '../types.js';
+import { resolveAgentRuntimeForInvocationWithExtensions } from '../agent-runtime.js';
+
+function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
 
 async function readArchitectureContent(ctx: PipelineContext, allowMissing: boolean): Promise<string | undefined> {
   const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
@@ -25,10 +27,8 @@ export async function* runArchitectureReviewCycleStage(ctx: PipelineContext): As
   const architectureContent = await readArchitectureContent(ctx, false);
   if (architectureContent === undefined) return;
 
-  const { harness: archReviewerHarness, toolbeltSummary: archReviewerTb } = ctx.agentRuntimes.forRoleResolved('architecture-reviewer');
-  const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator');
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb);
+  const { agentConfig: archReviewerConfig, harness: archReviewerHarness } = await resolveAgentRuntimeForInvocationWithExtensions('architecture-reviewer', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'architecture-review' }, runtimeChoiceRouterOptions(ctx));
+  const { agentConfig: archEvaluatorConfig, harness: archEvaluatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('architecture-evaluator', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'architecture-evaluate' }, runtimeChoiceRouterOptions(ctx));
   const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 
@@ -90,10 +90,8 @@ export async function* runCohesionReviewCycleStage(ctx: PipelineContext): AsyncG
   if (ctx.expeditionModules.length === 0) return;
 
   const architectureContent = await readArchitectureContent(ctx, true) ?? '';
-  const { harness: cohesionReviewerHarness, toolbeltSummary: cohesionReviewerTb } = ctx.agentRuntimes.forRoleResolved('cohesion-reviewer');
-  const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator');
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb);
+  const { agentConfig: cohesionReviewerConfig, harness: cohesionReviewerHarness } = await resolveAgentRuntimeForInvocationWithExtensions('cohesion-reviewer', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'cohesion-review' }, runtimeChoiceRouterOptions(ctx));
+  const { agentConfig: cohesionEvaluatorConfig, harness: cohesionEvaluatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('cohesion-evaluator', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'cohesion-evaluate' }, runtimeChoiceRouterOptions(ctx));
   const modulesPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}/modules`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 

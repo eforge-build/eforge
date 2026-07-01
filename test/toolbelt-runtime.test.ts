@@ -261,6 +261,34 @@ describe('memoization: toolbelt differences create distinct instances', () => {
   });
 });
 
+describe('toolbelt resolution: runtime choice effective recipe', () => {
+  it('uses the selected choice toolbelt instead of the tier default', async () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          ...FULL_TIERS_CLAUDE,
+          implementation: {
+            harness: 'claude-sdk' as const,
+            model: 'claude-sonnet-4-6',
+            effort: 'medium' as const,
+            toolbelt: 'none',
+            choices: { ui: { toolbelt: 'browser-ui' } },
+            routing: { rules: [{ name: 'ui', choice: 'ui', when: { pathGlobs: ['web/**'] } }] },
+          },
+        },
+      },
+    });
+    const registry = await buildAgentRuntimeRegistry(config, {
+      mcpServers: FAKE_MCP,
+      toolbelts: { 'browser-ui': { mcpServers: ['playwright'] } },
+    });
+    const { toolbeltSummary } = registry.forRoleResolved('builder', undefined, { pathHints: ['web/app/page.tsx'] });
+    expect(toolbeltSummary.projectMcpSelection).toBe('toolbelt');
+    expect(toolbeltSummary.toolbelt).toBe('browser-ui');
+    expect(toolbeltSummary.projectMcpServerNames).toEqual(['playwright']);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Error: named toolbelt that cannot be resolved
 // ---------------------------------------------------------------------------

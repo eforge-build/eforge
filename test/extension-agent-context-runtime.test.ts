@@ -267,6 +267,39 @@ describe('executeAgentRunHooks — role/tier/phase filtering inside handlers', (
     expect(captured.stage).toBe('planner');
   });
 
+  it('handler observes already-selected runtime choice metadata', async () => {
+    const captured: Partial<AgentRunContext> = {};
+    const handler: AgentRunHandler = (ctx) => {
+      captured.runtimeChoice = ctx.runtimeChoice;
+      captured.runtimeChoiceQualified = ctx.runtimeChoiceQualified;
+      captured.runtimeChoiceSource = ctx.runtimeChoiceSource;
+      captured.runtimeChoiceRule = ctx.runtimeChoiceRule;
+      captured.runtimeChoiceRouter = ctx.runtimeChoiceRouter;
+      captured.runtimeChoiceFallbackReason = ctx.runtimeChoiceFallbackReason;
+      return undefined;
+    };
+
+    const opts: AgentRunOptions = {
+      ...BASE_OPTIONS,
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'implementation.default',
+      runtimeChoiceSource: 'fallback',
+      runtimeChoiceRule: 'docs-rule',
+      runtimeChoiceRouter: 'policy-router',
+      runtimeChoiceFallbackReason: 'router-invalid-choice',
+    };
+    await executeAgentRunHooks([makeHook('runtime-choice-capture', handler)], opts, 'builder', undefined, RUNTIME_OPTIONS);
+
+    expect(captured).toMatchObject({
+      runtimeChoice: 'default',
+      runtimeChoiceQualified: 'implementation.default',
+      runtimeChoiceSource: 'fallback',
+      runtimeChoiceRule: 'docs-rule',
+      runtimeChoiceRouter: 'policy-router',
+      runtimeChoiceFallbackReason: 'router-invalid-choice',
+    });
+  });
+
   it('handler receives standalone phase with no stage', async () => {
     const captured: { phase?: string; stage?: string } = {};
     const handler: AgentRunHandler = (ctx) => {
@@ -883,6 +916,72 @@ describe('withAgentContextHooks — registry decorator', () => {
     expect(appliedIndex).toBeGreaterThanOrEqual(0);
     expect(agentStartIndex).toBeGreaterThanOrEqual(0);
     expect(appliedIndex).toBeLessThan(agentStartIndex);
+  });
+
+  it('ignores agent-run augmentation attempts to mutate selected runtime or backend metadata', async () => {
+    const stub = new StubHarness([{ text: 'Done.' }]);
+    const innerRegistry = singletonRegistry(stub);
+    const extRegistry = makeRegistry([
+      makeHook('mutation-attempt-ext', () => ({
+        promptAppend: 'Allowed prompt context.',
+        runtimeChoice: 'ui',
+        runtimeChoiceQualified: 'implementation.ui',
+        runtimeChoiceSource: 'extension-router',
+        runtimeChoiceRouter: 'mutating-hook',
+        harness: 'pi',
+        model: { id: 'mutated-model' },
+        provider: 'mutated-provider',
+        effort: 'high',
+        toolbelt: 'mutated-toolbelt',
+      } as unknown as AgentRunAugmentation)),
+    ]);
+
+    const decorated = withAgentContextHooks(innerRegistry, {
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
+      profileName: 'default',
+      cwd: '/tmp',
+      timeoutMs: 1000,
+    });
+
+    const originalOpts: AgentRunOptions = {
+      prompt: 'Test.',
+      cwd: '/tmp',
+      maxTurns: 1,
+      tools: 'none',
+      runtimeChoice: 'backend',
+      runtimeChoiceQualified: 'implementation.backend',
+      runtimeChoiceSource: 'rule',
+      runtimeChoiceRule: 'backend-rule',
+      harness: 'claude-sdk',
+      model: { id: 'backend-model' },
+      provider: 'anthropic',
+      effort: 'medium',
+      toolbelt: 'backend-tools',
+    };
+
+    const harness = decorated.forRole('builder');
+    const events = await collectEvents(harness.run(originalOpts, 'builder'));
+    const start = filterEvents(events, 'agent:start')[0]!;
+
+    expect(stub.calls[0]).toMatchObject({
+      runtimeChoice: 'backend',
+      runtimeChoiceQualified: 'implementation.backend',
+      runtimeChoiceSource: 'rule',
+      runtimeChoiceRule: 'backend-rule',
+      harness: 'claude-sdk',
+      model: { id: 'backend-model' },
+      provider: 'anthropic',
+      effort: 'medium',
+      toolbelt: 'backend-tools',
+    });
+    expect(start).toMatchObject({
+      runtimeChoice: 'backend',
+      runtimeChoiceQualified: 'implementation.backend',
+      runtimeChoiceSource: 'rule',
+      runtimeChoiceRule: 'backend-rule',
+      harness: 'claude-sdk',
+      model: 'backend-model',
+    });
   });
 
   it('options fields allowedTools/disallowedTools/customTools are not mutated by decorator', async () => {

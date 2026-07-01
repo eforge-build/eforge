@@ -23,7 +23,7 @@ const DETAIL_ARRAY_KEYS = [
 ] as const;
 
 const REGISTRATION_KEYS = [
-  'eventHooks', 'agentRunHooks', 'policyGates', 'profileRouters', 'inputSources', 'reviewerPerspectives',
+  'eventHooks', 'agentRunHooks', 'policyGates', 'profileRouters', 'runtimeChoiceRouters', 'inputSources', 'reviewerPerspectives',
   'validationProviders', 'tools', 'prdEnrichers', 'actions', 'agentTasks', 'consoleContributions',
   'consoleWorkstations', 'integrationCommands', 'deepLinks',
 ] as const satisfies readonly (keyof ExtensionRegistrationSummary)[];

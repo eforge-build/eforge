@@ -7,7 +7,7 @@
  */
 
 import type { EforgeEvent, AgentRole } from '../events.js';
-import type { ThinkingConfig, EffortLevel } from '../harness.js';
+import type { ThinkingConfig, EffortLevel, RuntimeChoiceSource, RuntimeChoiceFallbackReason } from '../harness.js';
 
 /** The concrete shape of an `agent:start` event on the eforge event stream. */
 export type AgentStartEvent = Extract<EforgeEvent, { type: 'agent:start' }>;
@@ -29,6 +29,12 @@ export interface BuildAgentStartEventOptions {
   tier: string;
   /** Provenance of the tier value. */
   tierSource: 'tier' | 'role' | 'plan';
+  runtimeChoice?: string;
+  runtimeChoiceQualified?: string;
+  runtimeChoiceSource?: RuntimeChoiceSource;
+  runtimeChoiceRule?: string;
+  runtimeChoiceRouter?: string;
+  runtimeChoiceFallbackReason?: RuntimeChoiceFallbackReason;
   effort?: EffortLevel;
   effortSource?: 'tier' | 'role' | 'plan';
   thinking?: ThinkingConfig;
@@ -66,9 +72,15 @@ export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentSt
     harnessSource: opts.harnessSource,
     tier: opts.tier,
     tierSource: opts.tierSource,
+    runtimeChoice: opts.runtimeChoice ?? 'default',
+    runtimeChoiceQualified: opts.runtimeChoiceQualified ?? `${opts.tier}.default`,
+    runtimeChoiceSource: opts.runtimeChoiceSource ?? 'default',
     timestamp: new Date().toISOString(),
   };
   if (opts.planId !== undefined) event.planId = opts.planId;
+  if (opts.runtimeChoiceRule !== undefined) event.runtimeChoiceRule = opts.runtimeChoiceRule;
+  if (opts.runtimeChoiceRouter !== undefined) event.runtimeChoiceRouter = opts.runtimeChoiceRouter;
+  if (opts.runtimeChoiceFallbackReason !== undefined) event.runtimeChoiceFallbackReason = opts.runtimeChoiceFallbackReason;
   if (opts.effort !== undefined) event.effort = opts.effort;
   if (opts.effortSource !== undefined) event.effortSource = opts.effortSource;
   if (opts.thinking !== undefined) event.thinking = opts.thinking;

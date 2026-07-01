@@ -1,6 +1,21 @@
 import { Type } from '@sinclair/typebox';
 import { AgentRoleSchema, ReviewPerspectiveKeySchema } from './schemas.js';
 
+export const RuntimeChoiceSourceSchema = Type.Union([
+  Type.Literal('default'),
+  Type.Literal('rule'),
+  Type.Literal('extension-router'),
+  Type.Literal('fallback'),
+]);
+
+export const RuntimeChoiceFallbackReasonSchema = Type.Union([
+  Type.Literal('no-match'),
+  Type.Literal('router-declined'),
+  Type.Literal('router-timeout'),
+  Type.Literal('router-error'),
+  Type.Literal('router-invalid-choice'),
+]);
+
 export const agentStartFields = {
   planId: Type.Optional(Type.String()),
   agentId: Type.String(),
@@ -14,6 +29,12 @@ export const agentStartFields = {
     Type.Literal('role'),
     Type.Literal('plan'),
   ]),
+  runtimeChoice: Type.String(),
+  runtimeChoiceQualified: Type.String(),
+  runtimeChoiceSource: RuntimeChoiceSourceSchema,
+  runtimeChoiceRule: Type.Optional(Type.String()),
+  runtimeChoiceRouter: Type.Optional(Type.String()),
+  runtimeChoiceFallbackReason: Type.Optional(RuntimeChoiceFallbackReasonSchema),
   effort: Type.Optional(Type.String()),
   effortSource: Type.Optional(
     Type.Union([Type.Literal('tier'), Type.Literal('role'), Type.Literal('plan')]),

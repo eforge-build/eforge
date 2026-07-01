@@ -49,7 +49,7 @@ describe('extension agent task plan revision metadata', () => {
 function planningRegistry(extensionPath: string): NativeExtensionRegistry {
   return {
     agentTasks: [{ kind: 'agentTask', extensionName: 'eforge-plan', extensionPath, localId: 'planning-draft', id: 'eforge-plan:planning-draft', value: { id: 'planning-draft', title: 'Planning draft', inputSchema: EforgePlanPlanningDraftInputSchema, outputSchema: EforgePlanPlanningDraftResultSchema, prompt: { kind: 'asset' as const, asset: 'prompts/planning.md' }, resolvePrompt: (ctx: any) => { let submitted: unknown; const submitTool = ctx.effectiveCustomToolName?.('submit_eforge_plan_planning_result') ?? 'submit_eforge_plan_planning_result'; return { variables: { topic: ctx.input.topic }, run: { role: 'planner', tools: [{ name: submitTool, description: 'submit', inputSchema: EforgePlanPlanningDraftResultSchema, handler: async (input: unknown) => { submitted = input; return 'submitted'; } }] }, getResult: () => submitted, missingResultMessage: 'missing result' }; } } }],
-    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
+    actions: [], tools: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], runtimeChoiceRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], prdEnrichers: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [], extensions: [], candidates: [],
   } as NativeExtensionRegistry;
 }
 
@@ -72,7 +72,7 @@ class SubmitHarness implements AgentHarness {
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     this.calls.push(options);
     const agentId = 'agent-revision';
-    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'planning.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
     const tool = options.customTools?.find((candidate) => candidate.name === 'submit_eforge_plan_planning_result');
     if (tool) {
       yield { type: 'agent:tool_use', agent, planId, agentId, tool: tool.name, toolUseId: 'tool-1', input: this.submission, timestamp: new Date().toISOString() };
