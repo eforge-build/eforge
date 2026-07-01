@@ -122,9 +122,9 @@ describe('planning shared brief and evidence ownership', () => {
 
   it('passes accepted shared interface findings and section content to consumers', async () => {
     const data = fixture(['engine updates the event schema contract for one aspect.', 'engine validates the event schema contract for another aspect.']);
-    const primaryTask = data.tasks.find((task) => task.sharedBrief?.ownedInterfaceKeys.includes('event-schemas'))!;
-    const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedInterfaceRefs.some((ref) => ref.key === 'event-schemas'))!;
-    const finding = { findingId: 'finding-event-schema', sourceAtomId: primaryTask.atomId, interfaceKey: 'event-schemas', aspectIds: primaryTask.aspectIds, summary: 'Event schema variants share the same discriminant contract.', byteLength: 60 };
+    const primaryTask = data.tasks.find((task) => task.sharedBrief?.ownedInterfaceKeys.includes('schema-contract'))!;
+    const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedInterfaceRefs.some((ref) => ref.key === 'schema-contract'))!;
+    const finding = { findingId: 'finding-event-schema', sourceAtomId: primaryTask.atomId, interfaceKey: 'schema-contract', aspectIds: primaryTask.aspectIds, summary: 'Event schema variants share the same discriminant contract.', byteLength: 60 };
     const harness = new StubHarness([
       atomSubmission(completedOutput(primaryTask, { sharedFindings: [finding] })),
       atomSubmission(completedOutput(consumerTask)),
@@ -135,7 +135,7 @@ describe('planning shared brief and evidence ownership', () => {
     expect(result.mapComplete).toBe(true);
     expect(result.sharedFindings).toEqual([finding]);
     expect(harness.prompts[0]).toContain('ownedInterfaceKeys');
-    expect(harness.prompts[0]).toContain('Shared interface event-schemas');
+    expect(harness.prompts[0]).toContain('Shared interface schema-contract');
     expect(harness.prompts[1]).toContain('sharedInterfaceRefs');
     expect(harness.prompts[1]).toContain('Event schema variants share the same discriminant contract.');
   });

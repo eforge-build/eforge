@@ -15,7 +15,7 @@ export async function materializePlanningSourceEvidence(input: MaterializePlanni
   for (const [index, ownership] of input.sharedBrief.evidenceOwnership.entries()) {
     records.push(index >= limits.maxFilesTotal ? budgetRecord(ownership, 'max-files-total') : await materializeOne(input.cwd, ownership, limits, state));
   }
-  const bundle: PlanningSourceEvidenceBundle = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, records: records.sort((a, b) => a.path.localeCompare(b.path)), byAtomId: buildByAtom(records), totalBytes: state.totalBytes, limits, validationErrors: [] };
+  const bundle: PlanningSourceEvidenceBundle = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, records: records.sort((a, b) => a.path.localeCompare(b.path)), byAtomId: buildByAtom(records), bytesByAtomId: mapToSortedRecord(state.bytesByAtom), filesByAtomId: mapToSortedRecord(state.filesByAtom), totalBytes: state.totalBytes, limits, validationErrors: [] };
   const validation = validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle, limits });
   return { ...bundle, validationErrors: validation.ok ? [] : validation.errors };
 }
@@ -45,7 +45,7 @@ async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership,
       state.bytesByAtom.set(atomId, (state.bytesByAtom.get(atomId) ?? 0) + excerptByteLength);
     }
     state.totalBytes += excerptByteLength;
-    return baseRecord(ownership, 'materialized', { deliveredToAtomIds, byteLength: info.size, excerptByteLength, contentExcerpt: excerpt });
+    return baseRecord(ownership, 'materialized', { deliveredToAtomIds, byteLength: info.size, excerptByteLength, accountedByteLength: excerptByteLength, budgetNotes: evidenceBudgetNotes(info.size, excerptByteLength, limits), contentExcerpt: excerpt });
   } catch (err) {
     if (isNotFound(err)) return statusRecord(ownership, 'missing', 'file-not-found');
     return statusRecord(ownership, 'read-error', 'read-failed', { error: err instanceof Error ? err.message : String(err) });
@@ -69,7 +69,29 @@ function statusRecord(ownership: PlanningEvidenceOwnership, status: PlanningSour
 }
 
 function baseRecord(ownership: PlanningEvidenceOwnership, status: PlanningSourceEvidenceStatus, extra: Partial<PlanningSourceEvidenceRecord> = {}): PlanningSourceEvidenceRecord {
-  return { path: ownership.path, status, referencedByAtomIds: [...ownership.referencedByAtomIds], ...(ownership.primaryAtomId ? { primaryAtomId: ownership.primaryAtomId } : {}), shared: ownership.shared, deliveredToAtomIds: [], ...extra };
+  return { path: ownership.path, status, referencedByAtomIds: [...ownership.referencedByAtomIds], ...(ownership.primaryAtomId ? { primaryAtomId: ownership.primaryAtomId } : {}), shared: ownership.shared, deliveredToAtomIds: [], ...localizationMetadata(ownership), ...extra };
+}
+
+function localizationMetadata(ownership: PlanningEvidenceOwnership): Partial<PlanningSourceEvidenceRecord> {
+  return {
+    ...(ownership.localizationNeedIds ? { localizationNeedIds: [...ownership.localizationNeedIds] } : {}),
+    ...(ownership.localizationStatus ? { localizationStatus: ownership.localizationStatus } : {}),
+    ...(ownership.localizationConfidence ? { localizationConfidence: ownership.localizationConfidence } : {}),
+    ...(ownership.candidateRank !== undefined ? { candidateRank: ownership.candidateRank } : {}),
+    ...(ownership.ownershipRationale ? { ownershipRationale: ownership.ownershipRationale } : {}),
+  };
+}
+
+function evidenceBudgetNotes(byteLength: number, excerptByteLength: number, limits: PlanningSourceEvidenceLimits): string[] {
+  return [
+    `file-bytes:${byteLength}/${limits.maxBytesPerFile}`,
+    `excerpt-bytes:${excerptByteLength}/${limits.maxExcerptBytesPerFile}`,
+    ...(excerptByteLength < byteLength ? ['excerpt-truncated'] : []),
+  ];
+}
+
+function mapToSortedRecord(map: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function deliveryAtoms(ownership: PlanningEvidenceOwnership): string[] {

@@ -62,6 +62,37 @@ describe('planning artifact synthesis', () => {
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
   });
 
+  it('validates source/localization reduce-gap residue gates during artifact synthesis', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const residue: PlanningResidueSynthesis = {
+      graphId: data.graph.graphId,
+      sourceHash: data.graph.sourceHash,
+      candidates: [{
+        candidateId: 'candidate-reduce-gap-source-localization',
+        kind: 'residue',
+        reason: 'reduce-gap',
+        title: 'Invalid source localization residue',
+        criterionIds: ['ac-001'],
+        aspectIds: data.tasks[0].aspectIds,
+        scope: 'Represent source/localization owner path gap without concrete localized owner metadata.',
+        expectedOutputs: ['Handle the source localization gap.'],
+        validationExpectations: ['Run relevant checks.'],
+        rationale: 'Reducer reported a source/localization gap.',
+      }],
+      coverageUpdates: [{ aspectId: data.tasks[0].aspectIds[0], status: 'represented', representation: { kind: 'residue', moduleId: 'candidate-reduce-gap-source-localization', reason: 'invalid source localization residue', validationExpectation: 'Run relevant checks.' } }],
+      validationErrors: [],
+      limits: { maxCandidates: 80, maxScopeBytes: 1_200, maxRationaleBytes: 1_200, maxExpectedOutputBytes: 800, maxValidationExpectationBytes: 800 },
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [], [], residue) });
+
+    expect(result.validationErrors).toEqual(expect.arrayContaining([
+      'source/localization residue requires concrete localized owner:candidate-reduce-gap-source-localization',
+      'source/localization residue requires original PRD validation:candidate-reduce-gap-source-localization',
+      'source/localization residue requires product-scoped outputs:candidate-reduce-gap-source-localization',
+    ]));
+  });
+
   it('reports duplicate module IDs and invalid module dependencies', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
@@ -104,11 +135,13 @@ function compilerFixture(data: ReturnType<typeof fixture>, atomOutputs: Planning
   return {
     sourceInventory: data.inventory,
     atomGraph: data.graph,
+    sourceLocalizationBundle: { sourceHash: data.graph.sourceHash, graphId: data.graph.graphId, records: [], byAtomId: {}, diagnostics: [], limits: { maxIndexedFiles: 10_000, maxCandidateFilesPerNeed: 12, maxDirectoryExpansionFiles: 20, maxBytesPerScannedFile: 64_000, maxTotalScannedBytes: 2_000_000 }, indexDiagnostics: [] },
     sharedBrief: data.sharedBrief,
     sourceEvidenceBundle: { graphId: data.graph.graphId, sourceHash: data.graph.sourceHash, records: [], byAtomId: {}, totalBytes: 0, limits: { maxFilesTotal: 40, maxFilesPerAtom: 8, maxBytesTotal: 80_000, maxBytesPerFile: 200_000, maxExcerptBytesPerFile: 8_000, maxEvidenceBytesPerAtom: 20_000 }, validationErrors: [] },
     map,
     reduce,
     residue: residue ?? { graphId: data.graph.graphId, sourceHash: data.graph.sourceHash, candidates: [], coverageUpdates: [], validationErrors: [], limits: { maxCandidates: 80, maxScopeBytes: 1_200, maxRationaleBytes: 1_200, maxExpectedOutputBytes: 800, maxValidationExpectationBytes: 800 } },
+    repairDiagnostics: [],
     status: residue && residue.candidates.length > 0 ? 'complete-with-residue' : reduce.reduceComplete && map.mapComplete ? 'complete' : 'incomplete',
     validationErrors: [],
     events: [],

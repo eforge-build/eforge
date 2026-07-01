@@ -17,7 +17,7 @@ function prd(criteria: string[]): string {
 }
 
 describe('bounded planner compiler runtime hardening', () => {
-  it('turns missing repository evidence into residue artifacts instead of terminal planning failure', async () => {
+  it('fails closed when missing repository evidence has no product-scoped residue', async () => {
     const cwd = await workspace({});
     const sourceContent = prd(['engine updates `packages/engine/src/missing.ts` with bounded source evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
@@ -27,15 +27,8 @@ describe('bounded planner compiler runtime hardening', () => {
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'missing-evidence');
 
-    const events = await collect(getCompileStage('planner')(ctx));
-
-    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
-    expect(ctx.plans.map((plan) => plan.id).some((id) => id.includes('source-evidence-missing'))).toBe(true);
-    const coverage = await readFile(path.join(cwd, 'eforge/plans/missing-evidence/acceptance-coverage.md'), 'utf8');
-    expect(coverage).toContain('Complete criteria: ac-001');
-    expect(coverage).toContain('source-evidence-missing');
-    const residuePlan = await readFirstPlanContaining(cwd, 'missing-evidence', 'Concrete handling for packages/engine/src/missing.ts');
-    expect(residuePlan).toContain('Concrete handling for packages/engine/src/missing.ts');
+    await expect(collect(getCompileStage('planner')(ctx))).rejects.toThrow('Bounded planner compiler failed');
+    expect(ctx.plans.map((plan) => plan.id).some((id) => id.includes('source-evidence-missing'))).toBe(false);
   });
 
   it('turns oversized repository evidence into bounded residue artifacts', async () => {
@@ -57,8 +50,8 @@ describe('bounded planner compiler runtime hardening', () => {
   });
 
   it('keeps generated planning artifacts and broad directories out of source evidence materialization', async () => {
-    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
-    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` and ignores packages plus eforge/plans/old/orchestration.yaml.']);
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n', 'eforge/plans/old/orchestration.yaml': 'generated: true\n' });
+    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` and ignores broad package roots plus eforge/plans/old/orchestration.yaml.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
@@ -73,6 +66,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const sourceEvidenceSection = promptSection(harness.prompts[1], '## Source evidence', '## Structured submission rules');
     expect(sourceEvidenceSection).toContain('packages/engine/src/a.ts');
     expect(sourceEvidenceSection).not.toContain('eforge/plans/old/orchestration.yaml');
+    expect(sourceEvidenceSection).not.toContain('generated: true');
     expect(sourceEvidenceSection).not.toContain('"path": "packages"');
   });
 

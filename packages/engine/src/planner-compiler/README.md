@@ -1,0 +1,81 @@
+# Planner compiler architecture
+
+This directory contains the bounded planner compiler. It turns normalized build source into atom-level planning work, reduces the atom outputs into final planning artifacts, and reports any coverage that cannot be safely converted into executable work.
+
+The compiler is repository-agnostic. It uses deterministic repository indexing and optional caller-provided hints; it must not bake in product-specific layouts such as route, client, or extension package names for a particular project.
+
+## Pipeline responsibilities
+
+### Source inventory
+
+`source-inventory.ts` parses the build source before atom planning. It records source metadata such as headings, acceptance criteria, evidence path candidates, subsystem hints, interface keys, and global localization needs.
+
+Inventory output is the root for traceability. Later stages should keep links back to original criterion ids, aspect ids, source need ids, and source paths when reporting gaps or diagnostics.
+
+### Source localization
+
+`source-localization.ts` maps inventory and atom graph needs to concrete repository candidates. Localization uses repository signals, source hints, and bounded file indexing to resolve needs such as literal paths, directories, interfaces, manifests, entrypoints, commands, routes, APIs, UI surfaces, extensions, configuration, tests, documentation, and consumer surfaces.
+
+Localization records include status, candidate owner paths, confidence, linked criterion/aspect ids, assigned atom ids, rationale, diagnostics, and budget notes. Directory-only or broad matches are localization signals, not executable implementation work by themselves.
+
+### Localized shared brief ownership
+
+`shared-brief.ts` derives the shared planning brief and ownership records from the atom graph and localization bundle. Ownership data decides which localized evidence is delivered to which atom prompts and records the localization need ids, status, confidence, candidate rank, and rationale for each owned path.
+
+When localization records change, shared-brief ownership must be rebuilt before source evidence materialization so atom prompts and diagnostics use the current owner paths.
+
+### Evidence materialization
+
+`source-evidence-materialization.ts` reads bounded evidence excerpts for localized ownership records. It records whether each path was materialized, missing, directory-only, non-actionable, too large, read-error, or budget-exceeded.
+
+Materialization failures are coverage inputs. A concrete path that exceeds an evidence budget may still be represented later only when the resulting residue is product-scoped and validated against original PRD criteria. Missing owners, directory-only evidence, and ambiguous localization remain repair inputs first.
+
+### Atom planning
+
+`atom-map-runner.ts` runs tool-less atom planners over the graph, shared brief, and materialized evidence. Atom outputs carry fragments, module candidates, aspect updates, and reduce digests. Atom prompts should receive repository evidence only through compiler-provided briefs and materialized excerpts.
+
+Repair reruns should target affected atoms when gap metadata identifies atom ids. If atom ids are missing, the resolver should fall back through source need ids, criterion ids, aspect ids, interface keys, and localized paths. Unaffected atom outputs are reused, and merged outputs keep deterministic ordering before reduce.
+
+### Reduce
+
+`reduce-runner.ts` and `reducer-agent.ts` run tool-less reducers over atom and child reduce outputs. Reducers synthesize coherent final fragments and module candidates, report conflicts, and report gaps.
+
+Reduce gaps that point to missing source or localization evidence must be structured as repair gaps, not as implementation-plan candidates. New reducer output should include machine-readable fields for the issue kind, source/localization signal, source need ids, affected atom ids, owner paths, criterion/aspect ids, and product-scoped validation references. Older or partial reducer output should be normalized through deterministic post-reduce classification.
+
+### Repair loop
+
+`source-localization-repair.ts` owns bounded source/localization repair orchestration. The repair loop classifies reducer gaps that indicate:
+
+- missing owner paths
+- missing contract, entrypoint, configuration, or consumer-surface evidence
+- directory-only evidence
+- missing materialized source
+- localization ambiguity
+
+For classified gaps, a repair attempt adds focused localization needs, reruns localization, rebuilds localized shared-brief ownership, rematerializes evidence, reruns affected atom planners, reruns affected reducers, and merges updated outputs with unaffected outputs.
+
+Repair attempts must be low-budget and capped. Diagnostics should record the configured limit, attempt number, status, gap ids, classifications, source need ids, affected atom ids, criterion/aspect ids, localized owner paths, owner status, evidence materialization status, unresolved reason, and whether residue synthesis was blocked. Exhausted repair returns incomplete or failed compiler diagnostics with coverage transparency rather than creating vague meta-planning branches.
+
+### Residue
+
+`residue-synthesis.ts`, `residue-contracts.ts`, and `plan-artifact-synthesis.ts` turn unresolved coverage into residue only when it is safe to make executable. Source/localization-derived residue is repair-only until it has concrete localized owner paths, product-scoped expected outputs, and validation tied to original PRD criteria.
+
+Unresolved source/localization gaps must not become executable `candidate-reduce-gap` plans. They should surface as machine-readable compiler diagnostics, including coverage status for affected criteria, aspects, and source needs.
+
+## Repository-agnostic defaults and hints
+
+Default localization is based on generic signals: normalized relative paths, directory names, manifests, entrypoints, docs, tests, configuration, commands, routes, APIs, UI surfaces, extensions, consumer surfaces, subsystem hints, interface keys, and keywords derived from the build source.
+
+Project-specific knowledge belongs in optional hints supplied through `SourceLocalizationInputHints`, not in compiler defaults. Hints may provide ignored prefixes/globs and focused project hints with kind, query, paths, keywords, subsystem hints, interface keys, criterion ids, aspect ids, and atom ids. Hints are validated, bounded, and treated as additional signals rather than mutation-capable tools.
+
+## Diagnostics and events
+
+Compiler diagnostics should be machine-readable and stable enough for tests and callers to inspect. Prefer returning diagnostics through compiler results. Add planning events only when existing observable results cannot carry the required repair diagnostics; event wire shapes are owned by `@eforge-build/client`.
+
+## Invariants
+
+- Atom planners and reducers remain tool-less; repository access is performed by deterministic compiler internals.
+- Source inventory, localization, shared-brief ownership, materialization, atom map, reduce, repair, and residue keep traceability to original criteria and aspects.
+- Repair reruns only affected atoms when possible and preserves prior outputs for unaffected atoms.
+- Exhausted source/localization repair fails closed with diagnostics instead of vague executable residue.
+- Product-specific layout assumptions are expressed through caller hints or fixtures, not hard-coded compiler defaults.

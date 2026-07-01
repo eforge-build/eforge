@@ -98,6 +98,8 @@ Call ${submitToolName} with an object matching its schema.
 - nodeId must be exactly "${task.node.nodeId}".
 - Link every fragment, module, conflict, and gap to provided criterionIds and aspectIds.
 - Completed outputs must not contain representationRequired gaps.
+- Source/localization gaps (missing owner paths, missing contract/entrypoint/config/consumer surface evidence, directory-only evidence, missing materialized source, or localization ambiguity) must be emitted as structured gaps with issueKind, sourceLocalizationSignal: true, relevant sourceNeedIds, affectedAtomIds, ownerPaths when known, criterionIds, and aspectIds. Do not convert these gaps into implementation candidates.
+- Only source/localization gaps with concrete ownerPaths, productScopedOutputRefs, and productScopedValidationRefs tied to original criterionIds can later become buildable residue; otherwise they are repair-only compiler diagnostics.
 - Failed outputs must not include fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for parent reducers; do not copy full markdown into it.
 - reduceDigest.sourceId must be exactly "${task.node.nodeId}" and reduceDigest.sourceKind must be "reduce".
@@ -216,7 +218,26 @@ function coerceConflict(value: unknown): PlanningReduceConflict {
 
 function coerceGap(value: unknown): PlanningReduceGap {
   const record = objectValue(value);
-  return { gapId: requiredString(record.gapId, 'gap id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), description: requiredString(record.description, 'gap description'), representationRequired: record.representationRequired === true, ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}) };
+  return {
+    gapId: requiredString(record.gapId, 'gap id'),
+    title: stringValue(record.title) ?? '',
+    criterionIds: stringArrayValue(record.criterionIds),
+    aspectIds: stringArrayValue(record.aspectIds),
+    description: requiredString(record.description, 'gap description'),
+    representationRequired: record.representationRequired === true,
+    ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}),
+    ...(reduceGapIssueKind(record.issueKind) ? { issueKind: reduceGapIssueKind(record.issueKind) } : {}),
+    ...(typeof record.sourceLocalizationSignal === 'boolean' ? { sourceLocalizationSignal: record.sourceLocalizationSignal } : {}),
+    ...(stringArrayValue(record.sourceNeedIds).length > 0 ? { sourceNeedIds: stringArrayValue(record.sourceNeedIds) } : {}),
+    ...(stringArrayValue(record.affectedAtomIds).length > 0 ? { affectedAtomIds: stringArrayValue(record.affectedAtomIds) } : {}),
+    ...(stringArrayValue(record.ownerPaths).length > 0 ? { ownerPaths: stringArrayValue(record.ownerPaths) } : {}),
+    ...(stringArrayValue(record.productScopedOutputRefs).length > 0 ? { productScopedOutputRefs: stringArrayValue(record.productScopedOutputRefs) } : {}),
+    ...(stringArrayValue(record.productScopedValidationRefs).length > 0 ? { productScopedValidationRefs: stringArrayValue(record.productScopedValidationRefs) } : {}),
+  };
+}
+
+function reduceGapIssueKind(value: unknown): PlanningReduceGap['issueKind'] | undefined {
+  return value === 'generic' || value === 'missing-owner-path' || value === 'missing-contract-evidence' || value === 'missing-entrypoint-evidence' || value === 'missing-config-evidence' || value === 'missing-consumer-surface-evidence' || value === 'directory-only-evidence' || value === 'missing-materialized-source' || value === 'localization-ambiguity' ? value : undefined;
 }
 
 function reduceStatus(value: unknown): PlanningReduceOutputStatus | undefined {

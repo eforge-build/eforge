@@ -32,7 +32,7 @@ describe('planning source inventory and atom graph', () => {
 
     expect(classifyEvidenceCandidate('packages').reason).toBe('broad-directory');
     expect(classifyEvidenceCandidate('eforge/plans/foo/orchestration.yaml').reason).toBe('generated-planning-artifact');
-    expect(candidates.filter((candidate) => candidate.actionable).map((candidate) => candidate.value)).toEqual(['packages/engine/src/config.ts', 'docs/config.md']);
+    expect(candidates.filter((candidate) => candidate.actionable).map((candidate) => candidate.value)).toEqual(['docs/config.md', 'packages/engine/src/config.ts']);
     expect(extractEvidenceCandidatesFromText('The config.ts helper is a symbol, not a path.')).toEqual([]);
     expect(normalizeEvidenceValue('docs/config.md.')).toBe('docs/config.md');
   });

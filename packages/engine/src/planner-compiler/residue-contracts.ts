@@ -3,10 +3,11 @@ import type { PlanningAspectCoverageSummary, PlanningAspectCoverageUpdate } from
 import { stableSlug, utf8ByteLength } from './source-analysis.js';
 
 export type PlanningResidueKind = 'residue' | 'follow-up';
+export type PlanningResidueBuildability = 'buildable' | 'repair-only';
 export type PlanningResidueReason = 'pending-aspect' | 'source-evidence-missing' | 'source-evidence-non-actionable' | 'source-evidence-directory' | 'source-evidence-too-large' | 'source-evidence-read-error' | 'source-evidence-budget-exceeded' | 'atom-failed' | 'atom-skipped' | 'reduce-gap' | 'reduce-conflict' | 'reduce-incomplete';
 
 export interface PlanningResidueLimits { maxCandidates: number; maxScopeBytes: number; maxRationaleBytes: number; maxExpectedOutputBytes: number; maxValidationExpectationBytes: number }
-export interface PlanningResidueCandidate { candidateId: string; kind: PlanningResidueKind; reason: PlanningResidueReason; title: string; criterionIds: string[]; aspectIds: string[]; scope: string; expectedOutputs: string[]; validationExpectations: string[]; rationale: string; sourceRefs?: string[]; dependsOnCandidateIds?: string[] }
+export interface PlanningResidueCandidate { candidateId: string; kind: PlanningResidueKind; reason: PlanningResidueReason; title: string; criterionIds: string[]; aspectIds: string[]; scope: string; expectedOutputs: string[]; validationExpectations: string[]; rationale: string; sourceRefs?: string[]; dependsOnCandidateIds?: string[]; buildability?: PlanningResidueBuildability; sourceLocalizationDerived?: boolean; localizedOwnerPaths?: string[]; productScopedOutputRefs?: string[]; productScopedValidationRefs?: string[] }
 export interface PlanningResidueSynthesis { graphId: string; sourceHash: string; candidates: PlanningResidueCandidate[]; coverageUpdates: PlanningAspectCoverageUpdate[]; validationErrors: string[]; limits: PlanningResidueLimits }
 export interface ValidatePlanningResidueCandidatesInput { graph: PlanningAtomGraph; coverage: PlanningAspectCoverageSummary; candidates: PlanningResidueCandidate[]; limits?: PlanningResidueLimits }
 export type PlanningResidueValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
@@ -52,10 +53,26 @@ function validateCandidate(candidate: PlanningResidueCandidate, criteria: Set<st
   if (candidate.expectedOutputs.length === 0) errors.push(`residue candidate requires expected outputs:${candidate.candidateId}`);
   if (candidate.validationExpectations.length === 0) errors.push(`residue candidate requires validation expectations:${candidate.candidateId}`);
   if (vague(candidate.scope) || vague(candidate.rationale) || candidate.expectedOutputs.some(vague)) errors.push(`residue candidate is vague:${candidate.candidateId}`);
+  if (candidate.sourceLocalizationDerived) validateSourceLocalizationResidue(candidate, errors);
   validateBudget(candidate, limits, errors);
   for (const criterionId of candidate.criterionIds) if (!criteria.has(criterionId)) errors.push(`unknown residue criterion:${candidate.candidateId}:${criterionId}`);
   for (const aspectId of candidate.aspectIds) if (!aspects.has(aspectId)) errors.push(`unknown residue aspect:${candidate.candidateId}:${aspectId}`);
   validateDependencyIds(candidate, siblings, errors);
+}
+
+function validateSourceLocalizationResidue(candidate: PlanningResidueCandidate, errors: string[]): void {
+  if (candidate.buildability !== 'buildable') errors.push(`source/localization residue must be buildable to synthesize:${candidate.candidateId}`);
+  const ownerPaths = candidate.localizedOwnerPaths ?? [];
+  const outputRefs = candidate.productScopedOutputRefs ?? [];
+  if (ownerPaths.length === 0) errors.push(`source/localization residue requires localized owner paths:${candidate.candidateId}`);
+  if (outputRefs.length === 0 || !outputRefs.every((ref) => productScopedOutputRef(ref, ownerPaths))) errors.push(`source/localization residue requires product-scoped outputs:${candidate.candidateId}`);
+  if ((candidate.productScopedValidationRefs ?? []).length === 0) errors.push(`source/localization residue requires PRD validation refs:${candidate.candidateId}`);
+  if ((candidate.productScopedValidationRefs ?? []).some((ref) => !candidate.criterionIds.includes(ref))) errors.push(`source/localization residue validation must reference original criteria:${candidate.candidateId}`);
+}
+
+function productScopedOutputRef(ref: string, ownerPaths: string[]): boolean {
+  const path = ref.startsWith('localized-owner:') ? ref.slice('localized-owner:'.length) : '';
+  return nonEmpty(path) && ownerPaths.includes(path);
 }
 
 function validateBudget(candidate: PlanningResidueCandidate, limits: PlanningResidueLimits, errors: string[]): void {

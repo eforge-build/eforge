@@ -41,7 +41,26 @@ describe('bounded planner compiler runner', () => {
     expect(harness.prompts[0]).toContain('export const sourceEvidence = true');
   });
 
-  it('returns complete-with-residue when bounded source evidence or atom planning leaves represented work', async () => {
+  it('localizes broad source references before atom planning prompts are built', async () => {
+    const cwd = await workspace({ 'packages/api/src/routes/user.ts': 'export function userRoute() { return "ok"; }\n' });
+    const content = prd(['api route updates expose the user-facing route contract with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const mapOutput = completedOutput(task);
+    const harness = new StubHarness([
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits });
+
+    expect(result.sourceLocalizationBundle.records.flatMap((record) => record.candidateFiles.map((candidate) => candidate.path))).toContain('packages/api/src/routes/user.ts');
+    expect(result.sourceEvidenceBundle.records).toContainEqual(expect.objectContaining({ path: 'packages/api/src/routes/user.ts', status: 'materialized', ownershipRationale: expect.stringContaining('route') }));
+    expect(harness.prompts[0]).toContain('packages/api/src/routes/user.ts');
+    expect(harness.prompts[0]).toContain('export function userRoute');
+    expect(harness.prompts[0]).toContain('ownershipRationale');
+  });
+
+  it('fails closed when missing source evidence cannot become buildable residue', async () => {
     const cwd = await workspace({});
     const content = prd(['engine updates `packages/engine/src/missing.ts` using repo-grounded evidence.']);
     const [task] = expectedTasks(content);
@@ -49,12 +68,12 @@ describe('bounded planner compiler runner', () => {
 
     const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits });
 
-    expect(result.status).toBe('complete-with-residue');
+    expect(result.status).toBe('failed');
     expect(result.map.mapComplete).toBe(false);
     expect(result.reduce.reduceComplete).toBe(false);
     expect(result.sourceEvidenceBundle.records[0]).toMatchObject({ path: 'packages/engine/src/missing.ts', status: 'missing' });
     expect(result.residue.candidates.map((candidate) => candidate.reason)).toContain('pending-aspect');
-    expect(result.residue.candidates.map((candidate) => candidate.reason)).toContain('source-evidence-missing');
+    expect(result.residue.candidates.map((candidate) => candidate.reason)).not.toContain('source-evidence-missing');
   });
 
   it('streams agent events through onEvent before the compiler promise resolves', async () => {

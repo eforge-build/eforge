@@ -5,6 +5,8 @@ import { derivePlanningAspectCoverage, derivePlanningCriterionAspects, type Plan
 import { utf8ByteLength } from './source-analysis.js';
 import { validatePlanningSharedFindings, type PlanningAtomBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
 import { PlanningReduceDigestSchema, validatePlanningReduceDigest, type PlanningReduceDigest } from './reduce-digest-contracts.js';
+import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord, type PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
+import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './source-localization-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 
 export type PlanningAtomOutputStatus = 'completed' | 'skipped' | 'failed';
@@ -18,11 +20,12 @@ export const PlanningSharedFindingSchema = Type.Object({ findingId: boundedStrin
 export const PlanningAtomOutputSchema = Type.Object({ atomId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('skipped'), Type.Literal('failed')]), aspectUpdates: Type.Array(PlanningAspectCoverageUpdateSchema, { maxItems: 128 }), reduceDigest: Type.Optional(PlanningReduceDigestSchema), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), sharedFindings: Type.Optional(Type.Array(PlanningSharedFindingSchema, { maxItems: 8 })), discoveredEvidencePaths: Type.Optional(Type.Array(boundedString(500), { maxItems: 64 })), compactHandoff: Type.Optional(boundedString(8_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
 export type PlanningAtomOutputSubmission = Static<typeof PlanningAtomOutputSchema>;
 
-export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; reduceDigestPromptBudgetBytes?: number; sharedBrief?: PlanningAtomBrief }
+export interface PlanningAtomLocalizedEvidenceSummary { path: string; status: PlanningSourceEvidenceStatus; localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; excerptByteLength?: number; byteLength?: number; delivered: boolean; budgetNotes?: string[] }
+export interface PlanningAtomTask { graphId: string; atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate; reduceDigestPromptBudgetBytes?: number; sharedBrief?: PlanningAtomBrief; localizedEvidence?: PlanningAtomLocalizedEvidenceSummary[] }
 export interface PlanningAtomPlanFragment { fragmentId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnFragmentIds?: string[] }
 export interface PlanningAtomModuleCandidate { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; validationExpectation: string; dependsOnModuleIds?: string[] }
 export interface PlanningAtomOutput { atomId: string; status: PlanningAtomOutputStatus; aspectUpdates: PlanningAspectCoverageUpdate[]; reduceDigest?: PlanningReduceDigest; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; sharedFindings?: PlanningSharedFinding[]; discoveredEvidencePaths?: string[]; compactHandoff?: string; observedBudget?: PlanningObservedBudgetPressure; error?: string }
-export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[]; sharedBrief?: SharedPlanningBrief; reduceDigestPromptBudgetBytes?: number }
+export interface BuildPlanningAtomTasksInput { graph: PlanningAtomGraph; inventory?: SourceInventory; aspects?: PlanningCriterionAspect[]; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; reduceDigestPromptBudgetBytes?: number }
 export interface ValidatePlanningAtomOutputInput extends BuildPlanningAtomTasksInput { output: PlanningAtomOutput; task?: PlanningAtomTask }
 export interface SummarizePlanningAtomOutputsInput extends BuildPlanningAtomTasksInput { outputs: PlanningAtomOutput[] }
 export type PlanningAtomOutputValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
@@ -30,10 +33,10 @@ export interface PlanningAtomOutputCoverageSummary { coverage: PlanningAspectCov
 
 export function buildPlanningAtomTasks(input: BuildPlanningAtomTasksInput): PlanningAtomTask[] {
   const aspects = input.aspects ?? derivePlanningCriterionAspects(input.graph, input.inventory);
-  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief, input.reduceDigestPromptBudgetBytes)).sort((a, b) => a.atomId.localeCompare(b.atomId));
+  return input.graph.atoms.map((atom) => buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief, input.reduceDigestPromptBudgetBytes, input.sourceEvidenceBundle)).sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
 
-export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[], sharedBrief?: SharedPlanningBrief, reduceDigestPromptBudgetBytes?: number): PlanningAtomTask {
+export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAtom, aspects: PlanningCriterionAspect[], sharedBrief?: SharedPlanningBrief, reduceDigestPromptBudgetBytes?: number, sourceEvidenceBundle?: PlanningSourceEvidenceBundle): PlanningAtomTask {
   return {
     graphId: graph.graphId,
     atomId: atom.atomId,
@@ -50,6 +53,7 @@ export function buildPlanningAtomTask(graph: PlanningAtomGraph, atom: PlanningAt
     estimate: { ...atom.estimate },
     ...(reduceDigestPromptBudgetBytes !== undefined ? { reduceDigestPromptBudgetBytes } : {}),
     ...(briefForAtom(sharedBrief, atom.atomId) ? { sharedBrief: briefForAtom(sharedBrief, atom.atomId)! } : {}),
+    ...(localizedEvidenceForAtom(sourceEvidenceBundle, atom.atomId).length > 0 ? { localizedEvidence: localizedEvidenceForAtom(sourceEvidenceBundle, atom.atomId) } : {}),
   };
 }
 
@@ -57,7 +61,7 @@ export function validatePlanningAtomOutput(input: ValidatePlanningAtomOutputInpu
   const atom = input.graph.atoms.find((candidate) => candidate.atomId === input.output.atomId);
   if (!atom) return invalid([`unknown atom:${input.output.atomId}`]);
   const aspects = input.aspects ?? derivePlanningCriterionAspects(input.graph, input.inventory);
-  const task = input.task ?? buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief);
+  const task = input.task ?? buildPlanningAtomTask(input.graph, atom, aspects, input.sharedBrief, input.reduceDigestPromptBudgetBytes, input.sourceEvidenceBundle);
   const errors = validateOutputForTask(input.output, task, aspects);
   return errors.length === 0 ? { ok: true, errors: [] } : invalid(errors);
 }
@@ -158,7 +162,27 @@ function validateDependencyIds(kind: string, id: string, dependsOnIds: string[] 
 
 function briefForAtom(sharedBrief: SharedPlanningBrief | undefined, atomId: string): PlanningAtomBrief | undefined {
   const atomBrief = sharedBrief?.atomBriefs.find((brief) => brief.atomId === atomId);
-  return atomBrief ? { ...atomBrief, ownedEvidencePaths: [...atomBrief.ownedEvidencePaths], localEvidencePaths: [...atomBrief.localEvidencePaths], ownedInterfaceKeys: [...atomBrief.ownedInterfaceKeys], sharedEvidenceRefs: atomBrief.sharedEvidenceRefs.map((ref) => ({ ...ref })), sharedInterfaceRefs: atomBrief.sharedInterfaceRefs.map((ref) => ({ ...ref })), prerequisiteAtomIds: [...atomBrief.prerequisiteAtomIds], sectionIds: [...atomBrief.sectionIds], sections: atomBrief.sections.map((section) => ({ ...section })) } : undefined;
+  return atomBrief ? { ...atomBrief, ownedEvidencePaths: [...atomBrief.ownedEvidencePaths], localEvidencePaths: [...atomBrief.localEvidencePaths], ownedInterfaceKeys: [...atomBrief.ownedInterfaceKeys], sharedEvidenceRefs: atomBrief.sharedEvidenceRefs.map((ref) => ({ ...ref, ...(ref.localizationNeedIds ? { localizationNeedIds: [...ref.localizationNeedIds] } : {}) })), sharedInterfaceRefs: atomBrief.sharedInterfaceRefs.map((ref) => ({ ...ref })), prerequisiteAtomIds: [...atomBrief.prerequisiteAtomIds], sectionIds: [...atomBrief.sectionIds], sections: atomBrief.sections.map((section) => ({ ...section })), ...(atomBrief.evidenceSummaries ? { evidenceSummaries: atomBrief.evidenceSummaries.map((summary) => ({ ...summary, consumerAtomIds: [...summary.consumerAtomIds], ...(summary.localizationNeedIds ? { localizationNeedIds: [...summary.localizationNeedIds] } : {}) })) } : {}) } : undefined;
+}
+
+function localizedEvidenceForAtom(bundle: PlanningSourceEvidenceBundle | undefined, atomId: string): PlanningAtomLocalizedEvidenceSummary[] {
+  return sourceEvidenceRecordsForAtom(bundle, atomId).map((record) => localizedEvidenceSummary(record, atomId)).sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function localizedEvidenceSummary(record: PlanningSourceEvidenceRecord, atomId: string): PlanningAtomLocalizedEvidenceSummary {
+  return {
+    path: record.path,
+    status: record.status,
+    ...(record.localizationNeedIds ? { localizationNeedIds: [...record.localizationNeedIds] } : {}),
+    ...(record.localizationStatus ? { localizationStatus: record.localizationStatus } : {}),
+    ...(record.localizationConfidence ? { localizationConfidence: record.localizationConfidence } : {}),
+    ...(record.candidateRank !== undefined ? { candidateRank: record.candidateRank } : {}),
+    ...(record.ownershipRationale ? { ownershipRationale: record.ownershipRationale } : {}),
+    ...(record.excerptByteLength !== undefined ? { excerptByteLength: record.excerptByteLength } : {}),
+    ...(record.byteLength !== undefined ? { byteLength: record.byteLength } : {}),
+    delivered: record.deliveredToAtomIds.includes(atomId),
+    ...(record.budgetNotes ? { budgetNotes: [...record.budgetNotes] } : {}),
+  };
 }
 
 function duplicateAspectUpdateErrors(outputs: PlanningAtomOutput[]): string[] {

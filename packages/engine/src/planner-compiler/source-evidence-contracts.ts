@@ -2,12 +2,14 @@ import type { PlanningAtomGraph } from './atom-graph.js';
 import { classifyEvidenceCandidate } from './evidence-hygiene.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { SharedPlanningBrief } from './shared-brief-contracts.js';
+import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './source-localization-contracts.js';
 
 export type PlanningSourceEvidenceStatus = 'materialized' | 'missing' | 'non-actionable' | 'directory' | 'too-large' | 'read-error' | 'budget-exceeded';
 
 export interface PlanningSourceEvidenceLimits { maxFilesTotal: number; maxFilesPerAtom: number; maxBytesTotal: number; maxBytesPerFile: number; maxExcerptBytesPerFile: number; maxEvidenceBytesPerAtom: number }
-export interface PlanningSourceEvidenceRecord { path: string; status: PlanningSourceEvidenceStatus; referencedByAtomIds: string[]; primaryAtomId?: string; shared: boolean; deliveredToAtomIds: string[]; byteLength?: number; excerptByteLength?: number; contentExcerpt?: string; reason?: string; error?: string }
-export interface PlanningSourceEvidenceBundle { graphId: string; sourceHash: string; records: PlanningSourceEvidenceRecord[]; byAtomId: Record<string, string[]>; totalBytes: number; limits: PlanningSourceEvidenceLimits; validationErrors: string[] }
+export interface PlanningSourceEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; budgetNotes?: string[]; accountedByteLength?: number }
+export interface PlanningSourceEvidenceRecord extends PlanningSourceEvidenceLocalizationMetadata { path: string; status: PlanningSourceEvidenceStatus; referencedByAtomIds: string[]; primaryAtomId?: string; shared: boolean; deliveredToAtomIds: string[]; byteLength?: number; excerptByteLength?: number; contentExcerpt?: string; reason?: string; error?: string }
+export interface PlanningSourceEvidenceBundle { graphId: string; sourceHash: string; records: PlanningSourceEvidenceRecord[]; byAtomId: Record<string, string[]>; bytesByAtomId?: Record<string, number>; filesByAtomId?: Record<string, number>; totalBytes: number; limits: PlanningSourceEvidenceLimits; validationErrors: string[] }
 export interface ValidatePlanningSourceEvidenceBundleInput { graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; bundle: PlanningSourceEvidenceBundle; limits?: PlanningSourceEvidenceLimits }
 export type PlanningSourceEvidenceValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
 
@@ -30,6 +32,10 @@ export function sourceEvidenceRecordsForAtom(bundle: PlanningSourceEvidenceBundl
   if (!bundle) return [];
   const paths = new Set(bundle.byAtomId[atomId] ?? []);
   return bundle.records.filter((record) => paths.has(record.path)).map((record) => recordForAtom(record, atomId));
+}
+
+export function sourceEvidenceByteLengthForAtom(bundle: PlanningSourceEvidenceBundle | undefined, atomId: string): number {
+  return bundle?.bytesByAtomId?.[atomId] ?? 0;
 }
 
 function validateRecords(records: PlanningSourceEvidenceRecord[], ownership: Map<string, SharedPlanningBrief['evidenceOwnership'][number]>, atomIds: Set<string>, limits: PlanningSourceEvidenceLimits, errors: string[]): void {
@@ -59,9 +65,19 @@ function validateByAtom(bundle: PlanningSourceEvidenceBundle, atomIds: Set<strin
 }
 
 function recordForAtom(record: PlanningSourceEvidenceRecord, atomId: string): PlanningSourceEvidenceRecord {
-  if (record.deliveredToAtomIds.includes(atomId)) return { ...record, referencedByAtomIds: [...record.referencedByAtomIds], deliveredToAtomIds: [...record.deliveredToAtomIds] };
+  if (record.deliveredToAtomIds.includes(atomId)) return cloneRecord(record);
   const { contentExcerpt: _contentExcerpt, ...withoutExcerpt } = record;
-  return { ...withoutExcerpt, referencedByAtomIds: [...record.referencedByAtomIds], deliveredToAtomIds: [...record.deliveredToAtomIds] };
+  return cloneRecord(withoutExcerpt);
+}
+
+function cloneRecord(record: PlanningSourceEvidenceRecord): PlanningSourceEvidenceRecord {
+  return {
+    ...record,
+    referencedByAtomIds: [...record.referencedByAtomIds],
+    deliveredToAtomIds: [...record.deliveredToAtomIds],
+    ...(record.localizationNeedIds ? { localizationNeedIds: [...record.localizationNeedIds] } : {}),
+    ...(record.budgetNotes ? { budgetNotes: [...record.budgetNotes] } : {}),
+  };
 }
 
 function validateUnique(kind: string, ids: string[], errors: string[]): void {
