@@ -183,6 +183,27 @@ describe('planning source localization foundation', () => {
     expect(index.diagnostics.map((diagnostic) => diagnostic.code)).toContain('index-file-limit');
   });
 
+  it('applies nested caller ignore globs and generated plan artifact filtering', async () => {
+    const temp = await workspace({
+      'workspace/keep/file.ts': 'export const keep = true;',
+      'workspace/generated/deep/file.ts': 'export const ignored = true;',
+      'eforge/plans/foo/module-bar.md': '# generated module plan',
+    });
+
+    const index = await deriveRepositoryIndex({ cwd: temp.cwd, hints: { ignoreGlobs: ['**/generated/**'] } });
+
+    expect(index.files.map((file) => file.path)).toEqual(['workspace/keep/file.ts']);
+  });
+
+  it('reports invalid localization inputs as structured diagnostics', async () => {
+    const temp = await workspace({ 'workspace/keep/file.ts': 'export const keep = true;' });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, hints: { ignorePrefixes: ['../outside'], projectHints: [{ kind: 'bogus', query: '' } as never] }, limits: { maxIndexedFiles: -1 } });
+
+    expect(bundle.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-localization-limit');
+    expect(bundle.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-localization-hint');
+  });
+
   it('does not execute repository fsmonitor config or scan tracked symlinks', async () => {
     const temp = await workspace({ 'real.ts': 'export const real = true;' }, { git: true });
     const outsideDir = await mkdtemp(path.join(os.tmpdir(), 'eforge-planning-outside-'));

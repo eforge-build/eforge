@@ -1,14 +1,15 @@
 import type { PlanningAtom, PlanningAtomGraph } from './atom-graph.js';
-import { classifyEvidenceCandidate, evidenceSlug } from './evidence-hygiene.js';
+import { classifyEvidenceCandidate, evidenceSlug, normalizeEvidenceValue } from './evidence-hygiene.js';
 import { stableSlug, utf8ByteLength } from './source-analysis.js';
-import { DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, validateSharedPlanningBrief, type PlanningAtomBrief, type PlanningAtomBriefSection, type PlanningEvidenceOwnership, type SharedPlanningBrief, type SharedPlanningBriefLimits, type SharedPlanningBriefSection, type SharedPlanningInterfaceSummary } from './shared-brief-contracts.js';
+import { DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, validateSharedPlanningBrief, type PlanningAtomBrief, type PlanningAtomBriefEvidenceSummary, type PlanningAtomBriefSection, type PlanningEvidenceOwnership, type SharedPlanningBrief, type SharedPlanningBriefLimits, type SharedPlanningBriefSection, type SharedPlanningInterfaceSummary } from './shared-brief-contracts.js';
+import type { SourceLocalizationBundle, SourceLocalizationCandidate, SourceLocalizationConfidence, SourceLocalizationRecord, SourceLocalizationStatus } from './source-localization-contracts.js';
 
-export interface DeriveSharedPlanningBriefInput { graph: PlanningAtomGraph; limits?: Partial<SharedPlanningBriefLimits> }
+export interface DeriveSharedPlanningBriefInput { graph: PlanningAtomGraph; limits?: Partial<SharedPlanningBriefLimits>; sourceLocalizationBundle?: SourceLocalizationBundle }
 
 export function deriveSharedPlanningBrief(input: DeriveSharedPlanningBriefInput): SharedPlanningBrief {
   const limits = { ...DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, ...(input.limits ?? {}) };
-  const evidenceOwnership = deriveEvidenceOwnership(input.graph);
-  const interfaceSummaries = deriveInterfaceSummaries(input.graph);
+  const evidenceOwnership = deriveEvidenceOwnership(input.graph, input.sourceLocalizationBundle);
+  const interfaceSummaries = deriveInterfaceSummaries(input.graph, input.sourceLocalizationBundle);
   const sections = deriveSections(input.graph, evidenceOwnership, interfaceSummaries, limits);
   const atomBriefs = deriveAtomBriefs(input.graph, evidenceOwnership, interfaceSummaries, sections);
   const brief: SharedPlanningBrief = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, evidenceOwnership, interfaceSummaries, atomBriefs, sections, byteLength: sections.reduce((sum, section) => sum + section.byteLength, 0), limits };
@@ -17,21 +18,91 @@ export function deriveSharedPlanningBrief(input: DeriveSharedPlanningBriefInput)
   return brief;
 }
 
-function deriveEvidenceOwnership(graph: PlanningAtomGraph): PlanningEvidenceOwnership[] {
-  const byPath = new Map<string, string[]>();
+function deriveEvidenceOwnership(graph: PlanningAtomGraph, localization?: SourceLocalizationBundle): PlanningEvidenceOwnership[] {
+  const byPath = new Map<string, OwnershipAccumulator>();
+  for (const record of localization?.records ?? []) addLocalizedOwnership(record, graph, byPath);
+  const localizedQueries = new Set((localization?.records ?? []).filter((record) => record.candidateFiles.length > 0).map((record) => normalizeEvidenceValue(record.query)));
   for (const atom of graph.atoms) {
     for (const path of atom.evidencePaths.filter((candidate) => classifyEvidenceCandidate(candidate).actionable)) {
-      byPath.set(path, [...(byPath.get(path) ?? []), atom.atomId].sort());
+      if (localizedQueries.has(normalizeEvidenceValue(path)) && classifyEvidenceCandidate(path).kind === 'directory') continue;
+      addOwnershipPath(byPath, normalizeEvidenceValue(path), [atom.atomId], { reason: 'exact-evidence-path' });
     }
   }
-  return [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, atomIds]) => ownershipForPath(path, [...new Set(atomIds)], graph));
+  return [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, item]) => ownershipForPath(path, [...item.atomIds], graph, item));
 }
 
-function ownershipForPath(path: string, referencedByAtomIds: string[], graph: PlanningAtomGraph): PlanningEvidenceOwnership {
-  if (referencedByAtomIds.length <= 1) return { path, referencedByAtomIds, consumerAtomIds: [], shared: false, reason: 'single-atom-evidence' };
-  const primaryAtomId = choosePrimaryAtom(referencedByAtomIds, graph).atomId;
-  return { path, referencedByAtomIds, primaryAtomId, consumerAtomIds: referencedByAtomIds.filter((atomId) => atomId !== primaryAtomId).sort(), shared: true, reason: 'shared-evidence-primary-owner' };
+// --- eforge:region plan-02-localized-evidence-pipeline ---
+interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus }
+
+function addLocalizedOwnership(record: SourceLocalizationRecord, graph: PlanningAtomGraph, byPath: Map<string, OwnershipAccumulator>): void {
+  const atomIds = localizationAtomIds(record, graph);
+  if (atomIds.length === 0) return;
+  for (const [index, candidate] of record.candidateFiles.entries()) {
+    if (!classifyEvidenceCandidate(candidate.path).actionable) continue;
+    addOwnershipPath(byPath, candidate.path, atomIds, { record, candidate, candidateRank: index + 1 });
+  }
 }
+
+function addOwnershipPath(byPath: Map<string, OwnershipAccumulator>, rawPath: string, atomIds: string[], metadata: { reason: string } | { record: SourceLocalizationRecord; candidate: SourceLocalizationCandidate; candidateRank: number }): void {
+  const path = normalizeEvidenceValue(rawPath);
+  const existing = byPath.get(path) ?? { atomIds: new Set<string>(), localizationNeedIds: new Set<string>(), reasons: new Set<string>() };
+  for (const atomId of atomIds) existing.atomIds.add(atomId);
+  if ('record' in metadata) {
+    existing.localizationNeedIds.add(metadata.record.needId);
+    existing.reasons.add(`${metadata.record.reason}; ${metadata.candidate.reason}`);
+    existing.localizationConfidence = bestConfidence(existing.localizationConfidence, metadata.candidate.confidence);
+    existing.localizationStatus = bestStatus(existing.localizationStatus, metadata.record.status);
+    existing.candidateRank = Math.min(existing.candidateRank ?? metadata.candidateRank, metadata.candidateRank);
+  } else {
+    existing.reasons.add(metadata.reason);
+  }
+  byPath.set(path, existing);
+}
+
+function localizationAtomIds(record: SourceLocalizationRecord, graph: PlanningAtomGraph): string[] {
+  const assigned = record.assignedAtomIds.filter((atomId) => graph.atoms.some((atom) => atom.atomId === atomId));
+  if (assigned.length > 0) return [...new Set(assigned)].sort();
+  const byCriterion = graph.atoms.filter((atom) => record.linkedCriterionIds.some((criterionId) => atom.criterionIds.includes(criterionId))).map((atom) => atom.atomId);
+  if (byCriterion.length > 0) return [...new Set(byCriterion)].sort();
+  return record.linkedCriterionIds.length === 0 ? graph.atoms.map((atom) => atom.atomId).sort() : [];
+}
+
+function ownershipForPath(path: string, referencedByAtomIds: string[], graph: PlanningAtomGraph, metadata?: OwnershipAccumulator): PlanningEvidenceOwnership {
+  const shared = referencedByAtomIds.length > 1;
+  const primaryAtomId = shared ? choosePrimaryAtom(referencedByAtomIds, graph).atomId : undefined;
+  const reason = shared ? 'shared-evidence-primary-owner' : 'single-atom-evidence';
+  return {
+    path,
+    referencedByAtomIds,
+    ...(primaryAtomId ? { primaryAtomId } : {}),
+    consumerAtomIds: primaryAtomId ? referencedByAtomIds.filter((atomId) => atomId !== primaryAtomId).sort() : [],
+    shared,
+    reason,
+    ...localizationOwnershipMetadata(metadata),
+  };
+}
+
+function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale'> {
+  if (!metadata || metadata.localizationNeedIds.size === 0) return {};
+  return {
+    localizationNeedIds: [...metadata.localizationNeedIds].sort(),
+    ...(metadata.localizationStatus ? { localizationStatus: metadata.localizationStatus } : {}),
+    ...(metadata.localizationConfidence ? { localizationConfidence: metadata.localizationConfidence } : {}),
+    ...(metadata.candidateRank !== undefined ? { candidateRank: metadata.candidateRank } : {}),
+    ownershipRationale: [...metadata.reasons].sort().join(' | '),
+  };
+}
+
+function bestConfidence(a: SourceLocalizationConfidence | undefined, b: SourceLocalizationConfidence): SourceLocalizationConfidence {
+  const rank: Record<SourceLocalizationConfidence, number> = { high: 3, medium: 2, low: 1 };
+  return !a || rank[b] > rank[a] ? b : a;
+}
+
+function bestStatus(a: SourceLocalizationStatus | undefined, b: SourceLocalizationStatus): SourceLocalizationStatus {
+  const rank: Record<SourceLocalizationStatus, number> = { resolved: 5, partial: 4, 'budget-exceeded': 3, unresolved: 2, ignored: 1 };
+  return !a || rank[b] > rank[a] ? b : a;
+}
+// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function choosePrimaryAtom(atomIds: string[], graph: PlanningAtomGraph): PlanningAtom {
   const atoms = atomIds.map((atomId) => requireAtom(graph, atomId));
@@ -69,9 +140,13 @@ function primaryScore(atom: PlanningAtom): number {
   return 2;
 }
 
-function deriveInterfaceSummaries(graph: PlanningAtomGraph): SharedPlanningInterfaceSummary[] {
+function deriveInterfaceSummaries(graph: PlanningAtomGraph, localization?: SourceLocalizationBundle): SharedPlanningInterfaceSummary[] {
   const byKey = new Map<string, string[]>();
   for (const atom of graph.atoms) for (const key of atom.interfaceKeys) byKey.set(key, [...(byKey.get(key) ?? []), atom.atomId].sort());
+  for (const record of localization?.records.filter((item) => item.kind === 'interface') ?? []) {
+    const atomIds = localizationAtomIds(record, graph);
+    if (atomIds.length > 0) byKey.set(record.query, [...(byKey.get(record.query) ?? []), ...atomIds].sort());
+  }
   return [...byKey.entries()].filter(([, atomIds]) => new Set(atomIds).size > 1).sort(([a], [b]) => a.localeCompare(b)).map(([key, atomIds]) => interfaceSummaryForKey(key, [...new Set(atomIds)].sort(), graph));
 }
 
@@ -82,7 +157,7 @@ function interfaceSummaryForKey(key: string, atomIds: string[], graph: PlanningA
 }
 
 function deriveSections(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], limits: SharedPlanningBriefLimits): SharedPlanningBriefSection[] {
-  const evidenceSections = ownership.filter((entry) => entry.shared && entry.primaryAtomId).map((entry) => section(`shared-evidence-${evidenceSlug(entry.path)}`, 'evidence', entry.referencedByAtomIds, bounded(`Shared evidence path: ${entry.path}\nPrimary atom: ${entry.primaryAtomId}\nConsumer atoms: ${entry.consumerAtomIds.join(', ') || '(none)'}\nUse the primary atom's accepted shared finding instead of repeating detailed exploration.`, limits.maxSectionBytes), entry.primaryAtomId));
+  const evidenceSections = ownership.filter((entry) => entry.shared && entry.primaryAtomId).map((entry) => section(`shared-evidence-${evidenceSlug(entry.path)}`, 'evidence', entry.referencedByAtomIds, bounded(`Shared evidence path: ${entry.path}\nPrimary atom: ${entry.primaryAtomId}\nConsumer atoms: ${entry.consumerAtomIds.join(', ') || '(none)'}${entry.localizationNeedIds?.length ? `\nLocalization needs: ${entry.localizationNeedIds.join(', ')}` : ''}${entry.localizationConfidence ? `\nLocalization confidence: ${entry.localizationConfidence}` : ''}${entry.candidateRank !== undefined ? `\nCandidate rank: ${entry.candidateRank}` : ''}${entry.ownershipRationale ? `\nWhy selected: ${entry.ownershipRationale}` : ''}\nUse the primary atom's accepted shared finding instead of repeating detailed exploration.`, limits.maxSectionBytes), entry.primaryAtomId));
   const interfaceSections = interfaceSummaries.map((item) => section(`shared-interface-${stableSlug(item.key)}`, 'interface', item.atomIds, bounded(item.summary, limits.maxSectionBytes), item.primaryAtomId));
   const dependencySection = graph.edges.length > 0 ? [section('atom-dependency-overview', 'dependency', graph.atoms.map((atom) => atom.atomId), bounded(`Atom dependency edges:\n${graph.edges.map((edge) => `- ${edge.fromAtomId} -> ${edge.toAtomId}: ${edge.reason}`).join('\n')}`, limits.maxSectionBytes))] : [];
   const avoidance = graph.atoms.length > 0 ? [section('evidence-avoidance-guidance', 'avoidance', graph.atoms.map((atom) => atom.atomId), 'Avoid generated planner artifacts, .decomposition outputs, orchestration files, broad package roots, and tool-noise paths as implementation evidence.')] : [];
@@ -96,14 +171,37 @@ function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceO
     const ownedEvidencePaths = ownership.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.path).sort();
     const localEvidencePaths = ownership.filter((entry) => !entry.shared && entry.referencedByAtomIds.includes(atom.atomId)).map((entry) => entry.path).sort();
     const ownedInterfaceKeys = interfaceSummaries.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.key).sort();
-    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: sectionByEvidencePath.get(entry.path)! })).sort((a, b) => a.path.localeCompare(b.path));
+    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: sectionByEvidencePath.get(entry.path)!, ...evidenceRefMetadata(entry) })).sort((a, b) => a.path.localeCompare(b.path));
     const sharedInterfaceRefs = interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId)).map((entry) => ({ key: entry.key, primaryAtomId: entry.primaryAtomId, sectionId: sectionByInterfaceKey.get(entry.key)! })).sort((a, b) => a.key.localeCompare(b.key));
     const sectionIds = sectionIdsForAtom(atom.atomId, sections, [...ownedEvidencePaths, ...sharedEvidenceRefs.map((ref) => ref.path)], sectionByEvidencePath);
     const atomSections = sections.filter((section) => sectionIds.includes(section.sectionId)).map(briefSection);
     const prerequisiteAtomIds = [...new Set([...sharedEvidenceRefs.map((ref) => ref.primaryAtomId), ...sharedInterfaceRefs.map((ref) => ref.primaryAtomId)])].sort();
-    return { atomId: atom.atomId, ownedEvidencePaths, localEvidencePaths, ownedInterfaceKeys, sharedEvidenceRefs, sharedInterfaceRefs, prerequisiteAtomIds, sectionIds, sections: atomSections, byteLength: atomSections.reduce((sum, section) => sum + section.byteLength, 0) };
+    const evidenceSummaries = ownership.filter((entry) => entry.referencedByAtomIds.includes(atom.atomId)).map(evidenceSummary).sort((a, b) => a.path.localeCompare(b.path));
+    return { atomId: atom.atomId, ownedEvidencePaths, localEvidencePaths, ownedInterfaceKeys, sharedEvidenceRefs, sharedInterfaceRefs, prerequisiteAtomIds, sectionIds, sections: atomSections, evidenceSummaries, byteLength: atomSections.reduce((sum, section) => sum + section.byteLength, 0) };
   }).sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
+
+// --- eforge:region plan-02-localized-evidence-pipeline ---
+function evidenceRefMetadata(entry: PlanningEvidenceOwnership): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale'> {
+  return {
+    ...(entry.localizationNeedIds ? { localizationNeedIds: [...entry.localizationNeedIds] } : {}),
+    ...(entry.localizationStatus ? { localizationStatus: entry.localizationStatus } : {}),
+    ...(entry.localizationConfidence ? { localizationConfidence: entry.localizationConfidence } : {}),
+    ...(entry.candidateRank !== undefined ? { candidateRank: entry.candidateRank } : {}),
+    ...(entry.ownershipRationale ? { ownershipRationale: entry.ownershipRationale } : {}),
+  };
+}
+
+function evidenceSummary(entry: PlanningEvidenceOwnership): PlanningAtomBriefEvidenceSummary {
+  return {
+    path: entry.path,
+    shared: entry.shared,
+    ...(entry.primaryAtomId ? { primaryAtomId: entry.primaryAtomId } : {}),
+    consumerAtomIds: [...entry.consumerAtomIds],
+    ...evidenceRefMetadata(entry),
+  };
+}
+// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 
 function sectionIdsForAtom(atomId: string, sections: SharedPlanningBriefSection[], paths: string[], sectionByEvidencePath: Map<string, string>): string[] {
   const evidenceSections = paths.flatMap((path) => sectionByEvidencePath.get(path) ? [sectionByEvidencePath.get(path)!] : []);

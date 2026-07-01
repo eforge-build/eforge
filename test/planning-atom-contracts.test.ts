@@ -18,7 +18,7 @@ function graphFrom(criteria: string[]) {
 
 describe('planning atom map contracts', () => {
   it('builds atom tasks with aspect IDs and bounded source context', () => {
-    const { graph, inventory } = graphFrom(['engine updates `packages/engine/src/config.ts`.', 'client updates `packages/client/src/events.ts` after ac-001.']);
+    const { graph, inventory } = graphFrom(['engine updates `packages/engine/src/config.ts`.', 'client CLI updates `packages/client/src/events.ts` after ac-001.']);
 
     const tasks = buildPlanningAtomTasks({ graph, inventory });
 

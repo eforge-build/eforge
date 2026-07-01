@@ -1,15 +1,20 @@
 import type { PlanningAtomGraph } from './atom-graph.js';
 import { classifyEvidenceCandidate } from './evidence-hygiene.js';
 import { utf8ByteLength } from './source-analysis.js';
+import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './source-localization-contracts.js';
 
 export type SharedPlanningBriefSectionKind = 'evidence' | 'interface' | 'dependency' | 'avoidance';
 
 export interface SharedPlanningBriefLimits { maxTotalBriefBytes: number; maxSectionBytes: number; maxSectionsPerAtom: number; maxSharedFindingsPerAtom: number; maxSharedFindingBytes: number }
-export interface PlanningEvidenceOwnership { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
-export interface PlanningSharedEvidenceRef { path: string; primaryAtomId: string; sectionId: string }
+// --- eforge:region plan-02-localized-evidence-pipeline ---
+export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string }
+export interface PlanningEvidenceOwnership extends PlanningEvidenceLocalizationMetadata { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
+export interface PlanningAtomBriefEvidenceSummary extends PlanningEvidenceLocalizationMetadata { path: string; shared: boolean; primaryAtomId?: string; consumerAtomIds: string[] }
+export interface PlanningSharedEvidenceRef extends PlanningEvidenceLocalizationMetadata { path: string; primaryAtomId: string; sectionId: string }
+// --- eforge:endregion plan-02-localized-evidence-pipeline ---
 export interface PlanningSharedInterfaceRef { key: string; primaryAtomId: string; sectionId: string }
 export interface PlanningAtomBriefSection { sectionId: string; kind: SharedPlanningBriefSectionKind; primaryAtomId?: string; content: string; byteLength: number }
-export interface PlanningAtomBrief { atomId: string; ownedEvidencePaths: string[]; localEvidencePaths: string[]; ownedInterfaceKeys: string[]; sharedEvidenceRefs: PlanningSharedEvidenceRef[]; sharedInterfaceRefs: PlanningSharedInterfaceRef[]; prerequisiteAtomIds: string[]; sectionIds: string[]; sections: PlanningAtomBriefSection[]; byteLength: number }
+export interface PlanningAtomBrief { atomId: string; ownedEvidencePaths: string[]; localEvidencePaths: string[]; ownedInterfaceKeys: string[]; sharedEvidenceRefs: PlanningSharedEvidenceRef[]; sharedInterfaceRefs: PlanningSharedInterfaceRef[]; prerequisiteAtomIds: string[]; sectionIds: string[]; sections: PlanningAtomBriefSection[]; evidenceSummaries?: PlanningAtomBriefEvidenceSummary[]; byteLength: number }
 export interface SharedPlanningBriefSection { sectionId: string; kind: SharedPlanningBriefSectionKind; atomIds: string[]; primaryAtomId?: string; content: string; byteLength: number }
 export interface SharedPlanningInterfaceSummary { key: string; atomIds: string[]; primaryAtomId: string; consumerAtomIds: string[]; summary: string }
 export interface SharedPlanningBrief { graphId: string; sourceHash: string; evidenceOwnership: PlanningEvidenceOwnership[]; interfaceSummaries: SharedPlanningInterfaceSummary[]; atomBriefs: PlanningAtomBrief[]; sections: SharedPlanningBriefSection[]; byteLength: number; limits: SharedPlanningBriefLimits }

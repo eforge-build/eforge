@@ -3,7 +3,7 @@ import { lstat, open, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { classifyEvidenceCandidate, isGeneratedPlanningArtifactPath, normalizeEvidenceValue } from './evidence-hygiene.js';
-import { DEFAULT_SOURCE_LOCALIZATION_LIMITS, type SourceLocalizationDiagnostic, type SourceLocalizationInputHints, type SourceLocalizationLimits } from './source-localization-contracts.js';
+import { normalizeSourceLocalizationInputs, type SourceLocalizationDiagnostic, type SourceLocalizationInputHints, type SourceLocalizationLimits } from './source-localization-contracts.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_IGNORE_PREFIXES = ['.git/', '.eforge/', '.decomposition/', 'node_modules/', 'dist/', 'build/', 'coverage/', '.cache/', '.next/', '.turbo/', '.pnpm-store/', 'tmp/', 'temp/'];
@@ -18,10 +18,11 @@ export interface RepositoryIndex { cwd: string; files: RepositoryIndexFile[]; di
 export interface DeriveRepositoryIndexInput { cwd: string; hints?: SourceLocalizationInputHints; limits?: Partial<SourceLocalizationLimits> }
 
 export async function deriveRepositoryIndex(input: DeriveRepositoryIndexInput): Promise<RepositoryIndex> {
-  const limits = { ...DEFAULT_SOURCE_LOCALIZATION_LIMITS, ...(input.limits ?? {}) };
-  const ignoredPrefixes = normalizeIgnorePrefixes([...(input.hints?.ignorePrefixes ?? []), ...DEFAULT_IGNORE_PREFIXES]);
-  const ignoredGlobs = [...DEFAULT_IGNORE_GLOBS, ...(input.hints?.ignoreGlobs ?? [])];
-  const diagnostics: SourceLocalizationDiagnostic[] = [];
+  const normalized = normalizeSourceLocalizationInputs(input.hints, input.limits);
+  const limits = normalized.limits;
+  const ignoredPrefixes = normalizeIgnorePrefixes([...(normalized.hints.ignorePrefixes ?? []), ...DEFAULT_IGNORE_PREFIXES]);
+  const ignoredGlobs = [...DEFAULT_IGNORE_GLOBS, ...(normalized.hints.ignoreGlobs ?? [])];
+  const diagnostics: SourceLocalizationDiagnostic[] = [...normalized.diagnostics];
   const root = await realpath(input.cwd);
   const listed = await listRepositoryPaths(root, limits, ignoredPrefixes, ignoredGlobs, diagnostics);
   const paths = listed.paths.filter((candidate) => !isIgnoredPath(candidate, ignoredPrefixes, ignoredGlobs));
@@ -32,7 +33,8 @@ export async function deriveRepositoryIndex(input: DeriveRepositoryIndexInput): 
 }
 
 export function isRepositoryIndexPathIgnored(pathValue: string, hints?: SourceLocalizationInputHints): boolean {
-  return isIgnoredPath(normalizeEvidenceValue(pathValue), normalizeIgnorePrefixes([...(hints?.ignorePrefixes ?? []), ...DEFAULT_IGNORE_PREFIXES]), [...DEFAULT_IGNORE_GLOBS, ...(hints?.ignoreGlobs ?? [])]);
+  const normalized = normalizeSourceLocalizationInputs(hints);
+  return isIgnoredPath(normalizeEvidenceValue(pathValue), normalizeIgnorePrefixes([...(normalized.hints.ignorePrefixes ?? []), ...DEFAULT_IGNORE_PREFIXES]), [...DEFAULT_IGNORE_GLOBS, ...(normalized.hints.ignoreGlobs ?? [])]);
 }
 
 async function listRepositoryPaths(root: string, limits: SourceLocalizationLimits, ignoredPrefixes: string[], ignoredGlobs: string[], diagnostics: SourceLocalizationDiagnostic[]): Promise<{ paths: string[]; usedGit: boolean; truncated: boolean }> {
@@ -163,8 +165,15 @@ function normalizeIgnorePrefixes(prefixes: string[]): string[] {
 }
 
 function globToRegExp(glob: string): RegExp {
-  const escaped = normalizePath(glob).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
-  return new RegExp(`^${escaped}$`);
+  const normalized = normalizePath(glob);
+  let source = '';
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    if (char === '*' && normalized[index + 1] === '*') { source += '.*'; index += 1; }
+    else if (char === '*') source += '[^/]*';
+    else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`);
 }
 
 function normalizePath(value: string): string {

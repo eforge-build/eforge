@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, materializePlanningSourceEvidence, runPlanningAtomMap, sourceEvidenceRecordsForAtom, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, deriveSourceLocalization, materializePlanningSourceEvidence, runPlanningAtomMap, sourceEvidenceRecordsForAtom, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -41,6 +41,29 @@ describe('planning source evidence materialization', () => {
     expect(record.deliveredToAtomIds).toEqual([ownership.primaryAtomId]);
     expect(sourceEvidenceRecordsForAtom(bundle, ownership.primaryAtomId!).find((item) => item.path === record.path)?.contentExcerpt).toContain('export const shared');
     expect(sourceEvidenceRecordsForAtom(bundle, consumerAtomId).find((item) => item.path === record.path)?.contentExcerpt).toBeUndefined();
+  });
+
+  it('materializes localized directory candidates as concrete records with rationale and byte accounting', async () => {
+    await writeEvidence('packages/engine/src/a.ts', 'export const localizedA = true;\n');
+    await writeEvidence('packages/engine/src/b.ts', 'export const localizedB = true;\n');
+    const content = prd(['engine updates `packages/engine/src` with localized source evidence.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content), path: 'source-evidence.md' });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), path: 'source-evidence.md', limits, inventory });
+    const localization = await deriveSourceLocalization({ cwd, inventory, graph });
+    const brief = deriveSharedPlanningBrief({ graph, sourceLocalizationBundle: localization });
+
+    const bundle = await materializePlanningSourceEvidence({ cwd, graph, sharedBrief: brief });
+    const paths = bundle.records.map((record) => record.path).sort();
+    const localized = bundle.records.find((record) => record.path === 'packages/engine/src/a.ts')!;
+
+    expect(paths).toEqual(['packages/engine/src/a.ts', 'packages/engine/src/b.ts']);
+    expect(bundle.records.some((record) => record.path === 'packages/engine/src' && record.status === 'directory')).toBe(false);
+    expect(localized.status).toBe('materialized');
+    expect(localized.localizationNeedIds?.length).toBeGreaterThan(0);
+    expect(localized.ownershipRationale).toContain('directory expansion');
+    expect(localized.budgetNotes).toContain('excerpt-bytes:32/8000');
+    expect(bundle.totalBytes).toBe(64);
+    expect(bundle.bytesByAtomId?.[graph.atoms[0].atomId]).toBe(64);
   });
 
   it('records missing, directory, non-actionable, and oversized evidence statuses without throwing', async () => {

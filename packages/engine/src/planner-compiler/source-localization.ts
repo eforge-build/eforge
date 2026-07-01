@@ -5,7 +5,7 @@ import type { RepositoryIndex, RepositoryIndexFile } from './repository-index.js
 import { deriveRepositoryIndex } from './repository-index.js';
 import { inferInterfaceKeys, inferSubsystemHints, stableSlug } from './source-analysis.js';
 import type { SourceInventory } from './source-inventory.js';
-import { DEFAULT_SOURCE_LOCALIZATION_LIMITS, validateSourceLocalizationBundle, type SourceLocalizationBundle, type SourceLocalizationCandidate, type SourceLocalizationConfidence, type SourceLocalizationDiagnostic, type SourceLocalizationHint, type SourceLocalizationInputHints, type SourceLocalizationLimits, type SourceLocalizationNeed, type SourceLocalizationNeedKind, type SourceLocalizationRecord, type SourceLocalizationStatus } from './source-localization-contracts.js';
+import { normalizeSourceLocalizationInputs, validateSourceLocalizationBundle, type SourceLocalizationBundle, type SourceLocalizationCandidate, type SourceLocalizationConfidence, type SourceLocalizationDiagnostic, type SourceLocalizationHint, type SourceLocalizationInputHints, type SourceLocalizationLimits, type SourceLocalizationNeed, type SourceLocalizationNeedKind, type SourceLocalizationRecord, type SourceLocalizationStatus } from './source-localization-contracts.js';
 
 export interface DeriveSourceLocalizationInput { cwd: string; inventory?: SourceInventory; graph?: PlanningAtomGraph; aspects?: PlanningCriterionAspect[]; hints?: SourceLocalizationInputHints; limits?: Partial<SourceLocalizationLimits>; index?: RepositoryIndex }
 
@@ -26,16 +26,19 @@ const SURFACE_PATTERNS: Array<[SourceLocalizationNeedKind, RegExp]> = [
 const BROAD_ROOTS = new Set(['.', '', 'src', 'lib', 'test', 'tests', 'docs', 'packages', 'apps', 'services']);
 
 export async function deriveSourceLocalization(input: DeriveSourceLocalizationInput): Promise<SourceLocalizationBundle> {
-  const limits = { ...DEFAULT_SOURCE_LOCALIZATION_LIMITS, ...(input.limits ?? {}) };
-  const index = input.index ?? await deriveRepositoryIndex({ cwd: input.cwd, hints: input.hints, limits });
-  const needs = deriveSourceLocalizationNeeds(input);
+  const normalized = normalizeSourceLocalizationInputs(input.hints, input.limits);
+  const limits = normalized.limits;
+  const normalizedInput = { ...input, hints: normalized.hints, limits };
+  const index = input.index ?? await deriveRepositoryIndex({ cwd: input.cwd, hints: normalized.hints, limits });
+  const needs = deriveSourceLocalizationNeeds(normalizedInput);
   const records = needs.map((need) => resolveNeed(need, index, limits));
-  const bundle: SourceLocalizationBundle = { sourceHash: input.inventory?.sourceHash ?? input.graph?.sourceHash, graphId: input.graph?.graphId, records: records.sort((a, b) => a.needId.localeCompare(b.needId)), byAtomId: byAtom(records), diagnostics: [...records.flatMap((record) => record.diagnostics), ...index.diagnostics], limits, indexDiagnostics: index.diagnostics };
+  const bundle: SourceLocalizationBundle = { sourceHash: input.inventory?.sourceHash ?? input.graph?.sourceHash, graphId: input.graph?.graphId, records: records.sort((a, b) => a.needId.localeCompare(b.needId)), byAtomId: byAtom(records), diagnostics: [...normalized.diagnostics, ...records.flatMap((record) => record.diagnostics), ...index.diagnostics], limits, indexDiagnostics: index.diagnostics };
   const validation = validateSourceLocalizationBundle(bundle);
   return validation.ok ? bundle : { ...bundle, diagnostics: [...bundle.diagnostics, ...validation.errors.map((message) => ({ code: 'localization-validation', message, severity: 'error' as const }))] };
 }
 
 export function deriveSourceLocalizationNeeds(input: Pick<DeriveSourceLocalizationInput, 'inventory' | 'graph' | 'aspects' | 'hints'>): SourceLocalizationNeed[] {
+  const hints = normalizeSourceLocalizationInputs(input.hints).hints;
   const needs: SourceLocalizationNeed[] = [];
   for (const criterion of input.inventory?.criteria ?? []) {
     const aspectIds = aspectIdsForCriterion(criterion.id, input.aspects);
@@ -46,7 +49,7 @@ export function deriveSourceLocalizationNeeds(input: Pick<DeriveSourceLocalizati
   }
   for (const globalNeed of input.inventory?.globalLocalizationNeeds ?? []) needs.push(need(`inventory-${globalNeed.id}`, globalNeed.kind, globalNeed.query, globalNeed.criterionIds, [], globalNeed.subsystemHints, globalNeed.interfaceKeys, [], 'inventory'));
   for (const candidate of input.inventory?.evidenceCandidates.filter((item) => item.actionable) ?? []) needs.push(need(`inventory-evidence-${evidenceSlug(candidate.value)}`, candidate.kind === 'directory' ? 'directory' : 'literal-path', candidate.value, [], [], inferSubsystemHints(candidate.value), inferInterfaceKeys(candidate.value), [], 'inventory'));
-  for (const hint of input.hints?.projectHints ?? []) needs.push(...hintNeeds(hint));
+  for (const hint of hints.projectHints ?? []) needs.push(...hintNeeds(hint));
   const assigned = assignNeedsToAtoms(dedupeNeeds(needs), input.graph);
   return assigned.length > 0 ? assigned : atomFallbackNeeds(input.graph);
 }

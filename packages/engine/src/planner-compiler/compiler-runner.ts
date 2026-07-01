@@ -8,6 +8,8 @@ import type { SharedPlanningBrief, SharedPlanningBriefLimits } from './shared-br
 import { materializePlanningSourceEvidence } from './source-evidence-materialization.js';
 import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits } from './source-evidence-contracts.js';
 import { deriveSourceInventory, type SourceInventory } from './source-inventory.js';
+import { deriveSourceLocalization } from './source-localization.js';
+import type { SourceLocalizationBundle, SourceLocalizationInputHints, SourceLocalizationLimits } from './source-localization-contracts.js';
 import { runPlanningReduce, type PlanningReduceResult } from './reduce-runner.js';
 import { deriveInitialReduceDigestPromptBudget } from './prompt-budget-planner.js';
 import { DEFAULT_PLANNING_REDUCE_LIMITS, type PlanningReduceLimits } from './reduce-contracts.js';
@@ -26,6 +28,8 @@ export interface RunBoundedPlannerCompilerInput {
   limits: PlanningDecompositionLimits;
   agentOptions?: SdkPassthroughConfig & { maxTurns?: number };
   sharedBriefLimits?: Partial<SharedPlanningBriefLimits>;
+  sourceLocalizationHints?: SourceLocalizationInputHints;
+  sourceLocalizationLimits?: Partial<SourceLocalizationLimits>;
   sourceEvidenceLimits?: Partial<PlanningSourceEvidenceLimits>;
   reduceLimits?: Partial<PlanningReduceLimits>;
   residueLimits?: Partial<PlanningResidueLimits>;
@@ -37,6 +41,7 @@ export interface RunBoundedPlannerCompilerInput {
 export interface BoundedPlannerCompilerResult {
   sourceInventory: SourceInventory;
   atomGraph: PlanningAtomGraph;
+  sourceLocalizationBundle: SourceLocalizationBundle;
   sharedBrief: SharedPlanningBrief;
   sourceEvidenceBundle: PlanningSourceEvidenceBundle;
   map: PlanningAtomMapResult;
@@ -50,20 +55,22 @@ export interface BoundedPlannerCompilerResult {
 export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompilerInput): Promise<BoundedPlannerCompilerResult> {
   const sourceInventory = deriveSourceInventory({ content: input.sourceContent, hash: input.sourceHash, path: input.sourcePath });
   const atomGraph = derivePlanningAtomGraph({ content: input.sourceContent, hash: sourceInventory.sourceHash, path: input.sourcePath, limits: input.limits, inventory: sourceInventory });
-  const sharedBrief = deriveSharedPlanningBrief({ graph: atomGraph, limits: input.sharedBriefLimits });
+  const sourceLocalizationBundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: sourceInventory, graph: atomGraph, hints: input.sourceLocalizationHints, limits: input.sourceLocalizationLimits });
+  const sharedBrief = deriveSharedPlanningBrief({ graph: atomGraph, sourceLocalizationBundle, limits: input.sharedBriefLimits });
   const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: atomGraph, sharedBrief, limits: input.sourceEvidenceLimits });
   const reduceLimits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.reduceLimits ?? {}) };
   const reduceDigestPromptBudgetBytes = deriveInitialReduceDigestPromptBudget({ graph: atomGraph, limits: reduceLimits });
   const map = await runPlanningAtomMap({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent });
   const reduce = await runPlanningReduce({ graph: atomGraph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
   const residue = synthesizePlanningResidue({ graph: atomGraph, coverage: map.coverage, atomOutputs: map.outputs, sourceEvidenceBundle, reduceOutputs: reduce.outputs, limits: input.residueLimits });
-  const validationErrors = compilerValidationErrors(sourceEvidenceBundle, map, reduce, residue);
-  return { sourceInventory, atomGraph, sharedBrief, sourceEvidenceBundle, map, reduce, residue, status: compilerStatus(map, reduce, residue, validationErrors), validationErrors, events: [...map.events, ...reduce.events] };
+  const validationErrors = compilerValidationErrors(sourceLocalizationBundle, sourceEvidenceBundle, map, reduce, residue);
+  return { sourceInventory, atomGraph, sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce, residue, status: compilerStatus(map, reduce, residue, validationErrors), validationErrors, events: [...map.events, ...reduce.events] };
 }
 
-function compilerValidationErrors(sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis): string[] {
+function compilerValidationErrors(sourceLocalizationBundle: SourceLocalizationBundle, sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis): string[] {
   const reduceErrors = residue.candidates.length > 0 ? reduce.validationErrors.filter((error) => error !== 'map result incomplete') : reduce.validationErrors;
-  return [...new Set([...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduceErrors, ...residue.validationErrors])].sort();
+  const localizationErrors = sourceLocalizationBundle.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').map((diagnostic) => `source localization ${diagnostic.code}${diagnostic.path ? `:${diagnostic.path}` : ''}:${diagnostic.message}`);
+  return [...new Set([...localizationErrors, ...sourceEvidenceBundle.validationErrors, ...map.validationErrors, ...reduceErrors, ...residue.validationErrors])].sort();
 }
 
 function compilerStatus(map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, validationErrors: string[]): BoundedPlannerCompilerStatus {

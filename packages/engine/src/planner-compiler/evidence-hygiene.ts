@@ -54,7 +54,7 @@ export function evidenceSlug(value: string): string {
 }
 
 export function isGeneratedPlanningArtifactPath(path: string): boolean {
-  return path.includes('/.decomposition/') || path.startsWith('.decomposition/') || GENERATED_FILE_RE.test(path);
+  return path.includes('/.decomposition/') || path.startsWith('.decomposition/') || path.startsWith('eforge/plans/') || GENERATED_FILE_RE.test(path);
 }
 
 function candidate(raw: string, value: string, kind: PlanningEvidenceKind, actionable: boolean, rank: number, reason: string): PlanningEvidenceCandidate {
