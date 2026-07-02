@@ -113,6 +113,14 @@ export const CompilerDiagnosticsEvidenceFailureSchema = Type.Object({
   referencedByAtomIds: boundedIds(160, 16),
 }, { additionalProperties: false });
 
+export const CompilerDiagnosticsSharedBriefBudgetEntrySchema = Type.Object({
+  code: Type.Union([Type.Literal('atom-section-demoted'), Type.Literal('section-dropped-unreferenced'), Type.Literal('section-dropped-total-budget')]),
+  sectionId: boundedString(300),
+  atomId: Type.Optional(boundedString(160)),
+  path: Type.Optional(boundedString(300)),
+  message: boundedString(500),
+}, { additionalProperties: false });
+
 export const CompilerDiagnosticsSchema = Type.Object({
   version: Type.Literal(COMPILER_DIAGNOSTICS_VERSION),
   planSetName: boundedString(200),
@@ -140,6 +148,7 @@ export const CompilerDiagnosticsSchema = Type.Object({
     candidates: Type.Array(CompilerDiagnosticsResidueCandidateSchema, { maxItems: 80 }),
   }, { additionalProperties: false }),
   evidenceFailures: Type.Array(CompilerDiagnosticsEvidenceFailureSchema, { maxItems: 128 }),
+  sharedBriefBudget: Type.Array(CompilerDiagnosticsSharedBriefBudgetEntrySchema, { maxItems: 128 }),
   omitted: Type.Object({
     gaps: count(),
     conflicts: count(),
@@ -150,6 +159,7 @@ export const CompilerDiagnosticsSchema = Type.Object({
     residueCandidates: count(),
     validationErrors: count(),
     descriptionBytes: count(),
+    sharedBriefBudget: count(),
   }, { additionalProperties: false }),
 }, { additionalProperties: false });
 
