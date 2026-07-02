@@ -4,7 +4,6 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import type { AgentRole, EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk } from '@eforge-build/engine/events';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
-import { runPlanner } from '@eforge-build/engine/agents/planner';
 import {
   CompileScopeContextError,
   createCompileContextGuard,
@@ -122,21 +121,6 @@ describe('planner-family context guard', () => {
       guard.assertPrompt('small prompt');
       guard.observe(usageEvent('planner', { input: 5, total: 5 }, false));
     }).not.toThrow();
-  });
-
-  it('runPlanner prompt guard throws before the harness is called without aborting the parent controller', async () => {
-    const backend = new StubHarness([{ text: 'not reached' }]);
-    const abortController = new AbortController();
-    await expect(collectEvents(runPlanner('Build widgets', {
-      harness: backend,
-      cwd: makeTempDir(),
-      auto: true,
-      scope: 'excursion',
-      abortController,
-      contextGuard: { stage: 'planner', limits: { maxPromptBytes: 1 } },
-    }))).rejects.toThrow(CompileScopeContextError);
-    expect(backend.calls).toHaveLength(0);
-    expect(abortController.signal.aborted).toBe(false);
   });
 
   it('composePipeline prompt guard throws before the harness is called', async () => {

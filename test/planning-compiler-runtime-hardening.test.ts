@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CompilePreflightRisk, PlanningDecompositionLimits } from '@eforge-build/client';
-import { DEFAULT_CONFIG, DEFAULT_REVIEW, resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
 import { getCompileStage } from '@eforge-build/engine/pipeline';
 import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
@@ -22,7 +22,6 @@ describe('bounded planner compiler runtime hardening', () => {
     const sourceContent = prd(['engine updates `packages/engine/src/missing.ts` with bounded source evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'missing-evidence');
@@ -37,7 +36,6 @@ describe('bounded planner compiler runtime hardening', () => {
     const sourceContent = prd(['engine updates `packages/engine/src/huge.ts` with bounded source evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'oversized source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'oversized-evidence');
@@ -55,7 +53,6 @@ describe('bounded planner compiler runtime hardening', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
@@ -63,7 +60,7 @@ describe('bounded planner compiler runtime hardening', () => {
 
     await collect(getCompileStage('planner')(ctx));
 
-    const sourceEvidenceSection = promptSection(harness.prompts[1], '## Source evidence', '## Structured submission rules');
+    const sourceEvidenceSection = promptSection(harness.prompts[0], '## Source evidence', '## Structured submission rules');
     expect(sourceEvidenceSection).toContain('packages/engine/src/a.ts');
     expect(sourceEvidenceSection).not.toContain('eforge/plans/old/orchestration.yaml');
     expect(sourceEvidenceSection).not.toContain('generated: true');
@@ -77,7 +74,6 @@ describe('bounded planner compiler runtime hardening', () => {
     const mapOutput = completedOutput(task);
     const reduceOutput = reduceOutputWithGapAndConflict(mapOutput);
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission(mapOutput),
       reduceSubmission(reduceOutput),
     ]);
@@ -159,9 +155,6 @@ function reduceSubmission(output: ReturnType<typeof completedReduceOutput> | Ret
   return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
-function composerResponse() {
-  return { resultText: JSON.stringify({ scope: 'excursion', compile: ['planner', 'plan-review-cycle'], defaultBuild: ['implement'], defaultReview: DEFAULT_REVIEW, rationale: 'bounded runtime hardening' }) };
-}
 
 function overflowRisk(content: string): CompilePreflightRisk {
   return {

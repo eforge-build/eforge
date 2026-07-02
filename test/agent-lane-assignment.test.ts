@@ -11,7 +11,6 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
-import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
@@ -66,22 +65,6 @@ describe('planning agent lane assignment', () => {
     expect(starts).toHaveLength(1);
     expect(starts[0].planId).toBe('planning');
     expect(starts[0].agent).toBe('pipeline-composer');
-  });
-
-  it('planner agent:start carries planId: planning', async () => {
-    // Planner will throw PlannerSubmissionError because the stub response
-    // doesn't call a submission tool, but agent:start is emitted first.
-    const harness = new StubHarness([{ text: 'I will plan this.' }]);
-
-    const starts = await collectAgentStartEvents(runPlanner('Build a widget', {
-      harness,
-      cwd: '/tmp',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('planner');
   });
 
   it('plan-reviewer agent:start carries planId: planning', async () => {

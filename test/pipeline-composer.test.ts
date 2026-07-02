@@ -232,26 +232,4 @@ describe('composePipeline', () => {
     expect(backend.prompts).toHaveLength(2);
   });
 
-  it('planner compile stage wraps pipeline-composer in retry policy', async () => {
-    const backend = new StubHarness([
-      { error: new AgentTerminalError('error_pi_tool_infrastructure', 'Theme not initialized. Call initTheme() first.') },
-      { resultText: VALID_DELEGATED_COMPILE },
-    ]);
-    const cwd = makeTempDir();
-    const ctx = makePlannerStageContext(backend, cwd);
-    const plannerStage = getCompileStage('planner');
-
-    const events = await collectEvents(plannerStage(ctx));
-
-    expect(filterEvents(events, 'agent:retry')).toHaveLength(1);
-    expect(filterEvents(events, 'agent:retry')[0]).toMatchObject({
-      agent: 'pipeline-composer',
-      subtype: 'error_pi_tool_infrastructure',
-      label: 'pipeline-composer-infrastructure-retry',
-    });
-    expect(findEvent(events, 'planning:pipeline')).toMatchObject({ compile: [] });
-    expect(findEvent(events, 'planning:progress')?.message).toContain('delegating to new compile stages');
-    expect(ctx.pipeline.compile).toEqual([]);
-    expect(backend.prompts).toHaveLength(2);
-  });
 });

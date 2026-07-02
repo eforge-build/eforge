@@ -12,7 +12,7 @@ import {
 } from '../schemas.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { applyArchitectureReviewFixes } from '../plan.js';
-import { formatSubmissionValidationError } from './planner.js';
+import { formatSubmissionValidationError } from './common.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 /**

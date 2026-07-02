@@ -22,38 +22,6 @@ const VALID_PIPELINE = JSON.stringify({
 describe('compile stages model-aware context guards', () => {
   const makeTempDir = useTempDir('eforge-stage-context-guard-');
 
-  it('derives pipeline-composer guard diagnostics from that role resolved Pi config before the agent run', async () => {
-    const backend = new StubHarness([{ text: 'not reached' }]);
-    const err = await expectCompileScopeContextError(stageContext('planner', backend, makeTempDir(), {
-      compileContextGuardLimits: { maxPromptBytes: 1 },
-    }));
-
-    expect(err.failure.stage).toBe('pipeline-composer');
-    expect(err.failure.guardDiagnostics).toMatchObject({
-      provider: PROVIDER,
-      modelId: MODEL_ID,
-      metadataSource: 'fallback',
-      limits: expect.objectContaining({ maxPromptBytes: 1 }),
-    });
-    expect(backend.calls).toHaveLength(0);
-  });
-
-  it('carries planner guard diagnostics from the planner resolved Pi config on provider context failures', async () => {
-    const backend = new StubHarness([
-      { resultText: VALID_PIPELINE },
-      { error: new Error('context window exceeded') },
-    ]);
-    const err = await expectCompileScopeContextError(stageContext('planner', backend, makeTempDir()));
-
-    expect(err.failure.stage).toBe('planner');
-    expect(err.failure.guardDiagnostics).toMatchObject({
-      provider: PROVIDER,
-      modelId: MODEL_ID,
-      metadataSource: 'fallback',
-    });
-    expect(backend.calls).toHaveLength(2);
-  });
-
   it('carries module-planner guard diagnostics from the module-planner resolved Pi config on provider context failures', async () => {
     const backend = new StubHarness([{ error: new Error('context window exceeded') }]);
     const err = await expectCompileScopeContextError(stageContext('module-planning', backend, makeTempDir(), {

@@ -147,9 +147,6 @@ class ParityHarness implements AgentHarness {
   }
 }
 
-function composerResponse(scope: 'errand' | 'excursion' | 'expedition'): StubResponse {
-  return { resultText: JSON.stringify({ scope, compile: ['planner'], defaultBuild: ['implement'], defaultReview: TEST_PIPELINE.defaultReview, rationale: 'parity fixture' }) };
-}
 
 const NO_FIX_REVIEW: StubResponse = { text: '<review-issues></review-issues>' };
 
@@ -178,7 +175,7 @@ async function compileParityFixture(input: {
     for (const node of tree.nodes) keyed.set(node.nodeId, scriptedReduceOutput(node, node.nodeId === tree.rootNodeId, tasks));
   }
 
-  const harness = new ParityHarness(keyed, [composerResponse(input.scope), NO_FIX_REVIEW]);
+  const harness = new ParityHarness(keyed, [NO_FIX_REVIEW]);
   const ctx = makePipelineCtx({
     cwd,
     sourceContent,

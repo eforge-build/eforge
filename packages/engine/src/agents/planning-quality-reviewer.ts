@@ -12,7 +12,7 @@ import {
   type PlanningQualityReviewSubmission,
 } from '../planning-quality/schemas.js';
 import { applyPlanningQualityReviewFixes } from '../planning-quality/apply-fixes.js';
-import { formatSubmissionValidationError } from './planner.js';
+import { formatSubmissionValidationError } from './common.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 
 /**

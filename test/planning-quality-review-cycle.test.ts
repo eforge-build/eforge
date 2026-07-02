@@ -20,7 +20,6 @@ import { StubHarness, type StubResponse } from './stub-harness.js';
 import {
   atomSubmission,
   completedOutput,
-  composerResponse,
   expectedTasks,
   noFixReviewerResponse,
   overflowRisk,
@@ -75,9 +74,9 @@ function makeCompilerCtx(cwd: string, planSetName: string, harness: StubHarness)
   });
 }
 
-/** Full compile pipeline script: composer, single atom, then the gate responses. */
+/** Full compile pipeline script: single atom, then the gate responses. */
 function pipelineScript(task: PlanningAtomTask, gateResponses: StubResponse[]): StubResponse[] {
-  return [composerResponse(['planner']), atomSubmission(fastPathAtomOutput(task)), ...gateResponses];
+  return [atomSubmission(fastPathAtomOutput(task)), ...gateResponses];
 }
 
 async function collectRejecting(gen: AsyncGenerator<EforgeEvent>): Promise<{ events: EforgeEvent[]; error: Error }> {

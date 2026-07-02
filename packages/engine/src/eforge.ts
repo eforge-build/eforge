@@ -401,14 +401,15 @@ export class EforgeEngine {
         : undefined;
       const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, worktreeBaseRef);
 
-      // Default pipeline — the planner stage's composePipeline() call will update ctx.pipeline
-      // with the actual composition before the planner agent runs.
+      // The compile pipeline is constant: the bounded planner compiler runs
+      // unconditionally, then the planning quality gate. Per-plan build/review
+      // defaults are replaced by the compiler's deterministic derivation.
       const defaultPipeline: import('./schemas.js').PipelineComposition = {
         scope: 'excursion',
-        compile: ['planner', 'plan-review-cycle'],
+        compile: ['planner', 'planning-quality-review-cycle'],
         defaultBuild: ['implement', 'review-cycle'],
         defaultReview: DEFAULT_REVIEW,
-        rationale: 'Default pipeline (will be replaced by composer)',
+        rationale: 'Bounded planner compiler pipeline',
       };
 
       const ctx: PipelineContext = {

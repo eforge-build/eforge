@@ -53,34 +53,6 @@ function config() {
   };
 }
 
-function composer(scope: 'excursion' | 'expedition' = 'excursion'): StubResponse {
-  return {
-    resultText: JSON.stringify({
-      scope,
-      compile: ['planner'],
-      defaultBuild: ['implement', 'review-cycle'],
-      defaultReview: { strategy: 'parallel', perspectives: ['code', 'test'], maxRounds: 1, evaluatorStrictness: 'standard' },
-      rationale: 'test composition',
-    }),
-  };
-}
-
-function directPlanResponse(id: string): StubResponse {
-  return {
-    toolCalls: [{
-      tool: 'submit_plan_set',
-      toolUseId: `tool-${id}`,
-      input: {
-        description: `bounded ${id}`,
-        plans: [{ frontmatter: { id: `plan-${id}`, name: `Plan ${id}` }, body: `# Plan ${id}\n\n## Acceptance Criteria\n- [ ] ${id}` }],
-        orchestration: { validate: [], plans: [{ id: `plan-${id}`, dependsOn: [] }] },
-      },
-      output: 'captured',
-    }],
-    text: `submitted ${id}`,
-  };
-}
-
 function compilerHarness(responses: StubResponse[], content: string, cfg = config()): AgentHarness & Pick<StubHarness, 'prompts' | 'calls'> {
   return new DynamicCompilerHarness(responses, expectedTasks(content, cfg));
 }
@@ -197,11 +169,11 @@ function hash(value: string): string {
   return `h${value.length}`.padEnd(64, '0');
 }
 
-describe('compile planner stage bounded compiler orchestration branch', () => {
-  it('routes overflow-risk bounded-decomposition through the canonical compiler without a broad root planner prompt', async () => {
+describe('compile planner stage bounded compiler orchestration', () => {
+  it('routes overflow-risk compiles through the canonical compiler without a broad root planner prompt', async () => {
     const content = source();
     const cfg = config();
-    const harness = compilerHarness([composer()], content, cfg);
+    const harness = compilerHarness([], content, cfg);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
       sourceContent: content,
@@ -222,24 +194,19 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
     const reducePromptCount = harness.calls.filter((call) => call.customTools?.some((tool) => tool.name === 'submit_reduce_output')).length;
     expect(atomPromptCount).toBe(expectedTasks(content, cfg).length);
     expect(reducePromptCount).toBeGreaterThan(0);
-    expect(harness.prompts).toHaveLength(1 + atomPromptCount + reducePromptCount);
-    expect(harness.prompts[0]).toContain(sentinel);
-    expect(harness.calls.slice(1).every((call) => call.tools === 'none')).toBe(true);
+    // No agent receives the monolithic root source as its prompt.
+    expect(harness.prompts.every((prompt) => !prompt.includes(sentinel) || prompt.includes('submit_'))).toBe(true);
     expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
   });
 
-  it('falls back to the bounded compiler when an elevated direct planner run trips the live guard', async () => {
+  it('routes normal-risk compiles through the bounded compiler unconditionally', async () => {
     const content = source();
     const cfg = config();
-    const harness = compilerHarness([
-      composer(),
-      { events: [{ kind: 'usage', usage: { input: 101, total: 101 }, numTurns: 1 }] },
-    ], content, cfg);
+    const harness = compilerHarness([], content, cfg);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
       sourceContent: content,
-      compilePreflight: elevatedRisk(),
-      compileContextGuardLimits: { maxObservedInputTokens: 100 },
+      compilePreflight: normalRisk(),
       config: cfg,
       pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
       agentRuntimes: singletonRegistry(harness),
@@ -247,34 +214,32 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
     // planning:complete is emitted by the planning-quality-review-cycle stage, not the planner stage.
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(false);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('running planning quality review'))).toBe(true);
+    expect(ctx.pipeline.compile).toEqual(['planner', 'planning-quality-review-cycle']);
     expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
-    expect(harness.prompts.some((prompt) => prompt.includes(sentinel))).toBe(true);
-    expect(harness.calls.slice(2).every((call) => call.tools === 'none')).toBe(true);
   });
 
-  it('leaves normal-risk planner-stage runs on the existing direct planner path', async () => {
-    const harness = new StubHarness([
-      composer(),
-      directPlanResponse('direct-root'),
-    ]);
+  it('announces the effective pipeline with a deterministic planning:pipeline event', async () => {
+    const content = source();
+    const cfg = config();
+    const harness = compilerHarness([], content, cfg);
     const ctx = makePipelineCtx({
       cwd: makeTempDir(),
-      sourceContent: source(),
-      compilePreflight: normalRisk(),
-      config: config(),
+      sourceContent: content,
+      compilePreflight: elevatedRisk(),
+      config: cfg,
       pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
       agentRuntimes: singletonRegistry(harness),
     });
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(false);
-    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
-    expect(harness.prompts).toHaveLength(2);
-    expect(harness.prompts[1]).toContain(sentinel);
+    const pipelineEvents = events.filter((event) => event.type === 'planning:pipeline');
+    expect(pipelineEvents).toHaveLength(1);
+    expect(pipelineEvents[0].compile).toEqual(['planner', 'planning-quality-review-cycle']);
+    expect(pipelineEvents[0].defaultBuild.length).toBeGreaterThan(0);
   });
 });

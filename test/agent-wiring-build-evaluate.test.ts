@@ -7,7 +7,6 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
-import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runReview } from '@eforge-build/engine/agents/reviewer';
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '@eforge-build/engine/agents/builder';
 import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';

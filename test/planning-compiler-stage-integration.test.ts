@@ -11,7 +11,6 @@ import {
   atomSubmission,
   completedOutput,
   completedReduceOutput,
-  composerResponse,
   expectedTasks,
   explorationSubmission,
   overflowRisk,
@@ -31,7 +30,6 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
@@ -76,7 +74,6 @@ describe('bounded planner compiler stage integration', () => {
       reduceDigest: { sourceId: task.atomId, sourceKind: 'atom', status: 'completed', summary: `Atom ${task.atomId} planned all assigned aspects.`, criterionIds: task.criterionIds, aspectIds: task.aspectIds },
     };
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission(mapOutput),
     ]);
     const ctx = makePipelineCtx({
@@ -110,7 +107,6 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
-      composerResponse(),
       explorationSubmission(['packages/engine/src/vague-owner.ts'], task.criterionIds),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
@@ -129,7 +125,7 @@ describe('bounded planner compiler stage integration', () => {
 
     const explorationStarts = events.filter((event) => event.type === 'agent:start' && event.planId === 'repository-exploration');
     expect(explorationStarts).toHaveLength(1);
-    const explorationCall = harness.calls[1];
+    const explorationCall = harness.calls[0];
     expect(explorationCall.tools).toBe('read-only');
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 1 localization hints'))).toBe(true);
     // The hinted owner path flows through localization into the atom planner's grounded evidence.
@@ -144,7 +140,6 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
-      composerResponse(),
       { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-bad', input: { projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
@@ -170,7 +165,6 @@ describe('bounded planner compiler stage integration', () => {
     const sourceContent = prd(['engine updates `packages/engine/src/a.ts` using bounded compiler evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
-      composerResponse(),
       atomSubmission(completedOutput(task)),
       reduceSubmission(sourceGapOutput(task, 'gap-owner')),
       atomSubmission(completedOutput(task)),
