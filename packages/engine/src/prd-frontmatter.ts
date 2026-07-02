@@ -149,7 +149,31 @@ export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdF
 export function serializeFrontmatterFieldValue(value: QueuedPrdFrontmatterFieldValue): string {
   if (Array.isArray(value)) return `[${value.map((item) => JSON.stringify(assertSafeFrontmatterString(item))).join(', ')}]`;
   if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return typeof value === 'number' ? String(value) : assertSafeFrontmatterString(value);
+  return typeof value === 'number' ? String(value) : serializeFrontmatterStringScalar(value);
+}
+
+// A plain (unquoted) YAML scalar breaks when it starts with an indicator character,
+// contains ": " / trailing ":", contains " #", or has surrounding whitespace.
+const YAML_PLAIN_SCALAR_UNSAFE = /^[\s\-?,[\]{}#&*!|>'"%@`]|:(?:\s|$)|\s#|\s$/;
+// Words that strict YAML parsers resolve to null/boolean, and full numeric tokens
+// (strict parsers resolve floats/exponents/hex that parseFrontmatterScalar leaves as strings).
+const YAML_NON_STRING_WORD = /^(?:null|~|true|false|yes|no|on|off)$/i;
+const YAML_NUMBER_TOKEN = /^[+-]?(?:0x[0-9a-f]+|0o[0-7]+|(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?|\.inf|\.nan)$/i;
+
+/**
+ * Serialize a free-form string (e.g. an LLM-derived title or hold reason) as a YAML
+ * scalar, double-quoting it whenever the plain form would be misparsed - by the
+ * simple parser in this file or by a strict YAML parser reading the same file.
+ */
+export function serializeFrontmatterStringScalar(value: string): string {
+  const safe = assertSafeFrontmatterString(value);
+  const needsQuoting =
+    safe === '' ||
+    YAML_PLAIN_SCALAR_UNSAFE.test(safe) ||
+    YAML_NON_STRING_WORD.test(safe) ||
+    YAML_NUMBER_TOKEN.test(safe) ||
+    parseFrontmatterScalar(safe) !== safe;
+  return needsQuoting ? JSON.stringify(safe) : safe;
 }
 
 export function assertSafeFrontmatterString(value: string): string { if (/[\x00-\x1f\x7f]/.test(value)) throw new Error('PRD frontmatter string values must not contain control characters or newlines'); return value; }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { enqueuePrd, getCompiledResumeFrontmatter, inferTitle, validatePrdFrontmatter } from '@eforge-build/engine/prd-queue';
+import { enqueuePrd, getCompiledResumeFrontmatter, inferTitle, loadQueue, validatePrdFrontmatter } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- inferTitle ---
@@ -185,6 +185,31 @@ describe('enqueuePrd', () => {
     });
 
     expect(result.id).toBe('add-oauth-2-0-sso');
+  });
+
+  it('quotes titles that would break YAML plain scalars and round-trips them', async () => {
+    const cwd = makeTempDir();
+    const titles = [
+      'fix: intake extraction', // ": " starts a nested mapping in strict YAML
+      '[intake] rewrite PRD sources', // leading "[" parses as a flow sequence
+      '1.5', // full numeric token resolves as a float
+      'true', // resolves as a boolean
+    ];
+
+    for (const title of titles) {
+      const result = await enqueuePrd({ body: 'body', title, queueDir: 'queue', cwd });
+      const content = readFileSync(result.filePath, 'utf-8');
+      expect(content).toContain(`title: ${JSON.stringify(title)}`);
+    }
+
+    const queued = await loadQueue('queue', cwd);
+    expect(queued.map((prd) => prd.frontmatter.title).sort()).toEqual([...titles].sort());
+  });
+
+  it('leaves safe plain titles unquoted', async () => {
+    const cwd = makeTempDir();
+    const result = await enqueuePrd({ body: 'body', title: '2026 Widget Fix v2.0', queueDir: 'queue', cwd });
+    expect(readFileSync(result.filePath, 'utf-8')).toContain('title: 2026 Widget Fix v2.0\n');
   });
 
   it('sets created to today ISO date', async () => {
