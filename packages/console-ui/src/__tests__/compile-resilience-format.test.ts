@@ -23,7 +23,7 @@ const failure: CompileScopeContextFailure = {
   explanation: 'Guard stopped compile.',
   risk,
   observed: { promptBytes: 8192, inputTokens: 10, outputTokens: 20, turns: 3 },
-  recovery: { action: 'retry-as-expedition', eligible: true, attempted: true, attempt: 1, maxAttempts: 2, reason: 'Retry broader pipeline.' },
+  recovery: { action: 'bounded-decomposition', eligible: true, attempted: true, attempt: 1, maxAttempts: 2, reason: 'Inspect bounded decomposition evidence.' },
   artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 1, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
 };
 
@@ -114,7 +114,6 @@ describe('compile resilience console formatting', () => {
   });
 
   it('maps recovery actions', () => {
-    expect(recoveryActionLabel('retry-as-expedition')).toBe('retry as expedition');
     expect(recoveryActionLabel('bounded-decomposition')).toBe('bounded decomposition');
     expect(recoveryActionLabel('manual-reduce-scope')).toBe('manual scope reduction');
     expect(recoveryActionLabel('repair-existing-artifacts')).toBe('repair existing artifacts');

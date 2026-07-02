@@ -186,18 +186,6 @@ describe('renderEvent', () => {
     expect(lines.join('\n')).toContain('attempt 1/2');
   });
 
-  it('renders attempted retry-as-expedition guidance without generic planning failure copy', () => {
-    const lines = captureConsoleLogs(() => {
-      renderEvent({
-        type: 'planning:scope-context:failure',
-        timestamp: '2025-01-01T00:00:00.000Z',
-        failure: { ...scopeFailure, recovery: { ...scopeFailure.recovery, action: 'retry-as-expedition', attempted: true } },
-      });
-    });
-
-    expect(lines.join('\n')).toContain('Compile context guard: retrying as expedition');
-    expect(lines.join('\n')).not.toContain('Planning failed:');
-  });
 
   it('falls back to the client event summary for unhandled event domains', () => {
     const lines = captureConsoleLogs(() => {

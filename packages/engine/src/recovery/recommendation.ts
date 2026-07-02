@@ -173,7 +173,7 @@ export function determineRecoveryRecommendation(
   if (summary.terminalFailure?.scope === 'compile' && summary.terminalFailure?.terminalSubtype === 'error_context_window') {
     return {
       verdict: 'manual',
-      rationale: `Compile scope/context failure detected${summary.terminalFailure.stage ? ` at ${summary.terminalFailure.stage}` : ''}. Use the sidecar recoveryOptions for bounded retry-as-expedition, decomposition, or manual scope-reduction guidance; automated apply-recovery does not mutate queue state for compile scope/context recovery.`,
+      rationale: `Compile scope/context failure detected${summary.terminalFailure.stage ? ` at ${summary.terminalFailure.stage}` : ''}. Use the sidecar recoveryOptions for bounded decomposition or manual scope-reduction guidance; automated apply-recovery does not mutate queue state for compile scope/context recovery.`,
     };
   }
 

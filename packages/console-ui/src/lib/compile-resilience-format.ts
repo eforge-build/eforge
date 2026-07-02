@@ -29,10 +29,11 @@ export function formatBytes(bytes: number): string {
 export function recoveryActionLabel(action: CompileRecoveryAction | CompileScopeContextOption['action']): string {
   switch (action) {
     case 'none': return 'none';
-    case 'retry-as-expedition': return 'retry as expedition';
     case 'bounded-decomposition': return 'bounded decomposition';
     case 'manual-reduce-scope': return 'manual scope reduction';
     case 'repair-existing-artifacts': return 'repair existing artifacts';
+    // The wire union still carries retired actions until the wire-surface change lands.
+    default: return action;
   }
 }
 

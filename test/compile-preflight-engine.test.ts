@@ -40,23 +40,17 @@ function smallPrd(): string {
 }
 
 describe('compile preflight engine plumbing', () => {
-  it('emits planning:preflight before any agent and compacts compiler prompts', async () => {
+  it('compacts generated-inventory blocks out of compiler prompts', async () => {
     const cwd = await setupProject();
     const harness = new StubHarness([{ text: 'no submission' }, { text: 'no submission' }]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness });
 
     const events = await collect(engine.compile(generatedPrd(), { name: 'preflight-generated' }));
-    const preflightIndex = events.findIndex((e) => e.type === 'planning:preflight');
-    const firstAgentStartIndex = events.findIndex((e) => e.type === 'agent:start');
-    expect(preflightIndex).toBeGreaterThanOrEqual(0);
-    expect(firstAgentStartIndex).toBeGreaterThan(preflightIndex);
-    const preflight = events[preflightIndex] as Extract<EforgeEvent, { type: 'planning:preflight' }>;
-    expect(preflight.risk.generatedInventory.blockCount).toBeGreaterThan(0);
-    expect(preflight.risk.generatedInventory.omittedBytes).toBeGreaterThan(0);
-    expect(preflight.risk.generatedInventory.contentHashes.length).toBeGreaterThan(0);
 
-    // The compacted prompt source feeds the bounded compiler: no agent prompt
-    // carries the raw generated inventory rows.
+    // The preflight advisory event is gone; the compacted prompt source still
+    // feeds the bounded compiler, so no agent prompt carries the raw
+    // generated inventory rows.
+    expect(events.some((e) => e.type === 'agent:start')).toBe(true);
     expect(harness.prompts.length).toBeGreaterThan(0);
     for (const prompt of harness.prompts) {
       expect(prompt).not.toContain(sentinel);

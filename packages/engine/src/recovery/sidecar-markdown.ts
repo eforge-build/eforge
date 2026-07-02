@@ -21,7 +21,6 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict['verdict']): str
 
 function compileRecoveryActionLabel(action: string): string {
   switch (action) {
-    case 'retry-as-expedition': return 'retry as expedition';
     case 'bounded-decomposition': return 'bounded decomposition';
     case 'manual-reduce-scope': return 'manual scope reduction';
     default: return action;

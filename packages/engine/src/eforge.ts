@@ -76,7 +76,7 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
-import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
+import { buildCompilePromptSourceBundle, type CompilePreflightOptions } from './compile-resilience/preflight.js';
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
 import { CompileScopeContextError } from './compile-resilience/context-guard.js';
 import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
@@ -384,8 +384,6 @@ export class EforgeEngine {
         selectedProfile: this.configProfile.name,
       };
       const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
-      const compilePreflight = estimateCompilePreflightRisk(compilePromptSourceBundle, compilePreflightOptions);
-      yield { timestamp: new Date().toISOString(), type: 'planning:preflight', risk: compilePreflight };
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -426,8 +424,6 @@ export class EforgeEngine {
         sourceContent,
         promptSourceContent: compilePromptSourceBundle.promptSource,
         compilePromptSourceBundle,
-        compilePreflightOptions,
-        compilePreflight,
         verbose: options.verbose,
         auto: options.auto,
         abortController: options.abortController,

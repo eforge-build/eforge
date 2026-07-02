@@ -107,107 +107,10 @@ export class CompileScopeContextError extends Error {
   }
 }
 
-export function createCompileContextGuard(options?: CompileContextGuardOptions): {
-  assertPrompt(prompt: string): void;
-  observe(event: EforgeEvent): void;
-} {
-  const stage = options?.stage ?? 'planner';
-  const limits = resolveCompileContextGuardLimits(options?.limits);
-  const observation = createPlannerContextObservationState();
-
-  function fail(reason: string): never {
-    throw new CompileScopeContextError(buildFailure({ stage, limits, risk: options?.risk, observed: observation.observed, reason, guardDiagnostics: options?.guardDiagnostics }));
-  }
-
-  return {
-    assertPrompt(prompt: string): void {
-      setPlannerContextPromptBytes(observation, prompt);
-      if (observation.observed.promptBytes > limits.maxPromptBytes) {
-        fail(`prompt bytes ${observation.observed.promptBytes} exceed maxPromptBytes ${limits.maxPromptBytes}`);
-      }
-    },
-    observe(event: EforgeEvent): void {
-      const delta = observePlannerContextUsage(observation, event, stage);
-      if (!delta) return;
-      if (!delta.final && delta.inputTokens > limits.maxObservedInputTokens) {
-        fail(`observed per-turn input tokens ${delta.inputTokens} exceed maxObservedInputTokens ${limits.maxObservedInputTokens}`);
-      }
-      if (!delta.final && limits.maxObservedTurns !== undefined && observation.observed.turns > limits.maxObservedTurns) {
-        fail(`observed turns ${observation.observed.turns} exceed maxObservedTurns ${limits.maxObservedTurns}`);
-      }
-    },
-  };
-}
-
 export function resolveCompileContextGuardLimits(limits?: Partial<CompileContextGuardLimits>): CompileContextGuardLimits {
   const resolved = { ...DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS, ...limits };
   return {
     ...resolved,
     maxExplanationBytes: Math.min(resolved.maxExplanationBytes, MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH),
   };
-}
-
-export function compileContextGuardOptions(input: {
-  stage: CompileContextGuardOptions['stage'];
-  risk?: CompilePreflightRisk;
-  limits?: Partial<CompileContextGuardLimits>;
-  guardDiagnostics?: CompileContextGuardDiagnostics;
-}): CompileContextGuardOptions {
-  return { stage: input.stage, risk: input.risk, limits: input.limits, guardDiagnostics: input.guardDiagnostics };
-}
-
-function buildFailure(input: {
-  stage: CompileContextGuardOptions['stage'];
-  risk?: CompilePreflightRisk;
-  limits: CompileContextGuardLimits;
-  observed: { inputTokens: number; outputTokens: number; turns: number; promptBytes: number };
-  reason: string;
-  guardDiagnostics?: CompileContextGuardDiagnostics;
-}): CompileScopeContextFailure {
-  const explanation = capUtf8([
-    `Planner-family context budget exceeded at stage=${input.stage}.`,
-    input.reason,
-    `observed promptBytes=${input.observed.promptBytes} inputTokens=${input.observed.inputTokens} outputTokens=${input.observed.outputTokens} turns=${input.observed.turns}.`,
-    `limits maxPromptBytes=${input.limits.maxPromptBytes} maxObservedInputTokens=${input.limits.maxObservedInputTokens} maxObservedTurns=${input.limits.maxObservedTurns ?? 'none'}.`,
-    input.risk ? `risk level=${input.risk.level} score=${input.risk.score} recovery=${input.risk.recommendation.action}.` : 'risk unavailable.',
-  ].join(' '), input.limits.maxExplanationBytes);
-
-  return {
-    source: 'live-context-guard',
-    failureKind: 'context-budget',
-    stage: input.stage,
-    explanation,
-    ...(input.risk && { risk: input.risk }),
-    ...(input.guardDiagnostics && { guardDiagnostics: input.guardDiagnostics }),
-    observed: {
-      inputTokens: Math.max(0, Math.floor(input.observed.inputTokens)),
-      outputTokens: Math.max(0, Math.floor(input.observed.outputTokens)),
-      turns: Math.max(0, Math.floor(input.observed.turns)),
-      promptBytes: Math.max(0, Math.floor(input.observed.promptBytes)),
-    },
-    recovery: {
-      action: input.risk?.recommendation.action ?? 'none',
-      eligible: input.risk?.recommendation.eligible ?? false,
-      attempted: false,
-      attempt: 0,
-      maxAttempts: 1,
-      reason: capUtf8(input.risk?.recommendation.reason ?? input.reason, 1_000),
-    },
-    artifacts: {
-      orchestrationExists: false,
-      validPlanCount: 0,
-      invalidPlanCount: 0,
-      missingPlanFileCount: 0,
-      missingPlanFiles: [],
-      invalidPlanFiles: [],
-    },
-  };
-}
-
-function capUtf8(text: string, maxBytes: number): string {
-  const bytes = Buffer.byteLength(text, 'utf8');
-  if (bytes <= maxBytes) return text;
-  let end = Math.max(0, maxBytes - Buffer.byteLength('…', 'utf8'));
-  while (Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes - Buffer.byteLength('…', 'utf8')) end--;
-  return `${text.slice(0, end)}…`;
 }

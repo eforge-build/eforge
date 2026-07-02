@@ -269,19 +269,9 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
     }
     case 'planning:scope-context:failure': {
       const model = renderCompileScopeContextFailureModel(event.failure);
-      if (model.attempted) {
-        const spinner = spinners.get('plan');
-        if (spinner) {
-          spinner.stop();
-          spinners.delete('plan');
-        }
-        console.log(chalk.yellow(`  ⚠ ${model.headline}`));
-      } else {
-        failSpinner('plan', `Planning stopped: ${event.failure.failureKind} at ${event.failure.stage}`);
-        console.log(chalk.red(`  ✗ ${model.headline}`));
-      }
+      failSpinner('plan', `Planning stopped: ${event.failure.failureKind} at ${event.failure.stage}`);
+      console.log(chalk.red(`  ✗ ${model.headline}`));
       for (const detail of model.details) console.log(chalk.dim(`    ${detail}`));
-      if (model.attempted) startSpinner('plan', 'Retrying planning as expedition...');
       return true;
     }
     case 'planning:complete':

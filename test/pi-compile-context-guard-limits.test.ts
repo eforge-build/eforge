@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH, safeParseEforgeEvent } from '@eforge-build/client';
-import { createCompileContextGuard, DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS } from '@eforge-build/engine/compile-resilience/context-guard';
+import { DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS } from '@eforge-build/engine/compile-resilience/context-guard';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import {
   PI_COMPILE_CONTEXT_DEFAULT_OUTPUT_RESERVE_TOKENS,
@@ -86,10 +86,6 @@ describe('Pi compile context guard limit derivation', () => {
     expect(result.limits.maxObservedInputTokens).toBe(expectedLimit(contextWindow, PI_COMPILE_CONTEXT_PLANNER_OUTPUT_RESERVE_TOKEN_CAP));
     expect(result.limits.maxObservedInputTokens).toBeGreaterThan(DEFAULT_COMPILE_CONTEXT_GUARD_LIMITS.maxObservedInputTokens);
     expect(result.limits.maxObservedInputTokens).toBeLessThan(Math.floor((contextWindow - PI_COMPILE_CONTEXT_OVERHEAD_RESERVE_TOKENS) * PI_COMPILE_CONTEXT_SAFETY_MARGIN));
-
-    const guard = createCompileContextGuard({ stage: 'planner', limits: result.limits, guardDiagnostics: result.guardDiagnostics });
-    guard.assertPrompt('ok');
-    expect(() => guard.observe(usageEvent(124_543))).not.toThrow();
   });
 
   it('uses custom override-style metadata and below-cap output-token metadata in the formula', async () => {
@@ -248,18 +244,6 @@ describe('Pi compile context guard limit derivation', () => {
   });
 });
 
-function usageEvent(inputTokens: number): EforgeEvent {
-  return {
-    type: 'agent:usage',
-    agentId: 'agent-1',
-    agent: 'planner',
-    usage: { ...USAGE, input: inputTokens, total: inputTokens },
-    costUsd: 0,
-    numTurns: 1,
-    final: false,
-    timestamp: new Date().toISOString(),
-  };
-}
 
 function registry(input: { findModel?: unknown; all?: unknown[]; error?: Error }) {
   return {
