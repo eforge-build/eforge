@@ -615,7 +615,7 @@ Event subscriptions accept glob-style patterns using `*` as a wildcard. The wild
 |---------|---------|
 | `plan:build:failed` | Exact match only |
 | `plan:build:*` | `plan:build:start`, `plan:build:complete`, `plan:build:failed`, etc. |
-| `*:complete` | `planning:complete`, `plan:build:complete`, `expedition:wave:complete`, etc. |
+| `*:complete` | `planning:complete`, `plan:build:complete`, `merge:finalize:complete`, etc. |
 | `*` | Every event |
 
 Pattern semantics match shell hooks. See the [Events Reference](/reference/events) for public event types.

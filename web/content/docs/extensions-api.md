@@ -267,7 +267,7 @@ interface AgentRunContext extends EforgeExtensionContext {
   changedFiles?: string[];
   // Lifecycle context (populated for pipeline runs):
   phase?: string;   // 'compile' | 'build' | 'standalone'
-  stage?: string;   // e.g. 'implement', 'review', 'planner', 'module-planner'
+  stage?: string;   // e.g. 'implement', 'review', 'planner'
   // Runtime metadata (read-only):
   harness?: 'claude-sdk' | 'pi';
   runtimeChoice?: string;
@@ -1345,7 +1345,7 @@ type FailedEvent = EventOfType<"plan:build:failed">;
 |---------|---------|----------------|
 | `plan:build:failed` | `plan:build:failed` | `plan:build:complete` |
 | `plan:build:*` | `plan:build:start`, `plan:build:failed`, ... | `planning:complete` |
-| `*:complete` | `plan:build:complete`, `expedition:wave:complete`, `planning:complete` | `plan:build:failed` |
+| `*:complete` | `plan:build:complete`, `merge:finalize:complete`, `planning:complete` | `plan:build:failed` |
 | `*` | Every event type | - |
 | `plan.build:start` | `plan.build:start` (literal dot) | `plan:build:start` |
 

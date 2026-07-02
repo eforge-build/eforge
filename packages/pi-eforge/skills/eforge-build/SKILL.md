@@ -178,7 +178,7 @@ After successful enqueue:
 >
 > Watch live in the monitor dashboard, or run `/eforge:status` later for a prompt status refresh.
 >
-> The daemon formats your source into a PRD, selects a workflow profile, then compiles and builds. The pipeline varies by profile — errands skip straight to building, while excursions and expeditions go through planning and plan review first. Every profile gets blind code review (a separate agent with no builder context), merge, and post-merge validation.
+> The daemon formats your source into a PRD, then compiles and builds. Every build runs the same compile pipeline — the bounded planner compiler sizes the work deterministically (small changes take a fast path; large PRDs decompose into bounded planning units), then a planning-quality review gate audits the plan set. Every build gets blind code review (a separate agent with no builder context), merge, and post-merge validation.
 
 If the monitor is running, also include the monitor URL.
 

@@ -45,7 +45,7 @@
       "sessionId": "sess-gc-001",
       "planId": "planning",
       "agentId": "agent-pc-001",
-      "agent": "pipeline-composer",
+      "agent": "plan-evaluator",
       "model": "claude-sonnet-4-5",
       "harness": "claude-sdk",
       "harnessSource": "tier",
@@ -65,7 +65,7 @@
       "sessionId": "sess-gc-001",
       "planId": "planning",
       "agentId": "agent-pc-001",
-      "agent": "pipeline-composer",
+      "agent": "plan-evaluator",
       "result": {
         "durationMs": 30000,
         "durationApiMs": 28000,
@@ -84,7 +84,7 @@
       "sessionId": "sess-gc-001",
       "planId": "planning",
       "agentId": "agent-pc-001",
-      "agent": "pipeline-composer",
+      "agent": "plan-evaluator",
       "timestamp": "2024-02-01T10:00:36.000Z"
     },
     "eventId": "gc-007"

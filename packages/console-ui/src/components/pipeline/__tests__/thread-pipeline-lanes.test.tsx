@@ -286,7 +286,7 @@ describe('ThreadPipeline PRD pill host', () => {
 
   it('renders the PRD pill on the Compile row when no planning threads exist', () => {
     const globalThread = makeThread({
-      agent: 'pipeline-composer',
+      agent: 'formatter',
       startedAt: '2025-01-01T00:00:00.000Z',
       endedAt: '2025-01-01T00:01:00.000Z',
     });

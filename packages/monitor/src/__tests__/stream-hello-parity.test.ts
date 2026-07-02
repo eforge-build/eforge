@@ -202,7 +202,7 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     db.insertRun({
       id: runId1,
       sessionId: sessionId1,
-      planSet: 'my-expedition',
+      planSet: 'my-feature-set',
       command: 'compile',
       status: 'running',
       startedAt: now,
@@ -215,7 +215,7 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     db.insertRun({
       id: runId2,
       sessionId: sessionId2,
-      planSet: 'my-expedition',
+      planSet: 'my-feature-set',
       command: 'build',
       status: 'running',
       startedAt: now,

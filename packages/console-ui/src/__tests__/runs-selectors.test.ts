@@ -265,13 +265,13 @@ describe('selectRunGroups – metadata projection', () => {
       makeRun({ id: 'r1', sessionId: 'sess-a' }),
     ];
     const metadata: Record<string, SessionMetadata> = {
-      'sess-a': { planCount: 5, baseProfile: 'expedition' },
+      'sess-a': { planCount: 5, baseProfile: 'deep-dive' },
     };
     const groups = selectRunGroups(runs, metadata);
     expect(groups[0].metadata?.planCount).toBe(5);
-    expect(groups[0].metadata?.baseProfile).toBe('expedition');
+    expect(groups[0].metadata?.baseProfile).toBe('deep-dive');
     expect(groups[0].planCountLabel).toBe('5 plans');
-    expect(groups[0].profileLabel).toBe('expedition');
+    expect(groups[0].profileLabel).toBe('deep-dive');
   });
 
   it('does not attach metadata to non-session groups', () => {

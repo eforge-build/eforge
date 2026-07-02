@@ -21,9 +21,7 @@ describe('surfaces docs contracts', () => {
   it('documents oversized compile diagnostics and read-only recovery guidance', () => {
     expectContainsAll('web/content/docs/troubleshooting.md', [
       'Oversized PRDs and compile scope/context failures',
-      'planning:preflight',
       'planning:scope-context:failure',
-      'retry-as-expedition',
       'bounded-decomposition',
       'manual-reduce-scope',
       'repair-existing-artifacts',
@@ -40,7 +38,6 @@ describe('surfaces docs contracts', () => {
     ]);
 
     expectContainsAll('docs/architecture.md', [
-      'planning:preflight',
       'planning:scope-context:failure',
       'typed compile-resilience diagnostics',
       'typed scope/context failure path',
@@ -54,7 +51,6 @@ describe('surfaces docs contracts', () => {
 
     expectContainsAll('web/public/llms-full.txt', [
       'Oversized PRDs and compile scope/context failures',
-      'planning:preflight',
       'planning:scope-context:failure',
       'read-only guidance',
     ]);
