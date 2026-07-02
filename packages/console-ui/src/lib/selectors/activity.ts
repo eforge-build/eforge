@@ -68,7 +68,6 @@ const SESSION_PREFIXES = [
   'phase:',
   'planning:',
   'plan:',
-  'expedition:',
   'landing:',
   'merge:',
   'validation:',

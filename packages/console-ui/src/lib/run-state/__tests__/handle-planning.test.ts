@@ -59,12 +59,11 @@ describe('handlePlanningComplete', () => {
       expect(event.plans[1].dependsOn).toEqual(['plan-01']);
     });
 
-    it('handler populates earlyOrchestration with compile mode', () => {
+    it('handler populates earlyOrchestration', () => {
       const event = makeEvent('planning:complete', { plans: PLANS });
       const delta = handlePlanningComplete(event, initialRunState);
       expect(delta?.earlyOrchestration).not.toBeNull();
-      expect(delta?.earlyOrchestration?.mode).toBe('compile');
-      expect(delta?.earlyOrchestration?.pipeline?.scope).toBe('plan');
+      expect(delta?.earlyOrchestration?.pipeline).toBeDefined();
     });
 
     it('earlyOrchestration plans carry dependsOn from the event', () => {
@@ -83,8 +82,6 @@ describe('handlePlanningComplete', () => {
       const newState = { ...initialRunState, ...delta };
       expect(newState.earlyOrchestration).not.toBeNull();
       expect(newState.earlyOrchestration?.plans?.[1]?.dependsOn).toEqual(['plan-01']);
-      // moduleStatuses is the expedition-mode equivalent — not used in compile.
-      expect(Object.keys(newState.moduleStatuses)).toHaveLength(0);
     });
 
     it('plans default to empty build and auto review when planConfigs absent', () => {

@@ -9,20 +9,11 @@ import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 const DEFAULT_BUILD = ['implement', 'review-cycle'];
 
-const ERRAND_PIPELINE: PipelineComposition = {
-  scope: 'errand',
-  compile: ['planner'],
+const TEST_PIPELINE: PipelineComposition = {
+  compile: ['planner', 'planning-quality-review-cycle'],
   defaultBuild: DEFAULT_BUILD,
   defaultReview: DEFAULT_REVIEW,
-  rationale: 'test errand pipeline',
-};
-
-const EXCURSION_PIPELINE: PipelineComposition = {
-  scope: 'excursion',
-  compile: ['planner', 'plan-review-cycle'],
-  defaultBuild: DEFAULT_BUILD,
-  defaultReview: DEFAULT_REVIEW,
-  rationale: 'test excursion pipeline',
+  rationale: 'test pipeline',
 };
 
 // --- extractPlanTitle ---
@@ -155,7 +146,7 @@ describe('writePlanArtifacts', () => {
       sourceContent,
       planName: 'Add Auth',
       baseBranch: 'main',
-      pipeline: ERRAND_PIPELINE,
+      pipeline: TEST_PIPELINE,
       validate: ['pnpm type-check', 'pnpm test'],
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
@@ -182,7 +173,6 @@ describe('writePlanArtifacts', () => {
     const orch = await parseOrchestrationConfig(orchPath);
     expect(orch.name).toBe('add-auth');
     expect(orch.description).toBe('Add Auth');
-    expect(orch.mode).toBe('errand');
     expect(orch.baseBranch).toBe('main');
     expect(orch.plans).toHaveLength(1);
     expect(orch.plans[0].id).toBe('plan-01-add-auth');
@@ -198,53 +188,12 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Plan content here',
       planName: 'My Plan',
       baseBranch: 'develop',
-      pipeline: ERRAND_PIPELINE,
+      pipeline: TEST_PIPELINE,
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
     });
 
     expect(existsSync(resolve(dir, 'eforge', 'plans', 'my-plan'))).toBe(true);
-  });
-
-  it('uses explicit mode in orchestration.yaml', async () => {
-    const dir = makeTempDir();
-
-    await writePlanArtifacts({
-      cwd: dir,
-      planSetName: 'multi-plan',
-      sourceContent: '# Multi Plan\n\nContent',
-      planName: 'Multi Plan',
-      baseBranch: 'main',
-      pipeline: EXCURSION_PIPELINE,
-      mode: 'excursion',
-      build: DEFAULT_BUILD,
-      review: DEFAULT_REVIEW,
-    });
-
-    const orch = await parseOrchestrationConfig(
-      resolve(dir, 'eforge', 'plans', 'multi-plan', 'orchestration.yaml'),
-    );
-    expect(orch.mode).toBe('excursion');
-  });
-
-  it('defaults mode to errand when not specified', async () => {
-    const dir = makeTempDir();
-
-    await writePlanArtifacts({
-      cwd: dir,
-      planSetName: 'default-mode',
-      sourceContent: 'Content',
-      planName: 'Default Mode',
-      baseBranch: 'main',
-      pipeline: ERRAND_PIPELINE,
-      build: DEFAULT_BUILD,
-      review: DEFAULT_REVIEW,
-    });
-
-    const orch = await parseOrchestrationConfig(
-      resolve(dir, 'eforge', 'plans', 'default-mode', 'orchestration.yaml'),
-    );
-    expect(orch.mode).toBe('errand');
   });
 
   it('omits validate when empty', async () => {
@@ -256,7 +205,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Content',
       planName: 'No Validate',
       baseBranch: 'main',
-      pipeline: ERRAND_PIPELINE,
+      pipeline: TEST_PIPELINE,
       validate: [],
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,

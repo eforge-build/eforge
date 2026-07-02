@@ -64,24 +64,6 @@ function acceptanceValidationDetail(
 
 // Mirror of EventCard's recoveryCompleteEvent narrowing — extracted as a pure
 // function for testability.
-const hash = 'd'.repeat(64);
-
-const preflightEvent = {
-  type: 'planning:preflight',
-  timestamp: '2026-01-01T00:00:00.000Z',
-  risk: {
-    level: 'overflow-risk',
-    sourceBytes: 4096,
-    promptSourceBytes: 2048,
-    acceptanceCriteriaCount: 8,
-    score: 90,
-    generatedInventory: { detected: true, contentHashes: [hash], pathReferences: ['generated.json'], headings: ['Generated Inventory'], blockCount: 2, sidecarCount: 1, omittedBytes: 42 },
-    subsystemBreadth: { count: 2, subsystems: ['cli', 'console'], evidence: ['rendering surfaces'] },
-    reasons: ['generated-inventory:detected'],
-    recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split oversized generated scope.' },
-  },
-} as unknown as EforgeEvent;
-
 const inspectionSummaryEvent = {
   type: 'planning:inspection-summary',
   timestamp: '2026-01-01T00:00:02.000Z',
@@ -151,18 +133,6 @@ function getRecoveryVerdictProps(
 }
 
 describe('EventCard compile resilience rendering branches', () => {
-  it('renders planning:preflight summary and expandable bounded detail', () => {
-    renderEventCard(preflightEvent);
-
-    expect(screen.getByText('planning:preflight')).toBeTruthy();
-    expect(screen.getByText(/Compile preflight: overflow-risk/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'details' }));
-    expect(screen.getByText(/Generated inventory:/)).toBeTruthy();
-    expect(screen.getByText(new RegExp(hash))).toBeTruthy();
-    expect(screen.getByText(/Subsystem evidence: rendering surfaces/)).toBeTruthy();
-    expect(screen.getByText(/Split oversized generated scope/)).toBeTruthy();
-  });
-
   it('renders planning:inspection-summary with expandable compact detail', () => {
     renderEventCard(inspectionSummaryEvent);
 

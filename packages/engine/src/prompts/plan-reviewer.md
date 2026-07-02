@@ -12,7 +12,7 @@ The following source material was used to generate these plans:
 
 1. Read all plan files in `{{outputDir}}/{{plan_set_name}}/` (the `.md` files with YAML frontmatter).
 2. Read `{{outputDir}}/{{plan_set_name}}/orchestration.yaml` for the dependency structure and execution order.
-3. If present, read `{{outputDir}}/{{plan_set_name}}/architecture.md` for expedition context.
+3. If present, read `{{outputDir}}/{{plan_set_name}}/architecture.md` for module-boundary and integration-contract context.
 4. Review the plan set against the source/PRD above and the criteria below.
 
 # Review Categories

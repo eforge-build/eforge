@@ -30,7 +30,7 @@
  */
 import type { EforgeEvent } from './types';
 import type { RunState } from './types';
-export type { RunState, AgentThread, AgentActivityFacts, Decision, DecisionPoint, ModuleStatus, StoredEvent } from './types';
+export type { RunState, AgentThread, AgentActivityFacts, Decision, DecisionPoint, StoredEvent } from './types';
 
 import { handlerRegistry } from './handlers/index';
 
@@ -50,8 +50,6 @@ export const initialRunState: RunState = {
   fileChanges: new Map(),
   reviewIssues: {},
   agentThreads: [],
-  expeditionModules: [],
-  moduleStatuses: {},
   earlyOrchestration: null,
   resumeArtifacts: [],
   resumeSource: null,
@@ -79,7 +77,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, resumeSeededMerged: [], resumeSeededPending: [], profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {}, mapReduce: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, resumeSeededMerged: [], resumeSeededPending: [], profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {}, mapReduce: null };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.
@@ -137,8 +135,6 @@ export function createInitialRunState(): RunState {
     fileChanges: new Map(),
     reviewIssues: {},
     agentThreads: [],
-    expeditionModules: [],
-    moduleStatuses: {},
     earlyOrchestration: null,
     resumeArtifacts: [],
     resumeSource: null,

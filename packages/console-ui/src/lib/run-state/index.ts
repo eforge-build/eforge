@@ -19,7 +19,6 @@ export type {
   Decision,
   DecisionPoint,
   PipelineStage,
-  ModuleStatus,
   StoredEvent,
   SessionProfile,
   MapReduceOrchestration,

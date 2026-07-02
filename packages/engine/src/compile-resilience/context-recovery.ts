@@ -5,14 +5,12 @@ import {
   MAX_COMPILE_RISK_LIST_ITEMS,
   type CompileArtifactSummary,
   type CompileContextGuardDiagnostics,
-  type CompilePreflightRisk,
   type CompileRecoveryAction,
   type CompileScopeContextFailure,
   type EforgeEvent,
 } from '../events.js';
 import { RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES, type RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import type { PipelineContext } from '../pipeline/types.js';
-import { estimateCompilePreflightRisk } from './preflight.js';
 import { AgentTerminalError } from '../harness.js';
 import { CompileScopeContextError } from './context-guard.js';
 import { validateCompileArtifacts } from './artifact-validation.js';
@@ -21,9 +19,6 @@ export { classifyProviderContextError, MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES } 
 
 export interface CompileScopeRecoveryState {
   sourceHash: string;
-  retryAsExpeditionAttempts: number;
-  maxRetryAsExpeditionAttempts: number;
-  attemptedSourceHashes: string[];
   lastFailure?: CompileScopeContextFailure;
 }
 
@@ -33,7 +28,6 @@ type NonDecompositionCompileScopeContextFailure = Exclude<CompileScopeContextFai
 type CompileScopeContextFailureInputBase = {
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
-  risk?: CompilePreflightRisk;
   guardDiagnostics?: CompileContextGuardDiagnostics;
 };
 
@@ -52,7 +46,6 @@ export type CompileScopeContextFailureInput =
     });
 
 const MAX_REASON_BYTES = RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES;
-const EXPEDITION_COMPILE = ['planner', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
 
 export async function toCompileScopeContextError(
   ctx: PipelineContext,
@@ -68,7 +61,6 @@ export async function toCompileScopeContextError(
       explanation: error.failure.explanation,
       observed: error.failure.observed,
       decompositionEvidence: error.failure.decompositionEvidence,
-      risk: error.failure.risk ?? ctx.compilePreflight,
       guardDiagnostics: error.failure.guardDiagnostics ?? guardDiagnostics,
     } as CompileScopeContextFailureInput));
   }
@@ -81,43 +73,25 @@ export async function toCompileScopeContextError(
     failureKind: provider.failureKind,
     stage: fallbackStage,
     explanation: provider.explanation,
-    risk: ctx.compilePreflight,
     guardDiagnostics,
   }));
-}
-
-export async function buildPreflightEscalationDecision(
-  ctx: PipelineContext,
-): Promise<{ failure: CompileScopeContextFailure; retryAsExpedition: boolean } | null> {
-  const risk = ctx.compilePreflight;
-  if (!risk || risk.recommendation.action !== 'retry-as-expedition' || !risk.recommendation.eligible) return null;
-  if (ctx.pipeline.scope === 'expedition') return null;
-  const failure = await buildCompileScopeContextFailure(ctx, {
-    source: 'preflight',
-    failureKind: 'scope-too-broad',
-    stage: 'planner',
-    explanation: risk.recommendation.reason,
-    risk,
-  });
-  return { failure, retryAsExpedition: failure.recovery.action === 'retry-as-expedition' && failure.recovery.eligible };
 }
 
 export async function buildCompileScopeContextFailure(ctx: PipelineContext, input: CompileScopeContextFailureInput): Promise<CompileScopeContextFailure> {
   const state = ensureCompileScopeRecoveryState(ctx);
   const artifacts = await summarizeCompileArtifactsForRecovery(ctx);
-  const action = chooseRecoveryAction(ctx, input, state, artifacts);
+  const action = chooseRecoveryAction(input, artifacts);
   const common = {
     explanation: capUtf8(input.explanation, 1500),
-    ...(input.risk ?? ctx.compilePreflight ? { risk: input.risk ?? ctx.compilePreflight } : {}),
     ...(input.observed ? { observed: input.observed } : {}),
     ...(input.guardDiagnostics ? { guardDiagnostics: input.guardDiagnostics } : {}),
     recovery: {
       action,
       eligible: action !== 'manual-reduce-scope' && action !== 'none',
       attempted: false,
-      attempt: state.retryAsExpeditionAttempts,
-      maxAttempts: state.maxRetryAsExpeditionAttempts,
-      reason: capUtf8(recoveryReason(ctx, action, input, state, artifacts), MAX_REASON_BYTES),
+      attempt: 0,
+      maxAttempts: 1,
+      reason: capUtf8(recoveryReason(ctx, action, input, artifacts), MAX_REASON_BYTES),
     },
     artifacts,
   };
@@ -126,37 +100,6 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
     : { ...common, source: input.source, failureKind: input.failureKind, stage: input.stage };
   state.lastFailure = failure;
   return failure;
-}
-
-export function markRetryAsExpeditionStarted(ctx: PipelineContext, failure: CompileScopeContextFailure): void {
-  const state = ensureCompileScopeRecoveryState(ctx);
-  if (!state.attemptedSourceHashes.includes(state.sourceHash)) {
-    state.retryAsExpeditionAttempts += 1;
-    state.attemptedSourceHashes.push(state.sourceHash);
-  }
-  const updated: CompileScopeContextFailure = {
-    ...failure,
-    recovery: {
-      ...failure.recovery,
-      attempted: true,
-      attempt: Math.max(1, state.retryAsExpeditionAttempts),
-      maxAttempts: state.maxRetryAsExpeditionAttempts,
-    },
-  };
-  state.lastFailure = updated;
-}
-
-export function applyRetryAsExpeditionPipeline(ctx: PipelineContext, reason: string): void {
-  ctx.pipeline = {
-    ...ctx.pipeline,
-    scope: 'expedition',
-    compile: [...EXPEDITION_COMPILE],
-    rationale: capUtf8(`${ctx.pipeline.rationale}\n\nCompile context recovery escalated this run to expedition scope: ${reason}`, 2000),
-  };
-  if (ctx.compilePromptSourceBundle && ctx.compilePreflightOptions) {
-    ctx.compilePreflightOptions = { ...ctx.compilePreflightOptions, requestedPipelineScope: 'expedition' };
-    ctx.compilePreflight = estimateCompilePreflightRisk(ctx.compilePromptSourceBundle, ctx.compilePreflightOptions);
-  }
 }
 
 export function scopeContextFailureEvent(failure: CompileScopeContextFailure, runId?: string): EforgeEvent {
@@ -224,15 +167,9 @@ export function readCompileScopeContextRecoveryOptionFromDb(input: { dbPath?: st
   }
 }
 
-function chooseRecoveryAction(ctx: PipelineContext, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): CompileRecoveryAction {
+function chooseRecoveryAction(input: CompileScopeContextFailureInput, artifacts: CompileArtifactSummary): CompileRecoveryAction {
   if (artifacts.orchestrationExists && artifacts.validPlanCount > 0 && artifacts.invalidPlanCount === 0 && artifacts.missingPlanFileCount === 0) return 'repair-existing-artifacts';
-  const alreadyAttempted = state.attemptedSourceHashes.includes(state.sourceHash);
-  const wantsRetry = input.stage === 'planner'
-    && input.risk?.recommendation.action === 'retry-as-expedition'
-    && input.risk.recommendation.eligible;
-  if (ctx.pipeline.scope !== 'expedition' && wantsRetry && state.retryAsExpeditionAttempts < state.maxRetryAsExpeditionAttempts && !alreadyAttempted) return 'retry-as-expedition';
-  if (isPlannerRuntimeContextFailure(input)) return 'bounded-decomposition';
-  if (ctx.pipeline.scope === 'expedition' || state.retryAsExpeditionAttempts >= state.maxRetryAsExpeditionAttempts || alreadyAttempted || input.risk?.recommendation.action === 'bounded-decomposition') return 'bounded-decomposition';
+  if (input.failureKind === 'decomposition-exhausted' || isPlannerRuntimeContextFailure(input)) return 'bounded-decomposition';
   return 'manual-reduce-scope';
 }
 
@@ -240,15 +177,13 @@ function isPlannerRuntimeContextFailure(input: CompileScopeContextFailureInput):
   return input.stage === 'planner' && input.source === 'live-context-guard';
 }
 
-function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, input: CompileScopeContextFailureInput, state: CompileScopeRecoveryState, artifacts: CompileArtifactSummary): string {
+function recoveryReason(ctx: PipelineContext, action: CompileRecoveryAction, input: CompileScopeContextFailureInput, artifacts: CompileArtifactSummary): string {
   if (action === 'repair-existing-artifacts') return `Valid compile artifacts exist (${artifacts.validPlanCount} plan file(s)); prefer continue/repair over retrying compile.`;
   const compactGuidance = plannerCompactInspectionGuidance(ctx, input, artifacts);
-  if (action === 'retry-as-expedition') return withCompactGuidance(`Context failure at ${input.stage} is eligible for one bounded retry as expedition for the same source hash.`, compactGuidance);
   if (action === 'bounded-decomposition' && input.failureKind === 'decomposition-exhausted' && input.decompositionEvidence) {
     return withCompactGuidance(`Context-managed decomposition exhausted in unit ${input.decompositionEvidence.unitId}; this is decomposition exhaustion, not a provider context rejection. Existing direct retry/apply-recovery actions do not mutate compile decomposition state. Operators can inspect bounded evidence and choose a manual reduced source or deliberate follow-up PRD outside the engine. The engine does not auto-author and does not auto-enqueue successor PRDs.`, compactGuidance);
   }
-  if (action === 'bounded-decomposition' && isPlannerRuntimeContextFailure(input)) return withCompactGuidance('Planner runtime context pressure exceeded the direct planning budget; fall back to context-managed decomposition rather than failing the compile terminally.', compactGuidance);
-  if (action === 'bounded-decomposition') return withCompactGuidance(`Retry-as-expedition is not available or already attempted (${state.retryAsExpeditionAttempts}/${state.maxRetryAsExpeditionAttempts}); inspect bounded decomposition evidence or manually reduce source before choosing deliberate follow-up work outside the engine.`, compactGuidance);
+  if (action === 'bounded-decomposition') return withCompactGuidance('Planner-family context pressure exceeded the compile budget; the bounded compiler is the only planning path — inspect bounded decomposition evidence or manually reduce source before choosing deliberate follow-up work outside the engine.', compactGuidance);
   if (action === 'manual-reduce-scope') return withCompactGuidance('Compile scope/context evidence is incomplete or ambiguous; manually reduce scope before retrying.', compactGuidance);
   return input.explanation;
 }
@@ -268,7 +203,7 @@ function ensureCompileScopeRecoveryState(ctx: PipelineContext): CompileScopeReco
   const existing = ctx.compileScopeRecovery;
   const sourceHash = createHash('sha256').update(ctx.sourceContent).digest('hex');
   if (existing && existing.sourceHash === sourceHash) return existing;
-  const created: CompileScopeRecoveryState = { sourceHash, retryAsExpeditionAttempts: 0, maxRetryAsExpeditionAttempts: 1, attemptedSourceHashes: [] };
+  const created: CompileScopeRecoveryState = { sourceHash };
   ctx.compileScopeRecovery = created;
   return created;
 }

@@ -151,23 +151,6 @@ export const PlanningScheduleDecisionSchema = Type.Object({
   blockedPairs: Type.Array(PlanningScheduleBlockedPairSchema, { maxItems: PLANNING_DECOMPOSITION_MAX_BLOCKED_PAIRS }),
 }, { additionalProperties: false });
 
-export const PlanningDecompositionRiskEvidenceSchema = Type.Object({
-  level: Type.Union([Type.Literal('normal'), Type.Literal('elevated'), Type.Literal('overflow-risk')]),
-  score: Type.Number({ minimum: 0 }),
-  sourceBytes: NonNegativeIntegerSchema,
-  promptSourceBytes: NonNegativeIntegerSchema,
-  acceptanceCriteriaCount: NonNegativeIntegerSchema,
-  subsystemSummaries: BoundedStringListSchema,
-  recommendationAction: Type.Union([
-    Type.Literal('none'),
-    Type.Literal('retry-as-expedition'),
-    Type.Literal('bounded-decomposition'),
-    Type.Literal('manual-reduce-scope'),
-    Type.Literal('repair-existing-artifacts'),
-  ]),
-  selectedScope: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
-}, { additionalProperties: false });
-
 export const PlanningSplitAttemptEvidenceSchema = Type.Object({
   unitId: Type.Optional(BoundedStringSchema),
   attempt: PositiveIntegerSchema,
@@ -195,7 +178,6 @@ export const PlanningDecompositionStartFields = {
   unitCount: NonNegativeIntegerSchema,
   edgeCount: NonNegativeIntegerSchema,
   limits: PlanningDecompositionLimitsSchema,
-  riskEvidence: Type.Optional(PlanningDecompositionRiskEvidenceSchema),
 } as const;
 
 const PlanningQueuedDecompositionUnitSummarySchema = Type.Intersect([
@@ -271,7 +253,6 @@ export type PlanningDecompositionUnitSummary = Static<typeof PlanningDecompositi
 export type PlanningScheduleBlockedPair = Static<typeof PlanningScheduleBlockedPairSchema>;
 export type PlanningScheduleWaitingReason = Static<typeof PlanningScheduleWaitingReasonSchema>;
 export type PlanningScheduleDecision = Static<typeof PlanningScheduleDecisionSchema>;
-export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecompositionRiskEvidenceSchema>;
 export type PlanningUnitBudgetEntry = Static<typeof PlanningUnitBudgetEntrySchema>;
 export type PlanningSplitAttemptEvidence = Static<typeof PlanningSplitAttemptEvidenceSchema>;
 export type DecompositionFailureEvidence = Static<typeof DecompositionFailureEvidenceSchema>;

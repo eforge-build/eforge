@@ -6,17 +6,12 @@ import { laneLabel } from '@/lib/run-state/lane-registry';
 /** Map agent roles to pipeline-stage color classes */
 export const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'planner':                { bg: 'bg-yellow/30',  border: 'border-yellow/50' },
-  'module-planner':         { bg: 'bg-yellow/30',  border: 'border-yellow/50' },
   'builder':                { bg: 'bg-blue/30',    border: 'border-blue/50' },
   'reviewer':               { bg: 'bg-green/30',   border: 'border-green/50' },
   'review-fixer':           { bg: 'bg-green/30',   border: 'border-green/50' },
   'plan-reviewer':          { bg: 'bg-green/30',   border: 'border-green/50' },
-  'cohesion-reviewer':      { bg: 'bg-green/30',   border: 'border-green/50' },
-  'architecture-reviewer':  { bg: 'bg-green/30',   border: 'border-green/50' },
   'evaluator':              { bg: 'bg-purple/30',  border: 'border-purple/50' },
   'plan-evaluator':         { bg: 'bg-purple/30',  border: 'border-purple/50' },
-  'architecture-evaluator': { bg: 'bg-purple/30',  border: 'border-purple/50' },
-  'cohesion-evaluator':     { bg: 'bg-purple/30',  border: 'border-purple/50' },
   'doc-author':             { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'doc-syncer':             { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'validation-fixer':       { bg: 'bg-red/30',     border: 'border-red/50' },
@@ -28,7 +23,6 @@ export const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'prd-validator':          { bg: 'bg-orange/30',  border: 'border-orange/50' },
   'gap-closer':            { bg: 'bg-pink/30',    border: 'border-pink/50' },
   'dependency-detector':   { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
-  'pipeline-composer':     { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'recovery-analyst':      { bg: 'bg-orange/30',  border: 'border-orange/50' },
 };
 
@@ -69,20 +63,6 @@ export const abbreviatePlanId = laneLabel;
 
 export function getAgentColor(agent: string) {
   return AGENT_COLORS[agent as AgentRole] ?? FALLBACK_COLOR;
-}
-
-// --- Profile tier colors ---
-
-export const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  errand: { bg: 'bg-tier-errand/15', text: 'text-tier-errand', border: 'border-tier-errand/30' },
-  excursion: { bg: 'bg-tier-excursion/15', text: 'text-tier-excursion', border: 'border-tier-excursion/30' },
-  expedition: { bg: 'bg-tier-expedition/15', text: 'text-tier-expedition', border: 'border-tier-expedition/30' },
-};
-
-export const DEFAULT_TIER = { bg: 'bg-tier-default/15', text: 'text-tier-default', border: 'border-tier-default/30' };
-
-export function getTierColor(name: string) {
-  return TIER_COLORS[name] ?? DEFAULT_TIER;
 }
 
 export const VALIDATION_BAR_COLOR = { bg: 'bg-zinc-500/30', border: 'border-zinc-500/50' };

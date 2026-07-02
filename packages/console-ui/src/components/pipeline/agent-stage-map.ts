@@ -2,8 +2,8 @@ import type { AgentRole, BuildStageSpec, PipelineStage } from '@/lib/run-state';
 import type { AgentThread } from '@/lib/run-state';
 
 export const REVIEW_AGENTS = new Set([
-  'reviewer', 'review-fixer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
-  'evaluator', 'plan-evaluator', 'architecture-evaluator', 'cohesion-evaluator',
+  'reviewer', 'review-fixer', 'plan-reviewer',
+  'evaluator', 'plan-evaluator',
 ]);
 
 /** Map agent roles to pipeline-stage color classes */
@@ -11,11 +11,6 @@ export const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'planner': 'planner',
   'plan-reviewer': 'plan-review-cycle',
   'plan-evaluator': 'plan-review-cycle',
-  'module-planner': 'module-planning',
-  'architecture-reviewer': 'architecture-review-cycle',
-  'architecture-evaluator': 'architecture-review-cycle',
-  'cohesion-reviewer': 'cohesion-review-cycle',
-  'cohesion-evaluator': 'cohesion-review-cycle',
   'builder': 'implement',
   'doc-author': 'doc-author',
   'doc-syncer': 'doc-sync',
@@ -31,7 +26,6 @@ export const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'prd-validator': 'prd-validation',
   'gap-closer': 'gap-close',
   'dependency-detector': 'dependency-detection',
-  'pipeline-composer': 'pipeline-composition',
   'recovery-analyst': 'recovery',
 };
 

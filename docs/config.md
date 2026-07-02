@@ -71,14 +71,14 @@ agents:
   # roles:                    # Per-agent role overrides
   #   formatter:              # Per-role options: tier, effort, thinking, maxTurns, promptAppend,
   #     effort: low           #   allowedTools, disallowedTools, shards (builder-only)
-  #   builder:                # Available roles: planner, module-planner, builder, reviewer,
-  #     effort: high          #  evaluator, plan-reviewer, plan-evaluator,
-  #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
-  #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
-  #     tier: planning        #   review-fixer, merge-conflict-resolver, staleness-assessor,
-  #   reviewer:               #   formatter, doc-author, doc-syncer, test-writer, tester,
-  #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
-  #       ## Project Rules    #   recovery-analyst, pipeline-composer
+  #   builder:                # Available roles: planner, builder, reviewer,
+  #     effort: high          #   evaluator, plan-reviewer, plan-evaluator,
+  #     maxTurns: 50          #   validation-fixer, review-fixer,
+  #   staleness-assessor:     #   merge-conflict-resolver, staleness-assessor,
+  #     tier: planning        #   formatter, doc-author, doc-syncer, test-writer, tester,
+  #   reviewer:               #   prd-validator, dependency-detector, gap-closer,
+  #     promptAppend: |       #   recovery-analyst
+  #       ## Project Rules    #
   #       - Flag raw SQL queries
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
@@ -673,10 +673,8 @@ Every agent role has a built-in default tier. Most projects never need to change
 
 | Role | Default Tier | Description |
 |------|-------------|-------------|
-| `planner` | `planning` | Orchestration and composition |
-| `module-planner` | `planning` | Module-level planning |
+| `planner` | `planning` | Bounded planner compiler |
 | `formatter` | `planning` | PRD formatting |
-| `pipeline-composer` | `planning` | Pipeline composition |
 | `merge-conflict-resolver` | `planning` | Merge conflict resolution |
 | `doc-author` | `implementation` | Plan-driven doc authoring |
 | `doc-syncer` | `implementation` | Diff-driven doc sync |
@@ -691,13 +689,9 @@ Every agent role has a built-in default tier. Most projects never need to change
 | `prd-validator` | `implementation` | PRD validation and per-criterion acceptance verdicts |
 | `staleness-assessor` | `implementation` | Staleness detection |
 | `reviewer` | `review` | Code and design review |
-| `architecture-reviewer` | `review` | Architecture review |
-| `cohesion-reviewer` | `review` | Cross-module cohesion review |
-| `plan-reviewer` | `review` | Plan review |
+| `plan-reviewer` | `review` | Planning-quality review |
 | `evaluator` | `evaluation` | Build acceptance verdict |
-| `architecture-evaluator` | `evaluation` | Architecture acceptance verdict |
-| `cohesion-evaluator` | `evaluation` | Cohesion acceptance verdict |
-| `plan-evaluator` | `evaluation` | Plan acceptance verdict |
+| `plan-evaluator` | `evaluation` | Planning-quality acceptance verdict |
 
 ### Overriding Role-to-Tier Assignment
 
@@ -736,9 +730,9 @@ agents:
 
 Available per-role override fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `shards` (builder-only).
 
-## Workflow Profiles
+## Compile Pipeline
 
-Workflow profile selection (`errand`, `excursion`, or `expedition`) is determined per-build by the `pipeline-composer` agent, which classifies the incoming PRD by complexity and selects the appropriate compile pipeline. Custom YAML profiles with `extends:` / `compile:` keys are not configurable in `eforge/config.yaml` - the schema rejects a top-level `profiles:` key.
+The compile pipeline is constant: the bounded planner compiler followed by the planning-quality review gate. It is not configurable per build. Custom YAML profiles with `extends:` / `compile:` keys are not configurable in `eforge/config.yaml` - the schema rejects a top-level `profiles:` key.
 
 ## Backend Profiles
 

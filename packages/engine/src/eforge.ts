@@ -76,7 +76,7 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
-import { buildCompilePromptSourceBundle, estimateCompilePreflightRisk, type CompilePreflightOptions } from './compile-resilience/preflight.js';
+import { buildCompilePromptSourceBundle } from './compile-resilience/preflight.js';
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
 import { CompileScopeContextError } from './compile-resilience/context-guard.js';
 import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
@@ -329,12 +329,11 @@ export class EforgeEngine {
   }
 
   /**
-   * Plan: explore codebase, assess scope, write and validate planning artifacts.
+   * Plan: explore codebase, write and validate planning artifacts.
    *
-   * The planner explores and assesses scope. Based on the assessment:
-   * - errand/excursion: planner generates plan files + orchestration.yaml directly
-   * - expedition: planner generates architecture.md + index.yaml + module list,
-   *   then engine runs module planners and compiles plan files
+   * The bounded planner compiler runs unconditionally and generates plan
+   * files + orchestration.yaml; the planning quality gate reviews the
+   * artifacts before completion.
    *
    * Non-skipped compiles report success only after persisted orchestration and
    * plan files validate.
@@ -380,12 +379,7 @@ export class EforgeEngine {
       } catch {
         sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
-      const compilePreflightOptions: CompilePreflightOptions = {
-        selectedProfile: this.configProfile.name,
-      };
-      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
-      const compilePreflight = estimateCompilePreflightRisk(compilePromptSourceBundle, compilePreflightOptions);
-      yield { timestamp: new Date().toISOString(), type: 'planning:preflight', risk: compilePreflight };
+      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent);
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -401,14 +395,14 @@ export class EforgeEngine {
         : undefined;
       const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, worktreeBaseRef);
 
-      // Default pipeline — the planner stage's composePipeline() call will update ctx.pipeline
-      // with the actual composition before the planner agent runs.
+      // The compile pipeline is constant: the bounded planner compiler runs
+      // unconditionally, then the planning quality gate. Per-plan build/review
+      // defaults are replaced by the compiler's deterministic derivation.
       const defaultPipeline: import('./schemas.js').PipelineComposition = {
-        scope: 'excursion',
-        compile: ['planner', 'plan-review-cycle'],
+        compile: ['planner', 'planning-quality-review-cycle'],
         defaultBuild: ['implement', 'review-cycle'],
         defaultReview: DEFAULT_REVIEW,
-        rationale: 'Default pipeline (will be replaced by composer)',
+        rationale: 'Bounded planner compiler pipeline',
       };
 
       const ctx: PipelineContext = {
@@ -425,16 +419,12 @@ export class EforgeEngine {
         sourceContent,
         promptSourceContent: compilePromptSourceBundle.promptSource,
         compilePromptSourceBundle,
-        compilePreflightOptions,
-        compilePreflight,
         verbose: options.verbose,
         auto: options.auto,
         abortController: options.abortController,
         onClarification: this.onClarification,
         modelTracker: new ModelTracker(),
         plans: [],
-        expeditionModules: [],
-        moduleBuildConfigs: new Map(),
         extensionReviewerPerspectives: this.extensionRegistry.reviewerPerspectives,
         extensionValidationProviders: this.extensionRegistry.validationProviders,
         extensionRuntimeChoiceRouters: this.extensionRegistry.runtimeChoiceRouters,
@@ -458,10 +448,10 @@ export class EforgeEngine {
       }
       ctx.plans = artifactValidation.plans;
 
-      // If compile pipeline didn't produce plans and there's no plan-review-cycle
-      // in the compile stages, commit artifacts here
-      // (runCompilePipeline handles the commit before plan-review-cycle when present)
-      if (ctx.plans.length > 0 && !ctx.pipeline.compile.includes('plan-review-cycle')) {
+      // Commit any plan artifacts not already committed by the pipeline
+      // (runCompilePipeline commits before the planning quality gate; the
+      // staged-changes guard below makes this a no-op in that case).
+      if (ctx.plans.length > 0) {
         const planDir = resolve(mergeWorktreePath, this.config.plan.outputDir, planSetName);
         await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
         // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
@@ -797,8 +787,6 @@ export class EforgeEngine {
           abortController,
           modelTracker: new ModelTracker(),
           plans: Array.from(planFileMap.values()),
-          expeditionModules: [],
-          moduleBuildConfigs: new Map(),
           planId,
           worktreePath,
           planFile,
@@ -2516,8 +2504,6 @@ export class EforgeEngine {
           abortController,
           modelTracker: new ModelTracker(),
           plans: Array.from(planFileMap.values()),
-          expeditionModules: [],
-          moduleBuildConfigs: new Map(),
           planId,
           worktreePath,
           planFile,

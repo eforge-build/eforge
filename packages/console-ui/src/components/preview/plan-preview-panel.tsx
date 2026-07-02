@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePlanPreview } from './plan-preview-context';
 import { PlanMetadata } from './plan-metadata';
 import { PlanBodyHighlight } from './plan-body-highlight';
-import { BuildConfigSection, StatusBadge, ModuleStatusBadge } from './plan-config';
+import { BuildConfigSection, StatusBadge } from './plan-config';
 import { splitPlanContent, parseFrontmatterFields, extractPrdTitle } from '@/lib/plan-content';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ interface PlanPreviewPanelProps {
 }
 
 export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
-  const { selectedPlanId, previewFallback, contentPreview, closePreview, fileChanges, planStatuses, moduleStatuses } = usePlanPreview();
+  const { selectedPlanId, previewFallback, contentPreview, closePreview, fileChanges, planStatuses } = usePlanPreview();
   const isOpen = selectedPlanId !== null || contentPreview !== null;
 
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
@@ -53,10 +53,9 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
 
   // Find selected plan
   const selectedPlan = plans?.find((p) => p.id === selectedPlanId) ?? null;
-  const planType = selectedPlan?.type ?? 'plan';
 
-  // Parse frontmatter from body for metadata (only for compiled plans)
-  const metadata = selectedPlan && planType === 'plan'
+  // Parse frontmatter from body for metadata
+  const metadata = selectedPlan
     ? (() => {
         const { frontmatter } = splitPlanContent(selectedPlan.body);
         if (frontmatter) {
@@ -85,7 +84,6 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
 
   // Runtime data for selected plan
   const planStatus = selectedPlanId ? planStatuses[selectedPlanId] : undefined;
-  const moduleStatus = selectedPlanId ? moduleStatuses[selectedPlanId] : undefined;
   const planFileChanges = selectedPlanId ? fileChanges.get(selectedPlanId) : undefined;
 
   // Escape key to close
@@ -124,19 +122,10 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">
-            {planType !== 'plan' && (
-              <span className={cn(
-                'text-10px font-medium px-1.5 py-0.5 rounded-sm shrink-0',
-                planType === 'architecture' ? 'bg-cyan/15 text-cyan' : 'bg-yellow/15 text-yellow',
-              )}>
-                {planType === 'architecture' ? 'Architecture' : 'Module'}
-              </span>
-            )}
             <h2 className="text-sm font-semibold text-foreground truncate">
               {contentPreviewTitle ?? selectedPlan?.name ?? previewFallback?.name ?? 'Plan Preview'}
             </h2>
-            {selectedPlan && planType === 'plan' && <StatusBadge status={planStatus} />}
-            {selectedPlan && planType === 'module' && <ModuleStatusBadge status={moduleStatus} />}
+            {selectedPlan && <StatusBadge status={planStatus} />}
           </div>
           <Button
             type="button"

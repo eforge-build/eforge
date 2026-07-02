@@ -7,19 +7,15 @@ import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
-import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runReview } from '@eforge-build/engine/agents/reviewer';
 import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '@eforge-build/engine/agents/builder';
 import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
-import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
+import { validatePipeline, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
@@ -354,227 +350,12 @@ describe('runPlanEvaluate wiring', () => {
 
 // --- Module Planner ---
 
-describe('runModulePlanner wiring', () => {
-  it('emits expedition module lifecycle events', async () => {
-    const backend = new StubHarness([{ text: 'Module plan written.' }]);
-
-    const events = await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'auth',
-      moduleDescription: 'Authentication system',
-      moduleDependsOn: ['foundation'],
-      architectureContent: '# Architecture\nModular design.',
-      sourceContent: 'PRD content',
-    }));
-
-    const start = findEvent(events, 'expedition:module:start');
-    expect(start).toBeDefined();
-    expect(start!.moduleId).toBe('auth');
-
-    const complete = findEvent(events, 'expedition:module:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.moduleId).toBe('auth');
-
-    // agent:result always yielded
-    expect(findEvent(events, 'agent:result')).toBeDefined();
-  });
-
-  it('suppresses agent:message when verbose is false', async () => {
-    const backend = new StubHarness([{ text: 'Module details.' }]);
-
-    const events = await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'auth',
-      moduleDescription: 'Auth',
-      moduleDependsOn: [],
-      architectureContent: '',
-      sourceContent: 'PRD',
-    }));
-
-    // agent:message suppressed when verbose is false (default)
-    expect(filterEvents(events, 'agent:message')).toHaveLength(0);
-  });
-
-  it('emits agent:message when verbose is true', async () => {
-    const backend = new StubHarness([{ text: 'Module details.' }]);
-
-    const events = await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'auth',
-      moduleDescription: 'Auth',
-      moduleDependsOn: [],
-      architectureContent: '',
-      sourceContent: 'PRD',
-      verbose: true,
-    }));
-
-    expect(filterEvents(events, 'agent:message').length).toBeGreaterThan(0);
-  });
-
-  it('includes dependencyPlanContent in prompt when provided', async () => {
-    const backend = new StubHarness([{ text: 'Module plan written.' }]);
-    const depContent = '# Foundation\n\nCreates auth tables and user model.';
-
-    await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'auth',
-      moduleDescription: 'Auth',
-      moduleDependsOn: ['foundation'],
-      architectureContent: '',
-      sourceContent: 'PRD',
-      dependencyPlanContent: depContent,
-    }));
-
-    expect(backend.prompts[0]).toContain(depContent);
-  });
-
-  it('uses fallback text when dependencyPlanContent is omitted', async () => {
-    const backend = new StubHarness([{ text: 'Module plan written.' }]);
-
-    await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'foundation',
-      moduleDescription: 'Foundation',
-      moduleDependsOn: [],
-      architectureContent: '',
-      sourceContent: 'PRD',
-    }));
-
-    expect(backend.prompts[0]).toContain('No dependencies');
-  });
-
-  it('uses fallback text when dependencyPlanContent is undefined', async () => {
-    const backend = new StubHarness([{ text: 'Module plan written.' }]);
-
-    await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: '/tmp',
-      planSetName: 'my-expedition',
-      moduleId: 'foundation',
-      moduleDescription: 'Foundation',
-      moduleDependsOn: [],
-      architectureContent: '',
-      sourceContent: 'PRD',
-      dependencyPlanContent: undefined,
-    }));
-
-    expect(backend.prompts[0]).toContain('No dependencies');
-  });
-});
 
 // --- Architecture Reviewer ---
 
-describe('runArchitectureReview wiring', () => {
-  it('emits architecture review lifecycle events with parsed issues', async () => {
-    const backend = new StubHarness([{
-      text: `<review-issues>
-  <issue severity="warning" category="completeness" file="plans/my-plan/architecture.md">Missing integration contract between auth and api modules</issue>
-</review-issues>`,
-    }]);
-
-    const events = await collectEvents(runArchitectureReview({
-      harness: backend,
-      sourceContent: 'PRD content',
-      planSetName: 'my-plan',
-      architectureContent: '# Architecture\nModules: auth, api',
-      cwd: '/tmp',
-    }));
-
-    expect(findEvent(events, 'planning:architecture:review:start')).toBeDefined();
-    const complete = findEvent(events, 'planning:architecture:review:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.issues).toHaveLength(1);
-    expect(complete!.issues[0].category).toBe('completeness');
-    expect(complete!.issues[0].severity).toBe('warning');
-  });
-
-  it('yields empty issues for clean architecture', async () => {
-    const backend = new StubHarness([{
-      text: 'Architecture looks solid. <review-issues></review-issues>',
-    }]);
-
-    const events = await collectEvents(runArchitectureReview({
-      harness: backend,
-      sourceContent: 'PRD content',
-      planSetName: 'my-plan',
-      architectureContent: '# Architecture\nWell defined.',
-      cwd: '/tmp',
-    }));
-
-    const complete = findEvent(events, 'planning:architecture:review:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.issues).toHaveLength(0);
-  });
-});
 
 // --- Architecture Evaluator ---
 
-describe('runArchitectureEvaluate wiring', () => {
-  it('counts evaluation verdicts correctly', async () => {
-    const backend = new StubHarness([{
-      text: `<evaluation>
-  <verdict file="plans/my-plan/architecture.md" action="accept">Good clarification</verdict>
-  <verdict file="plans/my-plan/architecture.md" action="reject">Changes module decomposition</verdict>
-  <verdict file="plans/my-plan/architecture.md" action="accept">Missing contract added</verdict>
-</evaluation>`,
-    }]);
-
-    const events = await collectEvents(runArchitectureEvaluate({
-      harness: backend,
-      planSetName: 'my-plan',
-      sourceContent: 'PRD content',
-      cwd: '/tmp',
-    }));
-
-    expect(findEvent(events, 'planning:architecture:evaluate:start')).toBeDefined();
-    const complete = findEvent(events, 'planning:architecture:evaluate:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.accepted).toBe(2);
-    expect(complete!.rejected).toBe(1);
-    expect(complete!.verdicts).toEqual([
-      { file: 'plans/my-plan/architecture.md', action: 'accept', reason: 'Good clarification' },
-      { file: 'plans/my-plan/architecture.md', action: 'reject', reason: 'Changes module decomposition' },
-      { file: 'plans/my-plan/architecture.md', action: 'accept', reason: 'Missing contract added' },
-    ]);
-  });
-
-  it('emits zero counts and re-throws on error (architecture)', async () => {
-    const backend = new StubHarness([{ error: new Error('Architecture evaluate crash') }]);
-
-    let thrown: Error | undefined;
-    const events: EforgeEvent[] = [];
-    try {
-      for await (const event of runArchitectureEvaluate({
-        harness: backend,
-        planSetName: 'my-plan',
-        sourceContent: 'PRD content',
-        cwd: '/tmp',
-      })) {
-        events.push(event);
-      }
-    } catch (err) {
-      thrown = err as Error;
-    }
-
-    expect(thrown).toBeDefined();
-    expect(thrown!.message).toBe('Architecture evaluate crash');
-
-    const complete = findEvent(events, 'planning:architecture:evaluate:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.accepted).toBe(0);
-    expect(complete!.rejected).toBe(0);
-  });
-});
 
 // --- PRD Validator ---
 

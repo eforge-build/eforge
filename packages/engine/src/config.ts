@@ -34,12 +34,11 @@ export type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 // ---------------------------------------------------------------------------
 /** Agent roles matching the AgentRole union in events.ts. */
 export const AGENT_ROLES = [
-  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
-  'plan-reviewer', 'plan-evaluator', 'architecture-reviewer', 'architecture-evaluator',
-  'cohesion-reviewer', 'cohesion-evaluator',
+  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator',
+  'plan-reviewer', 'plan-evaluator',
   'validation-fixer', 'merge-conflict-resolver',
   'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer',
-  'test-writer', 'tester', 'prd-validator', 'dependency-detector', 'pipeline-composer',
+  'test-writer', 'tester', 'prd-validator', 'dependency-detector',
   'gap-closer',
   'recovery-analyst',
 ] as const;

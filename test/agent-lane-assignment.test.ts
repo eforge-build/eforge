@@ -10,11 +10,8 @@ import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
-import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
-import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runDependencyDetector } from '@eforge-build/engine/agents/dependency-detector';
 import { runValidationFixer } from '@eforge-build/engine/agents/validation-fixer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
@@ -46,43 +43,6 @@ async function collectAgentStartEvents(gen: AsyncGenerator<EforgeEvent>): Promis
 // --- Planning agents ---
 
 describe('planning agent lane assignment', () => {
-  it('pipeline-composer agent:start carries planId: planning', async () => {
-    const validComposition = JSON.stringify({
-      scope: 'errand',
-      compile: ['planner'],
-      defaultBuild: ['implement'],
-      defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' },
-      rationale: 'test',
-    });
-    const harness = new StubHarness([{ resultText: validComposition }]);
-
-    const starts = await collectAgentStartEvents(composePipeline({
-      harness,
-      source: 'Build a widget',
-      cwd: '/tmp',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('pipeline-composer');
-  });
-
-  it('planner agent:start carries planId: planning', async () => {
-    // Planner will throw PlannerSubmissionError because the stub response
-    // doesn't call a submission tool, but agent:start is emitted first.
-    const harness = new StubHarness([{ text: 'I will plan this.' }]);
-
-    const starts = await collectAgentStartEvents(runPlanner('Build a widget', {
-      harness,
-      cwd: '/tmp',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('planner');
-  });
 
   it('plan-reviewer agent:start carries planId: planning', async () => {
     const harness = new StubHarness([{ text: 'No issues found.' }]);
@@ -116,25 +76,6 @@ describe('planning agent lane assignment', () => {
     expect(starts[0].agent).toBe('plan-evaluator');
   });
 
-  it('module-planner agent:start carries planId: planning', async () => {
-    const harness = new StubHarness([{ text: 'Module plan content.' }]);
-
-    const starts = await collectAgentStartEvents(runModulePlanner({
-      harness,
-      cwd: '/tmp',
-      planSetName: 'test-set',
-      moduleId: 'mod-1',
-      moduleDescription: 'A module',
-      moduleDependsOn: [],
-      architectureContent: 'arch doc',
-      sourceContent: 'Build a widget',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('module-planner');
-  });
 
   it('dependency-detector agent:start carries planId: planning', async () => {
     const harness = new StubHarness([{ text: '[]' }]);

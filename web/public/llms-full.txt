@@ -89,8 +89,8 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
-3. **Compile preflight** - eforge measures source risk, emits `planning:preflight`, and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Overflow-risk inputs may use bounded context-managed planning units governed by the `compile.planningUnit*` limits.
-4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry context metadata and effective output reserves when available, while prompt byte defaults remain static byte guards. A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
+3. **Compile preflight compaction** - eforge may compact generated or machine-readable bulk in planner prompts while preserving the full source for artifacts and validation. Oversized inputs decompose into bounded context-managed planning units governed by the `compile.planningUnit*` limits.
+4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry context metadata and effective output reserves when available, while prompt byte defaults remain static byte guards. The [bounded planner compiler](./concepts#one-planning-path-sized-deterministically) sizes the work deterministically and writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 7. **Merge** - Completed plans merge back to your branch in topological order.
@@ -137,7 +137,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once, or use context-managed planning units governed by `compile.planningUnit*` limits, when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic compaction pass may summarize generated or machine-readable bulk in planner prompts while preserving the full source for artifacts and validation. The bounded planner compiler sizes the work deterministically: small sources take a single-pass fast path, and large sources decompose into bounded planning units governed by `compile.planningUnit*` limits, all through the same pipeline. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The compiler produces plan files, an orchestration manifest, and supporting architecture/coverage/diagnostics artifacts; a planning-quality review gate audits them, and eforge validates the persisted artifacts before reporting compile success. Plans build in parallel in dependency order.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -162,17 +162,9 @@ When `build.cleanupPlanFiles: true` (the default), eforge removes these artifact
 
 The durable provenance guarantee is Git history, not the final tree. Squash or rebase merge strategies applied after a PR is opened (for example, GitHub's "Squash and merge") can collapse intermediate commits and make artifact references unreachable. Use merge commits when preserving build provenance history matters to your team.
 
-## Workflow Profiles
+## One planning path, sized deterministically
 
-The pipeline-composer selects one of three workflow profiles based on scope complexity:
-
-**Errand** - Small, self-contained changes. The planner generates a single simple plan or skips if nothing needs doing. Fast path with minimal overhead.
-
-**Excursion** - Multi-file feature work. The planner writes a full plan covering all files and dependencies, then a blind plan-review cycle validates it before building begins.
-
-**Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
-
-You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation or bounded planning-unit decomposition before planning continues.
+There is no compile-time scope classification. Every build runs the same compile pipeline - the bounded planner compiler followed by a planning-quality review gate - and the compiler adapts to input size through deterministic inventory chunking. A one-line fix takes the single-atom passthrough fast path; a large cross-cutting PRD fans out into bounded planning units that plan independently and synthesize into one plan set. Plan-set shape is decided by the source's acceptance criteria and structure, not by an agent choosing a workflow profile.
 
 ## Separation of Concerns
 
@@ -183,7 +175,7 @@ Each pipeline stage uses a different agent with different context:
 - **Fixer** - Applies reviewer suggestions as unstaged changes.
 - **Evaluator** - Judges each fix against the original plan intent. Accepts strict improvements; rejects changes that alter intent.
 
-This three-step pattern (blind review - fix - evaluate) applies to code review, plan review, architecture review, and cohesion review. The evaluator is the safety valve: it keeps the fixer from over-correcting.
+This three-step pattern (blind review - fix - evaluate) applies to code review and to the planning-quality review of compiled plan-set artifacts. The evaluator is the safety valve: it keeps the fixer from over-correcting.
 
 ## Harnesses
 
@@ -1500,7 +1492,7 @@ Event subscriptions accept glob-style patterns using `*` as a wildcard. The wild
 |---------|---------|
 | `plan:build:failed` | Exact match only |
 | `plan:build:*` | `plan:build:start`, `plan:build:complete`, `plan:build:failed`, etc. |
-| `*:complete` | `planning:complete`, `plan:build:complete`, `expedition:wave:complete`, etc. |
+| `*:complete` | `planning:complete`, `plan:build:complete`, `merge:finalize:complete`, etc. |
 | `*` | Every event |
 
 Pattern semantics match shell hooks. See the [Events Reference](/reference/events) for public event types.
@@ -1791,7 +1783,7 @@ interface AgentRunContext extends EforgeExtensionContext {
   changedFiles?: string[];
   // Lifecycle context (populated for pipeline runs):
   phase?: string;   // 'compile' | 'build' | 'standalone'
-  stage?: string;   // e.g. 'implement', 'review', 'planner', 'module-planner'
+  stage?: string;   // e.g. 'implement', 'review', 'planner'
   // Runtime metadata (read-only):
   harness?: 'claude-sdk' | 'pi';
   runtimeChoice?: string;
@@ -2869,7 +2861,7 @@ type FailedEvent = EventOfType<"plan:build:failed">;
 |---------|---------|----------------|
 | `plan:build:failed` | `plan:build:failed` | `plan:build:complete` |
 | `plan:build:*` | `plan:build:start`, `plan:build:failed`, ... | `planning:complete` |
-| `*:complete` | `plan:build:complete`, `expedition:wave:complete`, `planning:complete` | `plan:build:failed` |
+| `*:complete` | `plan:build:complete`, `merge:finalize:complete`, `planning:complete` | `plan:build:failed` |
 | `*` | Every event type | - |
 | `plan.build:start` | `plan.build:start` (literal dot) | `plan:build:start` |
 
@@ -4015,17 +4007,15 @@ Large or machine-generated PRDs can exhaust compile-stage prompt or provider con
 
 **What to look for:**
 
-- `planning:preflight` - a compile preflight risk event. Normal risk is usually quiet. Elevated or overflow-risk results include bounded source and prompt byte counts, acceptance-criteria and inventory counts, subsystem evidence, representative paths/headings/hashes, and a recommendation.
 - `planning:scope-context:failure` - a compile scope/context guard failure. It identifies the failure source, failure kind, stage, bounded explanation, observed prompt/token/turn metrics when available, artifact summary, and recovery action. Newer events may also include optional guard diagnostics such as provider/model, model-aware input-token limit, context window, reserves, safety margin, metadata source, and fallback reason, plus bounded decomposition evidence for `decomposition-exhausted` failures.
 
 **How to interpret recovery guidance:**
 
-- `retry-as-expedition` means eforge determined the compile may fit after escalating from errand/excursion to expedition decomposition. If a retry was attempted, Console and CLI show it as recovery progress; if not attempted or terminal, treat it as guidance for the next build attempt.
 - `bounded-decomposition` means eforge should use bounded context-managed planning units when eligible, or the operator should deliberately reduce/decompose the source before retrying. Context-managed planning-unit budgets come from the top-level `compile.planningUnit*` config keys; exhausted decomposition evidence is read-only and does not mean eforge auto-authored successor PRDs or queue items.
 - `manual-reduce-scope` means a human should remove generated bulk, duplicate context, or unrelated requirements and enqueue a reduced source.
 - `repair-existing-artifacts` means preserved compile artifacts may be usable through the compiled-artifact repair path when the sidecar also reports valid continue-and-repair eligibility.
 
-Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `retry-as-expedition` or `bounded-decomposition`. When `decompositionEvidence` is present, CLI, Console, and sidecar markdown show bounded fields such as failed unit, depth, triggered limits, blockers, unresolved criteria, and split attempts, without raw source, prompts, transcripts, or agent output. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue any revised source deliberately.
+Compile scope/context recovery options in a sidecar are **read-only guidance**. They do not create Console or daemon `apply-recovery` actions for `bounded-decomposition`. When `decompositionEvidence` is present, CLI, Console, and sidecar markdown show bounded fields such as failed unit, depth, triggered limits, blockers, unresolved criteria, and split attempts, without raw source, prompts, transcripts, or agent output. Use the existing recovery verdict action, continue-and-repair when artifacts are valid, or manually reduce/decompose the PRD and enqueue any revised source deliberately.
 
 When guard diagnostics are present, inspect the rendered `limits`, `outputReserveTokens`, and any `fallbackReason` before deciding how to retry. `outputReserveTokens` is the effective output reserve used in the input-budget calculation; for planner-family Pi guards it can be capped below the model's raw output-token metadata. `metadataSource` can be `registry` (Pi ModelRegistry metadata), `builtin` (Pi built-in metadata), `synthetic` (provider sibling transport metadata for an unknown model), or `fallback` (conservative defaults after missing or unusable metadata). Registry, built-in, and synthetic metadata can still be incomplete or caveated; `fallbackReason` is the authoritative caveat text whenever it appears. If the reported `maxObservedInputTokens` is too low for the build source, reduce scope or choose/add a profile/model with complete context metadata before retrying.
 
@@ -4147,11 +4137,11 @@ The agent stage that implements a plan in an isolated worktree and commits the r
 
 ## Compile phase
 
-The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, writes the plan set and dependency graph, and validates the persisted plan artifacts before reporting success.
+The once-per-build phase where eforge formats input, runs the bounded planner compiler to write the plan set and dependency graph, reviews the compiled artifacts through the planning-quality gate, and validates the persisted plan artifacts before reporting success.
 
-## Compile preflight
+## Compile preflight compaction
 
-A typed `planning:preflight` diagnostic emitted during compile before planner-family agents run. It reports normal, elevated, or overflow-risk input size/context risk with bounded source, prompt, inventory, subsystem, representative, and recommendation details.
+A deterministic pass over the build source before planner-family agents run. It detects generated or machine-readable bulk (inventories, sidecars, large code fences) and replaces it with bounded summaries in the prompt source while preserving the full source for artifacts and validation.
 
 ## Compile scope/context failure
 
@@ -4160,10 +4150,6 @@ A typed `planning:scope-context:failure` diagnostic for compile-stage context ex
 ## Daemon
 
 The long-running background process that watches the queue, runs builds, exposes the HTTP API, and streams live events to the monitor and integrations.
-
-## Errand, Excursion, Expedition
-
-Workflow profiles selected initially by the pipeline-composer. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review. Compile scope/context recovery may escalate an errand or excursion compile to expedition once when eligible, or surface bounded-decomposition guidance for context-managed planning units.
 
 ## Evaluator
 
@@ -4199,7 +4185,7 @@ A reusable Markdown workflow template for recurring work owned by the first-part
 
 ## Planner
 
-The agent stage that writes implementation plans after the pipeline-composer has sized work and chosen the initial workflow profile. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
+The compile stage that writes implementation plans. It is the bounded planner compiler: deterministic inventory chunking sizes the work, bounded agents plan each unit, and synthesis writes the plan-set artifacts. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
 
 ## PRD
 
@@ -4235,7 +4221,7 @@ The canonical `## Recovery Guidance` section that eforge writes into failed root
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `retry-as-expedition`, `bounded-decomposition`, and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. When a compile scope/context option includes `decompositionEvidence`, sidecar markdown and Console render bounded failed-unit evidence as read-only decomposition context, not provider context-window evidence or generated successor PRD content. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus recovery options for continue-repair or non-mutating compile scope/context guidance. Compile scope/context options such as `bounded-decomposition` and `manual-reduce-scope` are advisory; they do not map to `apply-recovery` mutations or Console apply buttons. When a compile scope/context option includes `decompositionEvidence`, sidecar markdown and Console render bounded failed-unit evidence as read-only decomposition context, not provider context-window evidence or generated successor PRD content. For compiled-artifact continue/resume, the sidecar is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 
@@ -4706,21 +4692,6 @@ Validate eforge/config.yaml configuration
 Show resolved eforge configuration
 
 
-### `debug-composer`
-
-**Full command:** `eforge debug-composer`
-
-Run only the pipeline-composer stage under one or more backend profiles and dump the request payload each backend constructs (system prompt, tools, model, thinking) for side-by-side diffing. Use --backend <name> to select profiles; repeat to compare multiple.
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--backend <name>` | Backend profile to test (repeatable). Defaults to the currently-active profile. |
-| `--out <dir>` | Output directory for captured payloads |
-| `--verbose` | Stream composer agent messages to stdout |
-
 ### `daemon`
 
 **Full command:** `eforge daemon`
@@ -5037,7 +5008,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 248
+Total variants: 230
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -5094,13 +5065,12 @@ Total variants: 248
 | `extension:validation-provider:error` | `command`, `details`, `exitCode`, `extensionName`, `extensionPath`, `message`, `planId`, `providerName`, `status` |
 | `extension:validation-provider:timeout` | `command`, `extensionName`, `extensionPath`, `planId`, `providerName`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
-| `planning:preflight` | `risk` |
 | `planning:inspection-summary` | `artifactPath`, `summary` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
-| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `riskEvidence`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
+| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
 | `planning:decomposition:unit:queued` | `runId`, `sessionId`, `timestamp`, `unit` |
 | `planning:decomposition:unit:running` | `runId`, `sessionId`, `timestamp`, `unitId` |
 | `planning:decomposition:unit:progress` | `message`, `observed`, `runId`, `sessionId`, `timestamp`, `unitId` |
@@ -5115,23 +5085,13 @@ Total variants: 248
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |
 | `planning:continuation` | `attempt`, `maxContinuations`, `reason` |
-| `planning:pipeline` | `compile`, `defaultBuild`, `defaultReview`, `rationale`, `scope` |
+| `planning:pipeline` | `compile`, `defaultBuild`, `defaultReview`, `rationale` |
 | `planning:complete` | `planConfigs`, `plans` |
 | `planning:review:start` | - |
 | `planning:review:complete` | `issues` |
 | `planning:evaluate:start` | - |
 | `planning:evaluate:continuation` | `attempt`, `maxContinuations` |
 | `planning:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
-| `planning:architecture:review:start` | - |
-| `planning:architecture:review:complete` | `issues` |
-| `planning:architecture:evaluate:start` | - |
-| `planning:architecture:evaluate:continuation` | `attempt`, `maxContinuations` |
-| `planning:architecture:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
-| `planning:cohesion:start` | - |
-| `planning:cohesion:complete` | `issues` |
-| `planning:cohesion:evaluate:start` | - |
-| `planning:cohesion:evaluate:continuation` | `attempt`, `maxContinuations` |
-| `planning:cohesion:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
 | `planning:map-reduce:atoms` | `atomCount`, `atoms`, `edgeCount`, `edges`, `graphId` |
 | `planning:map-reduce:atom:status` | `atomId`, `reason`, `status` |
 | `planning:map-reduce:reduce-tree` | `graphId`, `maxDepth`, `nodeCount`, `nodes`, `rootNodeId` |
@@ -5185,13 +5145,6 @@ Total variants: 248
 | `landing:auto-merge:skipped` | `baseBranch`, `featureBranch`, `prUrl`, `reason` |
 | `merge:worktree:set` | `path` |
 | `merge:worktree:clear` | - |
-| `expedition:architecture:complete` | `modules` |
-| `expedition:wave:start` | `moduleIds`, `wave` |
-| `expedition:wave:complete` | `wave` |
-| `expedition:module:start` | `moduleId` |
-| `expedition:module:complete` | `moduleId` |
-| `expedition:compile:start` | - |
-| `expedition:compile:complete` | `plans` |
 | `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `projectMcpSelection`, `projectMcpServerNames`, `runtimeChoice`, `runtimeChoiceFallbackReason`, `runtimeChoiceQualified`, `runtimeChoiceRouter`, `runtimeChoiceRule`, `runtimeChoiceSource`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource`, `toolbelt`, `toolbeltSource` |
 | `agent:warning` | `agent`, `agentId`, `code`, `message`, `planId` |
 | `agent:stop` | `agent`, `agentId`, `error`, `planId` |

@@ -4,11 +4,22 @@ import { relative, resolve } from 'node:path';
 
 import type { CompileArtifactSummary, OrchestrationConfig, PlanFile } from '../events.js';
 import { MAX_COMPILE_RISK_LIST_ITEMS } from '../events.js';
-import { parseExpeditionIndex, parseOrchestrationConfig, parsePlanFile, validatePlanSet } from '../plan.js';
+import { parseOrchestrationConfig, parsePlanFile, validatePlanSet } from '../plan.js';
+import { COMPILER_DIAGNOSTICS_ARTIFACT } from '../planner-compiler/compiler-diagnostics-contracts.js';
 import type { PipelineContext } from '../pipeline/types.js';
+import { validateCompilerCohesion } from './compiler-cohesion-validation.js';
 
 export const MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES = 4_096;
 export const MAX_COMPILE_ARTIFACT_DETAIL_BYTES = 512;
+
+export interface ValidateCompileArtifactsOptions {
+  /**
+   * 'require' fails validation when compiler-diagnostics.json is absent (bounded
+   * planner compiler path). 'auto' runs the compiler cohesion checks only when the
+   * artifact exists, so legacy plan sets validate exactly as before.
+   */
+  compilerArtifacts?: 'require' | 'auto';
+}
 
 export type CompileArtifactValidationResult =
   | {
@@ -28,19 +39,10 @@ export type CompileArtifactValidationResult =
       warnings: string[];
     };
 
-export type ExpeditionModuleInputValidationResult =
-  | { ok: true; moduleCount: number }
-  | {
-      ok: false;
-      message: string;
-      missingModuleFiles: string[];
-      emptyModuleFiles: string[];
-      invalidModuleIds: string[];
-      moduleCount: number;
-    };
-
+// --- eforge:region compile-artifact-validation ---
 export async function validateCompileArtifacts(
   ctx: PipelineContext,
+  options?: ValidateCompileArtifactsOptions,
 ): Promise<CompileArtifactValidationResult> {
   const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
   const orchPath = resolve(planDir, 'orchestration.yaml');
@@ -110,6 +112,16 @@ export async function validateCompileArtifacts(
     }
   }
 
+  const diagnosticsPath = resolve(planDir, COMPILER_DIAGNOSTICS_ARTIFACT);
+  const diagnosticsExists = existsSync(diagnosticsPath);
+  if ((options?.compilerArtifacts ?? 'auto') === 'require' && !diagnosticsExists) {
+    details.push(`missing ${COMPILER_DIAGNOSTICS_ARTIFACT} at ${rel(ctx, diagnosticsPath)}`);
+  } else if (diagnosticsExists && summary.missingPlanFileCount === 0 && summary.invalidPlanCount === 0) {
+    const cohesion = await validateCompilerCohesion({ planDir, rel: (path) => rel(ctx, path), orchestration: orchConfig, plans });
+    details.push(...cohesion.details);
+    warnings.push(...cohesion.warnings);
+  }
+
   if (summary.missingPlanFileCount > 0 || summary.invalidPlanCount > 0 || details.length > 0) {
     return failure(summary, details, warnings);
   }
@@ -117,68 +129,9 @@ export async function validateCompileArtifacts(
   return { ok: true, skipped: false, summary, plans, orchestration: orchConfig, warnings };
 }
 
-export async function validateExpeditionModuleInputs(
-  ctx: PipelineContext,
-): Promise<ExpeditionModuleInputValidationResult> {
-  if (ctx.expeditionModules.length === 0) return { ok: true, moduleCount: 0 };
+// --- eforge:endregion compile-artifact-validation ---
 
-  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  const indexPath = resolve(planDir, 'index.yaml');
-  const modulesDir = resolve(planDir, 'modules');
-  const missingModuleFiles: string[] = [];
-  const emptyModuleFiles: string[] = [];
-  const invalidModuleIds: string[] = [];
-
-  let index;
-  try {
-    index = await parseExpeditionIndex(indexPath);
-  } catch (err) {
-    return expeditionFailure({
-      details: [`Invalid expedition index.yaml: ${errorMessage(err)}`],
-      missingModuleFiles,
-      emptyModuleFiles,
-      invalidModuleIds,
-      moduleCount: ctx.expeditionModules.length,
-    });
-  }
-
-  const ctxIds = new Set(ctx.expeditionModules.map((mod) => mod.id));
-  const indexIds = new Set(Object.keys(index.modules));
-  for (const id of [...ctxIds].sort()) {
-    if (!indexIds.has(id)) pushBounded(invalidModuleIds, `missing from index.yaml: ${id}`);
-  }
-  for (const id of [...indexIds].sort()) {
-    if (!ctxIds.has(id)) pushBounded(invalidModuleIds, `unexpected in index.yaml: ${id}`);
-  }
-
-  for (const id of [...indexIds].sort()) {
-    const modulePath = resolve(modulesDir, `${id}.md`);
-    const moduleRel = rel(ctx, modulePath);
-    if (!existsSync(modulePath)) {
-      pushBounded(missingModuleFiles, moduleRel);
-      continue;
-    }
-    const content = await readFile(modulePath, 'utf-8');
-    if (content.trim().length === 0) pushBounded(emptyModuleFiles, moduleRel);
-  }
-
-  if (missingModuleFiles.length > 0 || emptyModuleFiles.length > 0 || invalidModuleIds.length > 0) {
-    return expeditionFailure({
-      details: [
-        ...missingModuleFiles.map((path) => `missing expedition module: ${path}`),
-        ...emptyModuleFiles.map((path) => `empty expedition module: ${path}`),
-        ...invalidModuleIds.map((id) => `invalid expedition module id: ${id}`),
-      ],
-      missingModuleFiles,
-      emptyModuleFiles,
-      invalidModuleIds,
-      moduleCount: indexIds.size,
-    });
-  }
-
-  return { ok: true, moduleCount: indexIds.size };
-}
-
+// --- eforge:region compile-artifact-validation-helpers ---
 async function skippedCompileResult(ctx: PipelineContext, orchestrationExists: boolean, orchPath: string): Promise<CompileArtifactValidationResult> {
   if (!orchestrationExists) {
     return { ok: true, skipped: true, summary: emptyArtifactSummary(false), plans: [], warnings: [] };
@@ -246,17 +199,6 @@ function formatCompileArtifactFailure(summary: CompileArtifactSummary, details: 
   return truncateUtf8(lines.join('\n'), MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
 }
 
-function expeditionFailure(input: {
-  details: string[];
-  missingModuleFiles: string[];
-  emptyModuleFiles: string[];
-  invalidModuleIds: string[];
-  moduleCount: number;
-}): ExpeditionModuleInputValidationResult {
-  const message = truncateUtf8(['Expedition module input validation failed.', ...input.details].join('\n'), MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
-  return { ok: false, message, missingModuleFiles: input.missingModuleFiles, emptyModuleFiles: input.emptyModuleFiles, invalidModuleIds: input.invalidModuleIds, moduleCount: input.moduleCount };
-}
-
 function emptyArtifactSummary(orchestrationExists: boolean): CompileArtifactSummary {
   return {
     orchestrationExists,
@@ -291,3 +233,4 @@ function rel(ctx: PipelineContext, path: string): string {
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+// --- eforge:endregion compile-artifact-validation-helpers ---

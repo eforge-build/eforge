@@ -26,14 +26,12 @@ import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 /**
  * Maps each agent role to its built-in tier.
  * A user can override the tier for a single role via `agents.roles[role].tier`.
- * Compile-time check: `Record<AgentRole, AgentTier>` ensures all 24 roles are covered.
+ * Compile-time check: `Record<AgentRole, AgentTier>` ensures every role is covered.
  */
 export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   // Planning tier — orchestration and composition agents
   planner: 'planning',
-  'module-planner': 'planning',
   formatter: 'planning',
-  'pipeline-composer': 'planning',
   'merge-conflict-resolver': 'planning',
   'gap-closer': 'planning',
   // Implementation tier — code-writing and transformation agents
@@ -50,13 +48,9 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'staleness-assessor': 'implementation',
   // Review tier — inspection and feedback agents
   reviewer: 'review',
-  'architecture-reviewer': 'review',
-  'cohesion-reviewer': 'review',
   'plan-reviewer': 'review',
   // Evaluation tier — verdict and acceptance agents
   evaluator: 'evaluation',
-  'architecture-evaluator': 'evaluation',
-  'cohesion-evaluator': 'evaluation',
   'plan-evaluator': 'evaluation',
 };
 
@@ -65,8 +59,6 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
   planner: 2,
   evaluator: 1,
   'plan-evaluator': 1,
-  'cohesion-evaluator': 1,
-  'architecture-evaluator': 1,
 };
 
 /** Provenance tag for a tunable field. `tier` = from tier recipe; `role` = role override; `plan` = plan-file override. */

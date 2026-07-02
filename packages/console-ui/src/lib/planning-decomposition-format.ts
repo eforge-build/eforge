@@ -25,7 +25,7 @@ return lines.join('\n'); }
 
 export function planningDecompositionEventSummary(event: DecompositionEvent): string {
   switch (event.type) {
-    case 'planning:decomposition:start': return `Context-managed planning: ${event.unitCount} unit(s), ${event.edgeCount} edge(s), parallelism ${event.limits.parallelism}${event.riskEvidence ? `, ${event.riskEvidence.acceptanceCriteriaCount} criteria` : ''}`;
+    case 'planning:decomposition:start': return `Context-managed planning: ${event.unitCount} unit(s), ${event.edgeCount} edge(s), parallelism ${event.limits.parallelism}`;
     case 'planning:decomposition:unit:queued': return `Planning unit queued: ${event.unit.unitId}${event.unit.subsystemHints.length ? ` (${join(event.unit.subsystemHints)})` : ''}`;
     case 'planning:decomposition:unit:running': return `Planning unit running: ${event.unitId}`;
     case 'planning:decomposition:unit:progress': return `Planning unit ${event.unitId}: ${cap(event.message)}`;
@@ -41,7 +41,7 @@ export function planningDecompositionEventSummary(event: DecompositionEvent): st
 
 export function planningDecompositionEventDetail(event: DecompositionEvent): string {
   switch (event.type) {
-    case 'planning:decomposition:start': return [`Limits: parallelism=${event.limits.parallelism}, maxDepth=${event.limits.maxDepth}, maxObservedInputTokens=${event.limits.maxObservedInputTokens}`, ...(event.riskEvidence ? [`Risk: ${event.riskEvidence.level}; sourceBytes=${event.riskEvidence.sourceBytes}; promptSourceBytes=${event.riskEvidence.promptSourceBytes}; subsystems=${join(event.riskEvidence.subsystemSummaries)}`] : [])].join('\n');
+    case 'planning:decomposition:start': return `Limits: parallelism=${event.limits.parallelism}, maxDepth=${event.limits.maxDepth}, maxObservedInputTokens=${event.limits.maxObservedInputTokens}`;
     case 'planning:decomposition:unit:queued': return [`Depth: ${event.unit.depth}`, `Dependencies: ${join(event.unit.dependencies)}`, `Criteria: ${event.unit.coverage.totalCriteria ?? event.unit.coverage.coveredCriteria.length}`, `Source slices: ${event.unit.sourceSlices.map((s) => `${s.kind}:${s.path ?? s.sourceHash.slice(0, 8)} (${s.byteLength} B)`).join(', ')}`].join('\n');
     case 'planning:decomposition:unit:running': return `Unit: ${event.unitId}`;
     case 'planning:decomposition:unit:progress': return event.observed ? `Observed: triggeredLimitKeys=${trig(event.observed)}, observedInputTokens=${event.observed.observedInputTokens ?? 'n/a'}, promptBytes=${event.observed.promptBytes ?? 'n/a'}` : '';

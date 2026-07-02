@@ -124,7 +124,7 @@ export interface RetryPolicy<Input> {
 
 /**
  * Returns true when attempt events contain an authoritative planner completion:
- * `planning:complete`, `planning:skip`, or `expedition:architecture:complete`.
+ * `planning:complete` or `planning:skip`.
  * Used to decide whether a late retryable infrastructure/transport error can be
  * downgraded to a warning instead of propagated.
  */
@@ -132,15 +132,14 @@ export function hasAuthoritativePlannerCheckpoint(events: readonly EforgeEvent[]
   return events.some(
     (ev) =>
       ev.type === 'planning:complete' ||
-      ev.type === 'planning:skip' ||
-      ev.type === 'expedition:architecture:complete',
+      ev.type === 'planning:skip',
   );
 }
 
 /**
  * Returns true only when none of the planner boundary events have appeared:
- * `planning:submission`, `planning:skip`, `planning:complete`, or
- * `expedition:architecture:complete`. When all four are absent, the planner
+ * `planning:submission`, `planning:skip`, or `planning:complete`.
+ * When all three are absent, the planner
  * has not yet produced any authoritative side-effect (file write or submission)
  * so rerunning is safe.
  */
@@ -149,8 +148,7 @@ export function isBeforePlannerSubmissionBoundary(events: readonly EforgeEvent[]
     (ev) =>
       ev.type === 'planning:submission' ||
       ev.type === 'planning:skip' ||
-      ev.type === 'planning:complete' ||
-      ev.type === 'expedition:architecture:complete',
+      ev.type === 'planning:complete',
   );
 }
 
@@ -188,7 +186,7 @@ function extractAgentId(events: readonly EforgeEvent[], fallback: string): strin
 /**
  * True when the events collected during a failed planner attempt indicate a
  * dropped submission — the agent completed the stream without calling either
- * of the submission tools (`submit_plan_set` / `submit_architecture`) and
+ * of the submission tools (`submit_plan_set`) and
  * without emitting a `<skip>` block that the planner surfaces as `plan:skip`.
  *
  * The check is "absence of a successful submission" rather than "presence of
@@ -210,7 +208,7 @@ export function isDroppedSubmission(events: readonly EforgeEvent[]): boolean {
 }
 
 function isPlannerSubmissionToolName(tool: string): boolean {
-  return tool === 'submit_plan_set' || tool === 'submit_architecture' || tool.endsWith('__submit_plan_set') || tool.endsWith('__submit_architecture');
+  return tool === 'submit_plan_set' || tool.endsWith('__submit_plan_set');
 }
 
 export function hasCompactInspectionContinuation(events: readonly EforgeEvent[]): boolean {
@@ -1061,7 +1059,7 @@ const EMPTY_SUBTYPES: ReadonlySet<AgentTerminalSubtype> = new Set();
  * (`maxAttempts = maxContinuations + 1`, i.e. 1 initial attempt plus N retries):
  *   - planner: 3 (was maxContinuations 2)
  *   - evaluator: 2 (was maxContinuations 1)
- *   - plan-evaluator / cohesion-evaluator / architecture-evaluator: 2
+ *   - plan-evaluator: 2
  *   - builder: 4 (prior default: maxContinuations 3)
  */
 export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unknown>>> = {
@@ -1166,32 +1164,6 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     }],
     label: 'plan-evaluator-continuation',
   },
-  'cohesion-evaluator': {
-    agent: 'cohesion-evaluator',
-    maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
-    buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
-    onRetry: (info) => [{
-      timestamp: new Date().toISOString(),
-      type: 'planning:cohesion:evaluate:continuation',
-      attempt: info.attempt,
-      maxContinuations: info.maxAttempts - 1,
-    }],
-    label: 'cohesion-evaluator-continuation',
-  },
-  'architecture-evaluator': {
-    agent: 'architecture-evaluator',
-    maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS_TRANSPORT_AND_INFRA,
-    buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
-    onRetry: (info) => [{
-      timestamp: new Date().toISOString(),
-      type: 'planning:architecture:evaluate:continuation',
-      attempt: info.attempt,
-      maxContinuations: info.maxAttempts - 1,
-    }],
-    label: 'architecture-evaluator-continuation',
-  },
   'review-fixer': {
     agent: 'review-fixer' as AgentRole,
     maxAttempts: 3,
@@ -1212,30 +1184,6 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     },
     planIdFromInput: (input) => (input as ReviewFixerContinuationInput).planId,
     label: 'review-fixer-continuation',
-  },
-  'pipeline-composer': {
-    agent: 'pipeline-composer',
-    maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_INFRASTRUCTURE_SUBTYPES,
-    label: 'pipeline-composer-infrastructure-retry',
-    // After `planning:pipeline` is emitted, a late retryable infrastructure or
-    // transport error is downgraded to a warning — the composition result is
-    // already available so no retry is needed.
-    terminalSuccessWhen: (info: RetryAttemptInfo<unknown>) =>
-      info.events.some((ev) => ev.type === 'planning:pipeline') &&
-      isRetryableInfrastructureSubtype(info.subtype),
-    onTerminalSuccess: (info: RetryAttemptInfo<unknown>) => {
-      const agentId = extractAgentId(info.events, 'pipeline-composer-unknown');
-      const message = info.error instanceof Error ? info.error.message : String(info.error);
-      return [{
-        timestamp: new Date().toISOString(),
-        type: 'agent:warning',
-        agent: 'pipeline-composer',
-        agentId,
-        code: 'infrastructure-error-post-checkpoint-downgraded',
-        message: `Retryable infrastructure error after pipeline-composer checkpoint was downgraded: ${message}`,
-      }];
-    },
   },
 };
 

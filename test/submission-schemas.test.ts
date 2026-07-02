@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   planSetSubmissionSchema,
-  architectureSubmissionSchema,
   validatePlanSetSubmission,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
@@ -215,49 +214,3 @@ describe('planSetSubmissionSchema', () => {
   });
 });
 
-describe('architectureSubmissionSchema', () => {
-  it('accepts a valid payload', () => {
-    const result = safeParseWithSchema(architectureSubmissionSchema, {
-      architecture: '# Architecture\n\nDesign doc.',
-      modules: [
-        { id: 'mod-auth', description: 'Auth module', dependsOn: [] },
-        { id: 'mod-api', description: 'API module', dependsOn: ['mod-auth'] },
-      ],
-      index: {
-        name: 'my-plan',
-        description: 'A plan set',
-        mode: 'expedition',
-        validate: [],
-        modules: {
-          'mod-auth': { description: 'Auth module', depends_on: [] },
-          'mod-api': { description: 'API module', depends_on: ['mod-auth'] },
-        },
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('validates architecture as non-empty string', () => {
-    const result = safeParseWithSchema(architectureSubmissionSchema, {
-      architecture: '',
-      modules: [{ id: 'mod-a', description: 'A', dependsOn: [] }],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('validates modules as a non-empty array', () => {
-    const result = safeParseWithSchema(architectureSubmissionSchema, {
-      architecture: '# Arch',
-      modules: [],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('requires module id, description, and dependsOn', () => {
-    const result = safeParseWithSchema(architectureSubmissionSchema, {
-      architecture: '# Arch',
-      modules: [{ id: '', description: 'test', dependsOn: [] }],
-    });
-    expect(result.success).toBe(false);
-  });
-});

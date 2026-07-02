@@ -214,29 +214,6 @@ describe('BuildDecisionSchema — invalid inputs', () => {
 // ---------------------------------------------------------------------------
 
 describe('PlanningDecisionSchema — valid kinds', () => {
-  it('parses scope-selected (pipeline-composer source)', () => {
-    const result = parseWithSchema(PlanningDecisionSchema,{
-      kind: 'scope-selected',
-      rationale: 'Three independent subsystems each requiring dedicated exploration',
-      scope: 'expedition',
-      source: 'pipeline-composer',
-    });
-    expect(result.kind).toBe('scope-selected');
-    expect(result.scope).toBe('expedition');
-    expect(result.source).toBe('pipeline-composer');
-  });
-
-  it('parses scope-selected (planner source)', () => {
-    const result = parseWithSchema(PlanningDecisionSchema,{
-      kind: 'scope-selected',
-      rationale: 'Simple single-file typo fix',
-      scope: 'errand',
-      source: 'planner',
-    });
-    expect(result.kind).toBe('scope-selected');
-    expect(result.scope).toBe('errand');
-  });
-
   it('parses build-pipeline-chosen', () => {
     const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'build-pipeline-chosen',
@@ -299,13 +276,7 @@ describe('PlanningDecisionSchema — invalid inputs', () => {
 
   it('throws on missing rationale', () => {
     expect(() =>
-      parseWithSchema(PlanningDecisionSchema,{ kind: 'scope-selected', scope: 'excursion', source: 'planner' }),
-    ).toThrow();
-  });
-
-  it('throws on invalid scope value', () => {
-    expect(() =>
-      parseWithSchema(PlanningDecisionSchema,{ kind: 'scope-selected', rationale: 'test', scope: 'invalid', source: 'planner' }),
+      parseWithSchema(PlanningDecisionSchema,{ kind: 'plan-set-shape', planCount: 1, planIds: ['plan-01'] }),
     ).toThrow();
   });
 
@@ -329,10 +300,10 @@ describe('PlanningDecisionSchema — invalid inputs', () => {
 
 describe('emitPlanningDecision', () => {
   const validDecision: PlanningDecision = {
-    kind: 'scope-selected',
+    kind: 'plan-set-shape',
     rationale: 'Multiple independent subsystems',
-    scope: 'excursion',
-    source: 'pipeline-composer',
+    planCount: 2,
+    planIds: ['plan-01', 'plan-02'],
   };
 
   it('returns an event with type === planning:decision', () => {
@@ -365,7 +336,7 @@ describe('emitPlanningDecision', () => {
   });
 
   it('throws when called with a malformed decision', () => {
-    const malformed = { kind: 'scope-selected', scope: 'excursion', source: 'planner' } as unknown as PlanningDecision;
+    const malformed = { kind: 'plan-set-shape', planCount: 1, planIds: ['plan-01'] } as unknown as PlanningDecision;
     // missing rationale
     expect(() => emitPlanningDecision(malformed)).toThrow();
   });

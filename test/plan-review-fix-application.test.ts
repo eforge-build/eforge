@@ -5,14 +5,12 @@ import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   applyPlanReviewFixes,
-  applyCohesionReviewFixes,
   applyArchitectureReviewFixes,
   parsePlanFile,
   parseOrchestrationConfig,
 } from '@eforge-build/engine/plan';
 import {
   planReviewSubmissionSchema,
-  cohesionReviewSubmissionSchema,
   architectureReviewSubmissionSchema,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
@@ -404,96 +402,16 @@ describe('planReviewSubmissionSchema', () => {
 // applyCohesionReviewFixes: replace_plan_file
 // ---------------------------------------------------------------------------
 
-describe('applyCohesionReviewFixes: replace_plan_file', () => {
-  it('round-trip against <planSet>/modules/<planId>.md', async () => {
-    const tempDir = await makeTempDir();
-    const moduleId = 'auth';
-    await createModulePlanSet(tempDir, 'test-expedition', moduleId, {
-      moduleName: 'Auth Module',
-    });
-
-    await applyCohesionReviewFixes({
-      cwd: tempDir,
-      outputDir: 'eforge/plans',
-      planSetName: 'test-expedition',
-      fixes: [{
-        kind: 'replace_plan_file',
-        planId: moduleId,
-        frontmatter: {
-          id: moduleId,
-          name: 'Auth: Revised Module',
-          branch: 'auth/updated',
-        },
-        body: '# Auth Module Revised\n\nUpdated content.',
-      }],
-    });
-
-    const modulePath = join(tempDir, 'eforge/plans/test-expedition/modules', `${moduleId}.md`);
-    const planFile = await parsePlanFile(modulePath);
-    expect(planFile.name).toBe('Auth: Revised Module');
-    expect(planFile.branch).toBe('auth/updated');
-    expect(planFile.body).toBe('# Auth Module Revised\n\nUpdated content.');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // applyCohesionReviewFixes: replace_plan_body
 // ---------------------------------------------------------------------------
 
-describe('applyCohesionReviewFixes: replace_plan_body', () => {
-  it('preserves frontmatter byte-identically against a module file', async () => {
-    const tempDir = await makeTempDir();
-    const moduleId = 'auth';
-    await createModulePlanSet(tempDir, 'test-expedition', moduleId, {
-      moduleName: 'Auth: Token Handler',
-    });
-
-    const modulePath = join(tempDir, 'eforge/plans/test-expedition/modules', `${moduleId}.md`);
-    const originalContent = await readFile(modulePath, 'utf-8');
-    const originalFrontmatterMatch = originalContent.match(/^---\n([\s\S]*?)\n---\n/);
-    expect(originalFrontmatterMatch).toBeTruthy();
-    const originalFrontmatterBlock = `---\n${originalFrontmatterMatch![1]}\n---\n`;
-
-    await applyCohesionReviewFixes({
-      cwd: tempDir,
-      outputDir: 'eforge/plans',
-      planSetName: 'test-expedition',
-      fixes: [{
-        kind: 'replace_plan_body',
-        planId: moduleId,
-        body: '# Updated Module Body\n\nNew cohesion-reviewed content.',
-      }],
-    });
-
-    const updatedContent = await readFile(modulePath, 'utf-8');
-    expect(updatedContent.startsWith(originalFrontmatterBlock)).toBe(true);
-    expect(updatedContent).toContain('# Updated Module Body');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // cohesionReviewSubmissionSchema: unknown kind
 // ---------------------------------------------------------------------------
 
-describe('cohesionReviewSubmissionSchema', () => {
-  it('rejects an unknown kind value', () => {
-    const result = safeParseWithSchema(cohesionReviewSubmissionSchema, {
-      fixes: [{
-        kind: 'replace_orchestration',
-        description: 'should not be valid for cohesion',
-        baseBranch: 'main',
-        validate: [],
-        plans: [],
-      }],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('accepts an empty fixes array', () => {
-    const result = safeParseWithSchema(cohesionReviewSubmissionSchema, { fixes: [] });
-    expect(result.success).toBe(true);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // applyArchitectureReviewFixes: replace_architecture
@@ -579,26 +497,6 @@ describe('apply helpers: no-op for empty fixes array', () => {
     expect(planStatAfter.mtimeMs).toBe(planStatBefore.mtimeMs);
   });
 
-  it('applyCohesionReviewFixes does not modify any file when fixes is empty', async () => {
-    const tempDir = await makeTempDir();
-    const moduleId = 'auth';
-    const { modulesDir } = await createModulePlanSet(tempDir, 'test-expedition', moduleId);
-    const modulePath = join(modulesDir, `${moduleId}.md`);
-
-    const statBefore = await stat(modulePath);
-
-    await new Promise(r => setTimeout(r, 50));
-
-    await applyCohesionReviewFixes({
-      cwd: tempDir,
-      outputDir: 'eforge/plans',
-      planSetName: 'test-expedition',
-      fixes: [],
-    });
-
-    const statAfter = await stat(modulePath);
-    expect(statAfter.mtimeMs).toBe(statBefore.mtimeMs);
-  });
 
   it('applyArchitectureReviewFixes does not modify any file when fixes is empty', async () => {
     const tempDir = await makeTempDir();

@@ -79,8 +79,6 @@ export interface ReviewCycleConfig {
  */
 const RETRIABLE_REVIEWER_ROLES = new Set<AgentRole>([
   'plan-reviewer',
-  'architecture-reviewer',
-  'cohesion-reviewer',
 ]);
 
 /**
@@ -210,24 +208,33 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
 // ---------------------------------------------------------------------------
 
 /**
+ * Compile stages whose reviewers read committed plan artifacts (and whose
+ * evaluators snapshot against HEAD~1) — plan artifacts are committed before
+ * each of these runs.
+ */
+const PLAN_ARTIFACT_COMMIT_STAGES = new Set([
+  'planning-quality-review-cycle',
+]);
+
+/**
  * Run the compile pipeline stages in sequence.
- * Handles the git commit of plan artifacts before the plan-review-cycle stage.
+ * Handles the git commit of plan artifacts before review-cycle stages.
  */
 export async function* runCompilePipeline(
   ctx: PipelineContext,
 ): AsyncGenerator<EforgeEvent> {
-  // Index-based iteration: ctx.pipeline may change mid-pipeline (e.g., planner
-  // stage switches from excursion to expedition), so re-read ctx.pipeline.compile
-  // on each iteration instead of capturing it once via for...of.
+  // Index-based iteration: re-read ctx.pipeline.compile on each iteration
+  // instead of capturing it once via for...of, so mid-pipeline changes to
+  // ctx.pipeline are honored.
   let i = 0;
   let restarts = 0;
   const MAX_RESTARTS = 5;
   while (i < ctx.pipeline.compile.length) {
     const stageName = ctx.pipeline.compile[i];
-    if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle' || stageName === 'cohesion-review-cycle') {
+    if (PLAN_ARTIFACT_COMMIT_STAGES.has(stageName)) {
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)
-      if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {
+      if (ctx.plans.length > 0) {
         const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
         await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir, ctx.modelTracker);
       }

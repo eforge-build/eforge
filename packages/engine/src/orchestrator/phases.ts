@@ -520,7 +520,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           let noCommittedChangesWaiverApplied = false;
 
           const commitSha = await ctx.worktreeManager.mergePlan(planId, plan, {
-            mode: config.mode,
             mergeResolver: ctx.mergeResolver,
             recentlyMergedIds: ctx.recentlyMergedIds,
             planMap,
@@ -1300,11 +1299,10 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
   if (allMerged && !signal?.aborted) {
     // Build commit message body; rawCommitBody preserved so landing can recompose with provenance trailers.
-    const prefix = config.mode === 'errand' ? 'fix' : 'feat';
     const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
     const rawCommitBody: string = config.plans.length === 1
-      ? `${prefix}(${config.name}): ${config.plans[0].name}`
-      : `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`;
+      ? `feat(${config.name}): ${config.plans[0].name}`
+      : `feat(${config.name}): ${config.description}\n\nPlans:\n${planList}`;
     const commitMessage = composeCommitMessage(rawCommitBody, ctx.modelTracker);
 
     // Policy gate applies only to merge; stays here per plan spec.

@@ -16,13 +16,6 @@ import type { PlanningDecision } from '@eforge-build/client';
 // Helper: make each planning decision kind
 // ---------------------------------------------------------------------------
 
-const scopeDecision: PlanningDecision = {
-  kind: 'scope-selected',
-  rationale: 'Pipeline composer selected excursion based on task size',
-  scope: 'excursion',
-  source: 'pipeline-composer',
-};
-
 const buildPipelineDecision: PlanningDecision = {
   kind: 'build-pipeline-chosen',
   rationale: 'Standard implement + review-cycle for a medium-complexity excursion',
@@ -50,12 +43,6 @@ const planSetShapeDecision: PlanningDecision = {
 // ---------------------------------------------------------------------------
 
 describe('emitPlanningDecision — event shape', () => {
-  it('emits type === planning:decision for scope-selected', () => {
-    const event = emitPlanningDecision(scopeDecision);
-    expect(event.type).toBe('planning:decision');
-    expect(event.decision.kind).toBe('scope-selected');
-  });
-
   it('emits type === planning:decision for build-pipeline-chosen', () => {
     const event = emitPlanningDecision(buildPipelineDecision);
     expect(event.type).toBe('planning:decision');
@@ -75,17 +62,17 @@ describe('emitPlanningDecision — event shape', () => {
   });
 
   it('omits planId when not provided', () => {
-    const event = emitPlanningDecision(scopeDecision);
+    const event = emitPlanningDecision(buildPipelineDecision);
     expect('planId' in event).toBe(false);
   });
 
   it('includes planId when provided', () => {
-    const event = emitPlanningDecision(scopeDecision, 'plan-01');
+    const event = emitPlanningDecision(buildPipelineDecision, 'plan-01');
     expect(event.planId).toBe('plan-01');
   });
 
   it('includes a valid ISO 8601 timestamp', () => {
-    const event = emitPlanningDecision(scopeDecision);
+    const event = emitPlanningDecision(buildPipelineDecision);
     const parsed = new Date(event.timestamp);
     expect(Number.isFinite(parsed.getTime())).toBe(true);
     expect(parsed.toISOString()).toBe(event.timestamp);
@@ -101,11 +88,6 @@ describe('emitPlanningDecision — schema validation', () => {
     const event = emitPlanningDecision(buildPipelineDecision);
     const parsed = parseWithSchema(PlanningDecisionSchema,event.decision);
     expect(parsed.kind).toBe('build-pipeline-chosen');
-  });
-
-  it('throws when called with a malformed scope-selected (missing scope)', () => {
-    const malformed = { kind: 'scope-selected', rationale: 'test', source: 'planner' } as unknown as PlanningDecision;
-    expect(() => emitPlanningDecision(malformed)).toThrow();
   });
 
   it('throws when called with a malformed review-profile-chosen (invalid strategy)', () => {
@@ -132,12 +114,11 @@ describe('emitPlanningDecision — schema validation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Round-trip: all four planning decision kinds
+// Round-trip: all planning decision kinds
 // ---------------------------------------------------------------------------
 
 describe('PlanningDecision — round-trips through schema', () => {
   const allDecisions: PlanningDecision[] = [
-    scopeDecision,
     buildPipelineDecision,
     reviewProfileDecision,
     planSetShapeDecision,

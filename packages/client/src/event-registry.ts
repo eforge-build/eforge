@@ -340,12 +340,6 @@ const eventRegistry = {
     summary: (e) => `Planning from ${e.label ?? e.source}`,
   },
 
-  'planning:preflight': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Compile preflight: ${e.risk.level}; ${e.risk.sourceBytes} source bytes; recovery ${e.risk.recommendation.action}`,
-  },
-
   'planning:inspection-summary': {
     scope: 'session', persist: true,
     summary: (e) => `Planner compact inspection summary: ${e.summary.relevantFiles.length} file(s), ${e.summary.observedFacts.length} fact(s), ${e.summary.importantFindings.length} finding(s)`,
@@ -371,7 +365,7 @@ const eventRegistry = {
 
   'planning:scope-context:failure': { scope: 'session', persist: true, summary: (e) => `Compile scope/context failure: ${e.failure.failureKind} from ${e.failure.source}; recovery ${e.failure.recovery.action}` },
 
-  'planning:decomposition:start': { scope: 'session', persist: true, summary: (e) => `Context-managed planning: ${e.unitCount} unit(s), ${e.edgeCount} edge(s), parallelism ${e.limits.parallelism}${e.riskEvidence ? `, ${e.riskEvidence.acceptanceCriteriaCount} criteria` : ''}` }, 'planning:decomposition:unit:queued': { scope: 'session', persist: true, summary: (e) => `Planning unit queued: ${e.unit.unitId}${e.unit.subsystemHints.length ? ` (${e.unit.subsystemHints.join(', ')})` : ''}` }, 'planning:decomposition:unit:running': { scope: 'session', persist: true, summary: (e) => `Planning unit running: ${e.unitId}` }, 'planning:decomposition:unit:progress': { scope: 'session', persist: false, summary: (e) => `Planning unit ${e.unitId}: ${e.message}` }, 'planning:decomposition:unit:completed': { scope: 'session', persist: true, summary: (e) => `Planning unit completed: ${e.unit.unitId} (${e.unit.coverage.coveredCriteria.length} criteria)` }, 'planning:decomposition:unit:skipped': { scope: 'session', persist: true, summary: (e) => `Planning unit skipped: ${e.unitId} — ${e.reason}` }, 'planning:decomposition:unit:failed': { scope: 'session', persist: true, summary: (e) => `Planning unit failed: ${e.unitId} — ${e.reason || e.evidence.observed.triggeredLimitKeys.join(', ')}` }, 'planning:decomposition:schedule': { scope: 'session', persist: true, summary: (e) => `Planning schedule: running [${e.decision.runningUnitIds.join(', ')}]; waiting ${e.decision.waitingUnitIds.length}; selected [${e.decision.selectedBatchUnitIds.join(', ')}]` }, 'planning:decomposition:budget': { scope: 'session', persist: true, summary: (e) => `Planning budget: ${e.unitId} ${e.observed?.triggeredLimitKeys.length ? `triggered ${e.observed.triggeredLimitKeys.join(', ')}` : 'within limits'}` }, 'planning:decomposition:compact-handoff': { scope: 'session', persist: true, summary: (e) => `Planning unit handoff: ${e.unitId ?? 'unknown'} → ${e.artifactPath ?? 'artifact'} (${e.byteLength} B)` }, 'planning:decomposition:synthesis:complete': { scope: 'session', persist: true, summary: (e) => `Context-managed synthesis complete: ${e.artifactPaths.length} artifact(s), ${e.completedUnitCount}/${e.failedUnitCount}/${e.skippedUnitCount} units` },
+  'planning:decomposition:start': { scope: 'session', persist: true, summary: (e) => `Context-managed planning: ${e.unitCount} unit(s), ${e.edgeCount} edge(s), parallelism ${e.limits.parallelism}` }, 'planning:decomposition:unit:queued': { scope: 'session', persist: true, summary: (e) => `Planning unit queued: ${e.unit.unitId}${e.unit.subsystemHints.length ? ` (${e.unit.subsystemHints.join(', ')})` : ''}` }, 'planning:decomposition:unit:running': { scope: 'session', persist: true, summary: (e) => `Planning unit running: ${e.unitId}` }, 'planning:decomposition:unit:progress': { scope: 'session', persist: false, summary: (e) => `Planning unit ${e.unitId}: ${e.message}` }, 'planning:decomposition:unit:completed': { scope: 'session', persist: true, summary: (e) => `Planning unit completed: ${e.unit.unitId} (${e.unit.coverage.coveredCriteria.length} criteria)` }, 'planning:decomposition:unit:skipped': { scope: 'session', persist: true, summary: (e) => `Planning unit skipped: ${e.unitId} — ${e.reason}` }, 'planning:decomposition:unit:failed': { scope: 'session', persist: true, summary: (e) => `Planning unit failed: ${e.unitId} — ${e.reason || e.evidence.observed.triggeredLimitKeys.join(', ')}` }, 'planning:decomposition:schedule': { scope: 'session', persist: true, summary: (e) => `Planning schedule: running [${e.decision.runningUnitIds.join(', ')}]; waiting ${e.decision.waitingUnitIds.length}; selected [${e.decision.selectedBatchUnitIds.join(', ')}]` }, 'planning:decomposition:budget': { scope: 'session', persist: true, summary: (e) => `Planning budget: ${e.unitId} ${e.observed?.triggeredLimitKeys.length ? `triggered ${e.observed.triggeredLimitKeys.join(', ')}` : 'within limits'}` }, 'planning:decomposition:compact-handoff': { scope: 'session', persist: true, summary: (e) => `Planning unit handoff: ${e.unitId ?? 'unknown'} → ${e.artifactPath ?? 'artifact'} (${e.byteLength} B)` }, 'planning:decomposition:synthesis:complete': { scope: 'session', persist: true, summary: (e) => `Context-managed synthesis complete: ${e.artifactPaths.length} artifact(s), ${e.completedUnitCount}/${e.failedUnitCount}/${e.skippedUnitCount} units` },
 
   'planning:map-reduce:atoms': { scope: 'session', persist: true, summary: (e) => `Map plan: ${e.atomCount} atom(s), ${e.edgeCount} edge(s)` }, 'planning:map-reduce:atom:status': { scope: 'session', persist: true, summary: (e) => `Atom ${e.atomId}: ${e.status}${e.reason ? ` (${e.reason})` : ''}` }, 'planning:map-reduce:reduce-tree': { scope: 'session', persist: true, summary: (e) => `Reduce tree: ${e.nodeCount} node(s), max level ${e.maxDepth + 1}` }, 'planning:map-reduce:reduce:status': { scope: 'session', persist: true, summary: (e) => `Reduce ${e.nodeId}: ${e.status}${e.reason ? ` (${e.reason})` : ''}` },
 
@@ -401,7 +395,7 @@ const eventRegistry = {
   'planning:pipeline': {
     scope: 'session',
     persist: false,
-    summary: (e) => `Pipeline: ${e.scope}`,
+    summary: (e) => `Pipeline: ${e.compile.join(' → ')}`,
   },
 
   'planning:complete': {
@@ -448,82 +442,6 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => `Plan evaluation: ${e.accepted} accepted, ${e.rejected} rejected`,
-  },
-
-  // -------------------------------------------------------------------------
-  // Architecture review
-  // -------------------------------------------------------------------------
-
-  'planning:architecture:review:start': {
-    scope: 'session',
-    persist: false,
-    summary: 'Reviewing architecture',
-  },
-
-  'planning:architecture:review:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) =>
-      e.issues.length === 0
-        ? 'Architecture review complete: no issues'
-        : `Architecture review: ${e.issues.length} issue(s)`,
-  },
-
-  'planning:architecture:evaluate:start': {
-    scope: 'session',
-    persist: false,
-    summary: 'Evaluating architecture review fixes',
-  },
-
-  'planning:architecture:evaluate:continuation': {
-    scope: 'session',
-    persist: false,
-    summary: (e) =>
-      `Architecture evaluation continuation attempt ${e.attempt}/${e.maxContinuations}`,
-  },
-
-  'planning:architecture:evaluate:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Architecture evaluation: ${e.accepted} accepted, ${e.rejected} rejected`,
-  },
-
-  // -------------------------------------------------------------------------
-  // Cohesion review
-  // -------------------------------------------------------------------------
-
-  'planning:cohesion:start': {
-    scope: 'session',
-    persist: false,
-    summary: 'Reviewing cross-module cohesion',
-  },
-
-  'planning:cohesion:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) =>
-      e.issues.length === 0
-        ? 'Cohesion review complete: no issues'
-        : `Cohesion review: ${e.issues.length} issue(s)`,
-  },
-
-  'planning:cohesion:evaluate:start': {
-    scope: 'session',
-    persist: false,
-    summary: 'Evaluating cohesion review fixes',
-  },
-
-  'planning:cohesion:evaluate:continuation': {
-    scope: 'session',
-    persist: false,
-    summary: (e) =>
-      `Cohesion evaluation continuation attempt ${e.attempt}/${e.maxContinuations}`,
-  },
-
-  'planning:cohesion:evaluate:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Cohesion evaluation: ${e.accepted} accepted, ${e.rejected} rejected`,
   },
 
   // -------------------------------------------------------------------------
@@ -1021,52 +939,6 @@ const eventRegistry = {
     // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
     // DaemonState has no per-plan status field, so this is intentionally a no-op.
     project: () => undefined,
-  },
-
-  // -------------------------------------------------------------------------
-  // Expedition planning phases
-  // -------------------------------------------------------------------------
-
-  'expedition:architecture:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Architecture complete: ${e.modules.length} module(s) defined`,
-  },
-
-  'expedition:wave:start': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Wave ${e.wave} started: ${e.moduleIds.join(', ')}`,
-  },
-
-  'expedition:wave:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Wave ${e.wave} complete`,
-  },
-
-  'expedition:module:start': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Planning module ${e.moduleId}`,
-  },
-
-  'expedition:module:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Module ${e.moduleId} planned`,
-  },
-
-  'expedition:compile:start': {
-    scope: 'session',
-    persist: false,
-    summary: 'Compiling plan files',
-  },
-
-  'expedition:compile:complete': {
-    scope: 'session',
-    persist: false,
-    summary: (e) => `Compiled ${e.plans.length} plan file(s)`,
   },
 
   // -------------------------------------------------------------------------

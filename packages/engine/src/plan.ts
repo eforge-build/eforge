@@ -5,7 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { Type } from '@sinclair/typebox';
-import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
+import type { PlanFile, OrchestrationConfig } from './events.js';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import {
   pipelineCompositionSchema,
@@ -114,77 +114,6 @@ function serializePlanFrontmatter(frontmatter: {
     fm.agents = frontmatter.agents;
   }
   return `---\n${stringifyYaml(fm).trim()}\n---\n`;
-}
-
-/**
- * Parsed expedition index.yaml.
- */
-export interface ExpeditionIndex {
-  name: string;
-  description: string;
-  created: string;
-  status: string;
-  mode: 'expedition';
-  validate?: string[];
-  architecture: { status: string; lastUpdated?: string };
-  modules: Record<string, { status: string; description: string; dependsOn: string[] }>;
-}
-
-/**
- * Parse an expedition index.yaml file.
- */
-export async function parseExpeditionIndex(yamlPath: string): Promise<ExpeditionIndex> {
-  const absPath = resolve(yamlPath);
-  const raw = await readFile(absPath, 'utf-8');
-  const data = parseYaml(raw) as Record<string, unknown>;
-
-  if (!data.name || typeof data.name !== 'string') {
-    throw new Error(`Expedition index missing required 'name' field: ${absPath}`);
-  }
-
-  const modulesRaw = (data.modules ?? {}) as Record<string, Record<string, unknown>>;
-  const modules: ExpeditionIndex['modules'] = {};
-
-  for (const [id, mod] of Object.entries(modulesRaw)) {
-    modules[id] = {
-      status: (mod.status as string) ?? 'pending',
-      description: (mod.description as string) ?? '',
-      dependsOn: Array.isArray(mod.depends_on) ? (mod.depends_on as string[]) : [],
-    };
-  }
-
-  const arch = (data.architecture ?? {}) as Record<string, unknown>;
-
-  const validate = Array.isArray(data.validate)
-    ? (data.validate as unknown[]).filter((v): v is string => typeof v === 'string')
-    : undefined;
-
-  return {
-    name: data.name,
-    description: (data.description as string) ?? '',
-    created: (data.created as string) ?? '',
-    status: (data.status as string) ?? 'draft',
-    mode: 'expedition',
-    ...(validate && validate.length > 0 && { validate }),
-    architecture: {
-      status: (arch.status as string) ?? 'pending',
-      lastUpdated: arch.last_updated as string | undefined,
-    },
-    modules,
-  };
-}
-
-/**
- * Convert ExpeditionIndex modules to ExpeditionModule array.
- */
-export function indexModulesToExpeditionModules(
-  modules: ExpeditionIndex['modules'],
-): ExpeditionModule[] {
-  return Object.entries(modules).map(([id, mod]) => ({
-    id,
-    description: mod.description,
-    dependsOn: mod.dependsOn,
-  }));
 }
 
 /**
@@ -341,7 +270,6 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     name: data.name as string,
     description: (data.description as string) ?? '',
     created: (data.created as string) ?? '',
-    mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
     ...(typeof data.diff_base_ref === 'string' && data.diff_base_ref ? { diffBaseRef: data.diff_base_ref } : {}),
     pipeline: pipelineResult.data,
@@ -663,7 +591,6 @@ export interface WritePlanArtifactsOptions {
   baseBranch: string;
   pipeline: PipelineComposition;
   validate?: string[];
-  mode?: 'errand' | 'excursion';
   /** Per-plan build stage sequence (written to orchestration.yaml plan entry). */
   build?: BuildStageSpec[];
   /** Per-plan review config (written to orchestration.yaml plan entry). */
@@ -697,7 +624,6 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     name: planSetName,
     description: planName,
     created: new Date().toISOString().split('T')[0],
-    mode: options.mode ?? 'errand',
     base_branch: baseBranch,
     pipeline: options.pipeline,
     ...(validate && validate.length > 0 && { validate }),
@@ -733,11 +659,10 @@ export interface WritePlanSetOptions {
   planSetName: string;
   payload: import('./schemas.js').PlanSetSubmission;
   baseBranch: string;
-  mode: 'errand' | 'excursion' | 'expedition';
 }
 
 export async function writePlanSet(options: WritePlanSetOptions): Promise<void> {
-  const { cwd, outputDir, planSetName, payload, baseBranch, mode } = options;
+  const { cwd, outputDir, planSetName, payload, baseBranch } = options;
   const planDir = resolve(cwd, outputDir, planSetName);
   await mkdir(planDir, { recursive: true });
 
@@ -763,7 +688,6 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     name: planSetName,
     description: payload.description,
     base_branch: baseBranch,
-    mode,
     validate: payload.orchestration.validate ?? [],
     plans: payload.orchestration.plans.map(p => {
       const planData = payload.plans.find(pd => pd.frontmatter.id === p.id);
@@ -781,49 +705,6 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
   await writeFile(resolve(planDir, 'orchestration.yaml'), stringifyYaml(orchConfig), 'utf-8');
 }
 
-/**
- * Write architecture files from a validated architecture submission payload.
- * Creates architecture.md, index.yaml, and modules/ directory.
- */
-export interface WriteArchitectureOptions {
-  cwd: string;
-  outputDir: string;
-  planSetName: string;
-  payload: import('./schemas.js').ArchitectureSubmission;
-}
-
-export async function writeArchitecture(options: WriteArchitectureOptions): Promise<void> {
-  const { cwd, outputDir, planSetName, payload } = options;
-  const planDir = resolve(cwd, outputDir, planSetName);
-  await mkdir(planDir, { recursive: true });
-
-  // Write architecture.md
-  await writeFile(resolve(planDir, 'architecture.md'), payload.architecture, 'utf-8');
-
-  // Write index.yaml with modules
-  const modules: Record<string, { description: string; depends_on: string[]; status: string }> = {};
-  for (const mod of payload.modules) {
-    modules[mod.id] = {
-      description: mod.description,
-      depends_on: mod.dependsOn,
-      status: 'pending',
-    };
-  }
-  const indexYaml: Record<string, unknown> = {
-    name: payload.index.name,
-    description: payload.index.description,
-    created: new Date().toISOString().split('T')[0],
-    status: 'draft',
-    mode: payload.index.mode,
-    validate: payload.index.validate,
-    architecture: { status: 'complete' },
-    modules,
-  };
-  await writeFile(resolve(planDir, 'index.yaml'), stringifyYaml(indexYaml), 'utf-8');
-
-  // Create modules/ directory
-  await mkdir(resolve(planDir, 'modules'), { recursive: true });
-}
 
 /**
  * Options for applying plan-reviewer fixes.
@@ -935,65 +816,7 @@ export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions)
 }
 
 /**
- * Options for applying cohesion-reviewer fixes.
- */
-export interface ApplyCohesionReviewFixesOptions {
-  cwd: string;
-  outputDir: string;
-  planSetName: string;
-  fixes: import('./schemas.js').CohesionReviewSubmission['fixes'];
-}
-
-/**
- * Apply fixes emitted by the cohesion-reviewer agent to module plan artifacts.
- * Operates on files under <planSet>/modules/.
- * Does NOT run git add — fixes remain unstaged.
- */
-export async function applyCohesionReviewFixes(options: ApplyCohesionReviewFixesOptions): Promise<void> {
-  const { cwd, outputDir, planSetName, fixes } = options;
-  if (fixes.length === 0) return;
-
-  const modulesDir = resolve(cwd, outputDir, planSetName, 'modules');
-
-  const errors: Error[] = [];
-  for (const fix of fixes) {
-    try {
-      if (fix.kind === 'replace_plan_file') {
-        // Issue #3: validate planId before resolving path
-        validatePlanId(fix.planId);
-        // Issue #5: planId and frontmatter.id must match
-        if (fix.planId !== fix.frontmatter.id) {
-          throw new Error(`Cannot apply replace_plan_file: planId "${fix.planId}" does not match frontmatter.id "${fix.frontmatter.id}"`);
-        }
-        const planPath = resolve(modulesDir, `${fix.planId}.md`);
-        // Issue #7: use shared serialization helper
-        const content = `${serializePlanFrontmatter(fix.frontmatter)}\n${fix.body}`;
-        await writeFile(planPath, content, 'utf-8');
-      } else if (fix.kind === 'replace_plan_body') {
-        // Issue #3: validate planId before resolving path
-        validatePlanId(fix.planId);
-        const planPath = resolve(modulesDir, `${fix.planId}.md`);
-        const raw = await readFile(planPath, 'utf-8');
-        // Issue #8: use shared splitFrontmatter helper
-        const split = splitFrontmatter(raw);
-        if (!split) {
-          throw new Error(`Cannot apply replace_plan_body: module plan file has no valid frontmatter: ${planPath}`);
-        }
-        await writeFile(planPath, `${split.frontmatterBlock}\n${fix.body}`, 'utf-8');
-      }
-    } catch (err) {
-      errors.push(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-  // Issue #6: report all fix errors after attempting every fix
-  if (errors.length > 0) {
-    const messages = errors.map((e, i) => `  Fix ${i + 1}: ${e.message}`).join('\n');
-    throw new Error(`applyCohesionReviewFixes encountered ${errors.length} error(s):\n${messages}`);
-  }
-}
-
-/**
- * Options for applying architecture-reviewer fixes.
+ * Options for applying architecture fixes from the planning-quality reviewer.
  */
 export interface ApplyArchitectureReviewFixesOptions {
   cwd: string;
@@ -1003,7 +826,7 @@ export interface ApplyArchitectureReviewFixesOptions {
 }
 
 /**
- * Apply fixes emitted by the architecture-reviewer agent to the architecture document.
+ * Apply architecture fixes emitted by the planning-quality reviewer to the architecture document.
  * Writes architecture.md verbatim.
  * Does NOT run git add — fixes remain unstaged.
  */

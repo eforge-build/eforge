@@ -259,6 +259,57 @@ describe('planning map/reduce pipeline runner', () => {
     expect(result.map.mapComplete).toBe(true);
   });
 
+  it('performs a deterministic passthrough reduce for a single clean digest-bearing atom', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const root = data.tree.nodes[0]!;
+    const task = data.tasks[0]!;
+    const atomOutput = completedAtomOutput(task, { reduceDigest: atomDigest(task) });
+    const harness = new GateHarness(new Map<string, unknown>([[task.atomId, atomOutput]]));
+
+    const promise = runPlanningMapReducePipeline({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness, reduceLimits, parallelism: 2 });
+    harness.releaseAll();
+    const result = await promise;
+
+    expect(harness.prompts.some((call) => call.planId === root.nodeId)).toBe(false);
+    expect(result.reduce.finalOutput).toMatchObject({ nodeId: root.nodeId, status: 'completed' });
+    expect(result.reduce.finalOutput?.reduceDigest).toMatchObject({ sourceId: root.nodeId, sourceKind: 'reduce' });
+    expect(result.reduce.finalOutput?.moduleCandidates).toEqual(atomOutput.moduleCandidates);
+    expect(result.reduce.finalOutput?.planFragments).toEqual(atomOutput.planFragments);
+    expect(result.reduce.reduceComplete).toBe(true);
+    expect(result.map.mapComplete).toBe(true);
+  });
+
+  it('invokes the reducer agent when the single atom digest reports issues', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const root = data.tree.nodes[0]!;
+    const task = data.tasks[0]!;
+    const issue = { issueId: 'issue-conflict', kind: 'conflict' as const, title: 'Ownership conflict', summary: 'Two fragments claim the same file.', criterionIds: task.criterionIds, aspectIds: task.aspectIds };
+    const atomOutput = completedAtomOutput(task, { reduceDigest: { ...atomDigest(task), issues: [issue] } });
+    const harness = new GateHarness(new Map<string, unknown>([[task.atomId, atomOutput], [root.nodeId, validReduceOutput(root)]]));
+
+    const promise = runPlanningMapReducePipeline({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness, reduceLimits, parallelism: 2 });
+    harness.releaseAll();
+    const result = await promise;
+
+    expect(harness.prompts.some((call) => call.planId === root.nodeId)).toBe(true);
+    expect(result.reduce.reduceComplete).toBe(true);
+  });
+
+  it('invokes the reducer agent when the single atom output has no reduce digest', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const root = data.tree.nodes[0]!;
+    const task = data.tasks[0]!;
+    const atomOutput = completedAtomOutput(task);
+    const harness = new GateHarness(new Map<string, unknown>([[task.atomId, atomOutput], [root.nodeId, validReduceOutput(root)]]));
+
+    const promise = runPlanningMapReducePipeline({ graph: data.graph, inventory: data.inventory, sourceContent: data.content, cwd: process.cwd(), harness, reduceLimits, parallelism: 2 });
+    harness.releaseAll();
+    const result = await promise;
+
+    expect(harness.prompts.some((call) => call.planId === root.nodeId)).toBe(true);
+    expect(result.reduce.reduceComplete).toBe(true);
+  });
+
   it('uses an upfront prompt-safe tree and keeps launched reducer prompts within budget', async () => {
     const data = fixture(Array.from({ length: 14 }, (_, index) => `general work item ${index + 1} updates packages/engine/src/file-${index + 1}.ts.`));
     const limits = { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget };
@@ -353,6 +404,10 @@ function completedAtomOutputWithLargeReducerDigest(task: PlanningAtomTask): Plan
     planFragments: Array.from({ length: 2 }, (_, index) => ({ fragmentId: `fragment-${task.atomId}-${index}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, markdown: 'm'.repeat(700) })),
     moduleCandidates: [],
   });
+}
+
+function atomDigest(task: PlanningAtomTask) {
+  return { sourceId: task.atomId, sourceKind: 'atom' as const, status: 'completed' as const, summary: `Atom ${task.atomId} planned all assigned aspects.`, criterionIds: task.criterionIds, aspectIds: task.aspectIds };
 }
 
 function skippedAtomOutput(task: PlanningAtomTask): PlanningAtomOutput {

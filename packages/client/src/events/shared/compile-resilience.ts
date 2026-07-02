@@ -76,28 +76,14 @@ export const PlannerInspectionOmittedCountsSchema = Type.Object({
   caveatBytes: Type.Optional(NonNegativeIntegerSchema),
 }, { additionalProperties: false });
 
-export const CompileRiskLevelSchema = Type.Union([
-  Type.Literal('normal'),
-  Type.Literal('elevated'),
-  Type.Literal('overflow-risk'),
-]);
-
 export const CompileRecoveryActionSchema = Type.Union([
   Type.Literal('none'),
-  Type.Literal('retry-as-expedition'),
   Type.Literal('bounded-decomposition'),
   Type.Literal('manual-reduce-scope'),
   Type.Literal('repair-existing-artifacts'),
 ]);
 
-export const CompilePipelineScopeSchema = Type.Union([
-  Type.Literal('errand'),
-  Type.Literal('excursion'),
-  Type.Literal('expedition'),
-]);
-
 export const CompileScopeContextSourceSchema = Type.Union([
-  Type.Literal('preflight'),
   Type.Literal('live-context-guard'),
   Type.Literal('provider'),
   Type.Literal('decomposition'),
@@ -110,36 +96,6 @@ export const CompileScopeContextFailureKindSchema = Type.Union([
   Type.Literal('scope-too-broad'),
   Type.Literal('decomposition-exhausted'),
 ]);
-
-export const CompilePreflightRiskSchema = Type.Object({
-  level: CompileRiskLevelSchema,
-  sourceBytes: NonNegativeIntegerSchema,
-  promptSourceBytes: NonNegativeIntegerSchema,
-  acceptanceCriteriaCount: NonNegativeIntegerSchema,
-  score: Type.Number({ minimum: 0 }),
-  generatedInventory: Type.Object({
-    detected: Type.Boolean(),
-    contentHashes: Type.Array(Sha256HexSchema, { maxItems: MAX_COMPILE_RISK_LIST_ITEMS }),
-    pathReferences: BoundedStringListSchema,
-    headings: BoundedStringListSchema,
-    blockCount: NonNegativeIntegerSchema,
-    sidecarCount: NonNegativeIntegerSchema,
-    omittedBytes: NonNegativeIntegerSchema,
-  }),
-  subsystemBreadth: Type.Object({
-    count: NonNegativeIntegerSchema,
-    subsystems: BoundedStringListSchema,
-    evidence: BoundedStringListSchema,
-  }),
-  selectedProfile: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  pipelineScope: Type.Optional(CompilePipelineScopeSchema),
-  reasons: BoundedStringListSchema,
-  recommendation: Type.Object({
-    action: CompileRecoveryActionSchema,
-    eligible: Type.Boolean(),
-    reason: BoundedStringSchema,
-  }),
-});
 
 export const CompileArtifactSummarySchema = Type.Object({
   orchestrationExists: Type.Boolean(),
@@ -207,15 +163,11 @@ const CompileScopeContextFailureBaseSchema = Type.Object({
   source: CompileScopeContextSourceSchema,
   failureKind: CompileScopeContextFailureKindSchema,
   stage: Type.Union([
-    Type.Literal('pipeline-composer'),
     Type.Literal('planner'),
-    Type.Literal('module-planner'),
-    Type.Literal('compile-expedition'),
     Type.Literal('compile'),
     Type.Literal('planning-decomposition'),
   ]),
   explanation: BoundedStringSchema,
-  risk: Type.Optional(CompilePreflightRiskSchema),
   observed: Type.Optional(Type.Object({
     inputTokens: Type.Optional(NonNegativeIntegerSchema),
     outputTokens: Type.Optional(NonNegativeIntegerSchema),
@@ -236,7 +188,6 @@ const CompileScopeContextFailureBaseSchema = Type.Object({
 });
 
 const NonDecompositionCompileScopeContextSourceSchema = Type.Union([
-  Type.Literal('preflight'),
   Type.Literal('live-context-guard'),
   Type.Literal('provider'),
 ]);
@@ -275,12 +226,9 @@ export const BoundedValidationDiagnosticSchema = Type.Object({
   message: Type.String({ maxLength: MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH, format: VALIDATION_DIAGNOSTIC_MESSAGE_FORMAT }),
 });
 
-export type CompileRiskLevel = Static<typeof CompileRiskLevelSchema>;
 export type CompileRecoveryAction = Static<typeof CompileRecoveryActionSchema>;
-export type CompilePipelineScope = Static<typeof CompilePipelineScopeSchema>;
 export type CompileScopeContextSource = Static<typeof CompileScopeContextSourceSchema>;
 export type CompileScopeContextFailureKind = Static<typeof CompileScopeContextFailureKindSchema>;
-export type CompilePreflightRisk = Static<typeof CompilePreflightRiskSchema>;
 export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>;
 export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;

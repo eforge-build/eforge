@@ -47,7 +47,7 @@ export const evaluationSubmissionSchema = Type.Object({
 
 export type EvaluationSubmission = Static<typeof evaluationSubmissionSchema>;
 
-/** Schema YAML for evaluation verdicts (used by evaluator, plan-evaluator, cohesion-evaluator). */
+/** Schema YAML for evaluation verdicts (used by evaluator and plan-evaluator). */
 export function getEvaluationSchemaYaml(): string {
   return getSchemaYaml('evaluation-verdict', evaluationVerdictSchema);
 }

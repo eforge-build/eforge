@@ -1,9 +1,5 @@
-import type { CompilePreflightRisk, CompileRecoveryAction, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
+import type { CompileRecoveryAction, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
 import { renderDecompositionEvidenceLines } from './planning-decomposition-display.js';
-
-export interface CompilePreflightRenderOptions {
-  verbose?: boolean;
-}
 
 type EventCompileScopeContextFailure = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>['failure'];
 type DisplayCompileScopeContextFailure = CompileScopeContextFailure | EventCompileScopeContextFailure;
@@ -31,7 +27,6 @@ export function plannerContinuationReasonLabel(reason: Extract<EforgeEvent, { ty
 export function recoveryActionLabel(action: CompileRecoveryAction): string {
   switch (action) {
     case 'none': return 'none';
-    case 'retry-as-expedition': return 'retrying as expedition';
     case 'bounded-decomposition': return 'bounded decomposition';
     case 'manual-reduce-scope': return 'manual scope reduction';
     case 'repair-existing-artifacts': return 'repair existing artifacts';
@@ -44,33 +39,6 @@ export function formatBytes(bytes: number): string {
   if (kib < 1024) return `${kib.toFixed(kib >= 10 ? 0 : 1)} KiB`;
   const mib = kib / 1024;
   return `${mib.toFixed(mib >= 10 ? 1 : 2)} MiB`;
-}
-
-function countGeneratedInventory(risk: CompilePreflightRisk): number {
-  const inventory = risk.generatedInventory;
-  return inventory.blockCount + inventory.sidecarCount + inventory.contentHashes.length + inventory.pathReferences.length + inventory.headings.length;
-}
-
-function metricsParts(risk: CompilePreflightRisk): string[] {
-  return [
-    `${formatBytes(risk.sourceBytes)} source`,
-    `${formatBytes(risk.promptSourceBytes)} prompt`,
-    `${risk.acceptanceCriteriaCount} AC`,
-    `${countGeneratedInventory(risk)} generated inventory`,
-    `${risk.subsystemBreadth.count} subsystem${risk.subsystemBreadth.count === 1 ? '' : 's'}`,
-  ];
-}
-
-export function renderCompilePreflightLines(risk: CompilePreflightRisk, options: CompilePreflightRenderOptions = {}): string[] {
-  if (risk.level === 'normal' && options.verbose !== true) return [];
-  const recommendation = recoveryActionLabel(risk.recommendation.action);
-  const lines = [
-    `Compile preflight: ${risk.level} (${metricsParts(risk).join(', ')}) — ${recommendation}`,
-  ];
-  if (risk.level === 'overflow-risk' && risk.recommendation.reason) {
-    lines.push(`  Reason: ${risk.recommendation.reason}`);
-  }
-  return lines;
 }
 
 function artifactSummary(failure: DisplayCompileScopeContextFailure): string {

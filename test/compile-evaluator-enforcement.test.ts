@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { prepareEvaluationSnapshot, type EvaluationSnapshot } from '@eforge-build/engine/evaluation';
-import { runArchitectureEvaluate, runCohesionEvaluate, runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
+import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import { runReviewCycle } from '@eforge-build/engine/pipeline';
@@ -104,114 +104,8 @@ describe('compile evaluator enforcement', () => {
     expect(await lastCommitMessage(repo)).toContain('Co-Authored-By: forged-by-eforge');
   });
 
-  it('applies accepted cohesion fixes inside the module plan directory', async () => {
-    const repo = await initRepo(makeTempDir());
-    await writeRepoFile(repo, 'eforge/plans/demo/modules/auth.md', 'auth original\n');
-    await commitAll(repo, 'plan(demo): initial planning artifacts');
 
-    await writeRepoFile(repo, 'eforge/plans/demo/modules/auth.md', 'auth original\ncohesion fix\n');
-    const snapshot = await prepareEvaluationSnapshot(repo, 'HEAD~1');
 
-    const harness = new StubHarness([{
-      toolCalls: [{
-        tool: 'submit_evaluation_verdicts',
-        toolUseId: 'eval-1',
-        input: { verdicts: [{ file: 'eforge/plans/demo/modules/auth.md', action: 'accept', reason: 'Valid module fix' }] },
-        output: '',
-      }],
-    }]);
-
-    const events = await collect(runCohesionEvaluate({
-      harness,
-      planSetName: 'demo',
-      sourceContent: 'PRD',
-      cwd: repo,
-      outputDir: 'eforge/plans',
-      evaluationSnapshot: snapshot,
-      allowedPathPrefix: 'eforge/plans/demo/modules',
-      commitMessage: 'plan(demo): planning artifacts',
-    }));
-
-    expect(events.find(e => e.type === 'planning:cohesion:evaluate:complete')).toMatchObject({ accepted: 1, rejected: 0 });
-    expect(await committedFile(repo, 'eforge/plans/demo/modules/auth.md')).toContain('cohesion fix');
-  });
-
-  it('rejects cohesion evaluator verdict paths outside the module plan directory before creating a commit', async () => {
-    const repo = await initRepo(makeTempDir());
-    await writeRepoFile(repo, 'eforge/plans/demo/modules/auth.md', 'auth original\n');
-    await writeRepoFile(repo, 'eforge/plans/demo/architecture.md', 'architecture original\n');
-    await commitAll(repo, 'plan(demo): initial planning artifacts');
-    const originalHead = await head(repo);
-
-    await writeRepoFile(repo, 'eforge/plans/demo/modules/auth.md', 'auth original\ncohesion fix\n');
-    await writeRepoFile(repo, 'eforge/plans/demo/architecture.md', 'architecture original\noutside fix\n');
-    const snapshot = await prepareEvaluationSnapshot(repo, 'HEAD~1');
-
-    const harness = new StubHarness([{
-      toolCalls: [{
-        tool: 'submit_evaluation_verdicts',
-        toolUseId: 'eval-1',
-        input: { verdicts: [
-          { file: 'eforge/plans/demo/modules/auth.md', action: 'accept', reason: 'Valid module fix' },
-          { file: 'eforge/plans/demo/architecture.md', action: 'accept', reason: 'Outside module directory' },
-        ] },
-        output: '',
-      }],
-    }]);
-
-    const events = await collect(runCohesionEvaluate({
-      harness,
-      planSetName: 'demo',
-      sourceContent: 'PRD',
-      cwd: repo,
-      outputDir: 'eforge/plans',
-      evaluationSnapshot: snapshot,
-      allowedPathPrefix: 'eforge/plans/demo/modules',
-      commitMessage: 'plan(demo): planning artifacts',
-    }));
-
-    expect(events.find(e => e.type === 'planning:error')?.reason).toContain('outside the allowed planning artifact directory');
-    expect(await head(repo)).toBe(originalHead);
-    expect(await lastCommitMessage(repo)).not.toBe('plan(demo): planning artifacts');
-  });
-
-  it('applies architecture fixes through model-aware forge commits', async () => {
-    const repo = await initRepo(makeTempDir());
-    await writeRepoFile(repo, 'eforge/plans/demo/architecture.md', 'architecture original\n');
-    await commitAll(repo, 'plan(demo): initial planning artifacts');
-
-    await writeRepoFile(repo, 'eforge/plans/demo/architecture.md', 'architecture original\naccepted architecture fix\n');
-    const snapshot = await prepareEvaluationSnapshot(repo, 'HEAD~1');
-    const tracker = new ModelTracker();
-    tracker.record('architect-model');
-
-    const harness = new StubHarness([{
-      toolCalls: [{
-        tool: 'submit_evaluation_verdicts',
-        toolUseId: 'eval-1',
-        input: { verdicts: [{ file: 'eforge/plans/demo/architecture.md', action: 'accept', reason: 'Completes contract' }] },
-        output: '',
-      }],
-    }]);
-
-    const events = await collect(runArchitectureEvaluate({
-      harness,
-      planSetName: 'demo',
-      sourceContent: 'PRD',
-      cwd: repo,
-      outputDir: 'eforge/plans',
-      evaluationSnapshot: snapshot,
-      allowedPathPrefix: 'eforge/plans/demo',
-      commitMessage: 'plan(demo): planning artifacts',
-      modelTracker: tracker,
-    }));
-
-    expect(events.find(e => e.type === 'planning:architecture:evaluate:complete')).toMatchObject({ accepted: 1, rejected: 0 });
-    expect(await committedFile(repo, 'eforge/plans/demo/architecture.md')).toContain('accepted architecture fix');
-    const message = await lastCommitMessage(repo);
-    expect(message).toContain('Models-Used: architect-model');
-    expect(message).toContain('Co-Authored-By: forged-by-eforge');
-  });
 
   it('prepares evaluator retry input once after review and reuses the snapshot/options on continuation', async () => {
     const repo = await initRepo(makeTempDir());
@@ -276,7 +170,7 @@ describe('compile evaluator enforcement', () => {
     expect(events.find(e => e.type === 'planning:evaluate:continuation')).toMatchObject({ attempt: 1, maxContinuations: 1 });
   });
 
-  for (const reviewerRole of ['plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer'] as const) {
+  for (const reviewerRole of ['plan-reviewer'] as const) {
     for (const scenario of [
       {
         name: 'pi-infrastructure',

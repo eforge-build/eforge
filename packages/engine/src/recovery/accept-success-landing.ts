@@ -82,10 +82,8 @@ function minimalConfig(summary: BuildFailureSummary): OrchestrationConfig {
     name: summary.setName,
     description: summary.setName,
     created: summary.failedAt,
-    mode: 'excursion',
     baseBranch: summary.baseBranch,
     pipeline: {
-      scope: 'excursion',
       compile: [],
       defaultBuild: [],
       defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },

@@ -74,11 +74,11 @@ const perspectivesRespawnedWithoutDroppedDecision: BuildDecision = {
   dropped: [],
 };
 
-const scopeDecision: PlanningDecision = {
-  kind: 'scope-selected',
-  rationale: 'Standard excursion scope',
-  scope: 'excursion',
-  source: 'pipeline-composer',
+const planSetShapeDecision: PlanningDecision = {
+  kind: 'plan-set-shape',
+  rationale: 'Two plans split by subsystem',
+  planCount: 2,
+  planIds: ['plan-01', 'plan-02'],
 };
 
 const buildPipelineDecision: PlanningDecision = {
@@ -235,27 +235,27 @@ describe('handlePlanBuildDecision', () => {
 
 describe('handlePlanningDecision', () => {
   it('appends the decision wrapped as a DecisionPoint to decisions[__run__] when no planId is given', () => {
-    const event = makePlanningDecisionEvent(scopeDecision);
+    const event = makePlanningDecisionEvent(planSetShapeDecision);
     const delta = handlePlanningDecision(event, initialRunState);
 
     expect(delta).toBeDefined();
     expect(delta!.decisions).toBeDefined();
     expect(delta!.decisions!['__run__']).toHaveLength(1);
     expect(delta!.decisions!['__run__'][0]).toEqual({
-      decision: scopeDecision,
+      decision: planSetShapeDecision,
       timestamp: TIMESTAMP,
       eventType: 'planning:decision',
     });
   });
 
   it('round-trips timestamp and eventType from the event into the stored wrapper', () => {
-    const event = makePlanningDecisionEvent(scopeDecision);
+    const event = makePlanningDecisionEvent(planSetShapeDecision);
     const delta = handlePlanningDecision(event, initialRunState);
 
     const point = delta!.decisions!['__run__'][0];
     expect(point.timestamp).toBe(TIMESTAMP);
     expect(point.eventType).toBe('planning:decision');
-    expect(point.decision).toEqual(scopeDecision);
+    expect(point.decision).toEqual(planSetShapeDecision);
   });
 
   it('appends the decision wrapped as a DecisionPoint to decisions[planId] when planId is given', () => {
@@ -271,7 +271,7 @@ describe('handlePlanningDecision', () => {
   });
 
   it('preserves existing decisions under __run__ when appending', () => {
-    const existingPoint = { decision: scopeDecision, timestamp: TIMESTAMP, eventType: 'planning:decision' as const };
+    const existingPoint = { decision: planSetShapeDecision, timestamp: TIMESTAMP, eventType: 'planning:decision' as const };
     const stateWithExisting = {
       ...initialRunState,
       decisions: { '__run__': [existingPoint] },
@@ -294,7 +294,7 @@ describe('handlePlanningDecision', () => {
       ...initialRunState,
       decisions: { [PLAN_A]: [existingPoint] },
     };
-    const event = makePlanningDecisionEvent(scopeDecision);
+    const event = makePlanningDecisionEvent(planSetShapeDecision);
     const delta = handlePlanningDecision(event, stateWithPlan);
 
     // __run__ gets the planning decision
@@ -305,7 +305,7 @@ describe('handlePlanningDecision', () => {
   });
 
   it('returns a delta containing only the decisions slice', () => {
-    const event = makePlanningDecisionEvent(scopeDecision);
+    const event = makePlanningDecisionEvent(planSetShapeDecision);
     const delta = handlePlanningDecision(event, initialRunState);
 
     expect(Object.keys(delta!)).toEqual(['decisions']);

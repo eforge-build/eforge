@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import type { PipelineStage, ModuleStatus } from '@/lib/run-state';
+import type { PipelineStage } from '@/lib/run-state';
 
 interface ContentPreview {
   title: string;
@@ -14,7 +14,6 @@ interface PreviewFallback {
 interface RuntimeData {
   planStatuses: Record<string, PipelineStage>;
   fileChanges: Map<string, string[]>;
-  moduleStatuses: Record<string, ModuleStatus>;
 }
 
 interface PlanPreviewContextValue {
@@ -26,7 +25,6 @@ interface PlanPreviewContextValue {
   closePreview: () => void;
   planStatuses: Record<string, PipelineStage>;
   fileChanges: Map<string, string[]>;
-  moduleStatuses: Record<string, ModuleStatus>;
   setRuntimeData: (data: RuntimeData) => void;
 }
 
@@ -38,7 +36,6 @@ export function PlanPreviewProvider({ children }: { children: ReactNode }) {
   const [contentPreview, setContentPreview] = useState<ContentPreview | null>(null);
   const [planStatuses, setPlanStatuses] = useState<Record<string, PipelineStage>>({});
   const [fileChanges, setFileChanges] = useState<Map<string, string[]>>(new Map());
-  const [moduleStatuses, setModuleStatuses] = useState<Record<string, ModuleStatus>>({});
 
   const openPreview = useCallback((planId: string, fallback?: PreviewFallback) => {
     setContentPreview(null);
@@ -61,11 +58,10 @@ export function PlanPreviewProvider({ children }: { children: ReactNode }) {
   const setRuntimeData = useCallback((data: RuntimeData) => {
     setPlanStatuses(data.planStatuses);
     setFileChanges(data.fileChanges);
-    setModuleStatuses(data.moduleStatuses);
   }, []);
 
   return (
-    <PlanPreviewContext.Provider value={{ selectedPlanId, openPreview, previewFallback, contentPreview, openContentPreview, closePreview, planStatuses, fileChanges, moduleStatuses, setRuntimeData }}>
+    <PlanPreviewContext.Provider value={{ selectedPlanId, openPreview, previewFallback, contentPreview, openContentPreview, closePreview, planStatuses, fileChanges, setRuntimeData }}>
       {children}
     </PlanPreviewContext.Provider>
   );

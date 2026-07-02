@@ -1,7 +1,7 @@
-import { ChevronRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client/browser';
-import type { PipelineStage, ModuleStatus } from '@/lib/run-state';
+import type { PipelineStage } from '@/lib/run-state';
 
 export function StatusBadge({ status }: { status?: PipelineStage }) {
   if (!status) return null;
@@ -15,31 +15,6 @@ export function StatusBadge({ status }: { status?: PipelineStage }) {
   };
   return (
     <span className={cn('text-10px font-medium px-1.5 py-0.5 rounded-sm', cls[status] ?? 'bg-bg-tertiary text-text-dim')}>
-      {status}
-    </span>
-  );
-}
-
-export function ModuleStatusBadge({ status }: { status?: ModuleStatus }) {
-  if (!status) return null;
-  if (status === 'planning') {
-    return (
-      <span className="text-10px font-medium px-1.5 py-0.5 rounded-sm bg-yellow/15 text-yellow flex items-center gap-1">
-        <Loader2 className="w-2.5 h-2.5 animate-spin" />
-        planning
-      </span>
-    );
-  }
-  if (status === 'complete') {
-    return (
-      <span className="text-10px font-medium px-1.5 py-0.5 rounded-sm bg-green/15 text-green flex items-center gap-1">
-        <CheckCircle2 className="w-2.5 h-2.5" />
-        complete
-      </span>
-    );
-  }
-  return (
-    <span className="text-10px font-medium px-1.5 py-0.5 rounded-sm bg-bg-tertiary text-text-dim">
       {status}
     </span>
   );

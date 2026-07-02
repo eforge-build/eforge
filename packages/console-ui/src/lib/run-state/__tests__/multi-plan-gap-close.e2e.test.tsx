@@ -8,7 +8,7 @@
  * and asserts all four AC-022 invariants in one composed scenario:
  *
  *   1. Planning row populated with planning agents only (planner/plan-reviewer/
- *      pipeline-composer; no validation agents).
+ *      plan-evaluator; no validation agents).
  *   2. Validation rendered as its own lane (Validation + Final Validation).
  *   3. No duplicate Planning/PRD row.
  *   4. PRD lane not re-lighting during validation (PRD pill hosted on the planning
@@ -44,11 +44,11 @@ const hasPlanningRow =
 // ---------------------------------------------------------------------------
 
 describe('AC-022: multi-plan gap-close - selectors', () => {
-  it('planning lane contains only planning agents (planner, plan-reviewer, pipeline-composer)', () => {
+  it('planning lane contains only planning agents (planner, plan-reviewer, plan-evaluator)', () => {
     const planningAgentNames = planningLane.agents.map((a) => a.agent);
     expect(planningAgentNames).toContain('planner');
     expect(planningAgentNames).toContain('plan-reviewer');
-    expect(planningAgentNames).toContain('pipeline-composer');
+    expect(planningAgentNames).toContain('plan-evaluator');
     // Must not contain validation agents
     expect(planningAgentNames).not.toContain('validation-fixer');
     expect(planningAgentNames).not.toContain('prd-validator');

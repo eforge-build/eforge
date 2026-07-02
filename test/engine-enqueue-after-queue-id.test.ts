@@ -237,14 +237,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     const filePath = resolve(queueDir, 'queued-with-inventory.md');
     await writeFile(filePath, `---\ntitle: Queued With Inventory\ncreated: 2026-01-01\n---\n\n${validInventoryPrdBody()}`, 'utf-8');
 
-    const pipeline = JSON.stringify({
-      scope: 'excursion',
-      compile: ['planner'],
-      defaultBuild: ['implement', 'review-cycle'],
-      defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
-      rationale: 'test',
-    });
-    const harness = new StubHarness([{ text: pipeline }, { text: '' }]);
+    const harness = new StubHarness([{ text: '' }, { text: '' }]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -255,9 +248,11 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       if (event.type === 'agent:start' && event.agent === 'planner') break;
     }
 
-    const plannerPrompt = harness.prompts[1];
-    expect(plannerPrompt).toContain('The dependent PRD is queued with the selected upstream dependency.');
-    expect(plannerPrompt).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(harness.prompts.length).toBeGreaterThan(0);
+    expect(harness.prompts.some((prompt) => prompt.includes('The dependent PRD is queued with the selected upstream dependency.'))).toBe(true);
+    for (const prompt of harness.prompts) {
+      expect(prompt).not.toContain('eforge:acceptance-criteria-inventory');
+    }
   });
 
   it.each([

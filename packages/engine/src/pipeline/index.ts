@@ -9,6 +9,7 @@
 // Side-effect imports to trigger stage registrations in the original order:
 // compile stages first, then build stages.
 import './stages/compile-stages.js';
+import './stages/planning-quality-review-cycle.js';
 import './stages/build-stages.js';
 
 // Re-export all public symbols from the pipeline sub-modules.

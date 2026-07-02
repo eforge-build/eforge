@@ -30,16 +30,12 @@ export const handlePlanningComplete: EventHandler<'planning:complete'> = (event,
 
   // Synthesize an early orchestration so the UI can render dependency bars,
   // tooltips, and graph edges immediately — before the SWR fetch returns.
-  // mode: 'compile' and pipeline.scope: 'plan' identify this as a compile-mode
-  // synthesized config (as opposed to the expedition variant).
   const earlyOrchestration = {
     name: '',
     description: '',
     created: '',
-    mode: 'compile',
     baseBranch: '',
     pipeline: {
-      scope: 'plan',
       compile: [] as string[],
       defaultBuild: [] as BuildStageSpec[],
       defaultReview,

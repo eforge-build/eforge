@@ -23,7 +23,7 @@ The key quality insight: a single AI agent writing and reviewing its own code wi
 
 Every eforge build runs two phases:
 
-**Compile phase** - Runs once per build. A deterministic preflight measures source risk and may compact generated or machine-readable bulk for pipeline-composer, planner, and module-planner prompts while preserving the full source for artifacts and validation. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The pipeline-composer assesses complexity and selects the initial workflow profile, with bounded context recovery able to escalate errand or excursion compiles to expedition once, or use context-managed planning units governed by `compile.planningUnit*` limits, when eligible. The planner then produces plan files and an orchestration manifest, and eforge validates those persisted artifacts before reporting compile success. Large work is decomposed into modules that can build in parallel.
+**Compile phase** - Runs once per build. A deterministic compaction pass may summarize generated or machine-readable bulk in planner prompts while preserving the full source for artifacts and validation. The bounded planner compiler sizes the work deterministically: small sources take a single-pass fast path, and large sources decompose into bounded planning units governed by `compile.planningUnit*` limits, all through the same pipeline. Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. For Pi-backed agents, live context guard token limits use ModelRegistry context metadata and effective output reserves when available; prompt byte defaults remain static byte guards. The compiler produces plan files, an orchestration manifest, and supporting architecture/coverage/diagnostics artifacts; a planning-quality review gate audits them, and eforge validates the persisted artifacts before reporting compile success. Plans build in parallel in dependency order.
 
 **Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
 
@@ -48,17 +48,9 @@ When `build.cleanupPlanFiles: true` (the default), eforge removes these artifact
 
 The durable provenance guarantee is Git history, not the final tree. Squash or rebase merge strategies applied after a PR is opened (for example, GitHub's "Squash and merge") can collapse intermediate commits and make artifact references unreachable. Use merge commits when preserving build provenance history matters to your team.
 
-## Workflow Profiles
+## One planning path, sized deterministically
 
-The pipeline-composer selects one of three workflow profiles based on scope complexity:
-
-**Errand** - Small, self-contained changes. The planner generates a single simple plan or skips if nothing needs doing. Fast path with minimal overhead.
-
-**Excursion** - Multi-file feature work. The planner writes a full plan covering all files and dependencies, then a blind plan-review cycle validates it before building begins.
-
-**Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
-
-You can suggest a profile in your build prompt, but the composer makes the final initial selection based on what it sees in the codebase. Elevated preflight/context evidence can then trigger one bounded retry-as-expedition escalation or bounded planning-unit decomposition before planning continues.
+There is no compile-time scope classification. Every build runs the same compile pipeline - the bounded planner compiler followed by a planning-quality review gate - and the compiler adapts to input size through deterministic inventory chunking. A one-line fix takes the single-atom passthrough fast path; a large cross-cutting PRD fans out into bounded planning units that plan independently and synthesize into one plan set. Plan-set shape is decided by the source's acceptance criteria and structure, not by an agent choosing a workflow profile.
 
 ## Separation of Concerns
 
@@ -69,7 +61,7 @@ Each pipeline stage uses a different agent with different context:
 - **Fixer** - Applies reviewer suggestions as unstaged changes.
 - **Evaluator** - Judges each fix against the original plan intent. Accepts strict improvements; rejects changes that alter intent.
 
-This three-step pattern (blind review - fix - evaluate) applies to code review, plan review, architecture review, and cohesion review. The evaluator is the safety valve: it keeps the fixer from over-correcting.
+This three-step pattern (blind review - fix - evaluate) applies to code review and to the planning-quality review of compiled plan-set artifacts. The evaluator is the safety valve: it keeps the fixer from over-correcting.
 
 ## Harnesses
 

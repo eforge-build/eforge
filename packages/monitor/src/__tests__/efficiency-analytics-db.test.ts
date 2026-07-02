@@ -74,7 +74,7 @@ describe('MonitorDB.getEfficiencyAnalytics', () => {
 
   it('groups the same model separately by harness and provider', () => {
     insertRun(db, 'run-1', 'session-1');
-    insertProfile(db, 'run-1', 'expedition');
+    insertProfile(db, 'run-1', 'deep-dive');
     insertResult(db, 'run-1', result({ cost: 6, output: 200, input: 1000, modelUsage: { opus: mu(1000, 200, 6) }, harness: 'claude-sdk' }));
     insertResult(db, 'run-1', result({ cost: 4, output: 100, input: 500, modelUsage: { opus: mu(500, 100, 4) }, harness: 'pi', provider: 'openrouter' }));
 

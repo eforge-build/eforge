@@ -7,7 +7,6 @@ import { MAX_COMPILE_RISK_LIST_ITEMS } from '@eforge-build/engine/events';
 import {
   MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES,
   validateCompileArtifacts,
-  validateExpeditionModuleInputs,
 } from '@eforge-build/engine/compile-resilience/artifact-validation';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import type { PipelineContext } from '@eforge-build/engine/pipeline';
@@ -24,7 +23,6 @@ const PIPELINE: PipelineComposition = {
   rationale: 'artifact validation test',
 };
 
-const EXPEDITION_PIPELINE: PipelineComposition = { ...PIPELINE, scope: 'expedition', compile: ['planner', 'module-planning', 'compile-expedition'] };
 
 describe('compile artifact validation', () => {
   const tempDir = useTempDir('eforge-artifact-validation-');
@@ -143,33 +141,7 @@ describe('compile artifact validation', () => {
     expect(result.summary.missingPlanFileCount).toBe(2);
   });
 
-  it('validates expedition module inputs', async () => {
-    const ctx = await writeExpeditionIndex(tempDir(), ['alpha']);
-    await writeFile(resolve(planDir(ctx), 'modules', 'alpha.md'), 'Alpha body');
-    await expect(validateExpeditionModuleInputs(ctx)).resolves.toMatchObject({ ok: true, moduleCount: 1 });
-  });
 
-  it('rejects missing, empty, and mismatched expedition module inputs', async () => {
-    const missingCtx = await writeExpeditionIndex(tempDir(), ['alpha']);
-    const missing = await validateExpeditionModuleInputs(missingCtx);
-    expect(missing.ok).toBe(false);
-    expect(missing.ok ? [] : missing.missingModuleFiles[0]).toContain('alpha.md');
-    expect(Buffer.byteLength(missing.ok ? '' : missing.message, 'utf8')).toBeLessThanOrEqual(MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
-
-    const emptyCtx = await writeExpeditionIndex(tempDir(), ['beta']);
-    await writeFile(resolve(planDir(emptyCtx), 'modules', 'beta.md'), '   ');
-    const empty = await validateExpeditionModuleInputs(emptyCtx);
-    expect(empty.ok).toBe(false);
-    expect(empty.ok ? [] : empty.emptyModuleFiles[0]).toContain('beta.md');
-    expect(Buffer.byteLength(empty.ok ? '' : empty.message, 'utf8')).toBeLessThanOrEqual(MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
-
-    const mismatchCtx = await writeExpeditionIndex(tempDir(), ['gamma']);
-    mismatchCtx.expeditionModules = [{ id: 'delta', description: 'Delta', dependsOn: [] }];
-    await writeFile(resolve(planDir(mismatchCtx), 'modules', 'gamma.md'), 'Gamma body');
-    const mismatch = await validateExpeditionModuleInputs(mismatchCtx);
-    expect(mismatch.ok).toBe(false);
-    expect(mismatch.ok ? 0 : mismatch.invalidModuleIds.length).toBeGreaterThan(0);
-  });
 });
 
 function makeCtx(cwd: string, overrides: Partial<PipelineContext> = {}): PipelineContext {
@@ -204,20 +176,6 @@ async function writePlanSet(cwd: string, options: { planCount?: number; writePla
   return ctx;
 }
 
-async function writeExpeditionIndex(cwd: string, ids: string[]): Promise<PipelineContext> {
-  const ctx = makePipelineCtx({ cwd, planSetName: 'artifact-validation', pipeline: EXPEDITION_PIPELINE, expeditionModules: ids.map((id) => ({ id, description: id, dependsOn: [] })) });
-  await mkdir(resolve(planDir(ctx), 'modules'), { recursive: true });
-  await writeFile(resolve(planDir(ctx), 'index.yaml'), stringifyYaml({
-    name: ctx.planSetName,
-    description: 'Expedition',
-    created: '2026-01-01',
-    status: 'draft',
-    mode: 'expedition',
-    architecture: { status: 'complete' },
-    modules: Object.fromEntries(ids.map((id) => [id, { status: 'complete', description: id, depends_on: [] }])),
-  }));
-  return ctx;
-}
 
 function planMarkdown(input: { id: string; branch: string; body: string }): string {
   return `---\nid: ${input.id}\nname: Plan 1\nbranch: ${input.branch}\n---\n\n${input.body}`;

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { parseClarificationBlocks, parseSkipBlock, parseStalenessBlock } from '@eforge-build/engine/agents/common';
 import { parseReviewIssues, parseReviewIssuesStrict } from '@eforge-build/engine/agents/reviewer';
 import { parseEvaluationBlock } from '@eforge-build/engine/agents/common';
-import { formatPriorClarifications } from '@eforge-build/engine/agents/planner';
 
 describe('parseClarificationBlocks', () => {
   it('parses a single question with all attributes', () => {
@@ -440,60 +439,6 @@ Some trailing text.`;
     const result = parseReviewIssuesStrict('Code looks good. No issues found.');
     expect(result.valid).toBe(false);
     expect(result.issues[0].severity).toBe('critical');
-  });
-});
-
-describe('formatPriorClarifications', () => {
-  it('returns empty string for empty input', () => {
-    expect(formatPriorClarifications([])).toBe('');
-  });
-
-  it('returns empty string when no answers match questions', () => {
-    const result = formatPriorClarifications([{
-      questions: [{ id: 'q1', question: 'What DB?' }],
-      answers: { q2: 'irrelevant' },
-    }]);
-    expect(result).toBe('');
-  });
-
-  it('formats a single round of Q&A', () => {
-    const result = formatPriorClarifications([{
-      questions: [
-        { id: 'q1', question: 'What database?' },
-        { id: 'q2', question: 'Which ORM?' },
-      ],
-      answers: { q1: 'PostgreSQL', q2: 'Drizzle' },
-    }]);
-
-    expect(result).toContain('## Prior Clarifications');
-    expect(result).toContain('Do NOT re-ask');
-    expect(result).toContain('| q1: What database? | PostgreSQL |');
-    expect(result).toContain('| q2: Which ORM? | Drizzle |');
-  });
-
-  it('escapes pipe characters in questions and answers', () => {
-    const result = formatPriorClarifications([{
-      questions: [{ id: 'q1', question: 'PostgreSQL | MySQL?' }],
-      answers: { q1: 'PostgreSQL | with extensions' },
-    }]);
-
-    expect(result).toContain('| q1: PostgreSQL \\| MySQL? | PostgreSQL \\| with extensions |');
-  });
-
-  it('accumulates multiple clarification rounds', () => {
-    const result = formatPriorClarifications([
-      {
-        questions: [{ id: 'q1', question: 'First?' }],
-        answers: { q1: 'yes' },
-      },
-      {
-        questions: [{ id: 'q2', question: 'Second?' }],
-        answers: { q2: 'no' },
-      },
-    ]);
-
-    expect(result).toContain('| q1: First? | yes |');
-    expect(result).toContain('| q2: Second? | no |');
   });
 });
 

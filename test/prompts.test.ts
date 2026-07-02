@@ -24,30 +24,30 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     }
   });
 
-  it('throws when called with partial vars for the planner prompt', async () => {
+  it('throws when called with partial vars for the builder prompt', async () => {
     await expect(
-      loadPrompt('planner', {}),
-    ).rejects.toThrow(/loadPrompt\(planner\.md\): unresolved template variables: .+/);
+      loadPrompt('builder', {}),
+    ).rejects.toThrow(/loadPrompt\(builder\.md\): unresolved template variables: .+/);
   });
 
   it('error message contains the prompt identifier', async () => {
     await expect(
-      loadPrompt('planner', {}),
-    ).rejects.toThrow('loadPrompt(planner');
+      loadPrompt('builder', {}),
+    ).rejects.toThrow('loadPrompt(builder');
   });
 
   it('error message contains at least one specific missing variable name', async () => {
-    const error = await loadPrompt('planner', {}).catch((e: Error) => e);
+    const error = await loadPrompt('builder', {}).catch((e: Error) => e);
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain('source');
+    expect((error as Error).message).toContain('plan_content');
   });
 
   it('deduplicates repeated unresolved variable names in the error message', async () => {
-    // The planner prompt uses {{planSetName}} multiple times; it should only appear once in the error
-    const error = await loadPrompt('planner', {}).catch((e: Error) => e);
+    // The builder prompt uses {{plan_id}} multiple times; it should only appear once in the error
+    const error = await loadPrompt('builder', {}).catch((e: Error) => e);
     expect(error).toBeInstanceOf(Error);
     const msg = (error as Error).message;
-    const matches = msg.match(/\bplanSetName\b/g) ?? [];
+    const matches = msg.match(/\bplan_id\b/g) ?? [];
     expect(matches.length).toBe(1);
   });
 

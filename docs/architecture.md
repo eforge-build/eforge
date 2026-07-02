@@ -153,12 +153,11 @@ Prefixes carry scope unambiguously:
 | `session:*` | Run-wide envelope (`sessionId`) | Session lifecycle boundaries |
 | `phase:*` | Per-command phase (`runId`) | Phase lifecycle boundaries |
 | `config:*` | Run-wide | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
-| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, preflight risk, scope/context failure, artifact-validation error, and load-time `planning:warning` diagnostics. The `planning:complete` event also carries an optional `planConfigs: Array<{ id; build; review }>` field with per-plan build stage and review profile configs - persisted in SQLite so the monitor can reconstruct stage breakdowns after worktrees are cleaned up. The `planning:pipeline` event carries the planner's scope classification, compile pipeline, default build stages, default review profile, and rationale. `planning:preflight` carries bounded compile-risk representatives; `planning:scope-context:failure` persists bounded compile scope/context failure evidence, including optional decomposition-exhaustion evidence. `planning:decomposition:*` events describe bounded context-managed planning units, schedules, budgets, compact handoffs, and synthesis results without raw source, raw content, prompts, or transcripts. CLI, Console, and recovery sidecar markdown render these as typed compile-resilience diagnostics rather than generic plan-build failures. Continue-repair sessions do not replay `planning:*` history. |
+| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, planning-quality review, submission, scope/context failure, artifact-validation error, and load-time `planning:warning` diagnostics. The `planning:complete` event also carries an optional `planConfigs: Array<{ id; build; review }>` field with per-plan build stage and review profile configs - persisted in SQLite so the monitor can reconstruct stage breakdowns after worktrees are cleaned up. The `planning:pipeline` event carries the effective compile pipeline, default build stages, default review profile, and rationale. `planning:scope-context:failure` persists bounded compile scope/context failure evidence, including optional decomposition-exhaustion evidence. `planning:decomposition:*` events describe bounded context-managed planning units, schedules, budgets, compact handoffs, and synthesis results without raw source, raw content, prompts, or transcripts. CLI, Console, and recovery sidecar markdown render these as typed compile-resilience diagnostics rather than generic plan-build failures. Continue-repair sessions do not replay `planning:*` history. |
 | `plan:*` | Per-plan artifact lifecycle (`planId`) | Per-plan build (`plan:build:*`), per-plan merge (`plan:merge:*`), per-plan schedule readiness (`plan:schedule:ready`) |
 | `build:resume:*` | Continue-repair session lifecycle | Continue-and-repair eligibility, seeded state, recovered artifact projection (`build:resume:artifacts`), and completion. The artifact projection is persisted as session-scoped metadata so monitors can render recovered source and plan rows without duplicating historical planning, agent, token, or cost activity. |
 | `merge:finalize:*` | Run-wide feature-branch finalization | Final merge of the feature branch to the base branch (`merge:finalize:start`, `merge:finalize:complete`, `merge:finalize:skipped`) |
 | `schedule:start` | Run-wide (session-scoped, `planIds: string[]`) | Orchestration kickoff |
-| `expedition:*` | Wave / module orchestration (`wave` / `moduleId`) | Expedition-specific planning phases |
 | `agent:*` | Per-agent invocation (`agentId`) | Agent lifecycle and streaming |
 | `validation:*` | Run-wide | Post-merge validation |
 | `queue:*` / `enqueue:*` | Run-wide | PRD queue operations |
@@ -175,16 +174,14 @@ The CLI composes async generator middleware around the engine's event stream - t
 
 The engine uses a two-phase pipeline. Each phase is a sequence of named stages - async generators registered in a global stage registry.
 
-- **Compile stages** run once per build. The stage list is declared per-profile. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, emits `planning:preflight`, keeps the full visible source for traceability and validation, and may pass compacted prompt source to the pipeline composer, planner, and module planner when generated or machine-readable bulk is detected. After pipeline composition, retry-as-expedition escalation, and any selected-scope preflight recomputation, the planner stage chooses direct planning or bounded context-managed decomposition. Normal, elevated, retry-as-expedition, and manual-reduce-scope inputs keep the direct planner path; overflow-risk inputs with a bounded-decomposition recommendation use planning units governed by the top-level `compile.planningUnit*` limits. The pure planning-decomposition model derives acceptance-criteria coverage, source slices, dependency/constraint edges, scheduler batches, budget pressure, recursive splits, and typed decomposition-exhaustion evidence before any agent-facing orchestration consumes those units. Planner-family agents apply prompt and live context-budget guardrails after prompt assembly and during non-final usage updates, so oversized compile context can stop through the typed scope/context failure path before a provider hard context-window failure. For Pi-backed agents, live context guard token limits are derived from Pi ModelRegistry metadata when available, including provider/model context window, effective output reserve, overhead reserve, safety margin, and metadata-source/fallback diagnostics on scope/context failures; planner-family Pi guards cap large output metadata before using it as the effective reserve. Prompt byte defaults remain static byte guards and are not inferred from model metadata. After the compile pipeline finishes, the engine validates persisted plan-set artifacts before reporting compile success.
+- **Compile stages** run once per build. The compile pipeline is the constant `[planner, planning-quality-review-cycle]`. Before agent compile stages run, eforge strips the hidden acceptance-criteria inventory, keeps the full visible source for traceability and validation, and passes compacted prompt source to the bounded planner compiler when generated or machine-readable bulk is detected. The planner stage is the bounded planner compiler: it derives a deterministic source inventory and decomposes planning into bounded units governed by the top-level `compile.planningUnit*` limits (single-atom sources use a passthrough fast path). The pure planning-decomposition model derives acceptance-criteria coverage, source slices, dependency/constraint edges, scheduler batches, budget pressure, recursive splits, and typed decomposition-exhaustion evidence before any agent-facing orchestration consumes those units. Planner-family agents apply prompt and live context-budget guardrails after prompt assembly and during non-final usage updates, so oversized compile context can stop through the typed scope/context failure path before a provider hard context-window failure. For Pi-backed agents, live context guard token limits are derived from Pi ModelRegistry metadata when available, including provider/model context window, effective output reserve, overhead reserve, safety margin, and metadata-source/fallback diagnostics on scope/context failures; planner-family Pi guards cap large output metadata before using it as the effective reserve. Prompt byte defaults remain static byte guards and are not inferred from model metadata. After the compile pipeline finishes, the engine validates persisted plan-set artifacts before reporting compile success.
 - **Build stages** run once per plan. The stage list is per-plan, stored in `orchestration.yaml`.
 
 ```mermaid
 graph LR
-    subgraph Compile ["Compile Phase (per-profile)"]
+    subgraph Compile ["Compile Phase (constant)"]
         direction LR
-        E["<b>Errand</b><br/>planner"]
-        X["<b>Excursion</b><br/>planner → plan-review-cycle"]
-        XP["<b>Expedition</b><br/>planner → architecture-review-cycle<br/>→ module-planning<br/>→ cohesion-review-cycle<br/>→ compile-expedition"]
+        C["planner (bounded compiler)<br/>→ planning-quality-review-cycle"]
     end
 
     subgraph Build ["Build Phase (per-plan)"]
@@ -192,39 +189,31 @@ graph LR
         B["implement → review-cycle<br/>+ optional: doc-author, doc-sync, test-cycle, validate"]
     end
 
-    E --> B
-    X --> B
-    XP --> B
+    C --> B
 ```
 
 ### Compile stages
 
 | Stage | Description |
 |-------|-------------|
-| `planner` | Direct planning explores codebase, selects profile, submits a plan set via `submit_plan_set` or architecture via `submit_architecture`, and the engine writes plan files and `orchestration.yaml` from the validated payload. Overflow-risk bounded-decomposition inputs enter the context-managed controller instead of one broad root planner session. Tool validation failures return bounded diagnostics with schema path, expected/received type summaries, payload byte count, SHA-256 hash, omitted-byte/truncation metadata, and compact excerpts rather than echoing raw submitted arguments. The `AgentHarness` translates bare tool names into the harness-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
-| `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
-| `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
-| `module-planning` | Writes detailed plans for each module using architecture context |
-| `cohesion-review-cycle` | Reviews cross-module plan cohesion for consistency and integration gaps |
-| `compile-expedition` | Validates expedition module files, then compiles module plans into final plan files and orchestration |
+| `planner` | The bounded planner compiler explores the codebase through bounded exploration/atom/reducer agents, synthesizes plan files, `orchestration.yaml`, `architecture.md`, `acceptance-coverage.md`, and `compiler-diagnostics.json`, and derives per-plan build/review pipelines deterministically. Tool validation failures return bounded diagnostics with schema path, expected/received type summaries, payload byte count, SHA-256 hash, omitted-byte/truncation metadata, and compact excerpts rather than echoing raw submitted arguments. The `AgentHarness` translates bare tool names into the harness-visible identifier (Claude SDK prefixes `mcp__eforge_engine__`; Pi uses the bare name). |
+| `planning-quality-review-cycle` | Blind review of the compiled plan-set artifacts against the PRD (reviewer + evaluator loop), blocking on validated coverage failures and re-running artifact validation after accepted fixes |
 
 ### Context-managed planning-unit execution
 
 Context-managed planning invokes planner-family agents through a bounded planning-unit facade rather than through the direct root compile path. The controller schedules ready units concurrently up to `compile.planningUnitParallelism` (default `2`) while honoring dependency, interface, shared-file, and recursive split constraints. Each unit prompt contains only the unit source slice, covered acceptance criteria, subsystem hints, dependency and shared-file constraints, capped upstream handoff summaries or references, and the unit's own budgets. The prompt explicitly states that full root source, root transcripts, and prior raw tool results are unavailable by design.
 
-Bounded planner and module-planner runs use capture-only submission tools: planner submissions are validated with the existing plan-set or architecture schemas, while bounded module-planner runs capture `submit_module_plan` markdown. These captured payloads become `PlanningUnitOutput` suggestions for later synthesis; unit runs do not write root `orchestration.yaml`, `architecture.md`, module files, or root completion events. Direct planner and direct module-planner runs keep their existing file-writing behavior when bounded options are absent.
+Bounded planning-unit runs use capture-only submission tools: submissions are validated with the existing plan-set schemas and become `PlanningUnitOutput` suggestions for later synthesis. Unit runs do not write root `orchestration.yaml`, `architecture.md`, or root completion events; the compiler's synthesis phase owns all artifact writes.
 
 Compact continuation is unit-local. If local exploration exceeds the unit budget, planner-inspection handoffs are written under the unit artifact directory and synthesis restarts from the unit source plus compact handoff markdown, not from an accumulated root planning transcript. The facade emits `planning:decomposition:unit:*`, `planning:decomposition:budget`, and `planning:decomposition:compact-handoff` events with bounded diagnostics and returns a `PlanningUnitOutput` carrying captured suggestions, discovered files, contract notes, unresolved requirements, compact handoff references, and observed budget pressure.
 
-The controller persists bounded evidence under the plan set's `.decomposition/` directory, including the graph and per-unit outputs. These artifacts contain source slice summaries, criteria coverage, budget observations, handoff references, and artifact paths, but not raw root source, prompts, transcripts, or unbounded agent output. Successful synthesis writes the same compile artifacts as the direct path: expedition architecture/index/module definitions or excursion plan files plus `orchestration.yaml`; it does not author external PRDs or enqueue follow-up work.
+The controller persists bounded evidence under the plan set's `.decomposition/` directory, including the graph and per-unit outputs. These artifacts contain source slice summaries, criteria coverage, budget observations, handoff references, and artifact paths, but not raw root source, prompts, transcripts, or unbounded agent output. Successful synthesis writes the compile artifacts: plan files plus `orchestration.yaml`, `architecture.md`, `acceptance-coverage.md`, and `compiler-diagnostics.json`; it does not author external PRDs or enqueue follow-up work.
 
 ### Compile artifact validation
 
 Compile success is gated on persisted artifacts, not only on planner events. For non-skipped compile runs, `orchestration.yaml` must exist, parse successfully, contain the injected effective compile pipeline, and reference a valid plan set. Every referenced plan file must exist under the plan-set directory, parse as a `PlanFile`, match the orchestration entry's `id` and branch, and contain a non-empty body. The engine reloads `ctx.plans` from these validated persisted plan files before the no-review artifact commit path.
 
 Artifact-validation failures fail closed: the compile phase emits `planning:error` and ends with `phase:end` status `failed` using a bounded summary. The summary shape is the client-owned `CompileArtifactSummary`, shared with compile scope/context recovery evidence, so consumers do not need a separate engine-defined wire contract. A `planning:skip` compile remains a valid terminal path and does not require plan artifacts.
-
-Expedition compilation has an additional stage-boundary check. Before deterministic expedition compilation, the stage parses the expedition `index.yaml`, checks that module IDs match the architecture/module context, and verifies each `modules/<id>.md` file exists with non-whitespace content. After compilation, the same persisted-artifact success gate runs before expedition completion events are emitted.
 
 ### Build stages
 
@@ -240,17 +229,9 @@ Expedition compilation has an additional stage-boundary check. Before determinis
 
 Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-author'], 'doc-sync', 'review-cycle']` runs implement and doc-author in parallel, then doc-sync sequentially, then review-cycle after both complete.
 
-## Workflow Profiles
+## Compile pipeline selection
 
-Profiles control which compile stages run. The `pipeline-composer` agent classifies input complexity and selects the initial profile, or the user can specify one explicitly. Compile scope/context recovery may escalate an errand or excursion compile to expedition once, or report bounded-decomposition guidance with decomposition evidence, when preflight or planner-stage evidence shows that is the bounded recovery path.
-
-**Errand** - Small, self-contained changes. Compile: `[planner]`. The planner generates a single simple plan or skips if nothing to do.
-
-**Excursion** - Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Direct planning uses a single planning pass; overflow-risk bounded-decomposition inputs synthesize the same plan artifacts from bounded planning units.
-
-**Expedition** - Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`. Decomposes work into modules, each planned independently with architecture and cohesion review across the set; context-managed compiles cap downstream module-planning waves to the resolved planning-unit parallelism.
-
-The three built-in profiles cover the supported workflow modes; the `pipeline-composer` selects among them per build. See [config.md](config.md) for tier and role configuration.
+There is no compile-time scope classification: every compile runs the constant `[planner, planning-quality-review-cycle]` pipeline. The bounded planner compiler adapts to input size through deterministic inventory chunking - trivial sources take the single-atom passthrough fast path, and oversized sources fan out into bounded planning units - so no agent decides which pipeline to run. Per-plan build/review defaults come from the compiler's deterministic pipeline derivation, audited by the planning-quality gate. Compile scope/context recovery reports bounded-decomposition or manual-reduce-scope guidance with decomposition evidence when planner-stage evidence shows that is the bounded recovery path. See [config.md](config.md) for tier and role configuration.
 
 ## Agents
 
@@ -264,16 +245,16 @@ Agent roles by tier:
 
 | Tier | Roles |
 |------|-------|
-| **Planning** | planner, module-planner, formatter, pipeline-composer, merge-conflict-resolver, gap-closer |
+| **Planning** | planner, formatter, merge-conflict-resolver, gap-closer |
 | **Implementation** | builder, doc-author, doc-syncer, review-fixer, validation-fixer, test-writer, tester, recovery-analyst, dependency-detector, prd-validator, staleness-assessor |
-| **Review** | reviewer, architecture-reviewer, cohesion-reviewer, plan-reviewer |
-| **Evaluation** | evaluator, architecture-evaluator, cohesion-evaluator, plan-evaluator |
+| **Review** | reviewer, plan-reviewer |
+| **Evaluation** | evaluator, plan-evaluator |
 
 Per-role configuration (effort level, thinking, tool filters, maxTurns, promptAppend, and builder-only shards) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md). Model, harness, and provider always flow from the role's tier - they cannot be overridden per role.
 
 ### Blind review
 
-Quality requires separating generation from evaluation. The reviewer operates without builder context - it sees only the code diff, not the builder's reasoning. The review-fixer applies suggested fixes as unstaged changes. The evaluator then judges each fix against the original plan intent, accepting strict improvements and rejecting changes that alter intent. This same three-step pattern (blind review -> fix -> evaluate) applies to plan review, architecture review, and cohesion review.
+Quality requires separating generation from evaluation. The reviewer operates without builder context - it sees only the code diff, not the builder's reasoning. The review-fixer applies suggested fixes as unstaged changes. The evaluator then judges each fix against the original plan intent, accepting strict improvements and rejecting changes that alter intent. This same three-step pattern (blind review -> fix -> evaluate) applies to the planning-quality review of compiled plan-set artifacts.
 
 The `verify` perspective is an exception to the diff-only rule: instead of reading a diff, it runs the plan's verification commands as subprocesses and emits one critical issue per failing command, with the full exit code and stdout/stderr in the issue's fix element. The review-fixer then applies the necessary edits - which may touch files outside the original diff - and the evaluator accepts or rejects as usual. This allows integration failures in sharded builds to flow through the same iterative fix cycle as code-review issues.
 
@@ -397,4 +378,4 @@ The web monitor tracks cost, token usage, efficiency metrics, and progress in re
 
 The **web server** runs as a detached process that survives CLI exit. It polls SQLite for new events and pushes them to the dashboard via Server-Sent Events (SSE). The server stays alive after the last active session ends so browser users can inspect results before it exits.
 
-The **Console details panel** exposes four lower tabs: `Log` (event stream with typed summaries/details, including compile preflight and scope/context diagnostics), `Changes` (per-plan file diffs), `Graph` (plan dependency graph), and `Plan` (planner decisions). The `Plan` tab renders three sections from the event log - Classification (mode badge from `planning:pipeline`), Pipeline (compile/build/review config), and Plans (per-plan build stage breakdown and review profile from `planning:complete`'s `planConfigs`). Orchestration data is sourced from event payloads via the reducer (`runState.earlyOrchestration`) — normally `planning:complete`, or `build:resume:artifacts` for continue-repair sessions — so per-plan stage breakdowns remain accurate for completed sessions after worktrees have been cleaned.
+The **Console details panel** exposes four lower tabs: `Log` (event stream with typed summaries/details, including compile scope/context diagnostics), `Changes` (per-plan file diffs), `Graph` (plan dependency graph), and `Plan` (planner decisions). The `Plan` tab renders three sections from the event log - Classification (pipeline rationale from `planning:pipeline`), Pipeline (compile/build/review config), and Plans (per-plan build stage breakdown and review profile from `planning:complete`'s `planConfigs`). Orchestration data is sourced from event payloads via the reducer (`runState.earlyOrchestration`) — normally `planning:complete`, or `build:resume:artifacts` for continue-repair sessions — so per-plan stage breakdowns remain accurate for completed sessions after worktrees have been cleaned.

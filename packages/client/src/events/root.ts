@@ -6,10 +6,7 @@ import {
   CompileContextGuardDiagnosticsSchema,
   CompileContextGuardLimitsSchema,
   CompileContextGuardMetadataSourceSchema,
-  CompilePipelineScopeSchema,
-  CompilePreflightRiskSchema,
   CompileRecoveryActionSchema,
-  CompileRiskLevelSchema,
   CompileScopeContextFailureSchema,
   PlannerContextObservationSchema,
   PlannerInspectionBudgetDiagnosticsSchema,
@@ -24,7 +21,6 @@ import {
   DecompositionFailureEvidenceSchema,
   PlanningCoverageSummarySchema,
   PlanningDecompositionLimitsSchema,
-  PlanningDecompositionRiskEvidenceSchema,
   PlanningDecompositionUnitStatusSchema,
   PlanningDecompositionUnitSummarySchema,
   PlanningObservedBudgetPressureSchema,
@@ -49,7 +45,6 @@ import {
   EforgeResultSchema,
   EforgeStateSchema,
   EvaluationIssueOutcomeSchema,
-  ExpeditionModuleSchema,
   FailingPlanEntrySchema,
   LandingActionSchema,
   LandingPublicationActionSchema,
@@ -99,7 +94,6 @@ export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
 export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
 export type AcceptanceCriterionVerdict = Static<typeof AcceptanceCriterionVerdictSchema>;
 export type AcceptanceCriteriaConflict = Static<typeof AcceptanceCriteriaConflictSchema>;
-export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
 export type ValidationRepairClass = Static<typeof ValidationRepairClassSchema>;
@@ -130,10 +124,7 @@ export type BuildResumeArtifactSource = Static<typeof BuildResumeArtifactSourceS
 export type BuildResumeArtifactPlan = Static<typeof BuildResumeArtifactPlanSchema>;
 export type BuildResumeArtifactsEvent = Extract<EforgeEvent, { type: 'build:resume:artifacts' }>;
 export type BuildResumeCompleteEvent = Extract<EforgeEvent, { type: 'build:resume:complete' }>;
-export type CompileRiskLevel = Static<typeof CompileRiskLevelSchema>;
 export type CompileRecoveryAction = Static<typeof CompileRecoveryActionSchema>;
-export type CompilePipelineScope = Static<typeof CompilePipelineScopeSchema>;
-export type CompilePreflightRisk = Static<typeof CompilePreflightRiskSchema>;
 export type CompileArtifactSummary = Static<typeof CompileArtifactSummarySchema>;
 export type CompileContextGuardLimits = Static<typeof CompileContextGuardLimitsSchema>;
 export type CompileContextGuardMetadataSource = Static<typeof CompileContextGuardMetadataSourceSchema>;
@@ -154,9 +145,7 @@ export type PlanningSourceSliceSummary = Static<typeof PlanningSourceSliceSummar
 export type PlanningCoverageSummary = Static<typeof PlanningCoverageSummarySchema>;
 export type PlanningDecompositionUnitSummary = Static<typeof PlanningDecompositionUnitSummarySchema>;
 export type PlanningScheduleDecision = Static<typeof PlanningScheduleDecisionSchema>;
-export type PlanningDecompositionRiskEvidence = Static<typeof PlanningDecompositionRiskEvidenceSchema>;
 export type DecompositionFailureEvidence = Static<typeof DecompositionFailureEvidenceSchema>;
-export type CompilePreflightEvent = Extract<EforgeEvent, { type: 'planning:preflight' }>;
 export type CompileScopeContextFailureEvent = Extract<EforgeEvent, { type: 'planning:scope-context:failure' }>;
 export type PlannerInspectionSummaryEvent = Extract<EforgeEvent, { type: 'planning:inspection-summary' }>;
 export type PlanningDecompositionStartEvent = Extract<EforgeEvent, { type: 'planning:decomposition:start' }>;

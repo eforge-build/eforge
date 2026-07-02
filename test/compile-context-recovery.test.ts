@@ -14,7 +14,6 @@ import {
   classifyProviderContextError,
   compileScopeContextRecoveryOption,
   compileScopeTerminalFailureEvent,
-  markRetryAsExpeditionStarted,
   MAX_PROVIDER_CONTEXT_EXPLANATION_BYTES,
   summarizeCompileArtifactsForRecovery,
 } from '@eforge-build/engine/compile-resilience/context-recovery';
@@ -61,20 +60,19 @@ describe('compile context recovery', () => {
     expect(await summarizeCompileArtifactsForRecovery(ctx)).toMatchObject({ orchestrationExists: true, validPlanCount: 1, missingPlanFileCount: 0 });
   });
 
-  it('returns retry-as-expedition for eligible no-artifact excursion failures before the retry starts', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
+  it('resolves no-artifact preflight scope failures to manual-reduce-scope guidance', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' } });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'preflight', failureKind: 'scope-too-broad', stage: 'planner', explanation: 'overflow risk', risk: retryRisk() });
-    expect(failure.recovery).toMatchObject({ action: 'retry-as-expedition', eligible: true, attempted: false, attempt: 0 });
-    expect(ctx.compileScopeRecovery?.retryAsExpeditionAttempts).toBe(0);
-    expect(ctx.compileScopeRecovery?.attemptedSourceHashes).toEqual([]);
+    expect(failure.recovery).toMatchObject({ action: 'manual-reduce-scope', eligible: false, attempted: false, attempt: 0 });
+    expect(failure.recovery.reason).toContain('manually reduce scope');
   });
 
-  it('routes direct planner live guard failures to bounded decomposition even when preflight was advisory', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: advisoryRisk() });
+  it('routes planner live guard failures to bounded decomposition', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' } });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'live-context-guard', failureKind: 'context-budget', stage: 'planner', explanation: 'single turn too large', risk: advisoryRisk() });
     expect(failure.recovery.action).toBe('bounded-decomposition');
     expect(failure.recovery.eligible).toBe(true);
-    expect(failure.recovery.reason).toContain('context-managed decomposition');
+    expect(failure.recovery.reason).toContain('bounded compiler is the only planning path');
   });
 
   it('carries optional guard diagnostics without changing legacy recovery classification', async () => {
@@ -97,37 +95,22 @@ describe('compile context recovery', () => {
     });
   });
 
-  it('increments retry-as-expedition metadata only when a retry starts and prevents second retries', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
-    const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
-    expect(failure.recovery.action).toBe('retry-as-expedition');
 
-    markRetryAsExpeditionStarted(ctx, failure);
-    markRetryAsExpeditionStarted(ctx, failure);
-
-    expect(ctx.compileScopeRecovery?.retryAsExpeditionAttempts).toBe(1);
-    expect(ctx.compileScopeRecovery?.attemptedSourceHashes).toHaveLength(1);
-    const capped = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
-    expect(capped.recovery.action).not.toBe('retry-as-expedition');
-    expect(capped.recovery.attempt).toBeGreaterThanOrEqual(capped.recovery.maxAttempts);
-  });
-
-  it('chooses bounded decomposition when already expedition with no artifacts', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'expedition' } });
+  it('resolves provider context failures without artifacts to manual-reduce-scope guidance', async () => {
+    const ctx = makePipelineCtx({ cwd: await tempDir() });
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded' });
-    expect(failure.recovery.action).toBe('bounded-decomposition');
+    expect(failure.recovery.action).toBe('manual-reduce-scope');
   });
 
   it('prefers repair-existing-artifacts when valid compile artifacts exist', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' } });
     await writeValidPlanSet(ctx);
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });
     expect(failure.recovery).toMatchObject({ action: 'repair-existing-artifacts', eligible: true, attempted: false });
-    expect(ctx.compileScopeRecovery?.retryAsExpeditionAttempts).toBe(0);
   });
 
   it('does not prefer repair-existing-artifacts when artifacts fail final validation', async () => {
-    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' }, compilePreflight: retryRisk() });
+    const ctx = makePipelineCtx({ cwd: await tempDir(), pipeline: { ...makePipelineCtx().pipeline, scope: 'excursion' } });
     await writeValidPlanSet(ctx);
     ctx.pipeline = { ...ctx.pipeline, compile: ['planner'] };
     const failure = await buildCompileScopeContextFailure(ctx, { source: 'provider', failureKind: 'context-window', stage: 'planner', explanation: 'context window exceeded', risk: retryRisk() });

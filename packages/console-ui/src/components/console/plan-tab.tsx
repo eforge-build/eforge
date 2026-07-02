@@ -1,15 +1,7 @@
-import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ProfileBadge } from '@/components/profile/profile-badge';
 import type { OrchestrationConfig, EforgeEvent, BuildStageSpec, ReviewProfileConfig } from '@/lib/run-state';
 import type { SessionProfile } from '@/lib/run-state';
-
-/** CSS class map for orchestration mode badges. */
-const profileBadgeClasses: Record<string, string> = {
-  errand: 'bg-green/20 text-green border-green/30',
-  excursion: 'bg-yellow/20 text-yellow border-yellow/30',
-  expedition: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-};
 
 interface PlanTabProps {
   orchestration: OrchestrationConfig | null;
@@ -128,26 +120,10 @@ export function PlanTab({ orchestration, pipelineEvent, profile }: PlanTabProps)
       )}
 
       {/* Classification */}
-      {(orchestration?.mode || pipelineEvent?.scope) && (
+      {pipelineEvent?.rationale && (
         <Section title="Classification">
           <div className="flex items-center gap-2">
-            {orchestration?.mode && (
-              <Badge
-                variant="outline"
-                className={cn(
-                  'capitalize text-xs px-2 py-0.5',
-                  profileBadgeClasses[orchestration.mode] ?? '',
-                )}
-              >
-                {orchestration.mode}
-              </Badge>
-            )}
-            {pipelineEvent?.scope && orchestration?.mode !== pipelineEvent.scope && (
-              <span className="text-text-dim text-xs">{pipelineEvent.scope}</span>
-            )}
-            {pipelineEvent?.rationale && (
-              <span className="text-text-dim text-xs">{pipelineEvent.rationale}</span>
-            )}
+            <span className="text-text-dim text-xs">{pipelineEvent.rationale}</span>
           </div>
         </Section>
       )}

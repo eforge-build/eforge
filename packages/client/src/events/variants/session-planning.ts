@@ -14,7 +14,6 @@ import {
   ClarificationQuestionSchema,
   EforgeResultSchema,
   EvaluationIssueOutcomeSchema,
-  ExpeditionModuleSchema,
   FinalMergePolicyGateProvenanceFields,
   LandingActionSchema,
   LandingPublicationActionSchema,
@@ -42,7 +41,6 @@ import {
   TestIssueSchema,
 } from '../shared/schemas.js';
 import {
-  CompilePreflightRiskSchema,
   CompileScopeContextFailureSchema,
   PlannerInspectionSummarySchema,
 } from '../shared/compile-resilience.js';
@@ -146,10 +144,6 @@ export const planningEventVariants = [
     label: Type.Optional(Type.String()),
   }),
   Type.Object({
-    type: Type.Literal('planning:preflight'),
-    risk: CompilePreflightRiskSchema,
-  }),
-  Type.Object({
     type: Type.Literal('planning:inspection-summary'),
     summary: PlannerInspectionSummarySchema,
     artifactPath: Type.Optional(Type.String()),
@@ -204,7 +198,6 @@ export const planningEventVariants = [
   }),
   Type.Object({
     type: Type.Literal('planning:pipeline'),
-    scope: Type.String(),
     compile: Type.Array(Type.String()),
     defaultBuild: Type.Array(BuildStageSpecSchema),
     defaultReview: ReviewProfileConfigSchema,
@@ -254,91 +247,6 @@ export const planningEventVariants = [
         }),
       ),
     ),
-  }),
-
-  // Architecture review
-  Type.Object({ type: Type.Literal('planning:architecture:review:start') }),
-  Type.Object({
-    type: Type.Literal('planning:architecture:review:complete'),
-    issues: Type.Array(ReviewIssueSchema),
-  }),
-  Type.Object({ type: Type.Literal('planning:architecture:evaluate:start') }),
-  Type.Object({
-    type: Type.Literal('planning:architecture:evaluate:continuation'),
-    attempt: Type.Number(),
-    maxContinuations: Type.Number(),
-  }),
-  Type.Object({
-    type: Type.Literal('planning:architecture:evaluate:complete'),
-    accepted: Type.Number(),
-    rejected: Type.Number(),
-    verdicts: Type.Optional(
-      Type.Array(
-        Type.Object({
-          file: Type.String(),
-          action: Type.Union([
-            Type.Literal('accept'),
-            Type.Literal('reject'),
-            Type.Literal('review'),
-          ]),
-          reason: Type.String(),
-          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
-        }),
-      ),
-    ),
-  }),
-
-  // Cohesion review
-  Type.Object({ type: Type.Literal('planning:cohesion:start') }),
-  Type.Object({
-    type: Type.Literal('planning:cohesion:complete'),
-    issues: Type.Array(ReviewIssueSchema),
-  }),
-  Type.Object({ type: Type.Literal('planning:cohesion:evaluate:start') }),
-  Type.Object({
-    type: Type.Literal('planning:cohesion:evaluate:continuation'),
-    attempt: Type.Number(),
-    maxContinuations: Type.Number(),
-  }),
-  Type.Object({
-    type: Type.Literal('planning:cohesion:evaluate:complete'),
-    accepted: Type.Number(),
-    rejected: Type.Number(),
-    verdicts: Type.Optional(
-      Type.Array(
-        Type.Object({
-          file: Type.String(),
-          action: Type.Union([
-            Type.Literal('accept'),
-            Type.Literal('reject'),
-            Type.Literal('review'),
-          ]),
-          reason: Type.String(),
-          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
-        }),
-      ),
-    ),
-  }),
-] as const;
-
-export const expeditionEventVariants = [
-  // Expedition planning phases
-  Type.Object({
-    type: Type.Literal('expedition:architecture:complete'),
-    modules: Type.Array(ExpeditionModuleSchema),
-  }),
-  Type.Object({
-    type: Type.Literal('expedition:wave:start'),
-    wave: Type.Number(),
-    moduleIds: Type.Array(Type.String()),
-  }),
-  Type.Object({ type: Type.Literal('expedition:wave:complete'), wave: Type.Number() }),
-  Type.Object({ type: Type.Literal('expedition:module:start'), moduleId: Type.String() }),
-  Type.Object({ type: Type.Literal('expedition:module:complete'), moduleId: Type.String() }),
-  Type.Object({ type: Type.Literal('expedition:compile:start') }),
-  Type.Object({
-    type: Type.Literal('expedition:compile:complete'),
-    plans: Type.Array(PlanFileSchema),
   }),
 ] as const;
 

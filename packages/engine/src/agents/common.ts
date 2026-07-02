@@ -8,7 +8,7 @@ import type { ClarificationQuestion, TestIssue, ReviewIssue } from '../events.js
 import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { pipelineBuildStageSpecSchema, pipelineReviewProfileConfigSchema } from '../schemas.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema, recoveryVerdictSchema } from '../schemas.js';
-import { ReviewIssueIdSchema, safeParseWithSchema } from '@eforge-build/client';
+import { ReviewIssueIdSchema, safeParseWithSchema, type ValueError } from '@eforge-build/client';
 
 /**
  * Parse <clarification> XML blocks from assistant text into structured questions.
@@ -535,4 +535,30 @@ export function testIssueToReviewIssue(issue: TestIssue): ReviewIssue {
     description: issue.description,
     fix: issue.fix,
   };
+}
+
+/**
+ * Format TypeBox validation errors into a retry-oriented error message.
+ *
+ * A raw JSON-stringified issues array reads to models as "the tool is broken"
+ * and they abandon it in favor of Write. An explicit per-path breakdown plus
+ * an explicit "call the tool again" instruction flips that behavior to a retry.
+ *
+ * TypeBox paths are JSON-pointer strings (e.g. `/plans/0/id`); they are
+ * converted to dot-notation (e.g. `plans.0.id`) for readability.
+ */
+export function formatSubmissionValidationError(errors: readonly ValueError[]): string {
+  const lines = errors.map((error) => {
+    const path = error.path
+      ? (error.path.replace(/^\//, '').replace(/\//g, '.') || '(root)')
+      : '(root)';
+    return `  - ${path}: ${error.message}`;
+  });
+  return [
+    'Submission rejected: the payload did not validate against the schema.',
+    'Fix each issue below and call the submission tool again with the corrected payload.',
+    'Do NOT fall back to Write - this tool is the only way to complete the turn.',
+    '',
+    ...lines,
+  ].join('\n');
 }

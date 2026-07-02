@@ -55,7 +55,6 @@ export function renderPullRequestMetadata(input: PullRequestMetadataInput): Pull
   // Build metadata
   lines.push('## Build metadata');
   lines.push(`- Plan set: \`${config.name}\``);
-  lines.push(`- Mode: \`${config.mode}\``);
   lines.push(`- Base branch: \`${baseBranch}\``);
   lines.push(`- Artifact branch: \`${featureBranch}\``);
   lines.push('');

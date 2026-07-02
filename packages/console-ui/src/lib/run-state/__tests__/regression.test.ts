@@ -147,14 +147,11 @@ describe('regression: new reducer matches pre-refactor behavior on sample-build 
     expect(Object.keys(state.liveAgentUsage)).toHaveLength(0);
 
     // -------------------------------------------------------------------------
-    // Expedition / enqueue / other fields
+    // Enqueue / other fields
     // -------------------------------------------------------------------------
-    expect(state.expeditionModules).toHaveLength(0);
-    expect(Object.keys(state.moduleStatuses)).toHaveLength(0);
     // earlyOrchestration is synthesized from the planning:complete event in the fixture.
     // The fixture's planning:complete carries two plans with plan-02 depending on plan-01.
     expect(state.earlyOrchestration).not.toBeNull();
-    expect(state.earlyOrchestration?.mode).toBe('compile');
     expect(state.earlyOrchestration?.plans).toHaveLength(2);
     expect(state.earlyOrchestration?.plans[0].id).toBe('plan-01');
     expect(state.earlyOrchestration?.plans[0].dependsOn).toEqual([]);
@@ -203,8 +200,6 @@ describe('regression: new reducer matches pre-refactor behavior on sample-build 
     expect(batchState.agentThreads).toEqual(addEventState.agentThreads);
     expect(batchState.liveAgentUsage).toEqual(addEventState.liveAgentUsage);
     expect(batchState.profile).toEqual(addEventState.profile);
-    expect(batchState.expeditionModules).toEqual(addEventState.expeditionModules);
-    expect(batchState.moduleStatuses).toEqual(addEventState.moduleStatuses);
     expect(batchState.earlyOrchestration).toEqual(addEventState.earlyOrchestration);
     // events array: BATCH_LOAD sets it from action.events directly
     expect(batchState.events).toHaveLength(addEventState.events.length);

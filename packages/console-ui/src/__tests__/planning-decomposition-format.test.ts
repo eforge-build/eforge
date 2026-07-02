@@ -13,7 +13,7 @@ const unit = { unitId: 'unit-overflow', parentUnitId: 'unit-parent', depth: 2, s
 const evidence: DecompositionFailureEvidence = { unitId: 'unit-overflow', parentUnitId: 'unit-parent', depth: 2, budgets: budget, observed, assignedCriteriaIds: ['AC-1', 'AC-2', 'AC-3'], unresolvedCriteria: coverage.unresolvedCriteria, blockers: ['shared file owner pending'], splitAttempts: [{ attempt: 1, unitId: 'unit-overflow', reason: 'split by subsystem', resultingUnitIds: ['unit-a', 'unit-b'] }] };
 
 const events = [
-  { type: 'planning:decomposition:start', timestamp, graphId: 'graph-1', rootUnitId: 'unit-root', unitCount: 3, edgeCount: 2, limits, riskEvidence: { level: 'overflow-risk', score: 90, sourceBytes: 100000, promptSourceBytes: 90000, acceptanceCriteriaCount: 3, subsystemSummaries: ['engine'], recommendationAction: 'bounded-decomposition', selectedScope: 'expedition' } },
+  { type: 'planning:decomposition:start', timestamp, graphId: 'graph-1', rootUnitId: 'unit-root', unitCount: 3, edgeCount: 2, limits },
   { type: 'planning:decomposition:unit:queued', timestamp, unit },
   { type: 'planning:decomposition:unit:running', timestamp, unitId: 'unit-overflow' },
   { type: 'planning:decomposition:unit:progress', timestamp, unitId: 'unit-overflow', message: 'bounded progress message', observed },

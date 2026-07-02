@@ -267,16 +267,6 @@ export interface ApplyRecoveryResult {
 }
 
 // ---------------------------------------------------------------------------
-// Expedition module schema
-// ---------------------------------------------------------------------------
-
-export const expeditionModuleSchema = Type.Object({
-  id: Type.String({ description: 'Module identifier' }),
-  description: Type.String({ description: 'Module description' }),
-  dependsOn: Type.Array(Type.String(), { description: 'IDs of modules this module depends on' }),
-});
-
-// ---------------------------------------------------------------------------
 // Agent Tuning schema (effort/thinking overrides per agent role)
 // ---------------------------------------------------------------------------
 
@@ -461,11 +451,6 @@ export function getRecoveryVerdictSchemaYaml(): string {
   return getSchemaYaml('recovery-verdict', recoveryVerdictSchema);
 }
 
-/** Schema YAML for expedition modules (used by planner). */
-export function getModuleSchemaYaml(): string {
-  return getSchemaYaml('expedition-module', expeditionModuleSchema);
-}
-
 /** Schema YAML for plan file frontmatter (used by planner). */
 export function getPlanFrontmatterSchemaYaml(): string {
   return getSchemaYaml('plan-file-frontmatter', planFileFrontmatterSchema);
@@ -636,109 +621,12 @@ export function validatePlanSetSubmission(data: PlanSetSubmission): SafeParseRes
 }
 
 // ---------------------------------------------------------------------------
-// Architecture Submission schema
-// ---------------------------------------------------------------------------
-
-const architectureModuleSchema = Type.Object({
-  id: Type.String({ minLength: 1, description: 'Module identifier' }),
-  description: Type.String({ minLength: 1, description: 'Module description' }),
-  dependsOn: Type.Array(Type.String(), { description: 'IDs of modules this module depends on' }),
-});
-
-export const architectureSubmissionSchema = Type.Object({
-  architecture: Type.String({ minLength: 1, description: 'Architecture document markdown content' }),
-  modules: Type.Array(architectureModuleSchema, { minItems: 1, description: 'Modules in the architecture' }),
-  index: Type.Object({
-    name: Type.String({ minLength: 1, description: 'Plan set name' }),
-    description: Type.String({ description: 'Plan set description' }),
-    mode: Type.Literal('expedition', { description: 'Orchestration mode' }),
-    validate: Type.Array(Type.String(), { description: 'Validation commands to run' }),
-    modules: Type.Record(
-      Type.String(),
-      Type.Object({
-        description: Type.String({ description: 'Module description' }),
-        depends_on: Type.Array(Type.String(), { description: 'Module dependencies' }),
-      }),
-      { description: 'Module map for index.yaml' },
-    ),
-  }, { description: 'Index metadata for expedition plan set' }),
-});
-
-export type ArchitectureSubmission = Static<typeof architectureSubmissionSchema>;
-
-/**
- * Post-parse validator for architectureSubmissionSchema.
- * Enforces cross-field constraints: duplicate module IDs, dangling dependencies, cycles.
- */
-export function validateArchitectureSubmission(data: ArchitectureSubmission): SafeParseResult<ArchitectureSubmission> {
-  const errors: ValueError[] = [];
-  const moduleIds = new Set(data.modules.map(m => m.id));
-
-  // Check for duplicate module IDs
-  if (moduleIds.size !== data.modules.length) {
-    errors.push({ path: '/modules', message: 'Architecture contains duplicate module IDs' });
-  }
-
-  // Check for dangling dependsOn references
-  for (let i = 0; i < data.modules.length; i++) {
-    for (const dep of data.modules[i].dependsOn) {
-      if (!moduleIds.has(dep)) {
-        errors.push({
-          path: `/modules/${i}/dependsOn`,
-          message: `Module "${data.modules[i].id}" depends on unknown module "${dep}"`,
-        });
-      }
-    }
-  }
-
-  // Check for dependency cycles using DFS
-  const moduleList = data.modules.map(m => m.id);
-  const adjMap = new Map<string, string[]>();
-  for (const mod of data.modules) {
-    adjMap.set(mod.id, mod.dependsOn);
-  }
-
-  const WHITE = 0, GRAY = 1, BLACK = 2;
-  const color = new Map<string, number>();
-  for (const id of moduleList) color.set(id, WHITE);
-
-  function hasCycle(node: string): boolean {
-    color.set(node, GRAY);
-    for (const dep of adjMap.get(node) ?? []) {
-      if (!color.has(dep)) continue;
-      if (color.get(dep) === GRAY) return true;
-      if (color.get(dep) === WHITE && hasCycle(dep)) return true;
-    }
-    color.set(node, BLACK);
-    return false;
-  }
-
-  for (const id of moduleList) {
-    if (color.get(id) === WHITE && hasCycle(id)) {
-      errors.push({ path: '/modules', message: 'Dependency cycle detected among modules' });
-      break;
-    }
-  }
-
-  if (errors.length > 0) {
-    const message = errors.map(e => `${e.path || '(root)'}: ${e.message}`).join('\n');
-    return { success: false, error: { message, errors } };
-  }
-  return { success: true, data };
-}
-
-// ---------------------------------------------------------------------------
 // Submission schema YAML getters
 // ---------------------------------------------------------------------------
 
 /** Schema YAML for plan set submissions (used by planner submission tool). */
 export function getPlanSetSubmissionSchemaYaml(): string {
   return getSchemaYaml('plan-set-submission', planSetSubmissionSchema);
-}
-
-/** Schema YAML for architecture submissions (used by planner submission tool). */
-export function getArchitectureSubmissionSchemaYaml(): string {
-  return getSchemaYaml('architecture-submission', architectureSubmissionSchema);
 }
 
 // ---------------------------------------------------------------------------
@@ -794,40 +682,7 @@ export const planReviewSubmissionSchema = Type.Object({
 export type PlanReviewSubmission = Static<typeof planReviewSubmissionSchema>;
 
 /**
- * Schema for a single fix applied by the cohesion-reviewer agent.
- * Operates on module plan files in <planSet>/modules/.
- */
-export const cohesionReviewFixSchema = Type.Union([
-  Type.Object({
-    kind: Type.Literal('replace_plan_file', { description: 'Replace an entire module plan file (frontmatter + body)' }),
-    planId: Type.String({ minLength: 1, description: 'Plan/module ID (e.g., auth) — used to resolve the file path under modules/' }),
-    frontmatter: Type.Object({
-      id: Type.String({ minLength: 1, description: 'Plan identifier' }),
-      name: Type.String({ minLength: 1, description: 'Human-readable plan name' }),
-      branch: Type.String({ minLength: 1, description: 'Git branch name for this plan' }),
-      migrations: Type.Optional(Type.Array(Type.Object({
-        timestamp: Type.String({ pattern: '^\\d{14}$', description: 'Migration timestamp in YYYYMMDDHHmmss format' }),
-        description: Type.String({ description: 'Migration description' }),
-      }), { description: 'Database migrations included in this plan' })),
-      agents: planAgentsSchema,
-    }, { description: 'Plan file frontmatter' }),
-    body: Type.String({ description: 'Plan markdown body' }),
-  }, { description: 'Replace an entire module plan .md file with new frontmatter and body' }),
-  Type.Object({
-    kind: Type.Literal('replace_plan_body', { description: 'Replace only the markdown body of a module plan file, preserving frontmatter' }),
-    planId: Type.String({ minLength: 1, description: 'Plan/module ID — used to resolve the file path under modules/' }),
-    body: Type.String({ description: 'New markdown body (frontmatter is preserved verbatim)' }),
-  }, { description: 'Replace only the body of a module plan .md file, leaving frontmatter byte-identical' }),
-], { description: 'A single fix to apply to module plan artifacts' });
-
-export const cohesionReviewSubmissionSchema = Type.Object({
-  fixes: Type.Array(cohesionReviewFixSchema, { description: 'Fixes to apply to module plan artifacts; may be empty if no fixable issues were found' }),
-});
-
-export type CohesionReviewSubmission = Static<typeof cohesionReviewSubmissionSchema>;
-
-/**
- * Schema for a single fix applied by the architecture-reviewer agent.
+ * Schema for a single architecture fix applied by the planning quality gate.
  * Operates on the architecture.md file in <planSet>/.
  */
 export const architectureReviewFixSchema = Type.Union([
@@ -848,25 +703,11 @@ export function getPlanReviewSubmissionSchemaYaml(): string {
   return getSchemaYaml('plan-review-submission', planReviewSubmissionSchema);
 }
 
-/** Schema YAML for cohesion-reviewer fix submissions. */
-export function getCohesionReviewSubmissionSchemaYaml(): string {
-  return getSchemaYaml('cohesion-review-submission', cohesionReviewSubmissionSchema);
-}
-
-/** Schema YAML for architecture-reviewer fix submissions. */
-export function getArchitectureReviewSubmissionSchemaYaml(): string {
-  return getSchemaYaml('architecture-review-submission', architectureReviewSubmissionSchema);
-}
-
 // ---------------------------------------------------------------------------
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
 
 export const pipelineCompositionSchema = Type.Object({
-  scope: Type.Union(
-    [Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')],
-    { description: 'Orchestration scope: errand for trivial tasks, excursion for most work, expedition for 4+ independent subsystems' },
-  ),
   compile: Type.Array(Type.String(), { description: 'Ordered list of compile stage names from the stage catalog' }),
   defaultBuild: Type.Array(pipelineBuildStageSpecSchema, {
     description: 'Default build stage pipeline - each entry is a stage name or array of parallel stage names',
@@ -879,7 +720,7 @@ export const pipelineCompositionSchema = Type.Object({
 
 export type PipelineComposition = Static<typeof pipelineCompositionSchema>;
 
-/** Schema YAML for pipeline composition (used by pipeline-composer agent). */
+/** Schema YAML for pipeline composition. */
 export function getPipelineCompositionSchemaYaml(): string {
   return getSchemaYaml('pipeline-composition', pipelineCompositionSchema);
 }

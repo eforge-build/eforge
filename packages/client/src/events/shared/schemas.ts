@@ -8,13 +8,8 @@ export const AgentRoleSchema = Type.Union([
   Type.Literal('reviewer'),
   Type.Literal('review-fixer'),
   Type.Literal('evaluator'),
-  Type.Literal('module-planner'),
   Type.Literal('plan-reviewer'),
   Type.Literal('plan-evaluator'),
-  Type.Literal('architecture-reviewer'),
-  Type.Literal('architecture-evaluator'),
-  Type.Literal('cohesion-reviewer'),
-  Type.Literal('cohesion-evaluator'),
   Type.Literal('validation-fixer'),
   Type.Literal('merge-conflict-resolver'),
   Type.Literal('staleness-assessor'),
@@ -25,7 +20,6 @@ export const AgentRoleSchema = Type.Union([
   Type.Literal('tester'),
   Type.Literal('prd-validator'),
   Type.Literal('dependency-detector'),
-  Type.Literal('pipeline-composer'),
   Type.Literal('gap-closer'),
   Type.Literal('recovery-analyst'),
 ]);
@@ -234,11 +228,6 @@ export const ReviewProfileConfigSchema = Type.Object({
   ]),
 });
 export const PipelineCompositionSchema = Type.Object({
-  scope: Type.Union([
-    Type.Literal('errand'),
-    Type.Literal('excursion'),
-    Type.Literal('expedition'),
-  ]),
   compile: Type.Array(Type.String()),
   defaultBuild: Type.Array(BuildStageSpecSchema),
   defaultReview: ReviewProfileConfigSchema,
@@ -273,11 +262,6 @@ export const AcceptanceCriteriaConflictSchema = Type.Object({
   conflictsWith: Type.String({ minLength: 1 }),
   scope: Type.Union([Type.Literal('narrow'), Type.Literal('broad'), Type.Literal('unknown')]),
   recommendedAction: Type.Union([Type.Literal('revise_acceptance_criteria'), Type.Literal('manual_review')]),
-});
-export const ExpeditionModuleSchema = Type.Object({
-  id: Type.String(),
-  description: Type.String(),
-  dependsOn: Type.Array(Type.String()),
 });
 export const EforgeResultSchema = Type.Object({
   status: Type.Union([
@@ -378,11 +362,6 @@ export const OrchestrationConfigSchema = Type.Object({
   name: Type.String(),
   description: Type.String(),
   created: Type.String(),
-  mode: Type.Union([
-    Type.Literal('errand'),
-    Type.Literal('excursion'),
-    Type.Literal('expedition'),
-  ]),
   baseBranch: Type.String(),
   diffBaseRef: Type.Optional(Type.String()),
   pipeline: PipelineCompositionSchema,

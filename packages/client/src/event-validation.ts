@@ -8,8 +8,6 @@ const MAX_REVIEW_ISSUE_METADATA_DEPTH = 8;
 const MAX_REVIEW_ISSUE_METADATA_NODES = 200;
 const REVIEW_ISSUE_EVENT_TYPES = new Set([
   'planning:review:complete',
-  'planning:architecture:review:complete',
-  'planning:cohesion:complete',
   'plan:build:review:complete',
   'plan:build:review:parallel:perspective:complete',
 ]);

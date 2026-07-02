@@ -186,7 +186,7 @@ export type RecoverySidecarContinueRepairEligibility =
       checkedPath?: string;
     };
 
-export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['retry-as-expedition', 'bounded-decomposition', 'manual-reduce-scope'] as const;
+export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS = ['bounded-decomposition', 'manual-reduce-scope'] as const;
 export const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES = 1_000;
 
 const RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_FORMAT = 'eforge-recovery-sidecar-compile-scope-context-reason-bytes';
@@ -207,7 +207,6 @@ export const RecoverySidecarContinueRepairOptionSchema = Type.Object({
 });
 
 export const RecoverySidecarCompileScopeContextActionSchema = Type.Union([
-  Type.Literal('retry-as-expedition'),
   Type.Literal('bounded-decomposition'),
   Type.Literal('manual-reduce-scope'),
 ]);

@@ -1,35 +1,20 @@
 import { createHash } from 'node:crypto';
 
-import {
-  MAX_COMPILE_RISK_LIST_ITEMS,
-  type CompilePipelineScope,
-  type CompilePreflightRisk,
-  type CompileRecoveryAction,
-} from '@eforge-build/client';
+import { MAX_COMPILE_RISK_LIST_ITEMS } from '@eforge-build/client';
 
 import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
 
-export const DEFAULT_MAX_PROMPT_SOURCE_BYTES = 80_000;
 export const MODERATE_SOURCE_BYTES = 40_000;
-export const LARGE_SOURCE_BYTES = 120_000;
 export const GENERATED_INVENTORY_MIN_BYTES = 4_000;
 export const MACHINE_READABLE_SECTION_MIN_BYTES = 2_000;
 export const LARGE_CODE_FENCE_MIN_BYTES = 8_000;
-export const GENERATED_OMITTED_BYTES_RISK = 20_000;
-export const ELEVATED_RISK_SCORE = 40;
-export const OVERFLOW_RISK_SCORE = 80;
-export const MANY_ACCEPTANCE_CRITERIA = 35;
-export const OVERFLOW_ACCEPTANCE_CRITERIA = 70;
 const MAX_EVENT_STRING_LENGTH = 2_000;
 const MAX_SUMMARY_FRAGMENT_LENGTH = 240;
 const MAX_PRESERVED_SUMMARY_LENGTH = 1_000;
 
 export interface CompilePreflightOptions {
-  selectedProfile?: string | null;
-  requestedPipelineScope?: CompilePipelineScope | null;
   fullContentRequiredPaths?: string[];
   fullContentRequiredHeadings?: string[];
-  maxPromptSourceBytes?: number;
 }
 
 export interface CompilePromptSourceBundle {
@@ -49,7 +34,6 @@ export interface CompilePromptSourceBundle {
   }>;
   analysis: {
     acceptanceCriteriaCount: number;
-    subsystemBreadth: CompilePreflightRisk['subsystemBreadth'];
     detectedBlocks: Array<CompilePromptSourceBundle['compactions'][number] & { omittedBytes: number }>;
   };
 }
@@ -94,97 +78,10 @@ export function buildCompilePromptSourceBundle(
     compactions,
     analysis: {
       acceptanceCriteriaCount: extractExpectedAcceptanceCriteria(strippedSource).length,
-      subsystemBreadth: deriveSubsystemBreadth(strippedSource),
       detectedBlocks: detected,
     },
   };
   return bundle;
-}
-
-export function estimateCompilePreflightRisk(
-  bundle: CompilePromptSourceBundle,
-  options: CompilePreflightOptions = {},
-): CompilePreflightRisk {
-  const maxPromptBytes = options.maxPromptSourceBytes ?? DEFAULT_MAX_PROMPT_SOURCE_BYTES;
-  const detected = bundle.analysis?.detectedBlocks ?? bundle.compactions.map((c) => ({ ...c, omittedBytes: c.originalBytes }));
-  const acCount = bundle.analysis?.acceptanceCriteriaCount ?? extractExpectedAcceptanceCriteria(bundle.promptSource).length;
-  const breadth = bundle.analysis?.subsystemBreadth ?? deriveSubsystemBreadth(bundle.promptSource);
-  const reasons: string[] = [];
-  let score = 0;
-
-  if (bundle.originalBytes > MODERATE_SOURCE_BYTES) add(20, 'source-bytes:moderate');
-  if (bundle.originalBytes > LARGE_SOURCE_BYTES) add(25, 'source-bytes:large');
-  if (bundle.promptSourceBytes > maxPromptBytes) add(60, 'prompt-source-bytes:over-budget');
-  if (acCount >= MANY_ACCEPTANCE_CRITERIA) add(20, 'acceptance-criteria:many');
-  if (acCount > OVERFLOW_ACCEPTANCE_CRITERIA) add(60, 'acceptance-criteria:overflow');
-  if (detected.length > 0) add(20, 'generated-inventory:detected');
-  const omittedBytes = detected.reduce((sum, b) => sum + b.omittedBytes, 0);
-  if (omittedBytes > GENERATED_OMITTED_BYTES_RISK) add(20, 'generated-inventory:large-omission');
-  if (breadth.count >= 4) add(20, 'subsystem-breadth:wide');
-  if (breadth.count >= 6) add(20, 'subsystem-breadth:very-wide');
-  const selectedProfile = options.selectedProfile ?? undefined;
-  if (selectedProfile?.toLowerCase() === 'errand' && (bundle.originalBytes > MODERATE_SOURCE_BYTES || acCount >= MANY_ACCEPTANCE_CRITERIA || breadth.count >= 4)) {
-    add(15, 'selected-profile:errand-scale-conflict');
-  }
-
-  const level = score >= OVERFLOW_RISK_SCORE || bundle.promptSourceBytes > maxPromptBytes || (acCount > OVERFLOW_ACCEPTANCE_CRITERIA && bundle.originalBytes > MODERATE_SOURCE_BYTES)
-    ? 'overflow-risk'
-    : score >= ELEVATED_RISK_SCORE ? 'elevated' : 'normal';
-  const pipelineScope = options.requestedPipelineScope ?? undefined;
-
-  return {
-    level,
-    sourceBytes: bundle.originalBytes,
-    promptSourceBytes: bundle.promptSourceBytes,
-    acceptanceCriteriaCount: acCount,
-    score,
-    generatedInventory: {
-      detected: detected.length > 0,
-      contentHashes: bounded(unique(detected.map((b) => b.contentHash))),
-      pathReferences: boundedStrings(unique(detected.flatMap((b) => b.pathReferences ?? (b.path ? [b.path] : [])))),
-      headings: boundedStrings(unique(detected.map((b) => b.heading).filter(isString))),
-      blockCount: detected.length,
-      sidecarCount: unique(detected.flatMap((b) => b.pathReferences ?? (b.path ? [b.path] : [])).filter(isMachinePath)).length,
-      omittedBytes,
-    },
-    subsystemBreadth: breadth,
-    ...(selectedProfile !== undefined && { selectedProfile }),
-    ...(pipelineScope !== undefined && { pipelineScope }),
-    reasons: bounded(reasons),
-    recommendation: recommendation(level, pipelineScope, breadth.count, bundle.promptSourceBytes > maxPromptBytes),
-  };
-
-  function add(points: number, reason: string): void {
-    score += points;
-    reasons.push(reason);
-  }
-}
-
-export function formatCompilePreflightPromptAppend(input: {
-  risk?: CompilePreflightRisk;
-  bundle?: CompilePromptSourceBundle;
-}): string | undefined {
-  const risk = input.risk;
-  const bundle = input.bundle;
-  if (!risk || (risk.level === 'normal' && (!bundle || bundle.compactions.length === 0))) return undefined;
-  const lines = [
-    '## Compile Preflight Advisory',
-    '',
-    `- Risk level: ${risk.level}`,
-    `- Score: ${risk.score}`,
-    `- Source bytes: ${risk.sourceBytes}`,
-    `- Prompt source bytes: ${risk.promptSourceBytes}`,
-    `- Acceptance criteria count: ${risk.acceptanceCriteriaCount}`,
-    `- Recovery recommendation: ${risk.recommendation.action} (${risk.recommendation.reason})`,
-  ];
-  if (risk.reasons.length > 0) lines.push(`- Reasons: ${risk.reasons.join(', ')}`);
-  if (risk.generatedInventory.blockCount > 0) {
-    lines.push(`- Generated inventory blocks: ${risk.generatedInventory.blockCount}; omitted bytes: ${risk.generatedInventory.omittedBytes}`);
-    if (risk.generatedInventory.contentHashes.length > 0) lines.push(`- Content hashes: ${risk.generatedInventory.contentHashes.join(', ')}`);
-  }
-  if (risk.subsystemBreadth.count > 0) lines.push(`- Likely subsystems: ${risk.subsystemBreadth.subsystems.join(', ')} (count ${risk.subsystemBreadth.count})`);
-  lines.push('', 'Use the compacted source summaries as references. Do not ask for omitted generated inventory unless explicitly needed.');
-  return lines.join('\n').slice(0, 4096);
 }
 
 interface Block {
@@ -284,27 +181,6 @@ function thresholdFor(kind: CompactionKind): number {
   if (kind === 'generated-inventory') return GENERATED_INVENTORY_MIN_BYTES;
   if (kind === 'machine-readable-sidecar') return MACHINE_READABLE_SECTION_MIN_BYTES;
   return LARGE_CODE_FENCE_MIN_BYTES;
-}
-
-function recommendation(level: CompilePreflightRisk['level'], scope: CompilePipelineScope | undefined, breadth: number, overBudget: boolean): { action: CompileRecoveryAction; eligible: boolean; reason: string } {
-  if (level === 'normal') return { action: 'none', eligible: false, reason: 'preflight risk is normal' };
-  if (level === 'overflow-risk' && scope !== 'expedition' && breadth >= 4) return { action: 'retry-as-expedition', eligible: true, reason: 'overflow risk with broad subsystem evidence' };
-  if (level === 'overflow-risk' && (scope === 'expedition' || overBudget)) return { action: 'bounded-decomposition', eligible: true, reason: 'overflow risk remains after compaction' };
-  if (level === 'overflow-risk') return { action: 'manual-reduce-scope', eligible: true, reason: 'overflow risk without clear independent subsystems' };
-  return { action: 'none', eligible: false, reason: 'risk is advisory only' };
-}
-
-function deriveSubsystemBreadth(source: string): CompilePreflightRisk['subsystemBreadth'] {
-  const evidence = new Map<string, string>();
-  const patterns: Array<[RegExp, string]> = [
-    [/packages\/engine\b|(?:^|[#\s-])engine\b/gi, 'engine'], [/packages\/client\b|(?:^|[#\s-])client\b/gi, 'client'], [/packages\/monitor\b|(?:^|[#\s-])monitor\b/gi, 'monitor'], [/packages\/console-ui\b|\bconsole\b/gi, 'console'], [/packages\/eforge\b|\bcli\b/gi, 'cli'], [/eforge-plugin\b|\bplugin\b/gi, 'plugin'], [/packages\/pi-eforge\b|\bpi\b/gi, 'pi'], [/packages\/input\b|(?:^|[#\s-])input\b/gi, 'input'], [/packages\/scopes\b|(?:^|[#\s-])scopes\b/gi, 'scopes'], [/\bweb\//gi, 'web'], [/\bdocs\//gi, 'docs'], [/\btest\//gi, 'test'], [/\bscripts\//gi, 'scripts'],
-  ];
-  for (const [re, slug] of patterns) {
-    const match = source.match(re)?.[0];
-    if (match && !evidence.has(slug)) evidence.set(slug, match);
-  }
-  const subsystems = [...evidence.keys()].sort();
-  return { count: subsystems.length, subsystems: boundedStrings(subsystems), evidence: boundedStrings(subsystems.map((s) => `${s}:${evidence.get(s)}`)) };
 }
 
 function summarize(body: string): string {

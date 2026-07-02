@@ -6,7 +6,6 @@ import type {
   EforgeEvent,
   PlanFile,
   ClarificationQuestion,
-  ExpeditionModule,
   ReviewIssue,
   OrchestrationConfig,
   PlannerInspectionSummary,
@@ -17,8 +16,7 @@ import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
 import type { TracingContext } from '../tracing.js';
 import type { ModelTracker } from '../model-tracker.js';
 import type { ReviewerPerspectiveRegistration, RuntimeChoiceRouterRegistration, ValidationProviderRegistration } from '../extensions/types.js';
-import type { CompilePreflightRisk } from '../events.js';
-import type { CompilePreflightOptions, CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
+import type { CompilePromptSourceBundle } from '../compile-resilience/preflight.js';
 import type { CompileContextGuardLimits } from '../compile-resilience/context-guard.js';
 import type { CompileScopeRecoveryState } from '../compile-resilience/context-recovery.js';
 
@@ -32,8 +30,6 @@ export interface PipelineContext {
   sourceContent: string;
   promptSourceContent?: string;
   compilePromptSourceBundle?: CompilePromptSourceBundle;
-  compilePreflightOptions?: CompilePreflightOptions;
-  compilePreflight?: CompilePreflightRisk;
   compileContextGuardLimits?: Partial<CompileContextGuardLimits>;
   runId?: string;
   compileScopeRecovery?: CompileScopeRecoveryState;
@@ -73,8 +69,6 @@ export interface PipelineContext {
 
   // Mutable state passed between stages
   plans: PlanFile[];
-  expeditionModules: ExpeditionModule[];
-  moduleBuildConfigs: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>;
   /** Set by planner stage when plan:skip is emitted — halts further compile stages. */
   skipped?: boolean;
 }
