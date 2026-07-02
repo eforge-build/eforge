@@ -7,6 +7,7 @@ import { DEFAULT_PLANNING_REDUCE_LIMITS, type PlanningReduceConflict, type Plann
 import { planPromptSafeReduceTreeFromTasks } from './prompt-budget-planner.js';
 import { atomStatusReason, atomTerminalStatus, executePlanningAtom, failedAtomOutput, type AtomRunResult } from './atom-execution.js';
 import { executePlanningReduceNode, failedReduceOutput, failedReduceRun, incompleteReduceOutput, type ReduceRunResult } from './reduce-execution.js';
+import { singleAtomPassthroughOutput } from './reduce-passthrough.js';
 import { buildMapReduceAtomsEvent, buildMapReduceAtomStatusEvent, buildMapReduceReduceStatusEvent, buildMapReduceReduceTreeEvent } from './orchestration-events.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
@@ -119,11 +120,20 @@ function startReadyReducers(input: RunPlanningMapReducePipelineInput, runInput: 
   const capacity = Math.max(0, parallelism - runningAtoms.size - runningReducers.size);
   if (capacity === 0) return 0;
   const ready = readyReduceNodes(tree, state, runningReducers, capacity);
+  let started = 0;
   for (const node of ready) {
+    const soleAtomOutput = node.inputAtomIds.length === 1 && node.inputNodeIds.length === 0 ? acceptedAtomOutputs(state).find((output) => output.atomId === node.inputAtomIds[0]) : undefined;
+    const passthrough = soleAtomOutput ? singleAtomPassthroughOutput(input.graph, tree, node, soleAtomOutput) : undefined;
     emitReduceEvent(input, state, buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
+    if (passthrough) {
+      applyReduceResult(input, state, { output: passthrough, events: [], validationErrors: [] });
+      started += 1;
+      continue;
+    }
     runningReducers.set(node.nodeId, executePlanningReduceNode({ ...runInput, onEvent: (event) => emitReduceEvent(input, state, event) }, tree, node.nodeId, acceptedAtomOutputs(state), state.reduceOutputs).then((result) => ({ kind: 'reduce' as const, nodeId: node.nodeId, result }), (error) => ({ kind: 'reduce' as const, nodeId: node.nodeId, error })));
+    started += 1;
   }
-  return ready.length;
+  return started;
 }
 
 interface PipelineState { atomOutputs: PlanningAtomOutput[]; reduceOutputs: PlanningReduceOutput[]; completedAtoms: Set<string>; failedAtoms: Set<string>; skippedAtoms: Set<string>; mapValidationErrors: string[]; reduceValidationErrors: string[]; mapEvents: EforgeEvent[]; reduceEvents: EforgeEvent[]; events: EforgeEvent[]; mapIterations: number; reduceIterations: number; collecting: boolean }

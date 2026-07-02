@@ -42,6 +42,21 @@ describe('bounded planner compiler runner', () => {
     expect(harness.prompts[0]).toContain('export const sourceEvidence = true');
   });
 
+  it('compiles a small digest-bearing PRD with exactly one agent invocation via the single-atom passthrough', async () => {
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const sourceEvidence = true;\n' });
+    const content = prd(['engine updates `packages/engine/src/a.ts` using repo-grounded evidence.']);
+    const [task] = expectedTasks(content);
+    const harness = new StubHarness([atomSubmission(digestBearingOutput(task))]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'compiler.md', sourceHash: hash(content), cwd, harness, limits });
+
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.prompts[0]).toContain('submit_atom_output');
+    expect(result.status).toBe('complete');
+    expect(result.reduce.reduceComplete).toBe(true);
+    expect(result.reduce.finalOutput).toMatchObject({ nodeId: 'reduce-000-001', status: 'completed', reduceDigest: expect.objectContaining({ sourceId: 'reduce-000-001', sourceKind: 'reduce' }) });
+  });
+
   it('localizes broad source references before atom planning prompts are built', async () => {
     const cwd = await workspace({ 'packages/api/src/routes/user.ts': 'export function userRoute() { return "ok"; }\n' });
     const content = prd(['api route updates expose the user-facing route contract with localized repository evidence.']);
@@ -111,6 +126,13 @@ function expectedTasks(content: string): PlanningAtomTask[] {
   const inventory = deriveSourceInventory({ content, hash: hash(content), path: 'compiler.md' });
   const graph = derivePlanningAtomGraph({ content, hash: hash(content), path: 'compiler.md', limits, inventory });
   return buildPlanningAtomTasks({ graph, inventory });
+}
+
+function digestBearingOutput(task: PlanningAtomTask): PlanningAtomOutput {
+  return {
+    ...completedOutput(task),
+    reduceDigest: { sourceId: task.atomId, sourceKind: 'atom', status: 'completed', summary: `Atom ${task.atomId} planned all assigned aspects.`, criterionIds: task.criterionIds, aspectIds: task.aspectIds },
+  };
 }
 
 function atomSubmission(output: PlanningAtomOutput | { atomId: string; status: 'failed'; aspectUpdates: []; error: string }) {

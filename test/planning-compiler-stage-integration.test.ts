@@ -57,6 +57,41 @@ describe('bounded planner compiler stage integration', () => {
     expect(diagnostics.repair.status).toBe('not-needed');
   });
 
+  it('compiles a small detailed PRD with one atom-planner invocation: no exploration, no reducer', async () => {
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
+    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` using bounded compiler evidence.']);
+    const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
+    const mapOutput: PlanningAtomOutput = {
+      ...completedOutput(task),
+      reduceDigest: { sourceId: task.atomId, sourceKind: 'atom', status: 'completed', summary: `Atom ${task.atomId} planned all assigned aspects.`, criterionIds: task.criterionIds, aspectIds: task.aspectIds },
+    };
+    const harness = new StubHarness([
+      composerResponse(),
+      atomSubmission(mapOutput),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-fast-path',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    const events = await collect(getCompileStage('planner')(ctx));
+
+    // Exactly one planner-stage agent invocation: the atom planner. Zero exploration, zero reducers.
+    const plannerCalls = harness.calls.filter((call) => call.stage === 'planner');
+    expect(plannerCalls).toHaveLength(1);
+    expect(harness.prompts.at(-1)).toContain('submit_atom_output');
+    expect(events.some((event) => event.type === 'agent:start' && event.planId === 'repository-exploration')).toBe(false);
+    expect(events.some((event) => event.type === 'agent:start' && event.planId?.startsWith('reduce-'))).toBe(false);
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    expect(ctx.plans.map((plan) => plan.id)).toEqual([`module-${task.atomId}`]);
+    await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage-fast-path/orchestration.yaml'))).resolves.toContain(`module-${task.atomId}`);
+  });
+
   it('runs the exploration agent for a vague PRD and grounds localization with its hints', async () => {
     const cwd = await workspace({ 'packages/engine/src/vague-owner.ts': 'export const grounded = true;\n' });
     const sourceContent = prd(['Improve the grounded behavior of the engine flag handling.']);
