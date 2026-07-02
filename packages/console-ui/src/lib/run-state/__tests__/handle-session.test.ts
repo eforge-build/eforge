@@ -65,6 +65,28 @@ describe('handle-session', () => {
       const delta = handleSessionEnd(event, state);
       expect(delta?.resultStatus).toBe('failed');
     });
+
+    it('captures skipped result status with the summary as skip reason fallback', () => {
+      const event = makeEvent('session:end', {
+        sessionId: 's1',
+        result: { status: 'skipped', summary: 'All acceptance criteria are already implemented.' },
+      });
+      const delta = handleSessionEnd(event, initialRunState);
+      expect(delta?.isComplete).toBe(true);
+      expect(delta?.resultStatus).toBe('skipped');
+      expect(delta?.skipReason).toBe('All acceptance criteria are already implemented.');
+    });
+
+    it('keeps the planning:skip reason when one was already captured', () => {
+      const state = { ...initialRunState, skipReason: 'reason from planning:skip' };
+      const event = makeEvent('session:end', {
+        sessionId: 's1',
+        result: { status: 'skipped', summary: 'summary fallback' },
+      });
+      const delta = handleSessionEnd(event, state);
+      expect(delta?.resultStatus).toBe('skipped');
+      expect(delta?.skipReason).toBeUndefined();
+    });
   });
 
   // ---------------------------------------------------------------------------

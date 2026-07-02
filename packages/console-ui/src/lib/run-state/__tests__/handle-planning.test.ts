@@ -5,7 +5,7 @@
  * from dependency-graph data carried in `planning:complete` events.
  */
 import { describe, it, expect } from 'vitest';
-import { handlePlanningComplete } from '../handlers/handle-planning';
+import { handlePlanningComplete, handlePlanningSkip } from '../handlers/handle-planning';
 import { initialRunState } from '../reducer';
 import type { EforgeEvent } from '../types';
 
@@ -129,5 +129,13 @@ describe('handlePlanningComplete', () => {
       expect(plan02?.build).toEqual([]);
       expect(plan02?.review?.strategy).toBe('auto');
     });
+  });
+});
+
+describe('handlePlanningSkip', () => {
+  it('captures the satisfaction-gate skip reason', () => {
+    const event = makeEvent('planning:skip', { reason: 'All acceptance criteria are already implemented.' });
+    const delta = handlePlanningSkip(event, initialRunState);
+    expect(delta?.skipReason).toBe('All acceptance criteria are already implemented.');
   });
 });

@@ -17,7 +17,9 @@ import {
   prd,
   readFileText,
   reduceSubmission,
+  satisfiedGateSubmission,
   sourceGapOutput,
+  unsatisfiedGateSubmission,
   workspace,
 } from './planning-compiler-fixtures.js';
 
@@ -30,6 +32,7 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
@@ -54,7 +57,8 @@ describe('bounded planner compiler stage integration', () => {
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/orchestration.yaml'))).resolves.toContain('module-reduce-000-001');
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/architecture.md'))).resolves.toContain('Reduced stage synthesis.');
-    expect(harness.calls.filter((call) => call.stage === 'planner').every((call) => call.tools === 'none')).toBe(true);
+    // Tool-less planners; only the repo-access gate/exploration agents get read-only tools.
+    expect(harness.calls.filter((call) => call.stage === 'planner' && !call.prompt.includes('submit_satisfaction_assessment')).every((call) => call.tools === 'none')).toBe(true);
     // Detailed PRD: high-confidence literal localization skips the exploration agent entirely.
     expect(events.some((event) => event.type === 'agent:start' && event.planId === 'repository-exploration')).toBe(false);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration skipped'))).toBe(true);
@@ -74,6 +78,7 @@ describe('bounded planner compiler stage integration', () => {
       reduceDigest: { sourceId: task.atomId, sourceKind: 'atom', status: 'completed', summary: `Atom ${task.atomId} planned all assigned aspects.`, criterionIds: task.criterionIds, aspectIds: task.aspectIds },
     };
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission(mapOutput),
     ]);
     const ctx = makePipelineCtx({
@@ -88,9 +93,10 @@ describe('bounded planner compiler stage integration', () => {
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    // Exactly one planner-stage agent invocation: the atom planner. Zero exploration, zero reducers.
+    // The satisfaction gate plus exactly one atom planner. Zero exploration, zero reducers.
     const plannerCalls = harness.calls.filter((call) => call.stage === 'planner');
-    expect(plannerCalls).toHaveLength(1);
+    expect(plannerCalls).toHaveLength(2);
+    expect(plannerCalls[0].prompt).toContain('submit_satisfaction_assessment');
     expect(harness.prompts.at(-1)).toContain('submit_atom_output');
     expect(events.some((event) => event.type === 'agent:start' && event.planId === 'repository-exploration')).toBe(false);
     expect(events.some((event) => event.type === 'agent:start' && event.planId?.startsWith('reduce-'))).toBe(false);
@@ -107,6 +113,7 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       explorationSubmission(['packages/engine/src/vague-owner.ts'], task.criterionIds),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
@@ -125,7 +132,8 @@ describe('bounded planner compiler stage integration', () => {
 
     const explorationStarts = events.filter((event) => event.type === 'agent:start' && event.planId === 'repository-exploration');
     expect(explorationStarts).toHaveLength(1);
-    const explorationCall = harness.calls[0];
+    const explorationCall = harness.calls[1];
+    expect(explorationCall.prompt).toContain('submit_exploration_hints');
     expect(explorationCall.tools).toBe('read-only');
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 1 localization hints'))).toBe(true);
     // The hinted owner path flows through localization into the atom planner's grounded evidence.
@@ -140,6 +148,7 @@ describe('bounded planner compiler stage integration', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-bad', input: { projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
@@ -160,11 +169,43 @@ describe('bounded planner compiler stage integration', () => {
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes(GATE_HANDOFF_MESSAGE))).toBe(true);
   });
 
+  it('skips the compile with planning:skip when the satisfaction gate verifies every criterion', async () => {
+    const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
+    const sourceContent = prd(['engine updates `packages/engine/src/a.ts` using bounded compiler evidence.']);
+    const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
+    const harness = new StubHarness([
+      satisfiedGateSubmission(task.criterionIds, ['packages/engine/src/a.ts']),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-satisfied',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    const events = await collect(getCompileStage('planner')(ctx));
+
+    const skips = events.filter((event) => event.type === 'planning:skip');
+    expect(skips).toHaveLength(1);
+    expect(skips[0]).toMatchObject({ reason: 'All acceptance criteria are already implemented.' });
+    // Authoritative skip: stage halts, downstream stages are suppressed, and
+    // no plan artifacts exist on disk.
+    expect(ctx.skipped).toBe(true);
+    expect(ctx.plans).toEqual([]);
+    expect(harness.calls).toHaveLength(1);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes(GATE_HANDOFF_MESSAGE))).toBe(false);
+    await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage-satisfied/orchestration.yaml'))).rejects.toThrow();
+  });
+
   it('writes compiler diagnostics to disk even when an unresolvable localization gap fails the compile', async () => {
     const cwd = await workspace({ 'packages/engine/src/a.ts': 'export const grounded = true;\n' });
     const sourceContent = prd(['engine updates `packages/engine/src/a.ts` using bounded compiler evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission(completedOutput(task)),
       reduceSubmission(sourceGapOutput(task, 'gap-owner')),
       atomSubmission(completedOutput(task)),

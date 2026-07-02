@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, MessageSquare, FileCode, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, MessageSquare, FileCode, AlertTriangle, SkipForward } from 'lucide-react';
 import { formatNumber } from '@/lib/run-state/format';
 import { cn } from '@/lib/utils';
 import { AnimatedCounter } from './animated-counter';
@@ -22,6 +22,9 @@ interface SummaryCardsProps {
   reviewWarning: number;
   isComplete?: boolean;
   isFailed?: boolean;
+  isSkipped?: boolean;
+  /** Satisfaction-gate reason shown as the skipped badge tooltip. */
+  skipReason?: string | null;
   profile?: SessionProfile | null;
   efficiency?: RunEfficiencyMetrics;
 }
@@ -49,16 +52,20 @@ export function SummaryCards({
   reviewWarning,
   isComplete,
   isFailed,
+  isSkipped,
+  skipReason,
   profile,
   efficiency,
 }: SummaryCardsProps) {
-  const statusAccent = isFailed ? 'red' : isComplete ? 'green' : 'blue';
+  const statusAccent = isFailed ? 'red' : isSkipped ? 'yellow' : isComplete ? 'green' : 'blue';
   const statusIcon = isFailed
     ? <XCircle className="w-3 h-3 text-red" />
-    : isComplete
-      ? <CheckCircle2 className="w-3 h-3 text-green" />
-      : <Loader2 className="w-3 h-3 text-blue animate-spin" />;
-  const statusLabel = isFailed ? 'Failed' : isComplete ? 'Completed' : 'Running';
+    : isSkipped
+      ? <SkipForward className="w-3 h-3 text-yellow" />
+      : isComplete
+        ? <CheckCircle2 className="w-3 h-3 text-green" />
+        : <Loader2 className="w-3 h-3 text-blue animate-spin" />;
+  const statusLabel = isFailed ? 'Failed' : isSkipped ? 'Skipped' : isComplete ? 'Completed' : 'Running';
 
   const formatTokens = useCallback((n: number) => formatNumber(n), []);
   const formatCost = useCallback((n: number) => `$${(n / 10000).toFixed(4)}`, []);
@@ -86,14 +93,21 @@ export function SummaryCards({
     <div className="flex items-center gap-1.5 flex-wrap text-xs">
       <StatGroup>
         {statusIcon}
-        <span className={cn(
-          'font-semibold',
-          statusAccent === 'green' && 'text-green',
-          statusAccent === 'red' && 'text-red',
-          statusAccent === 'blue' && 'text-blue',
-        )}>
+        <span
+          className={cn(
+            'font-semibold',
+            statusAccent === 'green' && 'text-green',
+            statusAccent === 'red' && 'text-red',
+            statusAccent === 'yellow' && 'text-yellow',
+            statusAccent === 'blue' && 'text-blue',
+          )}
+          {...(isSkipped && skipReason ? { title: skipReason } : {})}
+        >
           {statusLabel}
         </span>
+        {isSkipped && skipReason && (
+          <span className="text-text-dim truncate max-w-96" title={skipReason}>{skipReason}</span>
+        )}
         {profile?.profileName && <ProfileBadge profile={profile} />}
       </StatGroup>
 

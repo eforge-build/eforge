@@ -16,7 +16,7 @@
 import type { EforgeEvent } from '../types';
 
 import { handleSessionStart, handleSessionEnd, handleSessionProfile, handlePhaseStart } from './handle-session';
-import { handlePlanningComplete } from './handle-planning';
+import { handlePlanningComplete, handlePlanningSkip } from './handle-planning';
 import {
   handleMapReduceAtoms,
   handleMapReduceReduceTree,
@@ -107,6 +107,7 @@ export const handlerRegistry = {
 
   // Planning
   'planning:complete': handlePlanningComplete,
+  'planning:skip': handlePlanningSkip,
 
   // Map/reduce orchestration (large-plan bounded compiler)
   'planning:map-reduce:atoms': handleMapReduceAtoms,
@@ -215,7 +216,6 @@ export const IGNORED_EVENT_TYPES = [
   'extension:policy:failed',
   'extension:policy:timeout',
   'planning:start',
-  'planning:skip',
   'planning:submission',
   'planning:error',
   'planning:clarification',

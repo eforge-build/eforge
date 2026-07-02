@@ -32,7 +32,7 @@ import {
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { makePipelineCtx, collect, TEST_PIPELINE } from './pipeline-helpers.js';
 import type { StubResponse } from './stub-harness.js';
-import { hash, overflowRisk, prd, readFileText, workspace } from './planning-compiler-fixtures.js';
+import { hash, overflowRisk, prd, readFileText, unsatisfiedGateSubmission, workspace } from './planning-compiler-fixtures.js';
 
 const exec = promisify(execFile);
 
@@ -185,7 +185,9 @@ async function compileParityFixture(input: {
     for (const node of tree.nodes) keyed.set(node.nodeId, scriptedReduceOutput(node, node.nodeId === tree.rootNodeId, tasks));
   }
 
-  const harness = new ParityHarness(keyed, [NO_FIX_REVIEW]);
+  // The satisfaction gate (planId 'satisfaction-gate') is not keyed, so it
+  // consumes the first sequential response before the quality reviewer.
+  const harness = new ParityHarness(keyed, [unsatisfiedGateSubmission(), NO_FIX_REVIEW]);
   const ctx = makePipelineCtx({
     cwd,
     sourceContent,

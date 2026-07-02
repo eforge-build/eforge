@@ -14,6 +14,8 @@ export function SummaryChips({ runState }: SummaryChipsProps) {
       {...stats}
       isComplete={runState.isComplete}
       isFailed={runState.resultStatus === 'failed'}
+      isSkipped={runState.resultStatus === 'skipped'}
+      skipReason={runState.skipReason}
       profile={runState.profile}
     />
   );

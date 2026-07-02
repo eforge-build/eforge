@@ -47,6 +47,7 @@ export const initialRunState: RunState = {
   totalCost: 0,
   isComplete: false,
   resultStatus: null,
+  skipReason: null,
   fileChanges: new Map(),
   reviewIssues: {},
   agentThreads: [],
@@ -103,7 +104,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
 
       // Apply server status as authoritative override when events are incomplete
       if (action.serverStatus && !acc.isComplete) {
-        if (action.serverStatus === 'completed' || action.serverStatus === 'failed') {
+        if (action.serverStatus === 'completed' || action.serverStatus === 'failed' || action.serverStatus === 'skipped') {
           acc = { ...acc, isComplete: true, resultStatus: action.serverStatus };
         }
       }

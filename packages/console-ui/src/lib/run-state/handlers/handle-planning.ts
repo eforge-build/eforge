@@ -4,10 +4,16 @@
  * planning:complete — seeds planStatuses with 'plan' for every submitted plan
  *   and synthesizes earlyOrchestration so the UI can render the dependency graph
  *   before the SWR-fetched orchestration config arrives.
+ * planning:skip — captures the satisfaction-gate skip reason so the run detail
+ *   view can render the skipped outcome.
  *   All other planning:* variants have no state effect and live in IGNORED_EVENT_TYPES.
  */
 import type { BuildStageSpec, ReviewProfileConfig, OrchestrationConfig } from '../types';
 import type { EventHandler } from './handler-types';
+
+export const handlePlanningSkip: EventHandler<'planning:skip'> = (event, _state) => {
+  return { skipReason: event.reason };
+};
 
 export const handlePlanningComplete: EventHandler<'planning:complete'> = (event, state) => {
   const updated = { ...state.planStatuses };
