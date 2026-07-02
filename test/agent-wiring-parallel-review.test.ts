@@ -18,7 +18,7 @@ import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
+import { validatePipeline, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';

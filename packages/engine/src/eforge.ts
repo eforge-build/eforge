@@ -459,10 +459,10 @@ export class EforgeEngine {
       }
       ctx.plans = artifactValidation.plans;
 
-      // If compile pipeline didn't produce plans and there's no plan-review-cycle
-      // in the compile stages, commit artifacts here
-      // (runCompilePipeline handles the commit before plan-review-cycle when present)
-      if (ctx.plans.length > 0 && !ctx.pipeline.compile.includes('plan-review-cycle')) {
+      // Commit any plan artifacts not already committed by the pipeline
+      // (runCompilePipeline commits before the planning quality gate; the
+      // staged-changes guard below makes this a no-op in that case).
+      if (ctx.plans.length > 0) {
         const planDir = resolve(mergeWorktreePath, this.config.plan.outputDir, planSetName);
         await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
         // Guard: only commit if there are staged changes (prevents "nothing to commit" errors

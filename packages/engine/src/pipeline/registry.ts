@@ -47,24 +47,3 @@ export function getBuildStageDescriptors(): StageDescriptor[] {
   return Array.from(buildStages.values()).map((entry) => entry.descriptor);
 }
 
-/** Format the full stage registry as a markdown table for prompt injection. */
-export function formatStageRegistry(): string {
-  const allDescriptors = [
-    ...getCompileStageDescriptors(),
-    ...getBuildStageDescriptors(),
-  ];
-
-  const lines: string[] = [
-    '| Name | Phase | Description | When to Use | Cost | Predecessors | Conflicts | Parallelizable |',
-    '|------|-------|-------------|-------------|------|--------------|-----------|----------------|',
-  ];
-
-  for (const d of allDescriptors) {
-    const preds = d.predecessors?.join(', ') || '-';
-    const conflicts = d.conflictsWith?.join(', ') || '-';
-    const parallel = d.parallelizable === false ? 'No' : 'Yes';
-    lines.push(`| ${d.name} | ${d.phase} | ${d.description} | ${d.whenToUse} | ${d.costHint} | ${preds} | ${conflicts} | ${parallel} |`);
-  }
-
-  return lines.join('\n');
-}

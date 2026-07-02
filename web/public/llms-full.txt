@@ -4706,21 +4706,6 @@ Validate eforge/config.yaml configuration
 Show resolved eforge configuration
 
 
-### `debug-composer`
-
-**Full command:** `eforge debug-composer`
-
-Run only the pipeline-composer stage under one or more backend profiles and dump the request payload each backend constructs (system prompt, tools, model, thinking) for side-by-side diffing. Use --backend <name> to select profiles; repeat to compare multiple.
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--backend <name>` | Backend profile to test (repeatable). Defaults to the currently-active profile. |
-| `--out <dir>` | Output directory for captured payloads |
-| `--verbose` | Stream composer agent messages to stdout |
-
 ### `daemon`
 
 **Full command:** `eforge daemon`

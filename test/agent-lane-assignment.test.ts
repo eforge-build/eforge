@@ -10,7 +10,6 @@ import type { EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
-import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
@@ -45,27 +44,6 @@ async function collectAgentStartEvents(gen: AsyncGenerator<EforgeEvent>): Promis
 // --- Planning agents ---
 
 describe('planning agent lane assignment', () => {
-  it('pipeline-composer agent:start carries planId: planning', async () => {
-    const validComposition = JSON.stringify({
-      scope: 'errand',
-      compile: ['planner'],
-      defaultBuild: ['implement'],
-      defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' },
-      rationale: 'test',
-    });
-    const harness = new StubHarness([{ resultText: validComposition }]);
-
-    const starts = await collectAgentStartEvents(composePipeline({
-      harness,
-      source: 'Build a widget',
-      cwd: '/tmp',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('pipeline-composer');
-  });
 
   it('plan-reviewer agent:start carries planId: planning', async () => {
     const harness = new StubHarness([{ text: 'No issues found.' }]);

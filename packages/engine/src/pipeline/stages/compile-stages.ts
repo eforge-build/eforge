@@ -10,8 +10,6 @@ import { resolve } from 'node:path';
 
 import type { EforgeEvent, ExpeditionModule } from '../../events.js';
 import { runModulePlanner } from '../../agents/module-planner.js';
-import { runPlanReview } from '../../agents/plan-reviewer.js';
-import { runPlanEvaluate } from '../../agents/plan-evaluator.js';
 import { parseBuildConfigBlock } from '../../agents/common.js';
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml } from '../../plan.js';
@@ -22,8 +20,6 @@ import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
 import { resolveAgentRuntimeForInvocationWithExtensions, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
 import { createToolTracker } from '../span-wiring.js';
-import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
-import { runReviewCycle } from '../runners.js';
 import { runArchitectureReviewCycleStage, runCohesionReviewCycleStage } from './compile-review-cycles.js';
 import { formatCompilePreflightPromptAppend } from '../../compile-resilience/preflight.js';
 import { compileContextGuardOptions, CompileScopeContextError, type CompileContextGuardOptions } from '../../compile-resilience/context-guard.js';
@@ -170,76 +166,6 @@ registerCompileStage({
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   yield* runBoundedPlannerCompilerCompileStage(ctx);
-});
-
-registerCompileStage({
-  name: 'plan-review-cycle',
-  phase: 'compile',
-  description: 'Runs a review-evaluate cycle on generated plans to catch scope and quality issues before build.',
-  whenToUse: 'For medium-to-large tasks where plan quality matters. Adds a quality gate between planning and building.',
-  costHint: 'medium',
-  predecessors: ['planner'],
-  parallelizable: false,
-}, async function* planReviewCycleStage(ctx) {
-  const verbose = ctx.verbose;
-  const abortController = ctx.abortController;
-  const { agentConfig: reviewerConfig, harness: planReviewerHarness } = await resolveAgentRuntimeForInvocationWithExtensions('plan-reviewer', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'plan-review' }, runtimeChoiceRouterOptions(ctx));
-  const { agentConfig: evaluatorConfig, harness: planEvaluatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('plan-evaluator', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'plan-evaluate' }, runtimeChoiceRouterOptions(ctx));
-  const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
-  const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
-
-  try {
-    yield* runReviewCycle({
-      tracing: ctx.tracing,
-      cwd: ctx.cwd,
-      reviewer: {
-        role: 'plan-reviewer',
-        metadata: { planSet: ctx.planSetName },
-        run: () => runPlanReview({
-          ...reviewerConfig,
-          sourceContent: ctx.sourceContent,
-          planSetName: ctx.planSetName,
-          cwd: ctx.cwd,
-          verbose,
-          abortController,
-          outputDir: ctx.config.plan.outputDir,
-          phase: 'compile',
-          stage: 'plan-review',
-          harness: planReviewerHarness,
-          lane: 'planning',
-        }),
-      },
-      evaluator: {
-        role: 'plan-evaluator',
-        metadata: { planSet: ctx.planSetName },
-        prepareInput: async () => ({
-          evaluationSnapshot: await prepareEvaluationSnapshot(ctx.cwd, 'HEAD~1'),
-          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage },
-        }),
-        run: (input) => runPlanEvaluate({
-          ...evaluatorConfig,
-          planSetName: ctx.planSetName,
-          sourceContent: ctx.sourceContent,
-          cwd: ctx.cwd,
-          verbose,
-          abortController,
-          outputDir: ctx.config.plan.outputDir,
-          evaluationSnapshot: input.evaluationSnapshot,
-          allowedPathPrefix: planSetPath,
-          commitMessage: evaluationCommitMessage,
-          modelTracker: ctx.modelTracker,
-          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
-          phase: 'compile',
-          stage: 'plan-evaluate',
-          harness: planEvaluatorHarness,
-          lane: 'planning',
-        }),
-      },
-    });
-  } catch (err) {
-    // Plan review failure is non-fatal - plan artifacts are already committed
-    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Plan review skipped: ${(err as Error).message}` };
-  }
 });
 
 registerCompileStage({

@@ -458,42 +458,6 @@ describe('withRetry — planner post-checkpoint terminal-success integration', (
   });
 });
 
-describe('withRetry — pipeline-composer post-checkpoint terminal-success integration', () => {
-  it('after planning:pipeline + pi-infra error, emits warning, no second attempt, no error', async () => {
-    let callCount = 0;
-    const composerPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer']!;
-
-    const composerAgent = async function* (_input: unknown): AsyncGenerator<EforgeEvent, undefined> {
-      callCount++;
-      yield {
-        timestamp: ts(),
-        type: 'planning:pipeline',
-        scope: 'errand',
-        compile: ['planner'],
-        defaultBuild: ['implement'],
-        defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' },
-        rationale: 'test',
-      };
-      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Pi tool-call infrastructure failure: hook error');
-    };
-
-    const out: EforgeEvent[] = [];
-    for await (const ev of withRetry(composerAgent, composerPolicy as RetryPolicy<unknown>, {})) {
-      out.push(ev);
-    }
-
-    expect(callCount).toBe(1);
-    expect(out.find((e) => e.type === 'planning:pipeline')).toBeDefined();
-    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatchObject({
-      agent: 'pipeline-composer',
-      code: 'infrastructure-error-post-checkpoint-downgraded',
-    });
-    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
-  });
-});
-
 describe('withRetry — non-retryable errors propagate immediately', () => {
   it('rethrows unrelated errors without a retry', async () => {
     let callCount = 0;

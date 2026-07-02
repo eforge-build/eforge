@@ -1213,30 +1213,6 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     planIdFromInput: (input) => (input as ReviewFixerContinuationInput).planId,
     label: 'review-fixer-continuation',
   },
-  'pipeline-composer': {
-    agent: 'pipeline-composer',
-    maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_INFRASTRUCTURE_SUBTYPES,
-    label: 'pipeline-composer-infrastructure-retry',
-    // After `planning:pipeline` is emitted, a late retryable infrastructure or
-    // transport error is downgraded to a warning — the composition result is
-    // already available so no retry is needed.
-    terminalSuccessWhen: (info: RetryAttemptInfo<unknown>) =>
-      info.events.some((ev) => ev.type === 'planning:pipeline') &&
-      isRetryableInfrastructureSubtype(info.subtype),
-    onTerminalSuccess: (info: RetryAttemptInfo<unknown>) => {
-      const agentId = extractAgentId(info.events, 'pipeline-composer-unknown');
-      const message = info.error instanceof Error ? info.error.message : String(info.error);
-      return [{
-        timestamp: new Date().toISOString(),
-        type: 'agent:warning',
-        agent: 'pipeline-composer',
-        agentId,
-        code: 'infrastructure-error-post-checkpoint-downgraded',
-        message: `Retryable infrastructure error after pipeline-composer checkpoint was downgraded: ${message}`,
-      }];
-    },
-  },
 };
 
 /**

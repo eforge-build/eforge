@@ -17,7 +17,6 @@ import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-buil
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
-import { registerDebugComposerCommand } from './debug-composer.js';
 // --- eforge:region host-queue-controls ---
 import { registerQueueControlCommands } from './queue-control.js';
 // --- eforge:endregion host-queue-controls ---
@@ -1409,7 +1408,6 @@ export function createProgram(abortController?: AbortController, version?: strin
     });
 
   // Diagnostic commands
-  registerDebugComposerCommand(program);
 
   // Daemon commands
   const daemon = program

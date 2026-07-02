@@ -27,9 +27,9 @@ import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 // --- eforge:region config-runtime-wiring ---
 
 describe('stage descriptor metadata', () => {
-  it('all 7 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 6 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getCompileStageDescriptors();
-    expect(descriptors.length).toBe(7);
+    expect(descriptors.length).toBe(6);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ describe('stage descriptor metadata', () => {
 describe('validatePipeline', () => {
   it('returns valid for a correct pipeline', () => {
     const result = validatePipeline(
-      ['planner', 'plan-review-cycle'],
+      ['planner', 'planning-quality-review-cycle'],
       ['implement', 'doc-author', 'doc-sync', 'review-cycle'],
     );
     expect(result.valid).toBe(true);
@@ -75,8 +75,8 @@ describe('validatePipeline', () => {
   });
 
   it('returns error for missing predecessor', () => {
-    // plan-review-cycle requires 'planner' as predecessor
-    const result = validatePipeline(['plan-review-cycle'], ['implement']);
+    // planning-quality-review-cycle requires 'planner' as predecessor
+    const result = validatePipeline(['planning-quality-review-cycle'], ['implement']);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes('predecessor') && e.includes('planner'))).toBe(true);
   });
@@ -84,26 +84,6 @@ describe('validatePipeline', () => {
   it('returns warning for non-parallelizable stage in parallel group', () => {
     const result = validatePipeline(['planner'], [['implement', 'review-cycle']]);
     expect(result.warnings.some((w) => w.includes('not parallelizable'))).toBe(true);
-  });
-});
-
-// --- Stage Registry: formatStageRegistry ---
-
-describe('formatStageRegistry', () => {
-  it('returns a non-empty markdown table', () => {
-    const output = formatStageRegistry();
-    expect(output.length).toBeGreaterThan(0);
-    expect(output).toContain('| Name |');
-    expect(output).toContain('|------|');
-  });
-
-  it('contains all registered stage names', () => {
-    const output = formatStageRegistry();
-    const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
-    expect(allNames.length).toBe(18);
-    for (const name of allNames) {
-      expect(output).toContain(name);
-    }
   });
 });
 

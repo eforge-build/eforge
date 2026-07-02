@@ -372,52 +372,6 @@ describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / archi
   }
 });
 
-describe('DEFAULT_RETRY_POLICIES — pipeline-composer policy', () => {
-  const composer = DEFAULT_RETRY_POLICIES['pipeline-composer']!;
-
-  it('has maxAttempts = 2', () => {
-    expect(composer.maxAttempts).toBe(2);
-  });
-
-  it('retryableSubtypes contains error_transient_transport and error_pi_tool_infrastructure', () => {
-    expect(composer.retryableSubtypes).toEqual(new Set(['error_transient_transport', 'error_pi_tool_infrastructure']));
-  });
-
-  it('does not include error_max_turns (composer uses its own internal retry for parse failures)', () => {
-    expect(composer.retryableSubtypes.has('error_max_turns')).toBe(false);
-  });
-
-  it('has a terminalSuccessWhen hook', () => {
-    expect(composer.terminalSuccessWhen).toBeDefined();
-  });
-
-  it('terminalSuccessWhen returns true when planning:pipeline was emitted + retryable subtype', () => {
-    const events: EforgeEvent[] = [
-      { timestamp: ts(), type: 'planning:pipeline', scope: 'errand', compile: ['planner'], defaultBuild: ['implement'], defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' }, rationale: 'test' },
-    ];
-    const info = makeAttemptInfo({
-      prevInput: {} as unknown,
-      subtype: 'error_pi_tool_infrastructure',
-      events,
-      error: new Error('Pi tool-call infrastructure failure: something'),
-    });
-    expect(composer.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(true);
-  });
-
-  it('terminalSuccessWhen returns false when planning:pipeline was NOT emitted', () => {
-    const info = makeAttemptInfo({
-      prevInput: {} as unknown,
-      subtype: 'error_transient_transport',
-      events: [],
-      error: new Error('Backend error: WebSocket closed 1000'),
-    });
-    expect(composer.terminalSuccessWhen!(info as RetryAttemptInfo<unknown>)).toBe(false);
-  });
-
-  it('label is "pipeline-composer-infrastructure-retry"', () => {
-    expect(composer.label).toBe('pipeline-composer-infrastructure-retry');
-  });
-});
 
 describe('getPolicy — unregistered roles default to no-retry', () => {
   // Unregistered roles default to maxAttempts: 1 (no retries) because they lack
@@ -427,7 +381,6 @@ describe('getPolicy — unregistered roles default to no-retry', () => {
   // semantics, so a retry would duplicate side effects or produce inconsistent
   // state. They must be explicitly registered in DEFAULT_RETRY_POLICIES before
   // any retry behavior is allowed.
-  // Note: 'pipeline-composer' has an explicit policy registered (infrastructure retry).
   const unregisteredRoles: AgentRole[] = [
     'reviewer',
     'module-planner',

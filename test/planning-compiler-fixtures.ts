@@ -75,9 +75,6 @@ export function reduceSubmission(output: PlanningReduceOutput) {
   return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
-export function composerResponse(compile: string[] = ['planner', 'plan-review-cycle'], scope: 'errand' | 'excursion' | 'expedition' = 'excursion') {
-  return { resultText: JSON.stringify({ scope, compile, defaultBuild: ['implement'], defaultReview: DEFAULT_REVIEW, rationale: 'bounded test' }) };
-}
 
 /** A no-fix reviewer script: empty issues block, no submission tool call. */
 export function noFixReviewerResponse() {

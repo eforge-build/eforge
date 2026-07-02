@@ -215,7 +215,6 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
  * each of these runs.
  */
 const PLAN_ARTIFACT_COMMIT_STAGES = new Set([
-  'plan-review-cycle',
   'architecture-review-cycle',
   'cohesion-review-cycle',
   'planning-quality-review-cycle',

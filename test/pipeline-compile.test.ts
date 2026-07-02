@@ -88,7 +88,7 @@ describe('stage registry', () => {
   });
 
   it('all built-in compile stages are registered', () => {
-    const builtinCompileStages = ['planner', 'plan-review-cycle', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
+    const builtinCompileStages = ['planner', 'planning-quality-review-cycle', 'architecture-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
     for (const name of builtinCompileStages) {
       expect(() => getCompileStage(name)).not.toThrow();
       expect(typeof getCompileStage(name)).toBe('function');

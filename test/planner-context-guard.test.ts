@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole, EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk } from '@eforge-build/engine/events';
-import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import {
   CompileScopeContextError,
@@ -123,17 +122,6 @@ describe('planner-family context guard', () => {
     }).not.toThrow();
   });
 
-  it('composePipeline prompt guard throws before the harness is called', async () => {
-    const backend = new StubHarness([{ text: 'not reached' }]);
-    await expect(collectEvents(composePipeline({
-      harness: backend,
-      source: '# PRD\nBuild widgets',
-      cwd: makeTempDir(),
-      contextGuard: { stage: 'pipeline-composer', limits: { maxPromptBytes: 1 } },
-    }))).rejects.toThrow(CompileScopeContextError);
-    expect(backend.calls).toHaveLength(0);
-  });
-
   it('runModulePlanner prompt guard throws before the harness is called', async () => {
     const backend = new StubHarness([{ text: 'not reached' }]);
     await expect(collectEvents(runModulePlanner({
@@ -148,26 +136,6 @@ describe('planner-family context guard', () => {
       contextGuard: { stage: 'module-planner', limits: { maxPromptBytes: 1 } },
     }))).rejects.toThrow(CompileScopeContextError);
     expect(backend.calls).toHaveLength(0);
-  });
-
-  it('composePipeline live usage guard throws bounded pipeline-composer failure', async () => {
-    const backend = new UsageHarness([usageEvent('pipeline-composer', { input: 20, total: 20 }, false)]);
-    try {
-      await collectEvents(composePipeline({
-        harness: backend,
-        source: '# PRD',
-        cwd: makeTempDir(),
-        contextGuard: { stage: 'pipeline-composer', limits: { maxObservedInputTokens: 10, maxExplanationBytes: 300 } },
-      }));
-      throw new Error('expected composePipeline to throw');
-    } catch (err) {
-      expect(err).toBeInstanceOf(CompileScopeContextError);
-      const failure = (err as CompileScopeContextError).failure;
-      expect(failure.stage).toBe('pipeline-composer');
-      expect(failure.observed?.inputTokens).toBeGreaterThan(10);
-      expect(Buffer.byteLength(failure.explanation, 'utf8')).toBeLessThanOrEqual(300);
-    }
-    expect(backend.calls).toHaveLength(1);
   });
 
   it('runModulePlanner default guard preserves small prompt and completes', async () => {
