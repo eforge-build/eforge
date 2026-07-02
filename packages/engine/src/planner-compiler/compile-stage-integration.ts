@@ -2,7 +2,7 @@ import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { EforgeEvent } from '../events.js';
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { validateCompileArtifacts } from '../compile-resilience/artifact-validation.js';
-import { resolvePlanningDecompositionLimits } from '../config.js';
+import { resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits } from '../config.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
 import { derivePlanningAtomGraph } from './atom-graph.js';
@@ -37,6 +37,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
       parallelism: ctx.config.compile.planningUnitParallelism,
       abortSignal: ctx.abortController?.signal,
       sourceLocalizationHints,
+      sharedBriefLimits: resolveSharedPlanningBriefLimits(ctx.config),
       onEvent: emit,
     }));
   } catch (err) {
