@@ -1,19 +1,31 @@
+import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { PlanningArchitectureManifest } from './architecture-manifest-contracts.js';
 import { synthesizeArchitecture } from './architecture-synthesis.js';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { derivePlanningAspectCoverage } from './coverage-accounting.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
+import { derivePlanPipelineSettings, type DerivedPlanPipelineSettings } from './pipeline-derivation.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 
 export interface SynthesizePlanningArtifactsInput { compilerResult: BoundedPlannerCompilerResult }
-export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean }
-export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[] }> }
-export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; acceptanceCoverageMarkdown: string; validationErrors: string[] }
+export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
+export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[]; build: BuildStageSpec[]; review: ReviewProfileConfig }> }
+export interface PlanningArtifactPipelineDefaults { defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
+export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; acceptanceCoverageMarkdown: string; validationErrors: string[] }
+
+type PlanningSynthesizedModulePlanBase = Omit<PlanningSynthesizedModulePlan, 'build' | 'review' | 'pipelineRationale'>;
 
 export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsInput): PlanningArtifactSynthesisResult {
   const result = input.compilerResult;
   const fragments = selectPlanFragments(result);
-  const modules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
+  const baseModules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
+  const derivation = derivePlanPipelineSettings({
+    modules: baseModules.map((module) => ({ moduleId: module.moduleId, criterionIds: module.criterionIds, aspectIds: module.aspectIds, dependsOnModuleIds: module.dependsOnModuleIds, residue: module.residue })),
+    atoms: result.atomGraph.atoms,
+    localizationRecords: result.sourceLocalizationBundle.records,
+    residueCandidates: result.residue.candidates,
+  });
+  const modules = baseModules.map((module) => stampPipelineSettings(module, derivation.plans));
   const validationErrors = validateSynthesizedArtifacts(result, modules);
   const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules });
   const acceptanceCoverageMarkdown = coverageMarkdownFor(result);
@@ -25,10 +37,17 @@ export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsIn
     architectureManifest: architecture.manifest,
     planMarkdown,
     modulePlans: modules,
-    orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds] })) },
+    orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds], build: [...module.build], review: { ...module.review, perspectives: [...module.review.perspectives] } })) },
+    pipelineDefaults: { defaultBuild: derivation.defaultBuild, defaultReview: derivation.defaultReview, rationale: derivation.rationale },
     acceptanceCoverageMarkdown,
     validationErrors: [...new Set(validationErrors)].sort(),
   };
+}
+
+function stampPipelineSettings(module: PlanningSynthesizedModulePlanBase, plans: DerivedPlanPipelineSettings[]): PlanningSynthesizedModulePlan {
+  const settings = plans.find((plan) => plan.moduleId === module.moduleId);
+  if (!settings) throw new Error(`missing derived pipeline settings for module:${module.moduleId}`);
+  return { ...module, build: [...settings.build], review: { ...settings.review, perspectives: [...settings.review.perspectives] }, pipelineRationale: settings.rationale };
 }
 
 function selectPlanFragments(result: BoundedPlannerCompilerResult): PlanningAtomPlanFragment[] {
@@ -37,7 +56,7 @@ function selectPlanFragments(result: BoundedPlannerCompilerResult): PlanningAtom
   return cloneFragments(reduceFragments.length > 0 ? reduceFragments : atomFragments);
 }
 
-function candidateModules(result: BoundedPlannerCompilerResult, fragments: PlanningAtomPlanFragment[]): PlanningSynthesizedModulePlan[] {
+function candidateModules(result: BoundedPlannerCompilerResult, fragments: PlanningAtomPlanFragment[]): PlanningSynthesizedModulePlanBase[] {
   const reduceModules = artifactReduceOutputs(result).flatMap((output) => output.moduleCandidates ?? []);
   const atomModules = result.map.outputs.flatMap((output) => output.moduleCandidates ?? []);
   return cloneModules(reduceModules.length > 0 ? reduceModules : atomModules).map((module) => modulePlanFromCandidate(module, fragments));
@@ -47,7 +66,7 @@ function artifactReduceOutputs(result: BoundedPlannerCompilerResult) {
   return result.reduce.finalOutput ? [result.reduce.finalOutput] : result.reduce.outputs;
 }
 
-function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments: PlanningAtomPlanFragment[]): PlanningSynthesizedModulePlan {
+function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments: PlanningAtomPlanFragment[]): PlanningSynthesizedModulePlanBase {
   const relatedFragments = fragments.filter((fragment) => intersects(fragment.aspectIds, module.aspectIds) || intersects(fragment.criterionIds, module.criterionIds));
   return {
     moduleId: module.moduleId,
@@ -61,7 +80,7 @@ function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments:
   };
 }
 
-function residueModules(candidates: PlanningResidueCandidate[]): PlanningSynthesizedModulePlan[] {
+function residueModules(candidates: PlanningResidueCandidate[]): PlanningSynthesizedModulePlanBase[] {
   return candidates.map((candidate) => ({
     moduleId: candidate.candidateId,
     title: candidate.title,

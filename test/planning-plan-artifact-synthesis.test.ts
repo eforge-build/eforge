@@ -22,8 +22,49 @@ describe('planning artifact synthesis', () => {
     expect(result.architectureMarkdown).toContain('Reduced artifact synthesis.');
     expect(result.planMarkdown).toContain('module-reduce-000-001');
     expect(result.modulePlans).toEqual([expect.objectContaining({ moduleId: 'module-reduce-000-001', criterionIds: ['ac-001'], residue: false })]);
-    expect(result.orchestration.modules).toEqual([{ id: 'module-reduce-000-001', dependsOn: [] }]);
+    expect(result.orchestration.modules).toEqual([{
+      id: 'module-reduce-000-001',
+      dependsOn: [],
+      build: ['implement'],
+      review: { strategy: expect.any(String), perspectives: expect.any(Array), maxRounds: expect.any(Number), evaluatorStrictness: expect.any(String) },
+    }]);
+    expect(result.pipelineDefaults.defaultBuild).toEqual(['implement']);
+    expect(result.pipelineDefaults.rationale).toContain('module-reduce-000-001');
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
+  });
+
+  it('derives heavier review settings for residue modules than for trivial modules', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    const residue: PlanningResidueSynthesis = {
+      graphId: data.graph.graphId,
+      sourceHash: data.graph.sourceHash,
+      candidates: [{
+        candidateId: 'candidate-follow-up-docs',
+        kind: 'follow-up',
+        reason: 'pending-aspect',
+        title: 'Follow-up docs work',
+        criterionIds: ['ac-001'],
+        aspectIds: data.tasks[0].aspectIds,
+        scope: 'Follow-up scope.',
+        expectedOutputs: ['Docs updated.'],
+        validationExpectations: ['Docs checks pass.'],
+        rationale: 'Deferred docs work.',
+        buildability: 'repair-only',
+      }],
+      coverageUpdates: [],
+      validationErrors: [],
+      limits: { maxCandidates: 80, maxScopeBytes: 1_200, maxRationaleBytes: 1_200, maxExpectedOutputBytes: 800, maxValidationExpectationBytes: 800 },
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput], residue) });
+
+    const residueModule = result.modulePlans.find((module) => module.residue);
+    const trivialModule = result.modulePlans.find((module) => !module.residue);
+    expect(residueModule?.review).not.toEqual(trivialModule?.review);
+    expect(residueModule?.review.evaluatorStrictness).toBe('strict');
+    expect(residueModule?.pipelineRationale).toContain('residue-derived');
   });
 
   it('uses the final reduce output instead of intermediate reduce artifacts', () => {

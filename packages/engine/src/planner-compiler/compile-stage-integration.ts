@@ -9,7 +9,7 @@ import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agen
 import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
 import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult, type RunBoundedPlannerCompilerInput } from './compiler-runner.js';
-import { synthesizePlanningArtifacts } from './plan-artifact-synthesis.js';
+import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 
 function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
@@ -51,19 +51,20 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     throw new Error(reason);
   }
 
+  const pipeline = boundedCompilerPipeline(ctx, artifacts.pipelineDefaults);
   const written = await writePlanningCompilerArtifacts({
     cwd: ctx.cwd,
     outputDir: ctx.config.plan.outputDir,
     planSetName: ctx.planSetName,
     baseBranch: ctx.baseBranch,
     diffBaseRef: ctx.diffBaseRef,
-    pipeline: boundedCompilerPipeline(ctx),
+    pipeline,
     artifacts,
     tiers: ctx.config.agents.tiers,
     diagnostics: compilerDiagnostics,
   });
 
-  ctx.pipeline = boundedCompilerPipeline(ctx);
+  ctx.pipeline = pipeline;
   ctx.expeditionModules = [];
   ctx.plans = written.plans;
   const validation = await validateCompileArtifacts(ctx, { compilerArtifacts: 'require' });
@@ -114,10 +115,12 @@ async function* runCompilerAndStreamEvents(input: RunBoundedPlannerCompilerInput
   return result;
 }
 
-function boundedCompilerPipeline(ctx: PipelineContext): PipelineContext['pipeline'] {
+function boundedCompilerPipeline(ctx: PipelineContext, pipelineDefaults: PlanningArtifactPipelineDefaults): PipelineContext['pipeline'] {
   return {
     ...ctx.pipeline,
     compile: ctx.pipeline.compile.includes('plan-review-cycle') ? ['planner', 'plan-review-cycle'] : ['planner'],
-    rationale: `${ctx.pipeline.rationale}\nBounded planner compiler produced final plan artifacts directly.`,
+    defaultBuild: pipelineDefaults.defaultBuild,
+    defaultReview: pipelineDefaults.defaultReview,
+    rationale: `${ctx.pipeline.rationale}\nBounded planner compiler produced final plan artifacts directly.\n${pipelineDefaults.rationale}`,
   };
 }

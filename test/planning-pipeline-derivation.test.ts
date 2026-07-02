@@ -1,0 +1,135 @@
+import { describe, expect, it } from 'vitest';
+import {
+  derivePlanPipelineSettings,
+  HEAVY_REVIEW_MIN_SCORE,
+  LARGE_PLAN_ASPECT_COUNT,
+  LARGE_PLAN_CRITERION_COUNT,
+  LARGE_PLAN_SOURCE_BYTES,
+  MULTI_SUBSYSTEM_COUNT,
+  type PlanPipelineModuleSignals,
+  type PlanPipelineRiskInputs,
+} from '@eforge-build/engine/planner-compiler';
+
+function module(overrides: Partial<PlanPipelineModuleSignals> & { moduleId: string }): PlanPipelineModuleSignals {
+  return { criterionIds: ['ac-001'], aspectIds: ['ac-001:general:general'], dependsOnModuleIds: [], residue: false, ...overrides };
+}
+
+function atom(overrides: Partial<PlanPipelineRiskInputs['atoms'][number]> & { atomId: string }): PlanPipelineRiskInputs['atoms'][number] {
+  return { criterionIds: ['ac-001'], subsystemHints: [], estimate: { sourceBytes: 500, criteriaCount: 1, subsystemCount: 0, evidencePathCount: 0, estimatedPromptBytes: 2_000 }, ...overrides };
+}
+
+function inputs(overrides: Partial<PlanPipelineRiskInputs>): PlanPipelineRiskInputs {
+  return { modules: [], atoms: [], localizationRecords: [], residueCandidates: [], ...overrides };
+}
+
+describe('per-plan pipeline derivation', () => {
+  it('derives light review for a trivial module with no risk factors', () => {
+    const derivation = derivePlanPipelineSettings(inputs({ modules: [module({ moduleId: 'module-a' })], atoms: [atom({ atomId: 'atom-a' })] }));
+
+    expect(derivation.plans).toHaveLength(1);
+    expect(derivation.plans[0].build).toEqual(['implement']);
+    expect(derivation.plans[0].review).toEqual({ strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' });
+    expect(derivation.plans[0].risk).toEqual({ moduleId: 'module-a', score: 0, factors: [] });
+    expect(derivation.plans[0].rationale).toContain('no risk factors');
+  });
+
+  it('maps each risk factor from its signal', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'module-large', criterionIds: ['ac-001', 'ac-002', 'ac-003'] }),
+        module({ moduleId: 'module-bytes', criterionIds: ['ac-010'] }),
+        module({ moduleId: 'module-aspects', criterionIds: ['ac-020'], aspectIds: Array.from({ length: LARGE_PLAN_ASPECT_COUNT }, (_, index) => `ac-020:aspect-${index}`) }),
+        module({ moduleId: 'module-lowconf', criterionIds: ['ac-030'] }),
+        module({ moduleId: 'module-subsystems', criterionIds: ['ac-040'] }),
+        module({ moduleId: 'module-root', criterionIds: ['ac-050'] }),
+        module({ moduleId: 'module-leaf', criterionIds: ['ac-060'], dependsOnModuleIds: ['module-root'] }),
+      ],
+      atoms: [
+        atom({ atomId: 'atom-bytes', criterionIds: ['ac-010'], estimate: { sourceBytes: LARGE_PLAN_SOURCE_BYTES, criteriaCount: 1, subsystemCount: 0, evidencePathCount: 0, estimatedPromptBytes: 2_000 } }),
+        atom({ atomId: 'atom-subsystems', criterionIds: ['ac-040'], subsystemHints: Array.from({ length: MULTI_SUBSYSTEM_COUNT }, (_, index) => `subsystem-${index}`) }),
+      ],
+      localizationRecords: [
+        { confidence: 'low', status: 'partial', linkedCriterionIds: ['ac-030'], linkedAspectIds: [] },
+        { confidence: 'high', status: 'resolved', linkedCriterionIds: ['ac-001', 'ac-010', 'ac-020', 'ac-040', 'ac-050', 'ac-060'], linkedAspectIds: [] },
+      ],
+    }));
+
+    const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
+    expect(byId.get('module-large')?.risk.factors).toEqual(['large-plan']);
+    expect(byId.get('module-bytes')?.risk.factors).toEqual(['large-plan']);
+    expect(byId.get('module-aspects')?.risk.factors).toEqual(['large-plan']);
+    expect(byId.get('module-lowconf')?.risk.factors).toEqual(['low-confidence-localization']);
+    expect(byId.get('module-subsystems')?.risk.factors).toEqual(['multi-subsystem']);
+    expect(byId.get('module-root')?.risk.factors).toEqual(['dependency-root']);
+    expect(byId.get('module-leaf')?.risk.factors).toEqual([]);
+  });
+
+  it('escalates residue modules and repair-only residue to heavy review', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [module({ moduleId: 'candidate-residue', residue: true })],
+      residueCandidates: [{ candidateId: 'candidate-residue', buildability: 'repair-only', criterionIds: ['ac-001'] }],
+    }));
+
+    expect(derivation.plans[0].risk.score).toBeGreaterThanOrEqual(HEAVY_REVIEW_MIN_SCORE);
+    expect(derivation.plans[0].risk.factors).toEqual(['residue-derived', 'repair-only-residue']);
+    expect(derivation.plans[0].review).toEqual({ strategy: 'parallel', perspectives: ['code', 'security', 'test', 'verify'], maxRounds: 2, evaluatorStrictness: 'strict' });
+  });
+
+  it('treats unresolved localization records as low confidence regardless of scored confidence', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [module({ moduleId: 'module-a', aspectIds: ['ac-001:general:general'] })],
+      localizationRecords: [{ confidence: 'medium', status: 'unresolved', linkedCriterionIds: [], linkedAspectIds: ['ac-001:general:general'] }],
+    }));
+
+    expect(derivation.plans[0].risk.factors).toEqual(['low-confidence-localization']);
+    expect(derivation.plans[0].review.perspectives).toEqual(['code', 'test']);
+  });
+
+  it('produces different review settings for a large risky plan and a trivial plan', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'module-risky', criterionIds: Array.from({ length: LARGE_PLAN_CRITERION_COUNT }, (_, index) => `ac-10${index}`) }),
+        module({ moduleId: 'module-trivial', criterionIds: ['ac-200'] }),
+      ],
+      atoms: [
+        atom({ atomId: 'atom-risky', criterionIds: ['ac-100'], subsystemHints: ['engine', 'monitor', 'client'] }),
+        atom({ atomId: 'atom-trivial', criterionIds: ['ac-200'] }),
+      ],
+      localizationRecords: [{ confidence: 'low', status: 'partial', linkedCriterionIds: ['ac-100'], linkedAspectIds: [] }],
+    }));
+
+    const risky = derivation.plans.find((plan) => plan.moduleId === 'module-risky');
+    const trivial = derivation.plans.find((plan) => plan.moduleId === 'module-trivial');
+    expect(risky?.review).toEqual({ strategy: 'parallel', perspectives: ['code', 'security', 'test', 'verify'], maxRounds: 2, evaluatorStrictness: 'strict' });
+    expect(trivial?.review).toEqual({ strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' });
+    expect(risky?.review).not.toEqual(trivial?.review);
+  });
+
+  it('derives set-level defaults from the highest plan risk score', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'candidate-residue', residue: true }),
+        module({ moduleId: 'module-trivial', criterionIds: ['ac-200'] }),
+      ],
+      residueCandidates: [{ candidateId: 'candidate-residue', buildability: 'repair-only', criterionIds: ['ac-001'] }],
+    }));
+
+    expect(derivation.defaultBuild).toEqual(['implement']);
+    expect(derivation.defaultReview.evaluatorStrictness).toBe('strict');
+    expect(derivation.rationale).toContain('candidate-residue');
+    expect(derivation.rationale).toContain('module-trivial');
+  });
+
+  it('is deterministic for identical inputs', () => {
+    const riskInputs = inputs({
+      modules: [module({ moduleId: 'module-b', dependsOnModuleIds: ['module-a'] }), module({ moduleId: 'module-a' })],
+      atoms: [atom({ atomId: 'atom-a' })],
+    });
+
+    const first = derivePlanPipelineSettings(riskInputs);
+    const second = derivePlanPipelineSettings(riskInputs);
+
+    expect(second).toEqual(first);
+    expect(first.plans.map((plan) => plan.moduleId)).toEqual(['module-a', 'module-b']);
+  });
+});

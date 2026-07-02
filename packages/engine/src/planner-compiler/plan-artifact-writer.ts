@@ -59,7 +59,13 @@ function planSetPayload(input: WritePlanningCompilerArtifactsInput, planIds: Map
     plans: input.artifacts.modulePlans.map(module => ({ frontmatter: { id: requirePlanId(planIds, module.moduleId), name: module.title }, body: module.markdown })),
     orchestration: {
       validate: [],
-      plans: input.artifacts.modulePlans.map(module => ({ id: requirePlanId(planIds, module.moduleId), dependsOn: module.dependsOnModuleIds.map(id => requirePlanId(planIds, id)) })),
+      plans: input.artifacts.modulePlans.map(module => ({
+        id: requirePlanId(planIds, module.moduleId),
+        dependsOn: module.dependsOnModuleIds.map(id => requirePlanId(planIds, id)),
+        build: [...module.build],
+        review: { ...module.review, perspectives: [...module.review.perspectives] },
+        reviewRationale: module.pipelineRationale,
+      })),
     },
   };
 }
