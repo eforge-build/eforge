@@ -18,7 +18,7 @@ import {
 import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
+import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel } from '../harness.js';
 import { AgentTerminalError, isTransientTransportError } from '../harness.js';
 import { isPiToolInfrastructureError } from '../harness.js';
 import type { PiConfig } from '../config.js';
@@ -27,7 +27,7 @@ import { PiMcpBridge } from './pi-mcp-bridge.js';
 import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js';
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
-import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
+import { isEforgePiResource } from './eforge-resource-filter.js';
 import { expandDisallowedToolAliasesForPi } from './tool-safety.js';
 import { resolvePiRuntimeModel } from './pi-model-resolution.js';
 
@@ -44,13 +44,6 @@ export interface PiHarnessOptions {
   bare?: boolean;
   /** Pi-specific configuration from eforge/config.yaml. */
   piConfig?: PiConfig;
-  /**
-   * Optional callback fired just before each `session.prompt` dispatch with a
-   * snapshot of the request (system prompt, tools, model, etc.). Used by
-   * diagnostic tooling like `eforge debug-composer` to compare framing across
-   * harnesses.
-   */
-  onDebugPayload?: HarnessDebugCallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +424,6 @@ export class PiHarness implements AgentHarness {
   private readonly extensions?: PiExtensionConfig;
   private readonly bare: boolean;
   private readonly piConfig?: PiConfig;
-  private readonly onDebugPayload?: HarnessDebugCallback;
   private mcpBridge: PiMcpBridge | null = null;
 
   constructor(options?: PiHarnessOptions) {
@@ -439,7 +431,6 @@ export class PiHarness implements AgentHarness {
     this.extensions = options?.extensions;
     this.bare = options?.bare ?? false;
     this.piConfig = options?.piConfig;
-    this.onDebugPayload = options?.onDebugPayload;
   }
 
   /**
@@ -887,50 +878,6 @@ export class PiHarness implements AgentHarness {
         options.abortSignal.addEventListener('abort', () => {
           session.abort();
         }, { once: true });
-      }
-
-      // Fire debug capture hook with the fully-constructed request. At this
-      // point session.state.systemPrompt includes the pi-coding-agent preamble,
-      // tool snippets, ancestor AGENTS.md/CLAUDE.md context, skills, and
-      // date/cwd metadata. session.state.tools is the final tool list visible
-      // to the model.
-      if (this.onDebugPayload) {
-        const sessionState = session.state as { systemPrompt?: string; tools?: Array<{ name: string; description?: string; parameters?: unknown }> };
-        const sessionTools = Array.isArray(sessionState.tools) ? sessionState.tools : [];
-        const debugPayload: HarnessDebugPayload = {
-          harness: 'pi',
-          agent,
-          userPrompt: options.prompt,
-          systemPrompt: sessionState.systemPrompt ?? '',
-          tools: sessionTools.map((t) => ({
-            name: t.name,
-            ...(t.description !== undefined ? { description: t.description } : {}),
-            ...(t.parameters !== undefined ? { parameters: t.parameters } : {}),
-          })),
-          model: { id: options.model.id, provider: options.model.provider },
-          ...(options.effort !== undefined ? { effort: options.effort } : {}),
-          ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
-          maxTurns: options.maxTurns,
-          ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(effectiveDisallowed.length > 0 ? { disallowedTools: effectiveDisallowed } : {}),
-          extra: {
-            toolsMode: options.tools,
-            isReadOnly,
-            thinkingLevel,
-            bare: this.bare,
-            resourcesMode: mode,
-            projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
-            extensionPathCount: extensionPaths.length,
-            baseToolCount: filteredBaseTools.length,
-            bridgedMcpToolCount: filteredBridgedMcpTools.length,
-            customToolCount: filteredEforgeCustomTools.length,
-            systemPromptBytes: (sessionState.systemPrompt ?? '').length,
-            eforgePackageName: EFORGE_PI_PACKAGE_NAME,
-            ...overrideResult.getCounters(),
-            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt (bridged to Pi via PiMcpBridge). Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion. resourcesMode indicates whether ambient Pi resources were suppressed (isolated) or preserved (ambient).',
-          },
-        };
-        await this.onDebugPayload(debugPayload);
       }
 
       // Send prompt — non-blocking so events stream through the queue concurrently

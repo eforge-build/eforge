@@ -1,7 +1,6 @@
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import { runPlanningAtomMap, type PlanningAtomMapResult } from './atom-map-runner.js';
-import type { PlanningAtomOutput } from './atom-planning-contracts.js';
 import type { PlanningReduceGap, PlanningReduceGapIssueKind, PlanningReduceLimits } from './reduce-contracts.js';
 import { runPlanningReduce, type PlanningReduceResult } from './reduce-runner.js';
 import { deriveSharedPlanningBrief } from './shared-brief.js';
@@ -59,7 +58,7 @@ export interface SourceLocalizationRepairResult {
   status: SourceLocalizationRepairStatus;
 }
 
-export interface RunSourceLocalizationRepairLoopInput {
+interface RunSourceLocalizationRepairLoopInput {
   cwd: string;
   sourceContent: string;
   sourceInventory: SourceInventory;
@@ -142,13 +141,6 @@ export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?:
 
 export function resolveAffectedAtomIds(input: { gaps: ClassifiedPlanningReduceGap[]; graph: PlanningAtomGraph; sourceLocalizationBundle: SourceLocalizationBundle; sourceEvidenceBundle: PlanningSourceEvidenceBundle }): string[] {
   return uniq(input.gaps.flatMap((gap) => gap.affectedAtomIds.length > 0 ? gap.affectedAtomIds : atomIdsForGap(gap.gap, gap.sourceNeedIds, gap.ownerPaths, input.sourceLocalizationBundle, input.sourceEvidenceBundle, input.graph))).filter((atomId) => input.graph.atoms.some((atom) => atom.atomId === atomId));
-}
-
-export function mergePlanningAtomOutputs(prior: PlanningAtomOutput[], updated: PlanningAtomOutput[], affectedAtomIds: string[]): PlanningAtomOutput[] {
-  const affected = new Set(affectedAtomIds);
-  const byAtom = new Map(prior.filter((output) => !affected.has(output.atomId)).map((output) => [output.atomId, output]));
-  for (const output of updated) byAtom.set(output.atomId, output);
-  return [...byAtom.values()].sort((a, b) => a.atomId.localeCompare(b.atomId));
 }
 
 function buildRepairDiagnostic(input: { attempt: number; maxAttempts: number; gaps: ClassifiedPlanningReduceGap[]; affectedAtomIds: string[]; graph: PlanningAtomGraph; sourceLocalizationBundle: SourceLocalizationBundle; sourceEvidenceBundle: PlanningSourceEvidenceBundle; status: SourceLocalizationRepairStatus; unresolvedReasonOverride?: string }): SourceLocalizationRepairDiagnostic {

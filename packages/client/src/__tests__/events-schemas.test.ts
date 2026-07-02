@@ -181,9 +181,8 @@ describe('safeParseEforgeEvent — new variants', () => {
         name: 'feature-x',
         description: 'Feature X',
         created: '2025-01-01T00:00:00.000Z',
-        mode: 'excursion',
         baseBranch: 'main',
-        pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: 'resume' },
+        pipeline: { compile: [], defaultBuild: [], defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: 'resume' },
         plans: [
           { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } },
           { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'strict' } },

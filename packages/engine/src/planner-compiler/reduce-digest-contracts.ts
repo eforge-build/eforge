@@ -1,4 +1,4 @@
-import { Type, type Static } from '@sinclair/typebox';
+import { Type } from '@sinclair/typebox';
 import { utf8ByteLength } from './source-analysis.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
@@ -68,7 +68,6 @@ export const PlanningReduceDigestSchema = Type.Object({
   issues: Type.Optional(Type.Array(PlanningReduceDigestIssueSchema, { maxItems: 16 })),
 }, { additionalProperties: false });
 
-export type PlanningReduceDigestSubmission = Static<typeof PlanningReduceDigestSchema>;
 export type PlanningReduceDigestSourceKind = 'atom' | 'reduce';
 export type PlanningReduceDigestStatus = 'completed' | 'skipped' | 'failed' | 'incomplete';
 export interface PlanningReduceDigestFragment { fragmentId: string; title: string; intent: string; criterionIds: string[]; aspectIds: string[]; dependsOnFragmentIds?: string[] }

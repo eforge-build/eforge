@@ -159,7 +159,7 @@ export interface AgentRunContext extends EforgeExtensionContext {
    * The engine pipeline phase in which this agent run is executing.
    *
    * Known values:
-   * - `'compile'` - planning/compilation pipeline (planner, module-planner, etc.)
+   * - `'compile'` - planning/compilation pipeline (the planner map-reduce compiler and plan-quality review)
    * - `'build'` - build pipeline (builder, reviewer, evaluator, etc.)
    * - `'standalone'` - standalone helper invocations outside a pipeline
    *   (recovery-analyst, staleness-assessor, formatter, etc.)
@@ -171,10 +171,8 @@ export interface AgentRunContext extends EforgeExtensionContext {
    * Known values for `phase: 'build'`: `'implement'`, `'review'`, `'review-fix'`,
    * `'evaluate'`, `'test'`, `'test-write'`, `'doc-author'`, `'doc-sync'`.
    *
-   * Known values for `phase: 'compile'`: `'planner'`, `'module-planner'`,
-   * `'pipeline-composer'`, `'plan-review'`, `'plan-evaluate'`,
-   * `'architecture-review'`, `'architecture-evaluate'`, `'cohesion-review'`,
-   * `'cohesion-evaluate'`.
+   * Known values for `phase: 'compile'`: `'planner'`,
+   * `'planning-quality-review'`, `'planning-quality-evaluate'`.
    *
    * Not set when `phase` is `'standalone'`.
    */

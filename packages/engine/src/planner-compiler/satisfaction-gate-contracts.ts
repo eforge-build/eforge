@@ -16,7 +16,6 @@ export const SatisfactionGateSubmissionSchema = Type.Object({
   verdicts: Type.Array(SatisfactionVerdictSchema, { maxItems: 200 }),
 }, { additionalProperties: false });
 
-export type SatisfactionGateVerdict = Static<typeof SatisfactionVerdictSchema>;
 export type SatisfactionGateSubmission = Static<typeof SatisfactionGateSubmissionSchema>;
 
 export interface PlanningSatisfactionSkipDecision { skip: boolean; reason: string }

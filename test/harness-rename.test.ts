@@ -259,16 +259,6 @@ describe('harness.ts source content uses Harness terminology', () => {
     expect(content).toContain('export interface AgentHarness');
   });
 
-  it('exports HarnessDebugPayload', async () => {
-    const content = await readFile(resolve(ENGINE_SRC, 'harness.ts'), 'utf-8');
-    expect(content).toContain('HarnessDebugPayload');
-  });
-
-  it('exports HarnessDebugCallback', async () => {
-    const content = await readFile(resolve(ENGINE_SRC, 'harness.ts'), 'utf-8');
-    expect(content).toContain('HarnessDebugCallback');
-  });
-
   it('does not export AgentBackend (old interface name)', async () => {
     const content = await readFile(resolve(ENGINE_SRC, 'harness.ts'), 'utf-8');
     expect(content).not.toMatch(/export\s+(interface|type)\s+AgentBackend\b/);

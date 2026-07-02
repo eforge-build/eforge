@@ -27,12 +27,12 @@ const exec = promisify(execFile);
  * Evaluator mode: 'plan' for plan review evaluation, and
  * 'planning-quality' for the bounded planner compiler's quality gate.
  */
-export type EvaluatorMode = 'plan' | 'planning-quality';
+type EvaluatorMode = 'plan' | 'planning-quality';
 
 /**
  * Options shared by the plan and planning-quality evaluator agents.
  */
-export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
+interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   /** Evaluator mode */
   mode: EvaluatorMode;
   /** Harness for running the agent */
@@ -71,7 +71,7 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
 /**
  * Options for the plan evaluator agent.
  */
-export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
+interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
   harness: AgentHarness;
   /** The plan set name */
@@ -411,7 +411,7 @@ export async function* runPlanEvaluate(
 /**
  * Options for the planning quality evaluator agent.
  */
-export type PlanningQualityEvaluatorOptions = PlanEvaluatorOptions;
+type PlanningQualityEvaluatorOptions = PlanEvaluatorOptions;
 
 /**
  * Evaluate the planning quality reviewer's captured fixes. The engine owns

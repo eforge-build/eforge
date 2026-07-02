@@ -7,7 +7,7 @@ export const ARCHITECTURE_MANIFEST_VERSION = 1;
 const boundedString = (maxLength: number) => Type.String({ maxLength });
 const boundedIds = (maxLength: number, maxItems: number) => Type.Array(boundedString(maxLength), { maxItems });
 
-export const ArchitectureManifestPlanSchema = Type.Object({
+const ArchitectureManifestPlanSchema = Type.Object({
   planId: boundedString(160),
   title: boundedString(240),
   residue: Type.Boolean(),
@@ -16,7 +16,7 @@ export const ArchitectureManifestPlanSchema = Type.Object({
   dependsOnPlanIds: boundedIds(160, 32),
 }, { additionalProperties: false });
 
-export const ArchitectureManifestFileOwnershipSchema = Type.Object({
+const ArchitectureManifestFileOwnershipSchema = Type.Object({
   path: boundedString(500),
   ownerPlanIds: boundedIds(160, 16),
   consumerPlanIds: boundedIds(160, 32),
@@ -24,7 +24,7 @@ export const ArchitectureManifestFileOwnershipSchema = Type.Object({
   reason: Type.Optional(boundedString(500)),
 }, { additionalProperties: false });
 
-export const ArchitectureManifestContractSchema = Type.Object({
+const ArchitectureManifestContractSchema = Type.Object({
   contractId: boundedString(700),
   kind: Type.Union([Type.Literal('plan-dependency'), Type.Literal('interface'), Type.Literal('shared-file')]),
   fromPlanId: boundedString(160),
@@ -34,7 +34,7 @@ export const ArchitectureManifestContractSchema = Type.Object({
   summary: Type.Optional(boundedString(700)),
 }, { additionalProperties: false });
 
-export const ArchitectureManifestConflictSchema = Type.Object({
+const ArchitectureManifestConflictSchema = Type.Object({
   conflictId: boundedString(160),
   title: boundedString(240),
   criterionIds: boundedIds(80, 64),

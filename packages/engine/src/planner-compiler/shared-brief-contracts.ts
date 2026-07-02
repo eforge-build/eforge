@@ -37,7 +37,7 @@ export interface PlanningAtomBrief { atomId: string; ownedEvidencePaths: string[
 export interface SharedPlanningBriefSection { sectionId: string; kind: SharedPlanningBriefSectionKind; atomIds: string[]; primaryAtomId?: string; content: string; byteLength: number }
 export interface SharedPlanningInterfaceSummary { key: string; atomIds: string[]; primaryAtomId: string; consumerAtomIds: string[]; summary: string }
 export interface SharedPlanningBrief { graphId: string; sourceHash: string; evidenceOwnership: PlanningEvidenceOwnership[]; interfaceSummaries: SharedPlanningInterfaceSummary[]; atomBriefs: PlanningAtomBrief[]; sections: SharedPlanningBriefSection[]; byteLength: number; limits: SharedPlanningBriefLimits; budgetDiagnostics: SharedBriefBudgetDiagnostic[] }
-export type SharedBriefBudgetDiagnosticCode = 'atom-section-demoted' | 'section-dropped-unreferenced' | 'section-dropped-total-budget';
+type SharedBriefBudgetDiagnosticCode = 'atom-section-demoted' | 'section-dropped-unreferenced' | 'section-dropped-total-budget';
 export interface SharedBriefBudgetDiagnostic { code: SharedBriefBudgetDiagnosticCode; sectionId: string; atomId?: string; path?: string; message: string }
 export interface PlanningSharedFinding { findingId: string; sourceAtomId: string; evidencePath?: string; interfaceKey?: string; aspectIds: string[]; summary: string; validationExpectation?: string; byteLength: number }
 export type SharedPlanningBriefValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };

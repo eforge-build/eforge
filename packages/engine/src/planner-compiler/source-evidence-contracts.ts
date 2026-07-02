@@ -34,10 +34,6 @@ export function sourceEvidenceRecordsForAtom(bundle: PlanningSourceEvidenceBundl
   return bundle.records.filter((record) => paths.has(record.path)).map((record) => recordForAtom(record, atomId));
 }
 
-export function sourceEvidenceByteLengthForAtom(bundle: PlanningSourceEvidenceBundle | undefined, atomId: string): number {
-  return bundle?.bytesByAtomId?.[atomId] ?? 0;
-}
-
 function validateRecords(records: PlanningSourceEvidenceRecord[], ownership: Map<string, SharedPlanningBrief['evidenceOwnership'][number]>, atomIds: Set<string>, limits: PlanningSourceEvidenceLimits, errors: string[]): void {
   validateUnique('source evidence record', records.map((record) => record.path), errors);
   for (const record of records) {

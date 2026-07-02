@@ -1,4 +1,4 @@
-import { Type, type Static } from '@sinclair/typebox';
+import { Type } from '@sinclair/typebox';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import type { PlanningAtomMapResult } from './atom-map-runner.js';
@@ -11,7 +11,6 @@ export const PlanningReduceConflictSchema = Type.Object({ conflictId: boundedStr
 export const PlanningReduceGapIssueKindSchema = Type.Union([Type.Literal('generic'), Type.Literal('missing-owner-path'), Type.Literal('missing-contract-evidence'), Type.Literal('missing-entrypoint-evidence'), Type.Literal('missing-config-evidence'), Type.Literal('missing-consumer-surface-evidence'), Type.Literal('directory-only-evidence'), Type.Literal('missing-materialized-source'), Type.Literal('localization-ambiguity')]);
 export const PlanningReduceGapSchema = Type.Object({ gapId: boundedString(160), ...PlanningReduceIssueSchema.properties, representationRequired: Type.Boolean(), issueKind: Type.Optional(PlanningReduceGapIssueKindSchema), sourceLocalizationSignal: Type.Optional(Type.Boolean()), sourceNeedIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 64 })), affectedAtomIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 64 })), ownerPaths: Type.Optional(Type.Array(boundedString(300), { maxItems: 64 })), productScopedOutputRefs: Type.Optional(Type.Array(boundedString(300), { maxItems: 32 })), productScopedValidationRefs: Type.Optional(Type.Array(boundedString(300), { maxItems: 32 })) }, { additionalProperties: false });
 export const PlanningReduceOutputSchema = Type.Object({ nodeId: boundedString(160), status: Type.Union([Type.Literal('completed'), Type.Literal('failed'), Type.Literal('incomplete')]), compactSummary: boundedString(8_000), reduceDigest: Type.Optional(PlanningReduceDigestSchema), planFragments: Type.Optional(Type.Array(PlanningAtomPlanFragmentSchema, { maxItems: 32 })), moduleCandidates: Type.Optional(Type.Array(PlanningAtomModuleCandidateSchema, { maxItems: 32 })), conflicts: Type.Optional(Type.Array(PlanningReduceConflictSchema, { maxItems: 32 })), gaps: Type.Optional(Type.Array(PlanningReduceGapSchema, { maxItems: 32 })), validationStrategy: Type.Optional(boundedString(2_000)), error: Type.Optional(boundedString(2_000)) }, { additionalProperties: false });
-export type PlanningReduceOutputSubmission = Static<typeof PlanningReduceOutputSchema>;
 
 export interface PlanningReduceLimits { maxInputsPerReduce: number; maxReduceDepth: number; maxReducePromptBytes: number; maxReduceSummaryBytes: number; maxReduceDigestPromptBytes?: number }
 export interface PlanningReduceBudget extends PlanningReduceLimits { maxReduceDigestPromptBytes: number }

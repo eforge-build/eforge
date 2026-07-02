@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { lstat, open, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { classifyEvidenceCandidate, isGeneratedPlanningArtifactPath, normalizeEvidenceValue } from './evidence-hygiene.js';
+import { classifyEvidenceCandidate, isGeneratedPlanningArtifactPath } from './evidence-hygiene.js';
 import { normalizeSourceLocalizationInputs, type SourceLocalizationDiagnostic, type SourceLocalizationInputHints, type SourceLocalizationLimits } from './source-localization-contracts.js';
 
 const execFileAsync = promisify(execFile);
@@ -30,11 +30,6 @@ export async function deriveRepositoryIndex(input: DeriveRepositoryIndexInput): 
   if (paths.length > limits.maxIndexedFiles) diagnostics.push({ code: 'index-file-limit', message: `Repository index capped at ${limits.maxIndexedFiles} files.`, severity: 'warning' });
   const files = await inspectFiles(root, paths.slice(0, limits.maxIndexedFiles).sort(), limits, diagnostics);
   return { cwd: input.cwd, files, diagnostics, limits, ignoredPrefixes, ignoredGlobs, usedGit: listed.usedGit, truncated };
-}
-
-export function isRepositoryIndexPathIgnored(pathValue: string, hints?: SourceLocalizationInputHints): boolean {
-  const normalized = normalizeSourceLocalizationInputs(hints);
-  return isIgnoredPath(normalizeEvidenceValue(pathValue), normalizeIgnorePrefixes([...(normalized.hints.ignorePrefixes ?? []), ...DEFAULT_IGNORE_PREFIXES]), [...DEFAULT_IGNORE_GLOBS, ...(normalized.hints.ignoreGlobs ?? [])]);
 }
 
 async function listRepositoryPaths(root: string, limits: SourceLocalizationLimits, ignoredPrefixes: string[], ignoredGlobs: string[], diagnostics: SourceLocalizationDiagnostic[]): Promise<{ paths: string[]; usedGit: boolean; truncated: boolean }> {

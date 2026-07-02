@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildCompilePromptSourceBundle,
-  MODERATE_SOURCE_BYTES,
-} from '@eforge-build/engine/compile-resilience/preflight';
+import { buildCompilePromptSourceBundle } from '@eforge-build/engine/compile-resilience/preflight';
+
+// Larger than the preflight compaction threshold for ordinary prose (~40 KB).
+const MODERATE_SOURCE_BYTES = 40_000;
 
 const sentinel = 'RAW_GENERATED_SENTINEL_12345';
 

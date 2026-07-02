@@ -51,9 +51,8 @@ describe('GET /api/plans/:runId resume artifact projection', () => {
         name: 'feature-x',
         description: 'Feature X',
         created: ts,
-        mode: 'excursion',
         baseBranch: 'main',
-        pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
+        pipeline: { compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
         plans: [
           { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review },
           { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review },
@@ -84,9 +83,8 @@ describe('GET /api/plans/:runId resume artifact projection', () => {
         name: 'feature-x',
         description: 'Feature X',
         created: ts,
-        mode: 'excursion',
         baseBranch: 'main',
-        pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
+        pipeline: { compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
         plans: [],
       },
       plans: [{ id: 'plan-01', name: 'Plan 01', dependsOn: [] }],
@@ -103,7 +101,7 @@ describe('GET /api/plans/:runId resume artifact projection', () => {
       featureBranch: 'eforge/feature-x',
       artifactSource: 'merge-worktree',
       source: { label: 'Recovered PRD' },
-      orchestration: { name: 'feature-x', description: '', created: ts, mode: 'excursion', baseBranch: 'main', pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: review, rationale: '' }, plans: [] },
+      orchestration: { name: 'feature-x', description: '', created: ts, baseBranch: 'main', pipeline: { compile: [], defaultBuild: [], defaultReview: review, rationale: '' }, plans: [] },
       plans: [{ id: 'resume-plan', name: 'Resume Plan', body: '# Resume', dependsOn: [] }],
     });
     insertEvent(db, runId, 'planning:complete', {
@@ -122,7 +120,7 @@ describe('GET /api/plans/:runId resume artifact projection', () => {
       featureBranch: 'eforge/feature-x',
       artifactSource: 'merge-worktree',
       source: { label: 'Recovered PRD' },
-      orchestration: { name: 'feature-x', description: '', created: ts, mode: 'excursion', baseBranch: 'main', pipeline: { scope: 'excursion', compile: [], defaultBuild: [], defaultReview: review, rationale: '' }, plans: [] },
+      orchestration: { name: 'feature-x', description: '', created: ts, baseBranch: 'main', pipeline: { compile: [], defaultBuild: [], defaultReview: review, rationale: '' }, plans: [] },
       plans: [{ id: 'resume-plan', name: 'Resume Plan', body: '# Resume', dependsOn: [] }],
     });
     insertEvent(db, runId, 'gap_close:plan_ready', { planBody: '# Gap Close' });

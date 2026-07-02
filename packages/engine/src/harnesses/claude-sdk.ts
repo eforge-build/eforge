@@ -14,7 +14,7 @@ import type {
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
-import type { AgentHarness, AgentRunOptions, AgentTerminalSubtype, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
+import type { AgentHarness, AgentRunOptions, AgentTerminalSubtype } from '../harness.js';
 import { AgentTerminalError } from '../harness.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
@@ -131,12 +131,6 @@ export interface ClaudeSDKHarnessOptions {
    * Claude SDK-only — Pi has no Task tool / subagent concept.
    */
   disableSubagents?: boolean;
-  /**
-   * Optional callback fired just before each `sdkQuery` dispatch with a snapshot
-   * of the request (system prompt, tools, model, etc.). Used by diagnostic
-   * tooling like `eforge debug-composer` to compare framing across backends.
-   */
-  onDebugPayload?: HarnessDebugCallback;
 }
 
 /** The tool name Claude Code exposes for subagent spawning. */
@@ -180,7 +174,6 @@ export class ClaudeSDKHarness implements AgentHarness {
   private readonly settingSources?: SettingSource[];
   private readonly bare: boolean;
   private readonly disableSubagents: boolean;
-  private readonly onDebugPayload?: HarnessDebugCallback;
 
   constructor(options?: ClaudeSDKHarnessOptions) {
     this.mcpServers = options?.mcpServers;
@@ -188,7 +181,6 @@ export class ClaudeSDKHarness implements AgentHarness {
     this.settingSources = options?.settingSources;
     this.bare = options?.bare ?? false;
     this.disableSubagents = options?.disableSubagents ?? true;
-    this.onDebugPayload = options?.onDebugPayload;
   }
 
   /**
@@ -272,47 +264,6 @@ export class ClaudeSDKHarness implements AgentHarness {
             false, // Task already included by mergeMutationDisallowedTools
           )
         : resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
-
-      // Fire debug capture hook with the request eforge is about to hand to the SDK.
-      if (this.onDebugPayload) {
-        const debugPayload: HarnessDebugPayload = {
-          harness: 'claude-sdk',
-          agent,
-          userPrompt: options.prompt,
-          systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""
-          tools: [
-            ...(usesPreset
-              ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
-              : []),
-            ...(hasCustomMcpServers ? (options.customTools ?? []).map((ct) => ({
-              name: this.effectiveCustomToolName(ct.name),
-              description: ct.description,
-              parameters: ct.inputSchema,
-            })) : []),
-          ],
-          model: { id: options.model?.id ?? 'default' },
-          ...(options.effort !== undefined ? { effort: options.effort } : {}),
-          ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
-          maxTurns: options.maxTurns,
-          ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          disallowedTools: effectiveDisallowed,
-          extra: {
-            toolsMode: options.tools,
-            usesPreset,
-            isReadOnly,
-            disableSubagents: this.disableSubagents,
-            bare: this.bare,
-            projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
-            internalMcpServerNames: hasCustomMcpServers ? ['eforge_engine'] : [],
-            pluginCount: isReadOnly ? 0 : (this.plugins?.length ?? 0),
-            settingSources: (usesPreset && !isReadOnly) ? (this.settingSources ?? null) : null,
-            customToolCount: options.customTools?.length ?? 0,
-            eforgeDisallowedPatterns: [...EFORGE_DISALLOWED_TOOL_PATTERNS],
-            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. For read-only agents, mcpServers/plugins/settingSources are omitted to prevent mutating tools from being injected via project config. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt; internalMcpServerNames lists engine-internal MCP servers (eforge_engine custom tools) which are always preserved regardless of toolbelt filtering.',
-          },
-        };
-        await this.onDebugPayload(debugPayload);
-      }
 
       const q = sdkQuery({
         prompt: options.prompt,

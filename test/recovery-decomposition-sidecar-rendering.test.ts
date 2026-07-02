@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BuildFailureSummary, RecoveryVerdict } from '@eforge-build/engine/events';
 import type { DecompositionFailureEvidence, RecoverySidecarRecoveryOption } from '@eforge-build/client';
 import { compileScopeContextRecoveryOption } from '@eforge-build/engine/compile-resilience/context-recovery';
-import { findForbiddenDecompositionEvidenceKeys, renderDecompositionEvidenceMarkdownLines } from '@eforge-build/engine/recovery/decomposition-evidence-render';
+import { renderDecompositionEvidenceMarkdownLines } from '@eforge-build/engine/recovery/decomposition-evidence-render';
 import { renderRecoveryGuidanceSection } from '@eforge-build/engine/recovery/guidance-render';
 import { renderRecoverySidecarMarkdown } from '@eforge-build/engine/recovery/sidecar-markdown';
 import { buildRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-payload';
@@ -73,7 +73,6 @@ describe('recovery decomposition sidecar rendering', () => {
     expect(lines).toContain('Assigned criteria: 3');
     expect(lines).toContain('Unresolved criteria: 1');
     expect(lines).toContain('shared file owner pending');
-    expect(findForbiddenDecompositionEvidenceKeys({ evidence, rawSource: 'ROOT-SOURCE-SHOULD-NOT-APPEAR', nested: { prompt: 'PROMPT-SHOULD-NOT-APPEAR' } })).toEqual(['prompt', 'rawSource']);
   });
 
   it('preserves valid decomposition evidence through schema-version 4 sidecar parsing', () => {
