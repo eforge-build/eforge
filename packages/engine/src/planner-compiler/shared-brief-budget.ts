@@ -1,6 +1,5 @@
 import type { PlanningAtomGraph } from './atom-graph.js';
-import type { PlanningEvidenceOwnership, SharedBriefBudgetDiagnostic, SharedPlanningBriefLimits, SharedPlanningBriefSection } from './shared-brief-contracts.js';
-import type { SourceLocalizationConfidence } from './source-localization-contracts.js';
+import { compareEvidenceOwnershipValue, type PlanningEvidenceOwnership, type SharedBriefBudgetDiagnostic, type SharedPlanningBriefLimits, type SharedPlanningBriefSection } from './shared-brief-contracts.js';
 
 export interface SectionBudgetSelectionInput {
   graph: PlanningAtomGraph;
@@ -116,24 +115,8 @@ function ownershipForSection(sectionId: string, ownershipByPath: Map<string, Pla
 }
 
 function compareEvidenceValue(a: PlanningEvidenceOwnership | undefined, b: PlanningEvidenceOwnership | undefined): number {
-  return evidenceExactRank(a) - evidenceExactRank(b)
-    || confidenceRank(b?.localizationConfidence) - confidenceRank(a?.localizationConfidence)
-    || (a?.candidateRank ?? Number.MAX_SAFE_INTEGER) - (b?.candidateRank ?? Number.MAX_SAFE_INTEGER)
-    || (b?.referencedByAtomIds.length ?? 0) - (a?.referencedByAtomIds.length ?? 0)
-    || (a?.path ?? '').localeCompare(b?.path ?? '');
-}
-
-function evidenceExactRank(entry: PlanningEvidenceOwnership | undefined): number {
-  if (!entry) return 2;
-  const exact = !entry.localizationNeedIds || entry.ownershipRationale?.includes('exact-evidence-path');
-  return exact ? 0 : 1;
-}
-
-function confidenceRank(confidence: SourceLocalizationConfidence | undefined): number {
-  if (confidence === 'high') return 3;
-  if (confidence === 'medium') return 2;
-  if (confidence === 'low') return 1;
-  return 0;
+  if (!a || !b) return Number(!a) - Number(!b);
+  return compareEvidenceOwnershipValue(a, b);
 }
 
 function pathField(pathBySectionId: Map<string, string>, sectionId: string): { path?: string } {

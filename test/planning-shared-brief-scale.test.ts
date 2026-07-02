@@ -81,18 +81,30 @@ describe('planning shared brief at realistic scale (todo-api eval regression)', 
     expect(bundle.validationErrors).toEqual([]);
   });
 
-  it('spends binding per-atom file budgets on ranked evidence, not path order', async () => {
+  it('evicts deterministically when a single atom has more criterion-linked paths than maxFilesPerAtom', async () => {
     // Regression: with a single root atom every path funnels into one per-atom
     // file budget; path-ordered materialization starved src/test files (which
     // sort late) in favor of alphabetically-early sweep-ins, and the planner
     // then failed the compile via an unrepairable evidence gap.
+    //
+    // This is also the latent single-atom tension pinned down: the collapse
+    // gives a whole PRD one atom's evidence allowance, so contention must
+    // resolve by the shared value comparator and surface evictions as
+    // budget-exceeded records (reported as evidenceFailures in compiler
+    // diagnostics) - never as a failure.
     const { graph, brief } = await deriveFixtureBrief();
+    expect(brief.evidenceOwnership.filter((entry) => entry.criterionLinked).length).toBeGreaterThan(5);
 
     const bundle = await materializePlanningSourceEvidence({ cwd: FIXTURE_REPO, graph, sharedBrief: brief, limits: { maxFilesPerAtom: 5 } });
     const statuses = new Map(bundle.records.map((record) => [record.path, record.status]));
+    const evicted = bundle.records.filter((record) => record.status === 'budget-exceeded');
 
+    expect(bundle.records.filter((record) => record.status === 'materialized')).toHaveLength(5);
+    expect(evicted.length).toBeGreaterThan(0);
+    for (const record of evicted) expect(record.reason).toBe('max-files-per-atom');
     expect(statuses.get('test/todos.test.ts')).toBe('materialized');
     expect(statuses.get('.pi/extensions/marker/index.ts')).toBe('budget-exceeded');
+    expect(bundle.validationErrors).toEqual([]);
   });
 
   it('records budget diagnostics instead of failing when budgets bind', async () => {

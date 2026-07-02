@@ -4,7 +4,7 @@ import { classifyEvidenceCandidate } from './evidence-hygiene.js';
 import { utf8ByteLength } from './source-analysis.js';
 import { DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceLimits, type PlanningSourceEvidenceRecord, type PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
-import type { PlanningEvidenceOwnership, SharedPlanningBrief } from './shared-brief-contracts.js';
+import { compareEvidenceOwnershipValue, type PlanningEvidenceOwnership, type SharedPlanningBrief } from './shared-brief-contracts.js';
 
 export interface MaterializePlanningSourceEvidenceInput { cwd: string; graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; limits?: Partial<PlanningSourceEvidenceLimits> }
 
@@ -25,18 +25,12 @@ export async function materializePlanningSourceEvidence(input: MaterializePlanni
  * not the alphabetically-first: ownership order is path-sorted, so iterating
  * it directly materializes docs/config sweep-ins while src/ and test/ files
  * (alphabetically late) starve - fatal once a single-atom graph funnels every
- * path into one per-atom budget. Criterion-linked paths win, then localization
- * confidence, then candidate rank, then wider atom reach. Output records are
- * re-sorted by path, so only budget contention order changes.
+ * path into one per-atom budget. Value order is the shared comparator also
+ * used by shared-brief section selection. Output records are re-sorted by
+ * path, so only budget contention order changes.
  */
 function rankOwnershipForMaterialization(ownership: PlanningEvidenceOwnership[]): PlanningEvidenceOwnership[] {
-  const confidenceRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  return [...ownership].sort((a, b) =>
-    Number(b.criterionLinked === true) - Number(a.criterionLinked === true)
-    || (confidenceRank[a.localizationConfidence ?? ''] ?? 3) - (confidenceRank[b.localizationConfidence ?? ''] ?? 3)
-    || (a.candidateRank ?? Number.MAX_SAFE_INTEGER) - (b.candidateRank ?? Number.MAX_SAFE_INTEGER)
-    || b.referencedByAtomIds.length - a.referencedByAtomIds.length
-    || a.path.localeCompare(b.path));
+  return [...ownership].sort(compareEvidenceOwnershipValue);
 }
 
 async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership, limits: PlanningSourceEvidenceLimits, state: { totalBytes: number; filesByAtom: Map<string, number>; bytesByAtom: Map<string, number> }): Promise<PlanningSourceEvidenceRecord> {

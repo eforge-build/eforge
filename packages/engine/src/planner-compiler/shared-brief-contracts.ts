@@ -8,6 +8,27 @@ export type SharedPlanningBriefSectionKind = 'evidence' | 'interface' | 'depende
 export interface SharedPlanningBriefLimits { maxTotalBriefBytes: number; maxSectionBytes: number; maxSectionsPerAtom: number; maxSharedFindingsPerAtom: number; maxSharedFindingBytes: number }
 export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; criterionLinked?: boolean }
 export interface PlanningEvidenceOwnership extends PlanningEvidenceLocalizationMetadata { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
+
+/**
+ * The single definition of evidence value, shared by shared-brief section
+ * selection and evidence materialization so both budgets keep the same
+ * entries under contention: criterion-grounded paths first, then localization
+ * confidence, candidate rank, atom reach, path.
+ */
+export function compareEvidenceOwnershipValue(a: PlanningEvidenceOwnership, b: PlanningEvidenceOwnership): number {
+  return Number(b.criterionLinked === true) - Number(a.criterionLinked === true)
+    || evidenceConfidenceRank(b.localizationConfidence) - evidenceConfidenceRank(a.localizationConfidence)
+    || (a.candidateRank ?? Number.MAX_SAFE_INTEGER) - (b.candidateRank ?? Number.MAX_SAFE_INTEGER)
+    || b.referencedByAtomIds.length - a.referencedByAtomIds.length
+    || a.path.localeCompare(b.path);
+}
+
+function evidenceConfidenceRank(confidence: SourceLocalizationConfidence | undefined): number {
+  if (confidence === 'high') return 3;
+  if (confidence === 'medium') return 2;
+  if (confidence === 'low') return 1;
+  return 0;
+}
 export interface PlanningAtomBriefEvidenceSummary extends PlanningEvidenceLocalizationMetadata { path: string; shared: boolean; primaryAtomId?: string; consumerAtomIds: string[] }
 export interface PlanningSharedEvidenceRef extends PlanningEvidenceLocalizationMetadata { path: string; primaryAtomId: string; sectionId: string }
 export interface PlanningSharedInterfaceRef { key: string; primaryAtomId: string; sectionId: string }
