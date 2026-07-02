@@ -25,8 +25,6 @@ function enrichedCycleTerminated(decision: CycleTerminatedDecision): EnrichedCyc
 export function decisionSummary(decision: Decision): string {
   switch (decision.kind) {
     // Planning-phase summaries
-    case 'scope-selected':
-      return `${decision.scope} (via ${decision.source})`;
     case 'build-pipeline-chosen':
       return `${decision.defaultBuild.length} stage(s)`;
     case 'review-profile-chosen':
@@ -79,10 +77,6 @@ export function decisionDetail(decision: Decision): string {
     lines.push('');
   }
   switch (decision.kind) {
-    case 'scope-selected':
-      lines.push(`Scope: ${decision.scope}`);
-      lines.push(`Source: ${decision.source}`);
-      break;
     case 'build-pipeline-chosen':
       lines.push(`Stages (${decision.defaultBuild.length}): ${decision.defaultBuild.join(', ')}`);
       break;

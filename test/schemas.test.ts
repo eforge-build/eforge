@@ -415,7 +415,6 @@ describe('remaining schema YAML getters', () => {
 
   it('getPipelineCompositionSchemaYaml contains pipeline composition fields', () => {
     const yaml = getPipelineCompositionSchemaYaml();
-    expect(yaml).toContain('scope');
     expect(yaml).toContain('compile');
     expect(yaml).toContain('defaultBuild');
     expect(yaml).toContain('defaultReview');
@@ -433,7 +432,6 @@ describe('pipelineCompositionSchema', () => {
 
   it('accepts a valid pipeline composition', () => {
     const result = safeParseWithSchema(pipelineCompositionSchema, {
-      scope: 'excursion',
       compile: ['planner'],
       defaultBuild: ['implement'],
       defaultReview: validReview,
@@ -444,7 +442,6 @@ describe('pipelineCompositionSchema', () => {
 
   it('accepts parallel build stages', () => {
     const result = safeParseWithSchema(pipelineCompositionSchema, {
-      scope: 'expedition',
       compile: ['planner'],
       defaultBuild: ['implement', ['review-cycle', 'test']],
       defaultReview: validReview,
@@ -453,20 +450,8 @@ describe('pipelineCompositionSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects invalid scope', () => {
-    const result = safeParseWithSchema(pipelineCompositionSchema, {
-      scope: 'invalid',
-      compile: ['planner'],
-      defaultBuild: ['implement'],
-      defaultReview: validReview,
-      rationale: 'Test',
-    });
-    expect(result.success).toBe(false);
-  });
-
   it('rejects empty rationale', () => {
     const result = safeParseWithSchema(pipelineCompositionSchema, {
-      scope: 'errand',
       compile: ['planner'],
       defaultBuild: ['implement'],
       defaultReview: { ...validReview, maxRounds: 1, evaluatorStrictness: 'lenient' as const },

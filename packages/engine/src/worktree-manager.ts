@@ -213,7 +213,6 @@ export class WorktreeManager {
     planId: string,
     plan: { id: string; name: string; branch: string },
     opts: {
-      mode?: string;
       mergeResolver?: MergeResolver;
       recentlyMergedIds?: string[];
       planMap?: Map<string, { name: string }>;
@@ -230,8 +229,7 @@ export class WorktreeManager {
     } = {},
   ): Promise<string> {
     const managed = this.worktrees.get(planId);
-    const prefix = opts.mode === 'errand' ? 'fix' : 'feat';
-    const commitMessage = composeCommitMessage(`${prefix}(${plan.id}): ${plan.name}`, opts.modelTracker);
+    const commitMessage = composeCommitMessage(`feat(${plan.id}): ${plan.name}`, opts.modelTracker);
 
     if (managed?.builtOnMerge) {
       // Plan built directly on the merge worktree - commits already on featureBranch.

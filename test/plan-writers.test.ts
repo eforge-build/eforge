@@ -44,7 +44,7 @@ describe('writePlanSet', () => {
   };
 
   it('creates plan markdown files with YAML frontmatter', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main' });
 
     const plan1Content = await readFile(join(tempDir, 'eforge/plans/test-set/plan-01-auth.md'), 'utf-8');
     expect(plan1Content).toMatch(/^---\n/);
@@ -62,7 +62,7 @@ describe('writePlanSet', () => {
   });
 
   it('creates orchestration.yaml with correct structure', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main' });
 
     const orchContent = await readFile(join(tempDir, 'eforge/plans/test-set/orchestration.yaml'), 'utf-8');
     const orch = parseYaml(orchContent) as Record<string, unknown>;
@@ -70,7 +70,6 @@ describe('writePlanSet', () => {
     expect(orch.name).toBe('test-set');
     expect(orch.description).toBe('Test plan set');
     expect(orch.base_branch).toBe('main');
-    expect(orch.mode).toBe('excursion');
 
     const plans = orch.plans as Array<Record<string, unknown>>;
     expect(plans).toHaveLength(2);
@@ -80,7 +79,7 @@ describe('writePlanSet', () => {
   });
 
   it('YAML frontmatter matches input data', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main' });
 
     const plan1Content = await readFile(join(tempDir, 'eforge/plans/test-set/plan-01-auth.md'), 'utf-8');
     const match = plan1Content.match(/^---\n([\s\S]*?)\n---/);
@@ -92,14 +91,13 @@ describe('writePlanSet', () => {
     expect(frontmatter.branch).toBe('test-set/plan-01-auth');
   });
 
-  it('derives name, base_branch, mode, and per-plan branch from engine options, not payload', async () => {
+  it('derives name, base_branch, and per-plan branch from engine options, not payload', async () => {
     await writePlanSet({
       cwd: tempDir,
       outputDir: 'eforge/plans',
       planSetName: 'my-feature',
       payload,
       baseBranch: 'develop',
-      mode: 'errand',
     });
 
     const orchContent = await readFile(join(tempDir, 'eforge/plans/my-feature/orchestration.yaml'), 'utf-8');
@@ -108,7 +106,6 @@ describe('writePlanSet', () => {
     // Root fields from engine options
     expect(orch.name).toBe('my-feature');
     expect(orch.base_branch).toBe('develop');
-    expect(orch.mode).toBe('errand');
 
     // Per-plan branch derived from planSetName/plan.id
     const plans = orch.plans as Array<Record<string, unknown>>;

@@ -708,10 +708,6 @@ export function getPlanReviewSubmissionSchemaYaml(): string {
 // ---------------------------------------------------------------------------
 
 export const pipelineCompositionSchema = Type.Object({
-  scope: Type.Union(
-    [Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')],
-    { description: 'Orchestration scope: errand for trivial tasks, excursion for most work, expedition for 4+ independent subsystems' },
-  ),
   compile: Type.Array(Type.String(), { description: 'Ordered list of compile stage names from the stage catalog' }),
   defaultBuild: Type.Array(pipelineBuildStageSpecSchema, {
     description: 'Default build stage pipeline - each entry is a stage name or array of parallel stage names',
@@ -724,7 +720,7 @@ export const pipelineCompositionSchema = Type.Object({
 
 export type PipelineComposition = Static<typeof pipelineCompositionSchema>;
 
-/** Schema YAML for pipeline composition (used by pipeline-composer agent). */
+/** Schema YAML for pipeline composition. */
 export function getPipelineCompositionSchemaYaml(): string {
   return getSchemaYaml('pipeline-composition', pipelineCompositionSchema);
 }

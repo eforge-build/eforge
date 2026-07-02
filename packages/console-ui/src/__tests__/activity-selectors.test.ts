@@ -256,9 +256,6 @@ describe('classifyFamily', () => {
     expect(classifyFamily({ type: 'phase:start' } as unknown as EforgeEvent)).toBe('session');
     expect(classifyFamily({ type: 'planning:start' } as unknown as EforgeEvent)).toBe('session');
     expect(classifyFamily({ type: 'plan:build:start' } as unknown as EforgeEvent)).toBe('session');
-    expect(
-      classifyFamily({ type: 'expedition:architecture:complete' } as unknown as EforgeEvent),
-    ).toBe('session');
     expect(classifyFamily({ type: 'landing:start' } as unknown as EforgeEvent)).toBe('session');
     expect(classifyFamily({ type: 'merge:finalize:start' } as unknown as EforgeEvent)).toBe('session');
     expect(classifyFamily({ type: 'validation:start' } as unknown as EforgeEvent)).toBe('session');

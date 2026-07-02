@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import { basename, isAbsolute, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { BuildStageSpec, PlanInfo, PlansResponse, ReviewProfileConfig } from '@eforge-build/client';
@@ -12,7 +12,6 @@ interface BuildPlansInput {
 }
 
 type PlanDraft = PlanInfo;
-type ModuleMeta = { id: string; description: string; dependsOn: string[] };
 type BuildReviewConfig = { build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
 function isInsideDir(parent: string, child: string): boolean {
@@ -41,42 +40,6 @@ export function candidateOrchestrationPaths(repoCwd: string, planBase: string, p
     { path: mainPath, base: mainBase },
     { path: resolve(worktreeBase, planBase, planSet, 'orchestration.yaml'), base: resolve(worktreeBase, planBase) },
   ];
-}
-
-export function candidatePlanDirs(repoCwd: string, planBase: string, planSet: string): Array<{ dir: string; base: string }> {
-  const mainDir = resolve(repoCwd, planBase, planSet);
-  const mainBase = resolve(repoCwd, planBase);
-  const worktreeBase = resolve(repoCwd, '..', `${basename(repoCwd)}-${planSet}-worktrees`, '__merge__');
-  return [
-    { dir: mainDir, base: mainBase },
-    { dir: resolve(worktreeBase, planBase, planSet), base: resolve(worktreeBase, planBase) },
-  ];
-}
-
-async function readExpeditionFiles(planDir: string, moduleMap: Map<string, ModuleMeta>): Promise<PlanDraft[]> {
-  const files: PlanDraft[] = [];
-  const realPlanDir = await realpath(planDir);
-  try {
-    const body = await safeReadContainedFile(resolve(planDir, 'architecture.md'), realPlanDir);
-    if (body !== null) files.push({ id: '__architecture__', name: 'Architecture', body, dependsOn: [], type: 'architecture' });
-  } catch { /* file may not exist */ }
-  try {
-    const modulesDir = resolve(planDir, 'modules');
-    const realModulesDir = await resolveContainedPath(modulesDir, realPlanDir);
-    if (!realModulesDir) return files;
-    const moduleFiles = await readdir(realModulesDir);
-    for (const file of moduleFiles.sort()) {
-      if (!file.endsWith('.md')) continue;
-      const moduleId = basename(file, '.md');
-      if (moduleMap.size > 0 && !moduleMap.has(moduleId)) continue;
-      try {
-        const meta = moduleMap.get(moduleId);
-        const body = await safeReadContainedFile(resolve(realModulesDir, file), realPlanDir);
-        if (body !== null) files.push({ id: `__module__${moduleId}`, name: meta?.description ?? moduleId, body, dependsOn: meta?.dependsOn ?? [], type: 'module' });
-      } catch { /* skip unreadable */ }
-    }
-  } catch { /* modules dir may not exist */ }
-  return files;
 }
 
 async function readBuildConfigFromOrchestration(db: MonitorDB, sessionId: string, planOutputDir?: string): Promise<Map<string, BuildReviewConfig> | null> {
@@ -135,29 +98,6 @@ function compiledPlans(db: MonitorDB, sessionId: string): PlanDraft[] {
   } catch { return []; }
 }
 
-async function expeditionPlans(db: MonitorDB, sessionId: string, planOutputDir?: string): Promise<PlanDraft[]> {
-  const archEvents = db.getEventsByTypeForSession(sessionId, 'expedition:architecture:complete');
-  if (archEvents.length === 0) return [];
-  const compileRun = [...db.getSessionRuns(sessionId)].reverse().find((r) => r.command === 'compile');
-  if (!compileRun) return [];
-  let resolvedPlanDir: string | null = null;
-  for (const candidate of candidatePlanDirs(compileRun.cwd, planOutputDir ?? 'eforge/plans', compileRun.planSet)) {
-    if (!candidate.dir.startsWith(`${candidate.base}/`)) continue;
-    try {
-      const realBase = await realpath(candidate.base);
-      const realDir = await resolveContainedPath(candidate.dir, realBase);
-      if (!realDir) continue;
-      await stat(realDir);
-      resolvedPlanDir = realDir;
-      break;
-    } catch { /* try next */ }
-  }
-  if (!resolvedPlanDir) return [];
-  let modules: ModuleMeta[] = [];
-  try { modules = (JSON.parse(archEvents[0].data) as { modules?: ModuleMeta[] }).modules || []; } catch { /* ignore */ }
-  return readExpeditionFiles(resolvedPlanDir, new Map(modules.map((m) => [m.id, m])));
-}
-
 function gapClosePlans(db: MonitorDB, sessionId: string): PlanDraft[] {
   const row = db.getEventsByTypeForSession(sessionId, 'gap_close:plan_ready').at(-1);
   if (!row) return [];
@@ -188,7 +128,6 @@ function enrichPlans(plans: PlanDraft[], config: Map<string, BuildReviewConfig> 
 
 export async function buildPlansResponse(input: BuildPlansInput): Promise<PlansResponse> {
   let allPlans = [
-    ...await expeditionPlans(input.db, input.sessionId, input.planOutputDir),
     ...compiledPlans(input.db, input.sessionId),
     ...gapClosePlans(input.db, input.sessionId),
   ];

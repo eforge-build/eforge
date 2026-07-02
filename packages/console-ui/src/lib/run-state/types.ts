@@ -18,7 +18,6 @@ export type {
   OrchestrationConfig,
   PlanState,
   EforgeState,
-  ExpeditionModule,
   BuildResumeArtifactSource,
   BuildResumeArtifactPlan,
   BuildResumeArtifactsEvent,
@@ -95,8 +94,6 @@ export interface AgentActivityFacts {
   attribution: 'exact' | 'best_effort' | 'unavailable';
   notes?: string[];
 }
-
-export type ModuleStatus = 'pending' | 'planning' | 'complete';
 
 export interface StoredEvent {
   event: import('@eforge-build/client/browser').EforgeEvent;
@@ -219,8 +216,6 @@ export interface RunState {
   fileChanges: Map<string, string[]>;
   reviewIssues: Record<string, import('@eforge-build/client/browser').ReviewIssue[]>;
   agentThreads: AgentThread[];
-  expeditionModules: import('@eforge-build/client/browser').ExpeditionModule[];
-  moduleStatuses: Record<string, ModuleStatus>;
   earlyOrchestration: import('@eforge-build/client/browser').OrchestrationConfig | null;
   resumeArtifacts: import('@eforge-build/client/browser').BuildResumeArtifactPlan[];
   resumeSource: import('@eforge-build/client/browser').BuildResumeArtifactSource | null;

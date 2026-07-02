@@ -4,7 +4,7 @@ import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
-import { plannerContinuationReasonLabel, renderCompilePreflightLines, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from './compile-resilience-display.js';
+import { plannerContinuationReasonLabel, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from './compile-resilience-display.js';
 import { renderPlanningDecompositionEventModel } from './planning-decomposition-display.js';
 
 // Module-scoped display state
@@ -146,14 +146,6 @@ function completeEvaluationSpinner(key: string, label: string, accepted: number,
     );
   }
 }
-function getPlanningScopeColor(scope: string): (s: string) => string {
-  const scopeColors: Record<string, (s: string) => string> = {
-    errand: chalk.green,
-    excursion: chalk.yellow,
-    expedition: chalk.magenta,
-  };
-  return scopeColors[scope] ?? chalk.cyan;
-}
 function getQueueStalenessVerdictColor(verdict: string): (s: string) => string {
   const verdictColors: Record<string, (s: string) => string> = {
     proceed: chalk.green,
@@ -262,11 +254,6 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
       setSpinnerText('plan', 'Planner compact inspection summary captured; resuming synthesis...');
       return true;
     }
-    case 'planning:preflight': {
-      const lines = renderCompilePreflightLines(event.risk, { verbose });
-      for (const line of lines) console.log(chalk.yellow(`  ⚠ ${line}`));
-      return true;
-    }
     case 'planning:scope-context:failure': {
       const model = renderCompileScopeContextFailureModel(event.failure);
       failSpinner('plan', `Planning stopped: ${event.failure.failureKind} at ${event.failure.stage}`);
@@ -288,8 +275,7 @@ function renderPlanningEvent(event: EforgeEvent): boolean {
       failSpinner('plan', `Planning failed: ${event.reason}`);
       return true;
     case 'planning:pipeline': {
-      const scopeColorFn = getPlanningScopeColor(event.scope);
-      console.log(`  Pipeline: ${scopeColorFn(event.scope)} - ${chalk.dim(event.rationale)}`);
+      console.log(`  Pipeline: ${chalk.cyan(event.compile.join(' → '))} - ${chalk.dim(event.rationale)}`);
       return true;
     }
     case 'planning:warning':
@@ -315,36 +301,6 @@ function renderPlanningReviewEvent(event: EforgeEvent): boolean {
       return true;
     case 'planning:evaluate:complete':
       completeEvaluationSpinner('plan-evaluate', 'Plan', event.accepted, event.rejected);
-      return true;
-    case 'planning:architecture:review:start':
-      startSpinner('architecture-review', 'Reviewing architecture...');
-      return true;
-    case 'planning:architecture:review:complete':
-      completeReviewSpinner('architecture-review', 'Architecture review complete — no issues found', 'Architecture review', event.issues);
-      return true;
-    case 'planning:architecture:evaluate:start':
-      startSpinner('architecture-evaluate', 'Evaluating architecture review fixes...');
-      return true;
-    case 'planning:architecture:evaluate:continuation':
-      setSpinnerText('architecture-evaluate', `Evaluating architecture review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`);
-      return true;
-    case 'planning:architecture:evaluate:complete':
-      completeEvaluationSpinner('architecture-evaluate', 'Architecture', event.accepted, event.rejected);
-      return true;
-    case 'planning:cohesion:start':
-      startSpinner('cohesion-review', 'Reviewing cross-module cohesion...');
-      return true;
-    case 'planning:cohesion:complete':
-      completeReviewSpinner('cohesion-review', 'Cohesion review complete — no issues found', 'Cohesion review', event.issues);
-      return true;
-    case 'planning:cohesion:evaluate:start':
-      startSpinner('cohesion-evaluate', 'Evaluating cohesion review fixes...');
-      return true;
-    case 'planning:cohesion:evaluate:continuation':
-      setSpinnerText('cohesion-evaluate', `Evaluating cohesion review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`);
-      return true;
-    case 'planning:cohesion:evaluate:complete':
-      completeEvaluationSpinner('cohesion-evaluate', 'Cohesion', event.accepted, event.rejected);
       return true;
     default:
       return false;
@@ -599,40 +555,6 @@ function renderPostBuildOrchestrationEvent(event: EforgeEvent): boolean {
       } else {
         console.log(chalk.red(`  ✗ Failed to resolve merge conflicts for ${event.planId}`));
       }
-      return true;
-    default:
-      return false;
-  }
-}
-function renderExpeditionEvent(event: EforgeEvent): boolean {
-  switch (event.type) {
-    case 'expedition:architecture:complete':
-      succeedSpinner('plan', `Architecture complete — ${event.modules.length} modules defined`);
-      for (const mod of event.modules) {
-        console.log(`  ${chalk.cyan(mod.id)} — ${mod.description}`);
-      }
-      return true;
-    case 'expedition:wave:start':
-      console.log('');
-      console.log(
-        chalk.magenta(`━━ Module wave ${event.wave} ━━`) +
-          chalk.dim(` [${event.moduleIds.join(', ')}]`),
-      );
-      return true;
-    case 'expedition:wave:complete':
-      console.log(chalk.magenta(`━━ Module wave ${event.wave} complete ━━`));
-      return true;
-    case 'expedition:module:start':
-      startSpinner(`mod:${event.moduleId}`, `Planning module ${chalk.cyan(event.moduleId)}...`);
-      return true;
-    case 'expedition:module:complete':
-      succeedSpinner(`mod:${event.moduleId}`, `Module ${chalk.cyan(event.moduleId)} planned`);
-      return true;
-    case 'expedition:compile:start':
-      startSpinner('compile', 'Compiling plan files...');
-      return true;
-    case 'expedition:compile:complete':
-      succeedSpinner('compile', `Compiled ${event.plans.length} plan file(s)`);
       return true;
     default:
       return false;
@@ -907,7 +829,6 @@ export function renderEvent(event: EforgeEvent): void {
   if (renderPlanningReviewEvent(event)) return;
   if (renderPlanBuildEvent(event)) return;
   if (renderOrchestrationEvent(event)) return;
-  if (renderExpeditionEvent(event)) return;
   if (renderValidationEvent(event)) return;
   if (renderAgentEvent(event)) return;
   if (renderInteractionEvent(event)) return;

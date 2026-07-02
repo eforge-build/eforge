@@ -155,8 +155,8 @@ export async function composeReviewPrompt(
 /**
  * Legacy fail-open parser for `<review-issues>` XML blocks.
  *
- * Advisory-only: planning reviewers (plan-reviewer, architecture-reviewer,
- * cohesion-reviewer) intentionally use this parser because their outputs are
+ * Advisory-only: planning reviewers (plan-reviewer, the planning-quality
+ * reviewer) intentionally use this parser because their outputs are
  * advisory — a missing or malformed XML block is treated as "no issues" rather
  * than a contract violation. Build reviewers must use parseReviewIssuesStrict
  * instead.

@@ -91,7 +91,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
   const { openPreview, openContentPreview } = usePlanPreview();
 
   // Pack agent threads into the minimum number of lanes so sequential agents
-  // (e.g. planner -> architecture-reviewer -> module-planner) share a single
+  // (e.g. planner -> plan-reviewer -> plan-evaluator) share a single
   // row instead of cascading diagonally. Concurrent agents still fan out.
   const threadLanes = useMemo(
     () => packIntoLanes(

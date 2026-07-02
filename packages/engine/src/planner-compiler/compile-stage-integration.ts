@@ -75,7 +75,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   });
 
   ctx.pipeline = pipeline;
-  yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', scope: pipeline.scope, compile: pipeline.compile, defaultBuild: pipeline.defaultBuild, defaultReview: pipeline.defaultReview, rationale: pipeline.rationale };
+  yield { timestamp: new Date().toISOString(), type: 'planning:pipeline', compile: pipeline.compile, defaultBuild: pipeline.defaultBuild, defaultReview: pipeline.defaultReview, rationale: pipeline.rationale };
   ctx.plans = written.plans;
   const validation = await validateCompileArtifacts(ctx, { compilerArtifacts: 'require' });
   for (const warning of validation.warnings) yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'artifact-validation' };

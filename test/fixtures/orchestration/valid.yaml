@@ -1,10 +1,8 @@
 name: test-orchestration
 description: A test orchestration config
 created: "2026-01-01"
-mode: excursion
 base_branch: main
 pipeline:
-  scope: excursion
   compile:
     - planner
     - plan-review-cycle

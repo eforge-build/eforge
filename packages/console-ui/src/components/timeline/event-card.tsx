@@ -6,8 +6,6 @@ import { usePlanPreview } from '@/components/preview';
 import { Button } from '@/components/ui/button';
 import { decisionSummary, decisionDetail } from '@/lib/decision-format';
 import {
-  compilePreflightDetail,
-  compilePreflightSummary,
   compileScopeContextFailureDetail,
   compileScopeContextFailureSummary,
   plannerInspectionSummaryDetail,
@@ -31,10 +29,6 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'phase:end') {
     const status = 'result' in event ? (event as { result?: { status?: string } }).result?.status : undefined;
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
-  }
-  if (type === 'planning:preflight') {
-    const level = event.type === 'planning:preflight' ? event.risk.level : undefined;
-    return { cls: level === 'normal' ? 'info' : 'warning', label: type };
   }
   if (type === 'planning:scope-context:failure') return { cls: 'failed', label: type };
   if (type === 'planning:inspection-summary') return { cls: 'warning', label: type };
@@ -105,7 +99,6 @@ function eventSummary(event: EforgeEvent): string {
     case 'planning:skip': return `Skipped: ${event.reason}`;
     case 'planning:clarification': return `${event.questions?.length || 0} clarification question(s)`;
     case 'planning:progress': return event.message;
-    case 'planning:preflight': return compilePreflightSummary(event.risk);
     case 'planning:scope-context:failure': return compileScopeContextFailureSummary(event.failure);
     case 'planning:inspection-summary': return plannerInspectionSummarySummary(event.summary);
     case 'planning:decomposition:start':
@@ -125,10 +118,6 @@ function eventSummary(event: EforgeEvent): string {
     case 'planning:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
     case 'planning:evaluate:start': return 'Evaluating plan review fixes';
     case 'planning:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
-    case 'planning:architecture:review:start': return 'Architecture review started';
-    case 'planning:architecture:review:complete': return `Architecture review: ${event.issues?.length || 0} issue(s)`;
-    case 'planning:architecture:evaluate:start': return 'Evaluating architecture review fixes';
-    case 'planning:architecture:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
     case 'plan:build:start': return `Building: ${event.planId}`;
     case 'plan:build:implement:start': return `Implementing: ${event.planId}`;
     case 'plan:build:implement:progress': return `[${event.planId}] ${event.message}`;
@@ -161,11 +150,6 @@ function eventSummary(event: EforgeEvent): string {
       return `Branch ready: ${event.featureBranch}`;
     }
     case 'landing:skipped': return `Landing skipped (${event.action}): ${event.reason}`;
-    case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
-    case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
-    case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;
-    case 'expedition:compile:start': return 'Compiling expedition plans';
-    case 'expedition:compile:complete': return `Compiled ${event.plans?.length || 0} plan(s)`;
     case 'agent:message': return `[${event.agent}] message`;
     case 'agent:tool_use': return `[${event.agent}] ${event.tool}`;
     case 'agent:tool_result': return `[${event.agent}] ${event.tool} result`;
@@ -239,8 +223,6 @@ function eventDetail(event: EforgeEvent): string | null {
   switch (event.type) {
     case 'planning:clarification':
       return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
-    case 'planning:preflight':
-      return compilePreflightDetail(event.risk);
     case 'planning:scope-context:failure':
       return compileScopeContextFailureDetail(event.failure);
     case 'planning:inspection-summary': {
@@ -260,7 +242,6 @@ function eventDetail(event: EforgeEvent): string | null {
     case 'planning:decomposition:synthesis:complete':
       return planningDecompositionEventDetail(event);
     case 'planning:review:complete':
-    case 'planning:architecture:review:complete':
     case 'plan:build:review:complete':
       return event.issues?.map((i) => `[${i.severity}] ${i.category} — ${i.file}${i.line ? ':' + i.line : ''}\n  ${i.description}`).join('\n\n') ?? null;
     case 'agent:message':
@@ -307,8 +288,6 @@ function eventDetail(event: EforgeEvent): string | null {
     }
     case 'phase:end':
       return event.result?.summary ?? null;
-    case 'expedition:architecture:complete':
-      return event.modules?.map((m) => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n') ?? null;
     case 'validation:command:complete':
       return event.output || null;
     case 'validation:command:timeout':

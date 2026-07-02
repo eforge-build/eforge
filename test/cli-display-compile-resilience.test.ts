@@ -1,22 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CompilePreflightRisk, CompileScopeContextFailure, PlannerInspectionSummary } from '@eforge-build/client';
-import { plannerContinuationReasonLabel, renderCompilePreflightLines, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from '../packages/eforge/src/cli/compile-resilience-display.js';
-
-const hash = 'a'.repeat(64);
-
-function risk(level: CompilePreflightRisk['level']): CompilePreflightRisk {
-  return {
-    level,
-    sourceBytes: 4096,
-    promptSourceBytes: 2048,
-    acceptanceCriteriaCount: 7,
-    score: 3,
-    generatedInventory: { detected: true, contentHashes: [hash], pathReferences: ['src/a.ts'], headings: ['Generated'], blockCount: 2, sidecarCount: 1, omittedBytes: 10 },
-    subsystemBreadth: { count: 3, subsystems: ['cli', 'console'], evidence: ['cli evidence'] },
-    reasons: ['large generated inventory'],
-    recommendation: { action: level === 'normal' ? 'none' : 'bounded-decomposition', eligible: true, reason: 'Split into bounded pieces.' },
-  };
-}
+import type { CompileScopeContextFailure, PlannerInspectionSummary } from '@eforge-build/client';
+import { plannerContinuationReasonLabel, renderCompileScopeContextFailureModel, renderPlannerInspectionSummaryModel } from '../packages/eforge/src/cli/compile-resilience-display.js';
 
 function plannerInspectionSummary(): PlannerInspectionSummary {
   return {
@@ -82,22 +66,6 @@ function failureWithGuardDiagnostics(): CompileScopeContextFailure {
 }
 
 describe('compile resilience CLI formatting', () => {
-  it('keeps normal preflight silent unless verbose', () => {
-    expect(renderCompilePreflightLines(risk('normal'))).toEqual([]);
-    expect(renderCompilePreflightLines(risk('normal'), { verbose: true })[0]).toContain('normal');
-  });
-
-  it('renders elevated and overflow preflight compactly', () => {
-    const elevated = renderCompilePreflightLines(risk('elevated'))[0];
-    expect(elevated).toContain('elevated');
-    expect(elevated).toContain('4.0 KiB source');
-    expect(elevated).toContain('7 AC');
-    expect(elevated).toContain('bounded decomposition');
-
-    const overflow = renderCompilePreflightLines(risk('overflow-risk'));
-    expect(overflow.join('\n')).toContain('Split into bounded pieces.');
-  });
-
   it('renders compact planner inspection details and continuation reason labels', () => {
     const model = renderPlannerInspectionSummaryModel(plannerInspectionSummary());
     const detail = model.details.join('\n');

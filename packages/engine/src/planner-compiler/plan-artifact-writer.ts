@@ -35,7 +35,7 @@ export async function writePlanningCompilerArtifacts(input: WritePlanningCompile
   const validation = validatePlanSetSubmission(payload);
   if (!validation.success) throw new Error(`Invalid planner compiler plan set: ${validation.error.message}`);
 
-  await writePlanSet({ cwd: input.cwd, outputDir: input.outputDir, planSetName: input.planSetName, payload, baseBranch: input.baseBranch ?? 'main', mode: input.pipeline.scope });
+  await writePlanSet({ cwd: input.cwd, outputDir: input.outputDir, planSetName: input.planSetName, payload, baseBranch: input.baseBranch ?? 'main' });
   const planDir = resolve(input.cwd, input.outputDir, input.planSetName);
   await mkdir(planDir, { recursive: true });
   await writeFile(resolve(planDir, 'architecture.md'), input.artifacts.architectureMarkdown, 'utf8');

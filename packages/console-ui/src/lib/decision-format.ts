@@ -19,8 +19,6 @@ function enrichedCycleTerminated(decision: CycleTerminatedDecision): EnrichedCyc
 export function decisionKindColor(kind: Decision['kind']): { bg: string; border: string } {
   switch (kind) {
     // Planning-phase kinds — teal/green family
-    case 'scope-selected':
-      return { bg: 'bg-teal-500', border: 'border-teal-400' };
     case 'build-pipeline-chosen':
       return { bg: 'bg-green-500', border: 'border-green-400' };
     case 'review-profile-chosen':
@@ -51,8 +49,6 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
 export function decisionSummary(decision: Decision): string {
   switch (decision.kind) {
     // Planning-phase summaries
-    case 'scope-selected':
-      return `${decision.scope} (via ${decision.source})`;
     case 'build-pipeline-chosen':
       return `${decision.defaultBuild.length} stage(s)`;
     case 'review-profile-chosen':
@@ -105,10 +101,6 @@ export function decisionDetail(decision: Decision): string {
     lines.push('');
   }
   switch (decision.kind) {
-    case 'scope-selected':
-      lines.push(`Scope: ${decision.scope}`);
-      lines.push(`Source: ${decision.source}`);
-      break;
     case 'build-pipeline-chosen':
       lines.push(`Stages (${decision.defaultBuild.length}): ${decision.defaultBuild.join(', ')}`);
       break;

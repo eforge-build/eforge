@@ -1,27 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { CompilePreflightRisk, CompileScopeContextFailure, PlannerInspectionSummary } from '@eforge-build/client/browser';
-import { compilePreflightDetail, compilePreflightSummary, compileScopeContextFailureDetail, compileScopeContextFailureSummary, plannerInspectionSummaryDetail, plannerInspectionSummarySummary, recoveryActionLabel } from '@/lib/compile-resilience-format';
-
-const hash = 'b'.repeat(64);
-
-const risk: CompilePreflightRisk = {
-  level: 'overflow-risk',
-  sourceBytes: 4096,
-  promptSourceBytes: 2048,
-  acceptanceCriteriaCount: 4,
-  score: 4,
-  generatedInventory: { detected: true, contentHashes: [hash], pathReferences: ['docs/generated.md'], headings: ['Generated'], blockCount: 2, sidecarCount: 1, omittedBytes: 9 },
-  subsystemBreadth: { count: 2, subsystems: ['cli', 'console'], evidence: ['two surfaces'] },
-  reasons: ['too large'],
-  recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split the PRD.' },
-};
+import type { CompileScopeContextFailure, PlannerInspectionSummary } from '@eforge-build/client/browser';
+import { compileScopeContextFailureDetail, compileScopeContextFailureSummary, plannerInspectionSummaryDetail, plannerInspectionSummarySummary, recoveryActionLabel } from '@/lib/compile-resilience-format';
 
 const failure: CompileScopeContextFailure = {
   source: 'live-context-guard',
   failureKind: 'context-budget',
   stage: 'compile',
   explanation: 'Guard stopped compile.',
-  risk,
   observed: { promptBytes: 8192, inputTokens: 10, outputTokens: 20, turns: 3 },
   recovery: { action: 'bounded-decomposition', eligible: true, attempted: true, attempt: 1, maxAttempts: 2, reason: 'Inspect bounded decomposition evidence.' },
   artifacts: { orchestrationExists: false, validPlanCount: 0, invalidPlanCount: 1, missingPlanFileCount: 1, missingPlanFiles: ['plan-01.md'], invalidPlanFiles: ['plan-02.md'] },
@@ -73,15 +58,6 @@ const failureWithGuardDiagnostics: CompileScopeContextFailure = {
 };
 
 describe('compile resilience console formatting', () => {
-  it('formats preflight summary and detail', () => {
-    expect(compilePreflightSummary(risk)).toContain('overflow-risk');
-    const detail = compilePreflightDetail(risk);
-    expect(detail).toContain('Generated inventory');
-    expect(detail).toContain(hash);
-    expect(detail).toContain('Subsystem evidence');
-    expect(detail).toContain('Split the PRD.');
-  });
-
   it('formats failure summary and detail', () => {
     expect(compileScopeContextFailureSummary(failure)).toContain('context-budget from live-context-guard at compile');
     const detail = compileScopeContextFailureDetail(failure);

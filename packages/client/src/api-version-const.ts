@@ -46,5 +46,8 @@
  * event variants, so stale clients must be rejected before parsing sessions.)
  * (v81 is a case 1 bump: agent:start events require runtime choice
  * metadata, and extension registration summaries require runtimeChoiceRouters.)
+ * (v82 is a case 1 bump: deletes the expedition/architecture/cohesion/preflight
+ * event variants, the orchestration scope enum and mode/scope fields, the
+ * retry-as-expedition recovery action, and six retired agent roles.)
  */
-export const DAEMON_API_VERSION = 81; // v81: requires runtime-choice event and extension-summary fields.
+export const DAEMON_API_VERSION = 82; // v82: scorched-earth planning wire-surface deletion.

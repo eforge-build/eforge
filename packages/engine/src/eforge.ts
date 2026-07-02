@@ -76,7 +76,7 @@ export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
 import { stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
-import { buildCompilePromptSourceBundle, type CompilePreflightOptions } from './compile-resilience/preflight.js';
+import { buildCompilePromptSourceBundle } from './compile-resilience/preflight.js';
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
 import { CompileScopeContextError } from './compile-resilience/context-guard.js';
 import { validateCompileArtifacts } from './compile-resilience/artifact-validation.js';
@@ -329,12 +329,11 @@ export class EforgeEngine {
   }
 
   /**
-   * Plan: explore codebase, assess scope, write and validate planning artifacts.
+   * Plan: explore codebase, write and validate planning artifacts.
    *
-   * The planner explores and assesses scope. Based on the assessment:
-   * - errand/excursion: planner generates plan files + orchestration.yaml directly
-   * - expedition: planner generates architecture.md + index.yaml + module list,
-   *   then engine runs module planners and compiles plan files
+   * The bounded planner compiler runs unconditionally and generates plan
+   * files + orchestration.yaml; the planning quality gate reviews the
+   * artifacts before completion.
    *
    * Non-skipped compiles report success only after persisted orchestration and
    * plan files validate.
@@ -380,10 +379,7 @@ export class EforgeEngine {
       } catch {
         sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
-      const compilePreflightOptions: CompilePreflightOptions = {
-        selectedProfile: this.configProfile.name,
-      };
-      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent, compilePreflightOptions);
+      const compilePromptSourceBundle = buildCompilePromptSourceBundle(sourceContent);
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
       const baseBranch = options.baseBranchOverride ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })).stdout.trim();
@@ -403,7 +399,6 @@ export class EforgeEngine {
       // unconditionally, then the planning quality gate. Per-plan build/review
       // defaults are replaced by the compiler's deterministic derivation.
       const defaultPipeline: import('./schemas.js').PipelineComposition = {
-        scope: 'excursion',
         compile: ['planner', 'planning-quality-review-cycle'],
         defaultBuild: ['implement', 'review-cycle'],
         defaultReview: DEFAULT_REVIEW,

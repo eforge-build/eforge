@@ -2,17 +2,6 @@ import { Type, type Static } from '@sinclair/typebox';
 import { BuildStageSpecSchema, ReviewPerspectiveKeySchema } from './shared/schemas.js';
 
 export const PlanningDecisionSchema = Type.Union([
-  // Scope / orchestration mode selection
-  Type.Object({
-    kind: Type.Literal('scope-selected'),
-    rationale: Type.String(),
-    scope: Type.Union([
-      Type.Literal('errand'),
-      Type.Literal('excursion'),
-      Type.Literal('expedition'),
-    ]),
-    source: Type.Union([Type.Literal('pipeline-composer'), Type.Literal('planner')]),
-  }),
   // Default build pipeline chosen for the plan set
   Type.Object({
     kind: Type.Literal('build-pipeline-chosen'),

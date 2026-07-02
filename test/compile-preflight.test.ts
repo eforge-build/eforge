@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_COMPILE_RISK_LIST_ITEMS } from '@eforge-build/client';
 import {
   buildCompilePromptSourceBundle,
   MODERATE_SOURCE_BYTES,
@@ -44,7 +43,7 @@ describe('compile prompt source bundle compaction', () => {
     expect(bundle.analysis.detectedBlocks[0].omittedBytes).toBeGreaterThan(0);
   });
 
-  it('derives acceptance criteria and subsystem breadth from full stripped source', () => {
+  it('derives acceptance criteria from full stripped source', () => {
     const source = [
       '# PRD',
       '',
@@ -57,15 +56,6 @@ describe('compile prompt source bundle compaction', () => {
     const bundle = buildCompilePromptSourceBundle(source);
     expect(bundle.promptSource).not.toContain(sentinel);
     expect(bundle.analysis.acceptanceCriteriaCount).toBeGreaterThan(70);
-    expect(bundle.analysis.subsystemBreadth.count).toBeGreaterThanOrEqual(4);
-  });
-
-  it('derives bounded subsystem breadth evidence', () => {
-    const source = 'Touch packages/engine, packages/client, packages/monitor, packages/console-ui, eforge-plugin, and packages/pi-eforge.';
-    const bundle = buildCompilePromptSourceBundle(source);
-    expect(bundle.analysis.subsystemBreadth.count).toBeGreaterThanOrEqual(4);
-    expect(bundle.analysis.subsystemBreadth.subsystems.length).toBeLessThanOrEqual(MAX_COMPILE_RISK_LIST_ITEMS);
-    expect(bundle.analysis.subsystemBreadth.evidence.length).toBeLessThanOrEqual(MAX_COMPILE_RISK_LIST_ITEMS);
   });
 
   it('honors explicit full-content allow-lists', () => {

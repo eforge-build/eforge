@@ -20,13 +20,12 @@ const FULL_TIERS = {
   evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
 } as const;
 
-// All 24 agent roles
+// All agent roles
 const ALL_ROLES: AgentRole[] = [
-  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
-  'plan-reviewer', 'plan-evaluator', 'architecture-reviewer', 'architecture-evaluator',
-  'cohesion-reviewer', 'cohesion-evaluator', 'validation-fixer', 'merge-conflict-resolver',
+  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator',
+  'plan-reviewer', 'plan-evaluator', 'validation-fixer', 'merge-conflict-resolver',
   'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer', 'test-writer', 'tester',
-  'prd-validator', 'dependency-detector', 'pipeline-composer', 'gap-closer', 'recovery-analyst',
+  'prd-validator', 'dependency-detector', 'gap-closer', 'recovery-analyst',
 ];
 
 // ---------------------------------------------------------------------------
@@ -85,10 +84,10 @@ describe('role override beats tier (precedence: plan > role > tier)', () => {
     expect(reviewer.effortSource).toBe('role');
   });
 
-  it('architecture-reviewer (same review tier, no role override) uses tier effort (medium)', () => {
-    const archReviewer = resolveAgentConfig('architecture-reviewer', config);
-    expect(archReviewer.effort).toBe('medium');
-    expect(archReviewer.effortSource).toBe('tier');
+  it('plan-reviewer (same review tier, no role override) uses tier effort (medium)', () => {
+    const planReviewer = resolveAgentConfig('plan-reviewer', config);
+    expect(planReviewer.effort).toBe('medium');
+    expect(planReviewer.effortSource).toBe('tier');
   });
 });
 
@@ -122,7 +121,7 @@ describe('plan override beats role override beats tier', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DEFAULT_CONFIG sweep across all 25 roles
+// DEFAULT_CONFIG sweep across all roles
 // ---------------------------------------------------------------------------
 
 describe('DEFAULT_CONFIG default tier recipes apply to all roles', () => {
@@ -192,7 +191,7 @@ describe('role tier reassignment via agents.roles[role].tier', () => {
 // New role-to-tier mapping per the schema simplification
 // ---------------------------------------------------------------------------
 
-describe('AGENT_ROLE_TIERS new mapping after schema simplification', () => {
+describe('AGENT_ROLE_TIERS mapping', () => {
   it('merge-conflict-resolver is in planning tier', () => {
     expect(AGENT_ROLE_TIERS['merge-conflict-resolver']).toBe('planning');
   });
@@ -215,8 +214,8 @@ describe('AGENT_ROLE_TIERS new mapping after schema simplification', () => {
     expect(AGENT_ROLE_TIERS['staleness-assessor']).toBe('implementation');
   });
 
-  it('all 25 roles are mapped', () => {
-    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(25);
+  it('all roles are mapped', () => {
+    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(19);
     for (const role of ALL_ROLES) {
       expect(AGENT_ROLE_TIERS[role]).toBeDefined();
     }

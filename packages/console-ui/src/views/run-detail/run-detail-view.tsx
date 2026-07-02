@@ -73,7 +73,6 @@ function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error,
     setRuntimeData({
       planStatuses: runState.planStatuses,
       fileChanges: runState.fileChanges,
-      moduleStatuses: runState.moduleStatuses,
     });
   }, [runState, setRuntimeData]);
 

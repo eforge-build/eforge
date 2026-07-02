@@ -229,7 +229,7 @@ export interface AgentHarness {
 export interface HarnessDebugPayload {
   /** Which harness produced this payload. */
   harness: 'claude-sdk' | 'pi';
-  /** The agent role this payload is for (e.g. `'pipeline-composer'`). */
+  /** The agent role this payload is for (e.g. `'planner'`). */
   agent: AgentRole;
   /** The user prompt string passed into the run. */
   userPrompt: string;

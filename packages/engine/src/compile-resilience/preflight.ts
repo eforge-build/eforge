@@ -1,10 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import {
-  MAX_COMPILE_RISK_LIST_ITEMS,
-  type CompilePipelineScope,
-  type CompilePreflightRisk,
-} from '@eforge-build/client';
+import { MAX_COMPILE_RISK_LIST_ITEMS } from '@eforge-build/client';
 
 import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
 
@@ -17,8 +13,6 @@ const MAX_SUMMARY_FRAGMENT_LENGTH = 240;
 const MAX_PRESERVED_SUMMARY_LENGTH = 1_000;
 
 export interface CompilePreflightOptions {
-  selectedProfile?: string | null;
-  requestedPipelineScope?: CompilePipelineScope | null;
   fullContentRequiredPaths?: string[];
   fullContentRequiredHeadings?: string[];
 }
@@ -40,7 +34,6 @@ export interface CompilePromptSourceBundle {
   }>;
   analysis: {
     acceptanceCriteriaCount: number;
-    subsystemBreadth: CompilePreflightRisk['subsystemBreadth'];
     detectedBlocks: Array<CompilePromptSourceBundle['compactions'][number] & { omittedBytes: number }>;
   };
 }
@@ -85,7 +78,6 @@ export function buildCompilePromptSourceBundle(
     compactions,
     analysis: {
       acceptanceCriteriaCount: extractExpectedAcceptanceCriteria(strippedSource).length,
-      subsystemBreadth: deriveSubsystemBreadth(strippedSource),
       detectedBlocks: detected,
     },
   };
@@ -189,19 +181,6 @@ function thresholdFor(kind: CompactionKind): number {
   if (kind === 'generated-inventory') return GENERATED_INVENTORY_MIN_BYTES;
   if (kind === 'machine-readable-sidecar') return MACHINE_READABLE_SECTION_MIN_BYTES;
   return LARGE_CODE_FENCE_MIN_BYTES;
-}
-
-function deriveSubsystemBreadth(source: string): CompilePreflightRisk['subsystemBreadth'] {
-  const evidence = new Map<string, string>();
-  const patterns: Array<[RegExp, string]> = [
-    [/packages\/engine\b|(?:^|[#\s-])engine\b/gi, 'engine'], [/packages\/client\b|(?:^|[#\s-])client\b/gi, 'client'], [/packages\/monitor\b|(?:^|[#\s-])monitor\b/gi, 'monitor'], [/packages\/console-ui\b|\bconsole\b/gi, 'console'], [/packages\/eforge\b|\bcli\b/gi, 'cli'], [/eforge-plugin\b|\bplugin\b/gi, 'plugin'], [/packages\/pi-eforge\b|\bpi\b/gi, 'pi'], [/packages\/input\b|(?:^|[#\s-])input\b/gi, 'input'], [/packages\/scopes\b|(?:^|[#\s-])scopes\b/gi, 'scopes'], [/\bweb\//gi, 'web'], [/\bdocs\//gi, 'docs'], [/\btest\//gi, 'test'], [/\bscripts\//gi, 'scripts'],
-  ];
-  for (const [re, slug] of patterns) {
-    const match = source.match(re)?.[0];
-    if (match && !evidence.has(slug)) evidence.set(slug, match);
-  }
-  const subsystems = [...evidence.keys()].sort();
-  return { count: subsystems.length, subsystems: boundedStrings(subsystems), evidence: boundedStrings(subsystems.map((s) => `${s}:${evidence.get(s)}`)) };
 }
 
 function summarize(body: string): string {

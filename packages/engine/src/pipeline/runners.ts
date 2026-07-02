@@ -223,9 +223,9 @@ const PLAN_ARTIFACT_COMMIT_STAGES = new Set([
 export async function* runCompilePipeline(
   ctx: PipelineContext,
 ): AsyncGenerator<EforgeEvent> {
-  // Index-based iteration: ctx.pipeline may change mid-pipeline (e.g., planner
-  // stage switches from excursion to expedition), so re-read ctx.pipeline.compile
-  // on each iteration instead of capturing it once via for...of.
+  // Index-based iteration: re-read ctx.pipeline.compile on each iteration
+  // instead of capturing it once via for...of, so mid-pipeline changes to
+  // ctx.pipeline are honored.
   let i = 0;
   let restarts = 0;
   const MAX_RESTARTS = 5;

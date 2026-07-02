@@ -5,7 +5,6 @@ import {
   MAX_COMPILE_RISK_LIST_ITEMS,
   type CompileArtifactSummary,
   type CompileContextGuardDiagnostics,
-  type CompilePreflightRisk,
   type CompileRecoveryAction,
   type CompileScopeContextFailure,
   type EforgeEvent,
@@ -29,7 +28,6 @@ type NonDecompositionCompileScopeContextFailure = Exclude<CompileScopeContextFai
 type CompileScopeContextFailureInputBase = {
   explanation: string;
   observed?: CompileScopeContextFailure['observed'];
-  risk?: CompilePreflightRisk;
   guardDiagnostics?: CompileContextGuardDiagnostics;
 };
 
@@ -63,7 +61,6 @@ export async function toCompileScopeContextError(
       explanation: error.failure.explanation,
       observed: error.failure.observed,
       decompositionEvidence: error.failure.decompositionEvidence,
-      risk: error.failure.risk,
       guardDiagnostics: error.failure.guardDiagnostics ?? guardDiagnostics,
     } as CompileScopeContextFailureInput));
   }
@@ -86,7 +83,6 @@ export async function buildCompileScopeContextFailure(ctx: PipelineContext, inpu
   const action = chooseRecoveryAction(input, artifacts);
   const common = {
     explanation: capUtf8(input.explanation, 1500),
-    ...(input.risk ? { risk: input.risk } : {}),
     ...(input.observed ? { observed: input.observed } : {}),
     ...(input.guardDiagnostics ? { guardDiagnostics: input.guardDiagnostics } : {}),
     recovery: {

@@ -17,7 +17,6 @@ import {
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
   safeParseEforgeEvent,
-  type CompilePreflightRisk,
   type PlannerInspectionSummary,
 } from '../events.js';
 import {
@@ -28,38 +27,6 @@ import {
 
 const timestamp = '2026-06-26T10:00:00.000Z';
 
-function validRisk(): CompilePreflightRisk {
-  return {
-    level: 'elevated',
-    sourceBytes: 1024,
-    promptSourceBytes: 2048,
-    acceptanceCriteriaCount: 3,
-    score: 42,
-    generatedInventory: {
-      detected: true,
-      contentHashes: ['a'.repeat(64)],
-      pathReferences: ['docs/prd.md'],
-      headings: ['Implementation Plan'],
-      blockCount: 2,
-      sidecarCount: 1,
-      omittedBytes: 0,
-    },
-    subsystemBreadth: {
-      count: 1,
-      subsystems: ['client'],
-      evidence: ['packages/client'],
-    },
-    selectedProfile: null,
-    pipelineScope: 'excursion',
-    reasons: ['large compile prompt'],
-    recommendation: {
-      action: 'retry-as-expedition',
-      eligible: true,
-      reason: 'split planning across expedition stages',
-    },
-  };
-}
-
 function artifactSummary() {
   return {
     orchestrationExists: true,
@@ -69,10 +36,6 @@ function artifactSummary() {
     missingPlanFiles: [],
     invalidPlanFiles: [],
   };
-}
-
-function riskWith(update: (risk: CompilePreflightRisk) => CompilePreflightRisk): CompilePreflightRisk {
-  return update(validRisk());
 }
 
 function validPlannerInspectionSummary(): PlannerInspectionSummary {
@@ -103,32 +66,6 @@ function validPlannerInspectionSummary(): PlannerInspectionSummary {
 }
 
 describe('compile resilience contracts', () => {
-  it('parses valid planning preflight events', () => {
-    const result = safeParseEforgeEvent({
-      type: 'planning:preflight',
-      timestamp,
-      risk: validRisk(),
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects preflight representative arrays above the public bound', () => {
-    const oversizedList = Array.from({ length: MAX_COMPILE_RISK_LIST_ITEMS + 1 }, (_, index) => `item-${index}`);
-    const cases: Array<[string, CompilePreflightRisk]> = [
-      ['generatedInventory.contentHashes', riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, contentHashes: oversizedList } }))],
-      ['generatedInventory.pathReferences', riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, pathReferences: oversizedList } }))],
-      ['generatedInventory.headings', riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, headings: oversizedList } }))],
-      ['subsystemBreadth.subsystems', riskWith((risk) => ({ ...risk, subsystemBreadth: { ...risk.subsystemBreadth, subsystems: oversizedList } }))],
-      ['subsystemBreadth.evidence', riskWith((risk) => ({ ...risk, subsystemBreadth: { ...risk.subsystemBreadth, evidence: oversizedList } }))],
-      ['reasons', riskWith((risk) => ({ ...risk, reasons: oversizedList }))],
-    ];
-
-    for (const [field, risk] of cases) {
-      expect(safeParseEforgeEvent({ type: 'planning:preflight', timestamp, risk }).success, field).toBe(false);
-    }
-  });
-
   it('parses provider scope/context failures and rejects unknown recovery actions', () => {
     const failure = {
       source: 'provider',
@@ -232,21 +169,6 @@ describe('compile resilience contracts', () => {
     }).success).toBe(true);
   });
 
-  it('rejects invalid compile preflight hashes and accepts detected inventory state', () => {
-    expect(validRisk().generatedInventory.detected).toBe(true);
-    expect(safeParseEforgeEvent({ type: 'planning:preflight', timestamp, risk: validRisk() }).success).toBe(true);
-    expect(safeParseEforgeEvent({
-      type: 'planning:preflight',
-      timestamp,
-      risk: riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, detected: false, blockCount: 0, contentHashes: [] } })),
-    }).success).toBe(true);
-    expect(safeParseEforgeEvent({
-      type: 'planning:preflight',
-      timestamp,
-      risk: riskWith((risk) => ({ ...risk, generatedInventory: { ...risk.generatedInventory, contentHashes: ['not-a-sha'] } })),
-    }).success).toBe(false);
-  });
-
   it('validates bounded diagnostic options and payload hashes', () => {
     const diagnostic = {
       schemaPath: '/plans/0/body',
@@ -300,11 +222,9 @@ describe('compile resilience contracts', () => {
   });
 
   it('registers concise event metadata and summaries', () => {
-    expect(eventRegistry['planning:preflight']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['planning:scope-context:failure']).toMatchObject({ scope: 'session', persist: true });
     expect(eventRegistry['planning:inspection-summary']).toMatchObject({ scope: 'session', persist: true });
 
-    const preflightSummary = getEventSummary({ type: 'planning:preflight', timestamp, risk: validRisk() });
     const failureSummary = getEventSummary({
       type: 'planning:scope-context:failure',
       timestamp,
@@ -313,15 +233,13 @@ describe('compile resilience contracts', () => {
         failureKind: 'context-window',
         stage: 'compile',
         explanation: 'too broad',
-        recovery: { action: 'retry-as-expedition', eligible: true, attempted: false, attempt: 1, maxAttempts: 2, reason: 'retry wider pipeline' },
+        recovery: { action: 'manual-reduce-scope', eligible: true, attempted: false, attempt: 1, maxAttempts: 2, reason: 'reduce the compile scope' },
         artifacts: artifactSummary(),
       },
     });
 
     const inspectionSummary = getEventSummary({ type: 'planning:inspection-summary', timestamp, summary: validPlannerInspectionSummary() });
 
-    expect(preflightSummary).toContain('elevated');
-    expect(preflightSummary).not.toContain('docs/prd.md');
     expect(failureSummary).toContain('context-window');
     expect(failureSummary).not.toContain('too broad');
     expect(inspectionSummary).toContain('Planner compact inspection summary');
@@ -331,7 +249,6 @@ describe('compile resilience contracts', () => {
   it('exports schemas and constants from public client barrels', () => {
     for (const facade of [client, events, browser]) {
       expect(facade.MAX_COMPILE_RISK_LIST_ITEMS).toBe(MAX_COMPILE_RISK_LIST_ITEMS);
-      expect(facade.CompilePreflightRiskSchema).toBeDefined();
       expect(facade.CompileScopeContextFailureSchema).toBeDefined();
       expect(facade.CompileContextGuardDiagnosticsSchema).toBeDefined();
       expect(facade.CompileContextGuardLimitsSchema).toBeDefined();

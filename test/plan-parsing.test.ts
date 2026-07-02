@@ -9,7 +9,6 @@ import { useTempDir } from './test-tmpdir.js';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 
 const TEST_PIPELINE: PipelineComposition = {
-  scope: 'excursion',
   compile: ['planner', 'plan-review-cycle'],
   defaultBuild: ['implement', 'review-cycle'],
   defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
@@ -17,7 +16,6 @@ const TEST_PIPELINE: PipelineComposition = {
 };
 
 const ERRAND_PIPELINE: PipelineComposition = {
-  scope: 'errand',
   compile: ['planner'],
   defaultBuild: ['implement', 'review-cycle'],
   defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
@@ -95,7 +93,6 @@ describe('parseOrchestrationConfig', () => {
     );
     expect(config.name).toBe('test-orchestration');
     expect(config.description).toBe('A test orchestration config');
-    expect(config.mode).toBe('excursion');
     expect(config.baseBranch).toBe('main');
     expect(config.plans).toHaveLength(2);
     expect(config.plans[0]).toEqual({
@@ -114,7 +111,6 @@ describe('parseOrchestrationConfig', () => {
     expect(config.plans[1].dependsOn).toEqual(['core']);
 
     // Pipeline fields
-    expect(config.pipeline.scope).toBe('excursion');
     expect(config.pipeline.compile).toEqual(['planner', 'plan-review-cycle']);
     expect(config.pipeline.rationale).toBe('test pipeline');
   });
@@ -126,7 +122,6 @@ describe('parseOrchestrationConfig', () => {
       name: 'dynamic-persp-test',
       description: 'Dynamic perspective key acceptance test',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: TEST_PIPELINE,
       plans: [
@@ -160,7 +155,6 @@ describe('parseOrchestrationConfig', () => {
       name: 'bad-persp-test',
       description: 'Unsafe perspective key rejection test',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: TEST_PIPELINE,
       plans: [
@@ -199,7 +193,6 @@ describe('parseOrchestrationConfig', () => {
       name: 'test',
       description: 'test',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -215,7 +208,6 @@ describe('parseOrchestrationConfig', () => {
       name: 'test',
       description: 'test',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: { scope: 'invalid' }, // Missing required fields and invalid scope
       plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
@@ -295,7 +287,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'inject-test',
       description: 'Test injection',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -305,7 +296,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     // Parse the result to verify
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.name).toBe('inject-test');
-    expect(config.pipeline.scope).toBe('errand');
     expect(config.pipeline.compile).toEqual(ERRAND_PIPELINE.compile);
   });
 
@@ -318,7 +308,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'branch-override-test',
       description: 'Test base_branch override',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'eforge/some-feature-branch',
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -338,7 +327,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'backfill-test',
       description: 'Test backfill',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1' }],
     }));
@@ -363,7 +351,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'planner-override-test',
       description: 'Test planner per-plan build/review override',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [
         { id: 'plan-a', name: 'Plan A', depends_on: [], branch: 'branch-a', build: planABuild, review: planAReview },
@@ -393,7 +380,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'no-override-test',
       description: 'Test base_branch preserved',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -419,7 +405,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'stale-main-test',
       description: 'Remote is ahead of local main',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: staleLocalBranch,
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -446,7 +431,6 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
       name: 'no-diff-base-test',
       description: 'No fetched SHA override',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
@@ -574,7 +558,6 @@ describe('parseOrchestrationConfig agents propagation', () => {
       name: 'agents-test',
       description: 'Test agents propagation',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: ERRAND_PIPELINE,
       plans: [{
@@ -604,7 +587,6 @@ describe('parseOrchestrationConfig agents propagation', () => {
       name: 'no-agents-test',
       description: 'No agents',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: ERRAND_PIPELINE,
       plans: [{
@@ -629,7 +611,6 @@ describe('parseOrchestrationConfig agents propagation', () => {
       name: 'bad-agents-orch-test',
       description: 'Test malformed agents in orch config',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: ERRAND_PIPELINE,
       plans: [{
@@ -661,7 +642,6 @@ describe('parseOrchestrationConfig agents propagation', () => {
       name: 'valid-agents-orch-test',
       description: 'Test valid agents in orch config',
       created: '2026-01-01',
-      mode: 'errand',
       base_branch: 'main',
       pipeline: ERRAND_PIPELINE,
       plans: [{

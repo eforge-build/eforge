@@ -4,7 +4,6 @@ import { EforgeEventSchema, safeParseEforgeEvent } from '../events.schemas.js';
 import { EforgeEventSchema as eventsBarrelSchema, safeParseEforgeEvent as eventsBarrelParse } from '../events.js';
 import { EforgeEventSchema as indexSchema, safeParseEforgeEvent as indexParse } from '../index.js';
 import {
-  ORCHESTRATION_MODES as browserModes,
   REVIEW_PERSPECTIVES as browserReviewPerspectives,
   SEVERITY_ORDER as browserSeverityOrder,
   isAlwaysYieldedAgentEvent as browserIsAlwaysYieldedAgentEvent,
@@ -178,7 +177,6 @@ describe('public event exports', () => {
     expect(indexSchema).toBe(EforgeEventSchema);
     expect(eventsBarrelParse).toBe(safeParseEforgeEvent);
     expect(indexParse).toBe(safeParseEforgeEvent);
-    expect(browserModes).toContain('errand');
     expect(browserReviewPerspectives).toContain('code');
     expect(browserSeverityOrder.critical).toBeLessThan(browserSeverityOrder.warning);
     expect(browserIsAlwaysYieldedAgentEvent({

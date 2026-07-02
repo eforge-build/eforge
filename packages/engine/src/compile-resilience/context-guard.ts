@@ -1,4 +1,4 @@
-import type { EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk, CompileScopeContextFailure } from '../events.js';
+import type { EforgeEvent, CompileContextGuardDiagnostics, CompileScopeContextFailure } from '../events.js';
 
 export interface CompileContextGuardLimits {
   maxPromptBytes: number;
@@ -8,8 +8,7 @@ export interface CompileContextGuardLimits {
 }
 
 export interface CompileContextGuardOptions {
-  stage: 'pipeline-composer' | 'planner' | 'module-planner';
-  risk?: CompilePreflightRisk;
+  stage: 'planner';
   limits?: Partial<CompileContextGuardLimits>;
   guardDiagnostics?: CompileContextGuardDiagnostics;
 }

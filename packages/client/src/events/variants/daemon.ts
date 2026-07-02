@@ -14,7 +14,6 @@ import {
   ClarificationQuestionSchema,
   EforgeResultSchema,
   EvaluationIssueOutcomeSchema,
-  ExpeditionModuleSchema,
   FailedEnqueueInfoSchema,
   FinalMergePolicyGateProvenanceFields,
   LandingActionSchema,

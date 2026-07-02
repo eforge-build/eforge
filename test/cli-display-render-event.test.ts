@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { initDisplay, renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
-import type { CompilePreflightRisk, CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
+import type { CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
 
 function captureConsoleLogs(run: () => void): string[] {
   const lines: string[] = [];
@@ -23,18 +23,6 @@ afterEach(() => {
   stopAllSpinners();
   initDisplay();
 });
-
-const compileRisk: CompilePreflightRisk = {
-  level: 'overflow-risk',
-  sourceBytes: 4096,
-  promptSourceBytes: 2048,
-  acceptanceCriteriaCount: 9,
-  score: 90,
-  generatedInventory: { detected: true, contentHashes: ['c'.repeat(64)], pathReferences: ['generated.json'], headings: ['Generated'], blockCount: 1, sidecarCount: 1, omittedBytes: 100 },
-  subsystemBreadth: { count: 4, subsystems: ['engine', 'client'], evidence: ['packages/engine'] },
-  reasons: ['generated-inventory:detected'],
-  recommendation: { action: 'bounded-decomposition', eligible: true, reason: 'Split generated scope into smaller PRDs.' },
-};
 
 const inspectionSummary: PlannerInspectionSummary = {
   kind: 'planner-inspection-handoff',
@@ -135,31 +123,6 @@ describe('renderEvent', () => {
       '✗ Acceptance validation failed: 1 passed, 1 failed, 1 unknown',
       '  Waiver: OAuth deferred',
     ]);
-  });
-
-  it('keeps normal planning preflight events silent in non-verbose mode', () => {
-    const lines = captureConsoleLogs(() => {
-      renderEvent({
-        type: 'planning:preflight',
-        timestamp: '2025-01-01T00:00:00.000Z',
-        risk: { ...compileRisk, level: 'normal', recommendation: { action: 'none', eligible: false, reason: 'normal risk' } },
-      });
-    });
-
-    expect(lines).toEqual([]);
-  });
-
-  it('renders overflow planning preflight guidance through the top-level dispatcher', () => {
-    const lines = captureConsoleLogs(() => {
-      renderEvent({ type: 'planning:preflight', timestamp: '2025-01-01T00:00:00.000Z', risk: compileRisk });
-    });
-
-    expect(lines.join('\n')).toContain('Compile preflight');
-    expect(lines.join('\n')).toContain('overflow-risk');
-    expect(lines.join('\n')).toContain('4.0 KiB source');
-    expect(lines.join('\n')).toContain('2.0 KiB prompt');
-    expect(lines.join('\n')).toContain('9 AC');
-    expect(lines.join('\n')).toContain('bounded decomposition');
   });
 
   it('renders compact planner inspection summaries through the top-level dispatcher', () => {

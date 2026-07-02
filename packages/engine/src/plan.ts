@@ -270,7 +270,6 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     name: data.name as string,
     description: (data.description as string) ?? '',
     created: (data.created as string) ?? '',
-    mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
     ...(typeof data.diff_base_ref === 'string' && data.diff_base_ref ? { diffBaseRef: data.diff_base_ref } : {}),
     pipeline: pipelineResult.data,
@@ -592,7 +591,6 @@ export interface WritePlanArtifactsOptions {
   baseBranch: string;
   pipeline: PipelineComposition;
   validate?: string[];
-  mode?: 'errand' | 'excursion';
   /** Per-plan build stage sequence (written to orchestration.yaml plan entry). */
   build?: BuildStageSpec[];
   /** Per-plan review config (written to orchestration.yaml plan entry). */
@@ -626,7 +624,6 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     name: planSetName,
     description: planName,
     created: new Date().toISOString().split('T')[0],
-    mode: options.mode ?? 'errand',
     base_branch: baseBranch,
     pipeline: options.pipeline,
     ...(validate && validate.length > 0 && { validate }),
@@ -662,11 +659,10 @@ export interface WritePlanSetOptions {
   planSetName: string;
   payload: import('./schemas.js').PlanSetSubmission;
   baseBranch: string;
-  mode: 'errand' | 'excursion' | 'expedition';
 }
 
 export async function writePlanSet(options: WritePlanSetOptions): Promise<void> {
-  const { cwd, outputDir, planSetName, payload, baseBranch, mode } = options;
+  const { cwd, outputDir, planSetName, payload, baseBranch } = options;
   const planDir = resolve(cwd, outputDir, planSetName);
   await mkdir(planDir, { recursive: true });
 
@@ -692,7 +688,6 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     name: planSetName,
     description: payload.description,
     base_branch: baseBranch,
-    mode,
     validate: payload.orchestration.validate ?? [],
     plans: payload.orchestration.plans.map(p => {
       const planData = payload.plans.find(pd => pd.frontmatter.id === p.id);
@@ -821,7 +816,7 @@ export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions)
 }
 
 /**
- * Options for applying architecture-reviewer fixes.
+ * Options for applying architecture fixes from the planning-quality reviewer.
  */
 export interface ApplyArchitectureReviewFixesOptions {
   cwd: string;
@@ -831,7 +826,7 @@ export interface ApplyArchitectureReviewFixesOptions {
 }
 
 /**
- * Apply fixes emitted by the architecture-reviewer agent to the architecture document.
+ * Apply architecture fixes emitted by the planning-quality reviewer to the architecture document.
  * Writes architecture.md verbatim.
  * Does NOT run git add — fixes remain unstaged.
  */

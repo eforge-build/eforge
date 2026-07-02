@@ -292,20 +292,15 @@ describe('resolveAgentConfig per-role effort defaults', () => {
   const effortTable: Array<{ role: string; expectedEffort: string }> = [
     // Planning tier (effort: 'high')
     { role: 'planner', expectedEffort: 'high' },
-    { role: 'module-planner', expectedEffort: 'high' },
     { role: 'merge-conflict-resolver', expectedEffort: 'high' },
     // Implementation tier (effort: 'medium') — doc-author and doc-syncer are both implementation tier agents
     { role: 'doc-author', expectedEffort: 'medium' },
     { role: 'doc-syncer', expectedEffort: 'medium' },
     { role: 'gap-closer', expectedEffort: 'high' },
     // Review tier (effort: 'high')
-    { role: 'architecture-reviewer', expectedEffort: 'high' },
-    { role: 'cohesion-reviewer', expectedEffort: 'high' },
     { role: 'plan-reviewer', expectedEffort: 'high' },
     { role: 'reviewer', expectedEffort: 'high' },
     // Evaluation tier (effort: 'high')
-    { role: 'architecture-evaluator', expectedEffort: 'high' },
-    { role: 'cohesion-evaluator', expectedEffort: 'high' },
     { role: 'plan-evaluator', expectedEffort: 'high' },
     { role: 'evaluator', expectedEffort: 'high' },
     // Implementation tier (effort: 'medium')

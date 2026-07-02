@@ -77,7 +77,7 @@ export function expandDisallowedToolAliasesForPi(disallowedTools: readonly strin
  *
  *  - Build reviewers (before switching to `tools: 'read-only'`, the harness
  *    also calls this on the effective denylist for belt-and-suspenders safety).
- *  - Compile reviewers (plan-reviewer, architecture-reviewer, cohesion-reviewer)
+ *  - Compile reviewers (plan-reviewer, planning-quality reviewer)
  *    which keep `tools: 'coding'` but must still block file writes.
  *  - Evaluators (builder.ts, plan-evaluator.ts) which must not write files.
  *

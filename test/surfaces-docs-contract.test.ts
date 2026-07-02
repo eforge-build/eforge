@@ -60,7 +60,6 @@ describe('surfaces docs contracts', () => {
     ]);
 
     expectContainsAll('web/content/reference/events.md', [
-      'planning:preflight',
       'planning:scope-context:failure',
     ]);
     expect(read('web/public/reference/events.md')).toBe(read('web/content/reference/events.md'));
@@ -69,12 +68,10 @@ describe('surfaces docs contracts', () => {
   it('keeps surface helpers on shared client contracts without daemon route literals', () => {
     expectContainsAll('packages/eforge/src/cli/compile-resilience-display.ts', [
       "from '@eforge-build/client'",
-      'CompilePreflightRisk',
       'CompileScopeContextFailure',
     ]);
     expectContainsAll('packages/console-ui/src/lib/compile-resilience-format.ts', [
       "from '@eforge-build/client/browser'",
-      'CompilePreflightRisk',
       'CompileScopeContextFailure',
       'RecoverySidecarRecoveryOption',
     ]);

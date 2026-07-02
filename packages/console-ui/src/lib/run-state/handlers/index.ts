@@ -54,11 +54,6 @@ import {
   handleAgentActivity,
 } from './handle-agent';
 import {
-  handleExpeditionArchitectureComplete,
-  handleExpeditionModuleStart,
-  handleExpeditionModuleComplete,
-} from './handle-expedition';
-import {
   handleEnqueueStart,
   handleEnqueueComplete,
   handleEnqueueFailed,
@@ -155,11 +150,6 @@ export const handlerRegistry = {
   'agent:stop': handleAgentStop,
   'agent:activity': handleAgentActivity,
 
-  // Expedition planning
-  'expedition:architecture:complete': handleExpeditionArchitectureComplete,
-  'expedition:module:start': handleExpeditionModuleStart,
-  'expedition:module:complete': handleExpeditionModuleComplete,
-
   // Enqueue
   'enqueue:start': handleEnqueueStart,
   'enqueue:complete': handleEnqueueComplete,
@@ -238,16 +228,6 @@ export const IGNORED_EVENT_TYPES = [
   'planning:evaluate:start',
   'planning:evaluate:continuation',
   'planning:evaluate:complete',
-  'planning:architecture:review:start',
-  'planning:architecture:review:complete',
-  'planning:architecture:evaluate:start',
-  'planning:architecture:evaluate:continuation',
-  'planning:architecture:evaluate:complete',
-  'planning:cohesion:start',
-  'planning:cohesion:complete',
-  'planning:cohesion:evaluate:start',
-  'planning:cohesion:evaluate:continuation',
-  'planning:cohesion:evaluate:complete',
   'plan:build:implement:progress',
   'plan:build:implement:continuation',
   'plan:build:review:parallel:start',
@@ -265,10 +245,6 @@ export const IGNORED_EVENT_TYPES = [
   'merge:finalize:start',
   'merge:finalize:complete',
   'merge:finalize:skipped',
-  'expedition:wave:start',
-  'expedition:wave:complete',
-  'expedition:compile:start',
-  'expedition:compile:complete',
   'agent:warning',
   'agent:message',
   'agent:tool_use',
@@ -361,7 +337,6 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
   // Compile resilience advisory/failure events do not mutate run reducer state.
-  'planning:preflight',
   'planning:inspection-summary',
   'planning:scope-context:failure',
   // Decomposition events are display-only; synthesis emits planning/architecture state changes.

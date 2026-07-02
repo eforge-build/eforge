@@ -1,5 +1,4 @@
 import type {
-  CompilePreflightRisk,
   CompileRecoveryAction,
   CompileScopeContextFailure,
   EforgeEvent,
@@ -32,36 +31,7 @@ export function recoveryActionLabel(action: CompileRecoveryAction | CompileScope
     case 'bounded-decomposition': return 'bounded decomposition';
     case 'manual-reduce-scope': return 'manual scope reduction';
     case 'repair-existing-artifacts': return 'repair existing artifacts';
-    // The wire union still carries retired actions until the wire-surface change lands.
-    default: return action;
   }
-}
-
-function generatedInventoryCount(risk: CompilePreflightRisk): number {
-  const inventory = risk.generatedInventory;
-  return inventory.blockCount + inventory.sidecarCount + inventory.contentHashes.length + inventory.pathReferences.length + inventory.headings.length;
-}
-
-export function compilePreflightSummary(risk: CompilePreflightRisk): string {
-  return `Compile preflight: ${risk.level} (${formatBytes(risk.sourceBytes)} source, ${formatBytes(risk.promptSourceBytes)} prompt, ${recoveryActionLabel(risk.recommendation.action)})`;
-}
-
-export function compilePreflightDetail(risk: CompilePreflightRisk): string {
-  const lines = [
-    `Acceptance criteria: ${risk.acceptanceCriteriaCount}`,
-    `Generated inventory: ${generatedInventoryCount(risk)} item(s); ${risk.generatedInventory.blockCount} block(s), ${risk.generatedInventory.sidecarCount} sidecar(s), ${risk.generatedInventory.omittedBytes} omitted byte(s)`,
-    `Subsystem breadth: ${risk.subsystemBreadth.count}`,
-    `Recommendation: ${recoveryActionLabel(risk.recommendation.action)} (${risk.recommendation.eligible ? 'eligible' : 'ineligible'}) — ${risk.recommendation.reason}`,
-  ];
-  if (risk.reasons.length > 0) lines.push(`Reasons: ${risk.reasons.join('; ')}`);
-  if (risk.generatedInventory.contentHashes.length > 0) lines.push(`Representative hashes: ${risk.generatedInventory.contentHashes.join(', ')}`);
-  if (risk.generatedInventory.pathReferences.length > 0) lines.push(`Representative paths: ${risk.generatedInventory.pathReferences.join(', ')}`);
-  if (risk.generatedInventory.headings.length > 0) lines.push(`Representative headings: ${risk.generatedInventory.headings.join(', ')}`);
-  if (risk.subsystemBreadth.subsystems.length > 0) lines.push(`Subsystems: ${risk.subsystemBreadth.subsystems.join(', ')}`);
-  if (risk.subsystemBreadth.evidence.length > 0) lines.push(`Subsystem evidence: ${risk.subsystemBreadth.evidence.join('; ')}`);
-  if (risk.pipelineScope) lines.push(`Pipeline scope: ${risk.pipelineScope}`);
-  if (risk.selectedProfile) lines.push(`Profile: ${risk.selectedProfile}`);
-  return lines.join('\n');
 }
 
 function artifactSummary(failure: DisplayCompileScopeContextFailure): string {
@@ -144,7 +114,6 @@ export function compileScopeContextFailureDetail(failure: DisplayCompileScopeCon
   const observed = observedSummary(failure);
   if (observed) lines.push(`Observed: ${observed}`);
   lines.push(...guardDiagnosticLines(failure));
-  if (failure.risk) lines.push(`Preflight: ${compilePreflightSummary(failure.risk)}`);
   if (failure.decompositionEvidence) {
     lines.push(decompositionFailureEvidenceSummary(failure.decompositionEvidence));
     lines.push(decompositionFailureEvidenceDetail(failure.decompositionEvidence));

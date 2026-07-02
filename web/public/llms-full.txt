@@ -5022,7 +5022,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 248
+Total variants: 230
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -5079,13 +5079,12 @@ Total variants: 248
 | `extension:validation-provider:error` | `command`, `details`, `exitCode`, `extensionName`, `extensionPath`, `message`, `planId`, `providerName`, `status` |
 | `extension:validation-provider:timeout` | `command`, `extensionName`, `extensionPath`, `planId`, `providerName`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
-| `planning:preflight` | `risk` |
 | `planning:inspection-summary` | `artifactPath`, `summary` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
 | `planning:error` | `reason` |
 | `planning:scope-context:failure` | `failure`, `runId` |
-| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `riskEvidence`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
+| `planning:decomposition:start` | `edgeCount`, `graphId`, `limits`, `rootUnitId`, `runId`, `sessionId`, `timestamp`, `unitCount` |
 | `planning:decomposition:unit:queued` | `runId`, `sessionId`, `timestamp`, `unit` |
 | `planning:decomposition:unit:running` | `runId`, `sessionId`, `timestamp`, `unitId` |
 | `planning:decomposition:unit:progress` | `message`, `observed`, `runId`, `sessionId`, `timestamp`, `unitId` |
@@ -5100,23 +5099,13 @@ Total variants: 248
 | `planning:clarification:answer` | `answers` |
 | `planning:progress` | `message` |
 | `planning:continuation` | `attempt`, `maxContinuations`, `reason` |
-| `planning:pipeline` | `compile`, `defaultBuild`, `defaultReview`, `rationale`, `scope` |
+| `planning:pipeline` | `compile`, `defaultBuild`, `defaultReview`, `rationale` |
 | `planning:complete` | `planConfigs`, `plans` |
 | `planning:review:start` | - |
 | `planning:review:complete` | `issues` |
 | `planning:evaluate:start` | - |
 | `planning:evaluate:continuation` | `attempt`, `maxContinuations` |
 | `planning:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
-| `planning:architecture:review:start` | - |
-| `planning:architecture:review:complete` | `issues` |
-| `planning:architecture:evaluate:start` | - |
-| `planning:architecture:evaluate:continuation` | `attempt`, `maxContinuations` |
-| `planning:architecture:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
-| `planning:cohesion:start` | - |
-| `planning:cohesion:complete` | `issues` |
-| `planning:cohesion:evaluate:start` | - |
-| `planning:cohesion:evaluate:continuation` | `attempt`, `maxContinuations` |
-| `planning:cohesion:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
 | `planning:map-reduce:atoms` | `atomCount`, `atoms`, `edgeCount`, `edges`, `graphId` |
 | `planning:map-reduce:atom:status` | `atomId`, `reason`, `status` |
 | `planning:map-reduce:reduce-tree` | `graphId`, `maxDepth`, `nodeCount`, `nodes`, `rootNodeId` |
@@ -5170,13 +5159,6 @@ Total variants: 248
 | `landing:auto-merge:skipped` | `baseBranch`, `featureBranch`, `prUrl`, `reason` |
 | `merge:worktree:set` | `path` |
 | `merge:worktree:clear` | - |
-| `expedition:architecture:complete` | `modules` |
-| `expedition:wave:start` | `moduleIds`, `wave` |
-| `expedition:wave:complete` | `wave` |
-| `expedition:module:start` | `moduleId` |
-| `expedition:module:complete` | `moduleId` |
-| `expedition:compile:start` | - |
-| `expedition:compile:complete` | `plans` |
 | `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `projectMcpSelection`, `projectMcpServerNames`, `runtimeChoice`, `runtimeChoiceFallbackReason`, `runtimeChoiceQualified`, `runtimeChoiceRouter`, `runtimeChoiceRule`, `runtimeChoiceSource`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource`, `toolbelt`, `toolbeltSource` |
 | `agent:warning` | `agent`, `agentId`, `code`, `message`, `planId` |
 | `agent:stop` | `agent`, `agentId`, `error`, `planId` |

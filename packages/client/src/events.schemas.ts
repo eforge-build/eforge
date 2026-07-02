@@ -7,7 +7,7 @@
  * consumers continue to import through @eforge-build/client barrels.
  */
 
-export { ORCHESTRATION_MODES, REVIEW_PERSPECTIVES } from './events/constants.js';
+export { REVIEW_PERSPECTIVES } from './events/constants.js';
 export {
   BoundedDiagnosticOptionsSchema,
   BoundedValidationDiagnosticSchema,
@@ -15,10 +15,7 @@ export {
   CompileContextGuardDiagnosticsSchema,
   CompileContextGuardLimitsSchema,
   CompileContextGuardMetadataSourceSchema,
-  CompilePipelineScopeSchema,
-  CompilePreflightRiskSchema,
   CompileRecoveryActionSchema,
-  CompileRiskLevelSchema,
   CompileScopeContextFailureKindSchema,
   CompileScopeContextFailureSchema,
   CompileScopeContextSourceSchema,
@@ -80,7 +77,6 @@ export {
   PlanningCoverageSummarySchema,
   PlanningCriterionCoverageSchema,
   PlanningDecompositionLimitsSchema,
-  PlanningDecompositionRiskEvidenceSchema,
   PlanningDecompositionUnitStatusSchema,
   PlanningDecompositionUnitSummarySchema,
   PlanningObservedBudgetPressureSchema,
@@ -111,7 +107,6 @@ export type {
   PlanningCriterionCoverage,
   PlanningDecompositionEventType,
   PlanningDecompositionLimits,
-  PlanningDecompositionRiskEvidence,
   PlanningDecompositionUnitStatus,
   PlanningDecompositionUnitSummary,
   PlanningObservedBudgetPressure,
@@ -139,10 +134,7 @@ export type {
   CompileContextGuardDiagnostics,
   CompileContextGuardLimits,
   CompileContextGuardMetadataSource,
-  CompilePipelineScope,
-  CompilePreflightRisk,
   CompileRecoveryAction,
-  CompileRiskLevel,
   CompileScopeContextFailure,
   PlannerContextObservation,
   PlannerInspectionBudgetDiagnostics,
@@ -171,7 +163,6 @@ export type {
   BuildResumeArtifactsEvent,
   BuildResumeCompleteEvent,
   BuildResumeIneligibleEvent,
-  CompilePreflightEvent,
   CompileScopeContextFailureEvent,
   PlannerInspectionSummaryEvent,
   PlanningDecompositionStartEvent,
@@ -193,7 +184,6 @@ export type {
   EforgeResult,
   EforgeState,
   EvaluationIssueOutcome,
-  ExpeditionModule,
   FailingPlanEntry,
   LandedCommit,
   LandingAction,

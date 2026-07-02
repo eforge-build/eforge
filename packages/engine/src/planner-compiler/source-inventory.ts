@@ -1,11 +1,9 @@
-import type { CompilePreflightRisk } from '@eforge-build/client';
-import type { PipelineComposition } from '../schemas.js';
 import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../validation/acceptance-criteria.js';
 import { actionableEvidencePaths, extractEvidenceCandidatesFromText, rankEvidenceCandidates, type PlanningEvidenceCandidate } from './evidence-hygiene.js';
 import { boundEvidence, hashText, inferInterfaceKeys, inferSubsystemHints, parseMarkdownLines, stableSlug, utf8ByteLength, type MarkdownLine } from './source-analysis.js';
 import type { SourceLocalizationNeedKind } from './source-localization-contracts.js';
 
-export interface SourceInventoryInput { content: string; hash?: string; path?: string; preflightRisk?: CompilePreflightRisk; pipelineComposition?: PipelineComposition }
+export interface SourceInventoryInput { content: string; hash?: string; path?: string }
 export interface SourceInventoryHeading { line: number; depth: number; title: string; path: string[]; byteStart: number; byteEnd: number }
 export interface SourceInventoryCriterion { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; evidencePaths: string[]; dependencyHints: string[]; evidence: string }
 export interface SourceInventoryGlobalNeed { id: string; kind: SourceLocalizationNeedKind; query: string; criterionIds: string[]; subsystemHints: string[]; interfaceKeys: string[]; reason: string }
@@ -17,15 +15,13 @@ export function deriveSourceInventory(input: SourceInventoryInput): SourceInvent
   const lines = parseMarkdownLines(input.content);
   const headings = extractHeadings(lines);
   const criteria = locateCriteria(extractExpectedAcceptanceCriteria(input.content, { allowFallbackSections: true }), lines);
-  const metadataHints = metadataSubsystemHints(input.preflightRisk, input.pipelineComposition);
-  const withMetadata = applyMetadataHints(criteria, metadataHints);
   const evidenceCandidates = rankEvidenceCandidates([
     ...extractEvidenceCandidatesFromText(input.content).map((candidate) => candidate.value),
-    ...withMetadata.flatMap((criterion) => criterion.evidencePaths),
+    ...criteria.flatMap((criterion) => criterion.evidencePaths),
   ]);
-  const subsystemHints = [...new Set([...withMetadata.flatMap((criterion) => criterion.subsystemHints), ...metadataHints])].sort();
-  const interfaceKeys = [...new Set(withMetadata.flatMap((criterion) => criterion.interfaceKeys))].sort();
-  const globalLocalizationNeeds = deriveGlobalLocalizationNeeds(withMetadata, evidenceCandidates, subsystemHints, interfaceKeys);
+  const subsystemHints = [...new Set(criteria.flatMap((criterion) => criterion.subsystemHints))].sort();
+  const interfaceKeys = [...new Set(criteria.flatMap((criterion) => criterion.interfaceKeys))].sort();
+  const globalLocalizationNeeds = deriveGlobalLocalizationNeeds(criteria, evidenceCandidates, subsystemHints, interfaceKeys);
   const byteLength = utf8ByteLength(input.content);
   return {
     sourceHash,
@@ -33,7 +29,7 @@ export function deriveSourceInventory(input: SourceInventoryInput): SourceInvent
     byteLength,
     lineCount: lines.length,
     headings,
-    criteria: withMetadata,
+    criteria,
     evidenceCandidates,
     subsystemHints,
     interfaceKeys,
@@ -43,7 +39,7 @@ export function deriveSourceInventory(input: SourceInventoryInput): SourceInvent
       ...(input.path ? { sourcePath: input.path } : {}),
       byteLength,
       lineCount: lines.length,
-      criterionCount: withMetadata.length,
+      criterionCount: criteria.length,
       headingCount: headings.length,
       subsystemHints,
       interfaceKeys,
@@ -89,18 +85,6 @@ function locateCriterion(criterion: ExpectedAcceptanceCriterion, lines: Markdown
     dependencyHints: inferDependencyHints(criterion.text),
     evidence: boundEvidence(criterion.text),
   };
-}
-
-function metadataSubsystemHints(preflightRisk?: CompilePreflightRisk, _pipelineComposition?: PipelineComposition): string[] {
-  const preflightHints: string[] = preflightRisk?.subsystemBreadth.subsystems ?? [];
-  return [...new Set(preflightHints.map((hint) => stableSlug(hint)).filter((hint) => hint && hint !== 'general'))].sort();
-}
-
-function applyMetadataHints(criteria: SourceInventoryCriterion[], metadataHints: string[]): SourceInventoryCriterion[] {
-  if (metadataHints.length === 0) return criteria;
-  return criteria.map((criterion, index) => criterion.subsystemHints.length === 0 || (criterion.subsystemHints.length === 1 && criterion.subsystemHints[0] === 'general')
-    ? { ...criterion, subsystemHints: [metadataHints[index % metadataHints.length]] }
-    : criterion);
 }
 
 function inferDependencyHints(value: string): string[] {

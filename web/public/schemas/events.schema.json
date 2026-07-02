@@ -1928,31 +1928,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -1993,10 +1973,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -2116,31 +2092,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -2181,10 +2137,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -2302,31 +2254,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -2367,10 +2299,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -2486,31 +2414,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -2551,10 +2459,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -2696,31 +2600,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -2761,10 +2645,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -4553,225 +4433,6 @@
           "type": "object",
           "required": [
             "type",
-            "risk"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:preflight",
-              "type": "string"
-            },
-            "risk": {
-              "type": "object",
-              "required": [
-                "level",
-                "sourceBytes",
-                "promptSourceBytes",
-                "acceptanceCriteriaCount",
-                "score",
-                "generatedInventory",
-                "subsystemBreadth",
-                "reasons",
-                "recommendation"
-              ],
-              "properties": {
-                "level": {
-                  "anyOf": [
-                    {
-                      "const": "normal",
-                      "type": "string"
-                    },
-                    {
-                      "const": "elevated",
-                      "type": "string"
-                    },
-                    {
-                      "const": "overflow-risk",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "sourceBytes": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "promptSourceBytes": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "acceptanceCriteriaCount": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "score": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "generatedInventory": {
-                  "type": "object",
-                  "required": [
-                    "detected",
-                    "contentHashes",
-                    "pathReferences",
-                    "headings",
-                    "blockCount",
-                    "sidecarCount",
-                    "omittedBytes"
-                  ],
-                  "properties": {
-                    "detected": {
-                      "type": "boolean"
-                    },
-                    "contentHashes": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "pattern": "^[a-f0-9]{64}$",
-                        "type": "string"
-                      }
-                    },
-                    "pathReferences": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
-                    },
-                    "headings": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
-                    },
-                    "blockCount": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "sidecarCount": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "omittedBytes": {
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  }
-                },
-                "subsystemBreadth": {
-                  "type": "object",
-                  "required": [
-                    "count",
-                    "subsystems",
-                    "evidence"
-                  ],
-                  "properties": {
-                    "count": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "subsystems": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
-                    },
-                    "evidence": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
-                    }
-                  }
-                },
-                "selectedProfile": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "pipelineScope": {
-                  "anyOf": [
-                    {
-                      "const": "errand",
-                      "type": "string"
-                    },
-                    {
-                      "const": "excursion",
-                      "type": "string"
-                    },
-                    {
-                      "const": "expedition",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "reasons": {
-                  "maxItems": 12,
-                  "type": "array",
-                  "items": {
-                    "maxLength": 2000,
-                    "type": "string"
-                  }
-                },
-                "recommendation": {
-                  "type": "object",
-                  "required": [
-                    "action",
-                    "eligible",
-                    "reason"
-                  ],
-                  "properties": {
-                    "action": {
-                      "anyOf": [
-                        {
-                          "const": "none",
-                          "type": "string"
-                        },
-                        {
-                          "const": "retry-as-expedition",
-                          "type": "string"
-                        },
-                        {
-                          "const": "bounded-decomposition",
-                          "type": "string"
-                        },
-                        {
-                          "const": "manual-reduce-scope",
-                          "type": "string"
-                        },
-                        {
-                          "const": "repair-existing-artifacts",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "eligible": {
-                      "type": "boolean"
-                    },
-                    "reason": {
-                      "maxLength": 2000,
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
             "summary"
           ],
           "properties": {
@@ -5251,10 +4912,6 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "preflight",
-                          "type": "string"
-                        },
-                        {
                           "const": "live-context-guard",
                           "type": "string"
                         },
@@ -5295,19 +4952,7 @@
                     "stage": {
                       "anyOf": [
                         {
-                          "const": "pipeline-composer",
-                          "type": "string"
-                        },
-                        {
                           "const": "planner",
-                          "type": "string"
-                        },
-                        {
-                          "const": "module-planner",
-                          "type": "string"
-                        },
-                        {
-                          "const": "compile-expedition",
                           "type": "string"
                         },
                         {
@@ -5323,212 +4968,6 @@
                     "explanation": {
                       "maxLength": 2000,
                       "type": "string"
-                    },
-                    "risk": {
-                      "type": "object",
-                      "required": [
-                        "level",
-                        "sourceBytes",
-                        "promptSourceBytes",
-                        "acceptanceCriteriaCount",
-                        "score",
-                        "generatedInventory",
-                        "subsystemBreadth",
-                        "reasons",
-                        "recommendation"
-                      ],
-                      "properties": {
-                        "level": {
-                          "anyOf": [
-                            {
-                              "const": "normal",
-                              "type": "string"
-                            },
-                            {
-                              "const": "elevated",
-                              "type": "string"
-                            },
-                            {
-                              "const": "overflow-risk",
-                              "type": "string"
-                            }
-                          ]
-                        },
-                        "sourceBytes": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "promptSourceBytes": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "acceptanceCriteriaCount": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "score": {
-                          "minimum": 0,
-                          "type": "number"
-                        },
-                        "generatedInventory": {
-                          "type": "object",
-                          "required": [
-                            "detected",
-                            "contentHashes",
-                            "pathReferences",
-                            "headings",
-                            "blockCount",
-                            "sidecarCount",
-                            "omittedBytes"
-                          ],
-                          "properties": {
-                            "detected": {
-                              "type": "boolean"
-                            },
-                            "contentHashes": {
-                              "maxItems": 12,
-                              "type": "array",
-                              "items": {
-                                "pattern": "^[a-f0-9]{64}$",
-                                "type": "string"
-                              }
-                            },
-                            "pathReferences": {
-                              "maxItems": 12,
-                              "type": "array",
-                              "items": {
-                                "maxLength": 2000,
-                                "type": "string"
-                              }
-                            },
-                            "headings": {
-                              "maxItems": 12,
-                              "type": "array",
-                              "items": {
-                                "maxLength": 2000,
-                                "type": "string"
-                              }
-                            },
-                            "blockCount": {
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "sidecarCount": {
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "omittedBytes": {
-                              "minimum": 0,
-                              "type": "integer"
-                            }
-                          }
-                        },
-                        "subsystemBreadth": {
-                          "type": "object",
-                          "required": [
-                            "count",
-                            "subsystems",
-                            "evidence"
-                          ],
-                          "properties": {
-                            "count": {
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "subsystems": {
-                              "maxItems": 12,
-                              "type": "array",
-                              "items": {
-                                "maxLength": 2000,
-                                "type": "string"
-                              }
-                            },
-                            "evidence": {
-                              "maxItems": 12,
-                              "type": "array",
-                              "items": {
-                                "maxLength": 2000,
-                                "type": "string"
-                              }
-                            }
-                          }
-                        },
-                        "selectedProfile": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "pipelineScope": {
-                          "anyOf": [
-                            {
-                              "const": "errand",
-                              "type": "string"
-                            },
-                            {
-                              "const": "excursion",
-                              "type": "string"
-                            },
-                            {
-                              "const": "expedition",
-                              "type": "string"
-                            }
-                          ]
-                        },
-                        "reasons": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
-                        },
-                        "recommendation": {
-                          "type": "object",
-                          "required": [
-                            "action",
-                            "eligible",
-                            "reason"
-                          ],
-                          "properties": {
-                            "action": {
-                              "anyOf": [
-                                {
-                                  "const": "none",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "retry-as-expedition",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "bounded-decomposition",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "manual-reduce-scope",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "repair-existing-artifacts",
-                                  "type": "string"
-                                }
-                              ]
-                            },
-                            "eligible": {
-                              "type": "boolean"
-                            },
-                            "reason": {
-                              "maxLength": 2000,
-                              "type": "string"
-                            }
-                          }
-                        }
-                      }
                     },
                     "observed": {
                       "type": "object",
@@ -5922,10 +5361,6 @@
                               "type": "string"
                             },
                             {
-                              "const": "retry-as-expedition",
-                              "type": "string"
-                            },
-                            {
                               "const": "bounded-decomposition",
                               "type": "string"
                             },
@@ -6308,10 +5743,6 @@
                         "source": {
                           "anyOf": [
                             {
-                              "const": "preflight",
-                              "type": "string"
-                            },
-                            {
                               "const": "live-context-guard",
                               "type": "string"
                             },
@@ -6353,10 +5784,6 @@
                 "source": {
                   "anyOf": [
                     {
-                      "const": "preflight",
-                      "type": "string"
-                    },
-                    {
                       "const": "live-context-guard",
                       "type": "string"
                     },
@@ -6397,19 +5824,7 @@
                 "stage": {
                   "anyOf": [
                     {
-                      "const": "pipeline-composer",
-                      "type": "string"
-                    },
-                    {
                       "const": "planner",
-                      "type": "string"
-                    },
-                    {
-                      "const": "module-planner",
-                      "type": "string"
-                    },
-                    {
-                      "const": "compile-expedition",
                       "type": "string"
                     },
                     {
@@ -6425,212 +5840,6 @@
                 "explanation": {
                   "maxLength": 2000,
                   "type": "string"
-                },
-                "risk": {
-                  "type": "object",
-                  "required": [
-                    "level",
-                    "sourceBytes",
-                    "promptSourceBytes",
-                    "acceptanceCriteriaCount",
-                    "score",
-                    "generatedInventory",
-                    "subsystemBreadth",
-                    "reasons",
-                    "recommendation"
-                  ],
-                  "properties": {
-                    "level": {
-                      "anyOf": [
-                        {
-                          "const": "normal",
-                          "type": "string"
-                        },
-                        {
-                          "const": "elevated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "overflow-risk",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "sourceBytes": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "promptSourceBytes": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "acceptanceCriteriaCount": {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "score": {
-                      "minimum": 0,
-                      "type": "number"
-                    },
-                    "generatedInventory": {
-                      "type": "object",
-                      "required": [
-                        "detected",
-                        "contentHashes",
-                        "pathReferences",
-                        "headings",
-                        "blockCount",
-                        "sidecarCount",
-                        "omittedBytes"
-                      ],
-                      "properties": {
-                        "detected": {
-                          "type": "boolean"
-                        },
-                        "contentHashes": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "pattern": "^[a-f0-9]{64}$",
-                            "type": "string"
-                          }
-                        },
-                        "pathReferences": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
-                        },
-                        "headings": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
-                        },
-                        "blockCount": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "sidecarCount": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "omittedBytes": {
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      }
-                    },
-                    "subsystemBreadth": {
-                      "type": "object",
-                      "required": [
-                        "count",
-                        "subsystems",
-                        "evidence"
-                      ],
-                      "properties": {
-                        "count": {
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "subsystems": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
-                        },
-                        "evidence": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "maxLength": 2000,
-                            "type": "string"
-                          }
-                        }
-                      }
-                    },
-                    "selectedProfile": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "pipelineScope": {
-                      "anyOf": [
-                        {
-                          "const": "errand",
-                          "type": "string"
-                        },
-                        {
-                          "const": "excursion",
-                          "type": "string"
-                        },
-                        {
-                          "const": "expedition",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "reasons": {
-                      "maxItems": 12,
-                      "type": "array",
-                      "items": {
-                        "maxLength": 2000,
-                        "type": "string"
-                      }
-                    },
-                    "recommendation": {
-                      "type": "object",
-                      "required": [
-                        "action",
-                        "eligible",
-                        "reason"
-                      ],
-                      "properties": {
-                        "action": {
-                          "anyOf": [
-                            {
-                              "const": "none",
-                              "type": "string"
-                            },
-                            {
-                              "const": "retry-as-expedition",
-                              "type": "string"
-                            },
-                            {
-                              "const": "bounded-decomposition",
-                              "type": "string"
-                            },
-                            {
-                              "const": "manual-reduce-scope",
-                              "type": "string"
-                            },
-                            {
-                              "const": "repair-existing-artifacts",
-                              "type": "string"
-                            }
-                          ]
-                        },
-                        "eligible": {
-                          "type": "boolean"
-                        },
-                        "reason": {
-                          "maxLength": 2000,
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
                 },
                 "observed": {
                   "type": "object",
@@ -7024,10 +6233,6 @@
                           "type": "string"
                         },
                         {
-                          "const": "retry-as-expedition",
-                          "type": "string"
-                        },
-                        {
                           "const": "bounded-decomposition",
                           "type": "string"
                         },
@@ -7210,101 +6415,6 @@
                 "maxSplitAttemptsPerUnit": {
                   "minimum": 1,
                   "type": "integer"
-                }
-              }
-            },
-            "riskEvidence": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": [
-                "level",
-                "score",
-                "sourceBytes",
-                "promptSourceBytes",
-                "acceptanceCriteriaCount",
-                "subsystemSummaries",
-                "recommendationAction"
-              ],
-              "properties": {
-                "level": {
-                  "anyOf": [
-                    {
-                      "const": "normal",
-                      "type": "string"
-                    },
-                    {
-                      "const": "elevated",
-                      "type": "string"
-                    },
-                    {
-                      "const": "overflow-risk",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "score": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "sourceBytes": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "promptSourceBytes": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "acceptanceCriteriaCount": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "subsystemSummaries": {
-                  "maxItems": 32,
-                  "type": "array",
-                  "items": {
-                    "maxLength": 2000,
-                    "type": "string"
-                  }
-                },
-                "recommendationAction": {
-                  "anyOf": [
-                    {
-                      "const": "none",
-                      "type": "string"
-                    },
-                    {
-                      "const": "retry-as-expedition",
-                      "type": "string"
-                    },
-                    {
-                      "const": "bounded-decomposition",
-                      "type": "string"
-                    },
-                    {
-                      "const": "manual-reduce-scope",
-                      "type": "string"
-                    },
-                    {
-                      "const": "repair-existing-artifacts",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "selectedScope": {
-                  "anyOf": [
-                    {
-                      "const": "errand",
-                      "type": "string"
-                    },
-                    {
-                      "const": "excursion",
-                      "type": "string"
-                    },
-                    {
-                      "const": "expedition",
-                      "type": "string"
-                    }
-                  ]
                 }
               }
             }
@@ -9489,7 +8599,6 @@
           "type": "object",
           "required": [
             "type",
-            "scope",
             "compile",
             "defaultBuild",
             "defaultReview",
@@ -9498,9 +8607,6 @@
           "properties": {
             "type": {
               "const": "planning:pipeline",
-              "type": "string"
-            },
-            "scope": {
               "type": "string"
             },
             "compile": {
@@ -10008,520 +9114,6 @@
           "properties": {
             "type": {
               "const": "planning:evaluate:complete",
-              "type": "string"
-            },
-            "accepted": {
-              "type": "number"
-            },
-            "rejected": {
-              "type": "number"
-            },
-            "verdicts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "file",
-                  "action",
-                  "reason"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string"
-                  },
-                  "action": {
-                    "anyOf": [
-                      {
-                        "const": "accept",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reject",
-                        "type": "string"
-                      },
-                      {
-                        "const": "review",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "hunk": {
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:architecture:review:start",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "issues"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:architecture:review:complete",
-              "type": "string"
-            },
-            "issues": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "severity",
-                  "category",
-                  "file",
-                  "description"
-                ],
-                "properties": {
-                  "issueId": {
-                    "minLength": 1,
-                    "maxLength": 4096,
-                    "pattern": "\\S",
-                    "type": "string"
-                  },
-                  "severity": {
-                    "anyOf": [
-                      {
-                        "const": "critical",
-                        "type": "string"
-                      },
-                      {
-                        "const": "warning",
-                        "type": "string"
-                      },
-                      {
-                        "const": "suggestion",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "category": {
-                    "type": "string"
-                  },
-                  "file": {
-                    "type": "string"
-                  },
-                  "line": {
-                    "type": "number"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "fix": {
-                    "type": "string"
-                  },
-                  "retryGuidance": {
-                    "type": "string"
-                  },
-                  "failureKind": {
-                    "type": "string"
-                  },
-                  "repairClass": {
-                    "anyOf": [
-                      {
-                        "const": "narrow",
-                        "type": "string"
-                      },
-                      {
-                        "const": "structural",
-                        "type": "string"
-                      },
-                      {
-                        "const": "manual",
-                        "type": "string"
-                      },
-                      {
-                        "const": "followup",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "$id": "TypeBoxRecursive1",
-                        "anyOf": [
-                          {
-                            "type": "null"
-                          },
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          {
-                            "type": "array",
-                            "items": {
-                              "$ref": "TypeBoxRecursive1"
-                            }
-                          },
-                          {
-                            "type": "object",
-                            "patternProperties": {
-                              "^(.*)$": {
-                                "$ref": "TypeBoxRecursive1"
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  "validationProviderName": {
-                    "type": "string"
-                  },
-                  "runtimeFailureKind": {
-                    "anyOf": [
-                      {
-                        "const": "result",
-                        "type": "string"
-                      },
-                      {
-                        "const": "command",
-                        "type": "string"
-                      },
-                      {
-                        "const": "timeout",
-                        "type": "string"
-                      },
-                      {
-                        "const": "exception",
-                        "type": "string"
-                      },
-                      {
-                        "const": "unexpected-return",
-                        "type": "string"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:architecture:evaluate:start",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "attempt",
-            "maxContinuations"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:architecture:evaluate:continuation",
-              "type": "string"
-            },
-            "attempt": {
-              "type": "number"
-            },
-            "maxContinuations": {
-              "type": "number"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "accepted",
-            "rejected"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:architecture:evaluate:complete",
-              "type": "string"
-            },
-            "accepted": {
-              "type": "number"
-            },
-            "rejected": {
-              "type": "number"
-            },
-            "verdicts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "file",
-                  "action",
-                  "reason"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string"
-                  },
-                  "action": {
-                    "anyOf": [
-                      {
-                        "const": "accept",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reject",
-                        "type": "string"
-                      },
-                      {
-                        "const": "review",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "hunk": {
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:cohesion:start",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "issues"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:cohesion:complete",
-              "type": "string"
-            },
-            "issues": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "severity",
-                  "category",
-                  "file",
-                  "description"
-                ],
-                "properties": {
-                  "issueId": {
-                    "minLength": 1,
-                    "maxLength": 4096,
-                    "pattern": "\\S",
-                    "type": "string"
-                  },
-                  "severity": {
-                    "anyOf": [
-                      {
-                        "const": "critical",
-                        "type": "string"
-                      },
-                      {
-                        "const": "warning",
-                        "type": "string"
-                      },
-                      {
-                        "const": "suggestion",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "category": {
-                    "type": "string"
-                  },
-                  "file": {
-                    "type": "string"
-                  },
-                  "line": {
-                    "type": "number"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "fix": {
-                    "type": "string"
-                  },
-                  "retryGuidance": {
-                    "type": "string"
-                  },
-                  "failureKind": {
-                    "type": "string"
-                  },
-                  "repairClass": {
-                    "anyOf": [
-                      {
-                        "const": "narrow",
-                        "type": "string"
-                      },
-                      {
-                        "const": "structural",
-                        "type": "string"
-                      },
-                      {
-                        "const": "manual",
-                        "type": "string"
-                      },
-                      {
-                        "const": "followup",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "$id": "TypeBoxRecursive1",
-                        "anyOf": [
-                          {
-                            "type": "null"
-                          },
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          {
-                            "type": "array",
-                            "items": {
-                              "$ref": "TypeBoxRecursive1"
-                            }
-                          },
-                          {
-                            "type": "object",
-                            "patternProperties": {
-                              "^(.*)$": {
-                                "$ref": "TypeBoxRecursive1"
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  "validationProviderName": {
-                    "type": "string"
-                  },
-                  "runtimeFailureKind": {
-                    "anyOf": [
-                      {
-                        "const": "result",
-                        "type": "string"
-                      },
-                      {
-                        "const": "command",
-                        "type": "string"
-                      },
-                      {
-                        "const": "timeout",
-                        "type": "string"
-                      },
-                      {
-                        "const": "exception",
-                        "type": "string"
-                      },
-                      {
-                        "const": "unexpected-return",
-                        "type": "string"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:cohesion:evaluate:start",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "attempt",
-            "maxContinuations"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:cohesion:evaluate:continuation",
-              "type": "string"
-            },
-            "attempt": {
-              "type": "number"
-            },
-            "maxContinuations": {
-              "type": "number"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "accepted",
-            "rejected"
-          ],
-          "properties": {
-            "type": {
-              "const": "planning:cohesion:evaluate:complete",
               "type": "string"
             },
             "accepted": {
@@ -12534,259 +11126,6 @@
           "type": "object",
           "required": [
             "type",
-            "modules"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:architecture:complete",
-              "type": "string"
-            },
-            "modules": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "id",
-                  "description",
-                  "dependsOn"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "dependsOn": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "wave",
-            "moduleIds"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:wave:start",
-              "type": "string"
-            },
-            "wave": {
-              "type": "number"
-            },
-            "moduleIds": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "wave"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:wave:complete",
-              "type": "string"
-            },
-            "wave": {
-              "type": "number"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "moduleId"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:module:start",
-              "type": "string"
-            },
-            "moduleId": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "moduleId"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:module:complete",
-              "type": "string"
-            },
-            "moduleId": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:compile:start",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "plans"
-          ],
-          "properties": {
-            "type": {
-              "const": "expedition:compile:complete",
-              "type": "string"
-            },
-            "plans": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "id",
-                  "name",
-                  "dependsOn",
-                  "branch",
-                  "body",
-                  "filePath"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "dependsOn": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "branch": {
-                    "type": "string"
-                  },
-                  "migrations": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "timestamp",
-                        "description"
-                      ],
-                      "properties": {
-                        "timestamp": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  },
-                  "agents": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "type": "object",
-                        "properties": {
-                          "effort": {
-                            "type": "string"
-                          },
-                          "thinking": {
-                            "anyOf": [
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "object",
-                                "patternProperties": {
-                                  "^(.*)$": {}
-                                }
-                              }
-                            ]
-                          },
-                          "rationale": {
-                            "type": "string"
-                          },
-                          "tier": {
-                            "type": "string"
-                          },
-                          "shards": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "id"
-                              ],
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "roots": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                },
-                                "files": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "body": {
-                    "type": "string"
-                  },
-                  "filePath": {
-                    "type": "string"
-                  },
-                  "warnings": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
             "agentId",
             "agent",
             "model",
@@ -12832,31 +11171,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -12897,10 +11216,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13165,31 +11480,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13230,10 +11525,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13295,31 +11586,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13360,10 +11631,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13425,31 +11692,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13490,10 +11737,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13586,31 +11829,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13651,10 +11874,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13716,31 +11935,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13781,10 +11980,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13850,31 +12045,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -13915,10 +12090,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -13983,31 +12154,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -14048,10 +12199,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -14210,31 +12357,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -14275,10 +12402,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -14398,31 +12521,11 @@
                   "type": "string"
                 },
                 {
-                  "const": "module-planner",
-                  "type": "string"
-                },
-                {
                   "const": "plan-reviewer",
                   "type": "string"
                 },
                 {
                   "const": "plan-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "architecture-evaluator",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-reviewer",
-                  "type": "string"
-                },
-                {
-                  "const": "cohesion-evaluator",
                   "type": "string"
                 },
                 {
@@ -14463,10 +12566,6 @@
                 },
                 {
                   "const": "dependency-detector",
-                  "type": "string"
-                },
-                {
-                  "const": "pipeline-composer",
                   "type": "string"
                 },
                 {
@@ -17738,52 +15837,6 @@
                   "required": [
                     "kind",
                     "rationale",
-                    "scope",
-                    "source"
-                  ],
-                  "properties": {
-                    "kind": {
-                      "const": "scope-selected",
-                      "type": "string"
-                    },
-                    "rationale": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "anyOf": [
-                        {
-                          "const": "errand",
-                          "type": "string"
-                        },
-                        {
-                          "const": "excursion",
-                          "type": "string"
-                        },
-                        {
-                          "const": "expedition",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "source": {
-                      "anyOf": [
-                        {
-                          "const": "pipeline-composer",
-                          "type": "string"
-                        },
-                        {
-                          "const": "planner",
-                          "type": "string"
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "kind",
-                    "rationale",
                     "defaultBuild"
                   ],
                   "properties": {
@@ -18891,7 +16944,6 @@
                 "name",
                 "description",
                 "created",
-                "mode",
                 "baseBranch",
                 "pipeline",
                 "plans"
@@ -18906,22 +16958,6 @@
                 "created": {
                   "type": "string"
                 },
-                "mode": {
-                  "anyOf": [
-                    {
-                      "const": "errand",
-                      "type": "string"
-                    },
-                    {
-                      "const": "excursion",
-                      "type": "string"
-                    },
-                    {
-                      "const": "expedition",
-                      "type": "string"
-                    }
-                  ]
-                },
                 "baseBranch": {
                   "type": "string"
                 },
@@ -18931,29 +16967,12 @@
                 "pipeline": {
                   "type": "object",
                   "required": [
-                    "scope",
                     "compile",
                     "defaultBuild",
                     "defaultReview",
                     "rationale"
                   ],
                   "properties": {
-                    "scope": {
-                      "anyOf": [
-                        {
-                          "const": "errand",
-                          "type": "string"
-                        },
-                        {
-                          "const": "excursion",
-                          "type": "string"
-                        },
-                        {
-                          "const": "expedition",
-                          "type": "string"
-                        }
-                      ]
-                    },
                     "compile": {
                       "type": "array",
                       "items": {
@@ -21488,31 +19507,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -21553,10 +19552,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -21676,31 +19671,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -21741,10 +19716,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -21862,31 +19833,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -21927,10 +19878,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -22046,31 +19993,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -22111,10 +20038,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -22256,31 +20179,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -22321,10 +20224,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -24113,225 +22012,6 @@
                         "type": "object",
                         "required": [
                           "type",
-                          "risk"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:preflight",
-                            "type": "string"
-                          },
-                          "risk": {
-                            "type": "object",
-                            "required": [
-                              "level",
-                              "sourceBytes",
-                              "promptSourceBytes",
-                              "acceptanceCriteriaCount",
-                              "score",
-                              "generatedInventory",
-                              "subsystemBreadth",
-                              "reasons",
-                              "recommendation"
-                            ],
-                            "properties": {
-                              "level": {
-                                "anyOf": [
-                                  {
-                                    "const": "normal",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "elevated",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "overflow-risk",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
-                              "sourceBytes": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "promptSourceBytes": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "acceptanceCriteriaCount": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "score": {
-                                "minimum": 0,
-                                "type": "number"
-                              },
-                              "generatedInventory": {
-                                "type": "object",
-                                "required": [
-                                  "detected",
-                                  "contentHashes",
-                                  "pathReferences",
-                                  "headings",
-                                  "blockCount",
-                                  "sidecarCount",
-                                  "omittedBytes"
-                                ],
-                                "properties": {
-                                  "detected": {
-                                    "type": "boolean"
-                                  },
-                                  "contentHashes": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "pattern": "^[a-f0-9]{64}$",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "pathReferences": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
-                                  },
-                                  "headings": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
-                                  },
-                                  "blockCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "sidecarCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "omittedBytes": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  }
-                                }
-                              },
-                              "subsystemBreadth": {
-                                "type": "object",
-                                "required": [
-                                  "count",
-                                  "subsystems",
-                                  "evidence"
-                                ],
-                                "properties": {
-                                  "count": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "subsystems": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
-                                  },
-                                  "evidence": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
-                                  }
-                                }
-                              },
-                              "selectedProfile": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "pipelineScope": {
-                                "anyOf": [
-                                  {
-                                    "const": "errand",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "excursion",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "expedition",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
-                              "reasons": {
-                                "maxItems": 12,
-                                "type": "array",
-                                "items": {
-                                  "maxLength": 2000,
-                                  "type": "string"
-                                }
-                              },
-                              "recommendation": {
-                                "type": "object",
-                                "required": [
-                                  "action",
-                                  "eligible",
-                                  "reason"
-                                ],
-                                "properties": {
-                                  "action": {
-                                    "anyOf": [
-                                      {
-                                        "const": "none",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "retry-as-expedition",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "bounded-decomposition",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "manual-reduce-scope",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "repair-existing-artifacts",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
-                                  "eligible": {
-                                    "type": "boolean"
-                                  },
-                                  "reason": {
-                                    "maxLength": 2000,
-                                    "type": "string"
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
                           "summary"
                         ],
                         "properties": {
@@ -24811,10 +22491,6 @@
                                   "source": {
                                     "anyOf": [
                                       {
-                                        "const": "preflight",
-                                        "type": "string"
-                                      },
-                                      {
                                         "const": "live-context-guard",
                                         "type": "string"
                                       },
@@ -24855,19 +22531,7 @@
                                   "stage": {
                                     "anyOf": [
                                       {
-                                        "const": "pipeline-composer",
-                                        "type": "string"
-                                      },
-                                      {
                                         "const": "planner",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "module-planner",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "compile-expedition",
                                         "type": "string"
                                       },
                                       {
@@ -24883,212 +22547,6 @@
                                   "explanation": {
                                     "maxLength": 2000,
                                     "type": "string"
-                                  },
-                                  "risk": {
-                                    "type": "object",
-                                    "required": [
-                                      "level",
-                                      "sourceBytes",
-                                      "promptSourceBytes",
-                                      "acceptanceCriteriaCount",
-                                      "score",
-                                      "generatedInventory",
-                                      "subsystemBreadth",
-                                      "reasons",
-                                      "recommendation"
-                                    ],
-                                    "properties": {
-                                      "level": {
-                                        "anyOf": [
-                                          {
-                                            "const": "normal",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "elevated",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "overflow-risk",
-                                            "type": "string"
-                                          }
-                                        ]
-                                      },
-                                      "sourceBytes": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "promptSourceBytes": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "acceptanceCriteriaCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "score": {
-                                        "minimum": 0,
-                                        "type": "number"
-                                      },
-                                      "generatedInventory": {
-                                        "type": "object",
-                                        "required": [
-                                          "detected",
-                                          "contentHashes",
-                                          "pathReferences",
-                                          "headings",
-                                          "blockCount",
-                                          "sidecarCount",
-                                          "omittedBytes"
-                                        ],
-                                        "properties": {
-                                          "detected": {
-                                            "type": "boolean"
-                                          },
-                                          "contentHashes": {
-                                            "maxItems": 12,
-                                            "type": "array",
-                                            "items": {
-                                              "pattern": "^[a-f0-9]{64}$",
-                                              "type": "string"
-                                            }
-                                          },
-                                          "pathReferences": {
-                                            "maxItems": 12,
-                                            "type": "array",
-                                            "items": {
-                                              "maxLength": 2000,
-                                              "type": "string"
-                                            }
-                                          },
-                                          "headings": {
-                                            "maxItems": 12,
-                                            "type": "array",
-                                            "items": {
-                                              "maxLength": 2000,
-                                              "type": "string"
-                                            }
-                                          },
-                                          "blockCount": {
-                                            "minimum": 0,
-                                            "type": "integer"
-                                          },
-                                          "sidecarCount": {
-                                            "minimum": 0,
-                                            "type": "integer"
-                                          },
-                                          "omittedBytes": {
-                                            "minimum": 0,
-                                            "type": "integer"
-                                          }
-                                        }
-                                      },
-                                      "subsystemBreadth": {
-                                        "type": "object",
-                                        "required": [
-                                          "count",
-                                          "subsystems",
-                                          "evidence"
-                                        ],
-                                        "properties": {
-                                          "count": {
-                                            "minimum": 0,
-                                            "type": "integer"
-                                          },
-                                          "subsystems": {
-                                            "maxItems": 12,
-                                            "type": "array",
-                                            "items": {
-                                              "maxLength": 2000,
-                                              "type": "string"
-                                            }
-                                          },
-                                          "evidence": {
-                                            "maxItems": 12,
-                                            "type": "array",
-                                            "items": {
-                                              "maxLength": 2000,
-                                              "type": "string"
-                                            }
-                                          }
-                                        }
-                                      },
-                                      "selectedProfile": {
-                                        "anyOf": [
-                                          {
-                                            "type": "string"
-                                          },
-                                          {
-                                            "type": "null"
-                                          }
-                                        ]
-                                      },
-                                      "pipelineScope": {
-                                        "anyOf": [
-                                          {
-                                            "const": "errand",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "excursion",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "expedition",
-                                            "type": "string"
-                                          }
-                                        ]
-                                      },
-                                      "reasons": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
-                                      },
-                                      "recommendation": {
-                                        "type": "object",
-                                        "required": [
-                                          "action",
-                                          "eligible",
-                                          "reason"
-                                        ],
-                                        "properties": {
-                                          "action": {
-                                            "anyOf": [
-                                              {
-                                                "const": "none",
-                                                "type": "string"
-                                              },
-                                              {
-                                                "const": "retry-as-expedition",
-                                                "type": "string"
-                                              },
-                                              {
-                                                "const": "bounded-decomposition",
-                                                "type": "string"
-                                              },
-                                              {
-                                                "const": "manual-reduce-scope",
-                                                "type": "string"
-                                              },
-                                              {
-                                                "const": "repair-existing-artifacts",
-                                                "type": "string"
-                                              }
-                                            ]
-                                          },
-                                          "eligible": {
-                                            "type": "boolean"
-                                          },
-                                          "reason": {
-                                            "maxLength": 2000,
-                                            "type": "string"
-                                          }
-                                        }
-                                      }
-                                    }
                                   },
                                   "observed": {
                                     "type": "object",
@@ -25482,10 +22940,6 @@
                                             "type": "string"
                                           },
                                           {
-                                            "const": "retry-as-expedition",
-                                            "type": "string"
-                                          },
-                                          {
                                             "const": "bounded-decomposition",
                                             "type": "string"
                                           },
@@ -25868,10 +23322,6 @@
                                       "source": {
                                         "anyOf": [
                                           {
-                                            "const": "preflight",
-                                            "type": "string"
-                                          },
-                                          {
                                             "const": "live-context-guard",
                                             "type": "string"
                                           },
@@ -25913,10 +23363,6 @@
                               "source": {
                                 "anyOf": [
                                   {
-                                    "const": "preflight",
-                                    "type": "string"
-                                  },
-                                  {
                                     "const": "live-context-guard",
                                     "type": "string"
                                   },
@@ -25957,19 +23403,7 @@
                               "stage": {
                                 "anyOf": [
                                   {
-                                    "const": "pipeline-composer",
-                                    "type": "string"
-                                  },
-                                  {
                                     "const": "planner",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "module-planner",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "compile-expedition",
                                     "type": "string"
                                   },
                                   {
@@ -25985,212 +23419,6 @@
                               "explanation": {
                                 "maxLength": 2000,
                                 "type": "string"
-                              },
-                              "risk": {
-                                "type": "object",
-                                "required": [
-                                  "level",
-                                  "sourceBytes",
-                                  "promptSourceBytes",
-                                  "acceptanceCriteriaCount",
-                                  "score",
-                                  "generatedInventory",
-                                  "subsystemBreadth",
-                                  "reasons",
-                                  "recommendation"
-                                ],
-                                "properties": {
-                                  "level": {
-                                    "anyOf": [
-                                      {
-                                        "const": "normal",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "elevated",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "overflow-risk",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
-                                  "sourceBytes": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "promptSourceBytes": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "acceptanceCriteriaCount": {
-                                    "minimum": 0,
-                                    "type": "integer"
-                                  },
-                                  "score": {
-                                    "minimum": 0,
-                                    "type": "number"
-                                  },
-                                  "generatedInventory": {
-                                    "type": "object",
-                                    "required": [
-                                      "detected",
-                                      "contentHashes",
-                                      "pathReferences",
-                                      "headings",
-                                      "blockCount",
-                                      "sidecarCount",
-                                      "omittedBytes"
-                                    ],
-                                    "properties": {
-                                      "detected": {
-                                        "type": "boolean"
-                                      },
-                                      "contentHashes": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "pattern": "^[a-f0-9]{64}$",
-                                          "type": "string"
-                                        }
-                                      },
-                                      "pathReferences": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
-                                      },
-                                      "headings": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
-                                      },
-                                      "blockCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "sidecarCount": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "omittedBytes": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      }
-                                    }
-                                  },
-                                  "subsystemBreadth": {
-                                    "type": "object",
-                                    "required": [
-                                      "count",
-                                      "subsystems",
-                                      "evidence"
-                                    ],
-                                    "properties": {
-                                      "count": {
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "subsystems": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
-                                      },
-                                      "evidence": {
-                                        "maxItems": 12,
-                                        "type": "array",
-                                        "items": {
-                                          "maxLength": 2000,
-                                          "type": "string"
-                                        }
-                                      }
-                                    }
-                                  },
-                                  "selectedProfile": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "pipelineScope": {
-                                    "anyOf": [
-                                      {
-                                        "const": "errand",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "excursion",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "expedition",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
-                                  "reasons": {
-                                    "maxItems": 12,
-                                    "type": "array",
-                                    "items": {
-                                      "maxLength": 2000,
-                                      "type": "string"
-                                    }
-                                  },
-                                  "recommendation": {
-                                    "type": "object",
-                                    "required": [
-                                      "action",
-                                      "eligible",
-                                      "reason"
-                                    ],
-                                    "properties": {
-                                      "action": {
-                                        "anyOf": [
-                                          {
-                                            "const": "none",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "retry-as-expedition",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "bounded-decomposition",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "manual-reduce-scope",
-                                            "type": "string"
-                                          },
-                                          {
-                                            "const": "repair-existing-artifacts",
-                                            "type": "string"
-                                          }
-                                        ]
-                                      },
-                                      "eligible": {
-                                        "type": "boolean"
-                                      },
-                                      "reason": {
-                                        "maxLength": 2000,
-                                        "type": "string"
-                                      }
-                                    }
-                                  }
-                                }
                               },
                               "observed": {
                                 "type": "object",
@@ -26584,10 +23812,6 @@
                                         "type": "string"
                                       },
                                       {
-                                        "const": "retry-as-expedition",
-                                        "type": "string"
-                                      },
-                                      {
                                         "const": "bounded-decomposition",
                                         "type": "string"
                                       },
@@ -26770,101 +23994,6 @@
                               "maxSplitAttemptsPerUnit": {
                                 "minimum": 1,
                                 "type": "integer"
-                              }
-                            }
-                          },
-                          "riskEvidence": {
-                            "additionalProperties": false,
-                            "type": "object",
-                            "required": [
-                              "level",
-                              "score",
-                              "sourceBytes",
-                              "promptSourceBytes",
-                              "acceptanceCriteriaCount",
-                              "subsystemSummaries",
-                              "recommendationAction"
-                            ],
-                            "properties": {
-                              "level": {
-                                "anyOf": [
-                                  {
-                                    "const": "normal",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "elevated",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "overflow-risk",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
-                              "score": {
-                                "minimum": 0,
-                                "type": "number"
-                              },
-                              "sourceBytes": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "promptSourceBytes": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "acceptanceCriteriaCount": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "subsystemSummaries": {
-                                "maxItems": 32,
-                                "type": "array",
-                                "items": {
-                                  "maxLength": 2000,
-                                  "type": "string"
-                                }
-                              },
-                              "recommendationAction": {
-                                "anyOf": [
-                                  {
-                                    "const": "none",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "retry-as-expedition",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "bounded-decomposition",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "manual-reduce-scope",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "repair-existing-artifacts",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
-                              "selectedScope": {
-                                "anyOf": [
-                                  {
-                                    "const": "errand",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "excursion",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "expedition",
-                                    "type": "string"
-                                  }
-                                ]
                               }
                             }
                           }
@@ -29049,7 +26178,6 @@
                         "type": "object",
                         "required": [
                           "type",
-                          "scope",
                           "compile",
                           "defaultBuild",
                           "defaultReview",
@@ -29058,9 +26186,6 @@
                         "properties": {
                           "type": {
                             "const": "planning:pipeline",
-                            "type": "string"
-                          },
-                          "scope": {
                             "type": "string"
                           },
                           "compile": {
@@ -29568,520 +26693,6 @@
                         "properties": {
                           "type": {
                             "const": "planning:evaluate:complete",
-                            "type": "string"
-                          },
-                          "accepted": {
-                            "type": "number"
-                          },
-                          "rejected": {
-                            "type": "number"
-                          },
-                          "verdicts": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "file",
-                                "action",
-                                "reason"
-                              ],
-                              "properties": {
-                                "file": {
-                                  "type": "string"
-                                },
-                                "action": {
-                                  "anyOf": [
-                                    {
-                                      "const": "accept",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "reject",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "review",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "reason": {
-                                  "type": "string"
-                                },
-                                "hunk": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:architecture:review:start",
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "issues"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:architecture:review:complete",
-                            "type": "string"
-                          },
-                          "issues": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "severity",
-                                "category",
-                                "file",
-                                "description"
-                              ],
-                              "properties": {
-                                "issueId": {
-                                  "minLength": 1,
-                                  "maxLength": 4096,
-                                  "pattern": "\\S",
-                                  "type": "string"
-                                },
-                                "severity": {
-                                  "anyOf": [
-                                    {
-                                      "const": "critical",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "warning",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "suggestion",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "category": {
-                                  "type": "string"
-                                },
-                                "file": {
-                                  "type": "string"
-                                },
-                                "line": {
-                                  "type": "number"
-                                },
-                                "description": {
-                                  "type": "string"
-                                },
-                                "fix": {
-                                  "type": "string"
-                                },
-                                "retryGuidance": {
-                                  "type": "string"
-                                },
-                                "failureKind": {
-                                  "type": "string"
-                                },
-                                "repairClass": {
-                                  "anyOf": [
-                                    {
-                                      "const": "narrow",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "structural",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "manual",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "followup",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "metadata": {
-                                  "type": "object",
-                                  "patternProperties": {
-                                    "^(.*)$": {
-                                      "$id": "TypeBoxRecursive1",
-                                      "anyOf": [
-                                        {
-                                          "type": "null"
-                                        },
-                                        {
-                                          "type": "boolean"
-                                        },
-                                        {
-                                          "type": "number"
-                                        },
-                                        {
-                                          "maxLength": 4096,
-                                          "type": "string"
-                                        },
-                                        {
-                                          "type": "array",
-                                          "items": {
-                                            "$ref": "TypeBoxRecursive1"
-                                          }
-                                        },
-                                        {
-                                          "type": "object",
-                                          "patternProperties": {
-                                            "^(.*)$": {
-                                              "$ref": "TypeBoxRecursive1"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                },
-                                "validationProviderName": {
-                                  "type": "string"
-                                },
-                                "runtimeFailureKind": {
-                                  "anyOf": [
-                                    {
-                                      "const": "result",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "command",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "timeout",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "exception",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "unexpected-return",
-                                      "type": "string"
-                                    }
-                                  ]
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:architecture:evaluate:start",
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "attempt",
-                          "maxContinuations"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:architecture:evaluate:continuation",
-                            "type": "string"
-                          },
-                          "attempt": {
-                            "type": "number"
-                          },
-                          "maxContinuations": {
-                            "type": "number"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "accepted",
-                          "rejected"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:architecture:evaluate:complete",
-                            "type": "string"
-                          },
-                          "accepted": {
-                            "type": "number"
-                          },
-                          "rejected": {
-                            "type": "number"
-                          },
-                          "verdicts": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "file",
-                                "action",
-                                "reason"
-                              ],
-                              "properties": {
-                                "file": {
-                                  "type": "string"
-                                },
-                                "action": {
-                                  "anyOf": [
-                                    {
-                                      "const": "accept",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "reject",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "review",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "reason": {
-                                  "type": "string"
-                                },
-                                "hunk": {
-                                  "minimum": 1,
-                                  "type": "integer"
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:cohesion:start",
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "issues"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:cohesion:complete",
-                            "type": "string"
-                          },
-                          "issues": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "severity",
-                                "category",
-                                "file",
-                                "description"
-                              ],
-                              "properties": {
-                                "issueId": {
-                                  "minLength": 1,
-                                  "maxLength": 4096,
-                                  "pattern": "\\S",
-                                  "type": "string"
-                                },
-                                "severity": {
-                                  "anyOf": [
-                                    {
-                                      "const": "critical",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "warning",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "suggestion",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "category": {
-                                  "type": "string"
-                                },
-                                "file": {
-                                  "type": "string"
-                                },
-                                "line": {
-                                  "type": "number"
-                                },
-                                "description": {
-                                  "type": "string"
-                                },
-                                "fix": {
-                                  "type": "string"
-                                },
-                                "retryGuidance": {
-                                  "type": "string"
-                                },
-                                "failureKind": {
-                                  "type": "string"
-                                },
-                                "repairClass": {
-                                  "anyOf": [
-                                    {
-                                      "const": "narrow",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "structural",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "manual",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "followup",
-                                      "type": "string"
-                                    }
-                                  ]
-                                },
-                                "metadata": {
-                                  "type": "object",
-                                  "patternProperties": {
-                                    "^(.*)$": {
-                                      "$id": "TypeBoxRecursive1",
-                                      "anyOf": [
-                                        {
-                                          "type": "null"
-                                        },
-                                        {
-                                          "type": "boolean"
-                                        },
-                                        {
-                                          "type": "number"
-                                        },
-                                        {
-                                          "maxLength": 4096,
-                                          "type": "string"
-                                        },
-                                        {
-                                          "type": "array",
-                                          "items": {
-                                            "$ref": "TypeBoxRecursive1"
-                                          }
-                                        },
-                                        {
-                                          "type": "object",
-                                          "patternProperties": {
-                                            "^(.*)$": {
-                                              "$ref": "TypeBoxRecursive1"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                },
-                                "validationProviderName": {
-                                  "type": "string"
-                                },
-                                "runtimeFailureKind": {
-                                  "anyOf": [
-                                    {
-                                      "const": "result",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "command",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "timeout",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "exception",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "unexpected-return",
-                                      "type": "string"
-                                    }
-                                  ]
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:cohesion:evaluate:start",
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "attempt",
-                          "maxContinuations"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:cohesion:evaluate:continuation",
-                            "type": "string"
-                          },
-                          "attempt": {
-                            "type": "number"
-                          },
-                          "maxContinuations": {
-                            "type": "number"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "accepted",
-                          "rejected"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "planning:cohesion:evaluate:complete",
                             "type": "string"
                           },
                           "accepted": {
@@ -32094,259 +28705,6 @@
                         "type": "object",
                         "required": [
                           "type",
-                          "modules"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:architecture:complete",
-                            "type": "string"
-                          },
-                          "modules": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "id",
-                                "description",
-                                "dependsOn"
-                              ],
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "description": {
-                                  "type": "string"
-                                },
-                                "dependsOn": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "wave",
-                          "moduleIds"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:wave:start",
-                            "type": "string"
-                          },
-                          "wave": {
-                            "type": "number"
-                          },
-                          "moduleIds": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "wave"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:wave:complete",
-                            "type": "string"
-                          },
-                          "wave": {
-                            "type": "number"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "moduleId"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:module:start",
-                            "type": "string"
-                          },
-                          "moduleId": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "moduleId"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:module:complete",
-                            "type": "string"
-                          },
-                          "moduleId": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:compile:start",
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
-                          "plans"
-                        ],
-                        "properties": {
-                          "type": {
-                            "const": "expedition:compile:complete",
-                            "type": "string"
-                          },
-                          "plans": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "id",
-                                "name",
-                                "dependsOn",
-                                "branch",
-                                "body",
-                                "filePath"
-                              ],
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "dependsOn": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                },
-                                "branch": {
-                                  "type": "string"
-                                },
-                                "migrations": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "object",
-                                    "required": [
-                                      "timestamp",
-                                      "description"
-                                    ],
-                                    "properties": {
-                                      "timestamp": {
-                                        "type": "string"
-                                      },
-                                      "description": {
-                                        "type": "string"
-                                      }
-                                    }
-                                  }
-                                },
-                                "agents": {
-                                  "type": "object",
-                                  "patternProperties": {
-                                    "^(.*)$": {
-                                      "type": "object",
-                                      "properties": {
-                                        "effort": {
-                                          "type": "string"
-                                        },
-                                        "thinking": {
-                                          "anyOf": [
-                                            {
-                                              "type": "boolean"
-                                            },
-                                            {
-                                              "type": "object",
-                                              "patternProperties": {
-                                                "^(.*)$": {}
-                                              }
-                                            }
-                                          ]
-                                        },
-                                        "rationale": {
-                                          "type": "string"
-                                        },
-                                        "tier": {
-                                          "type": "string"
-                                        },
-                                        "shards": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "object",
-                                            "required": [
-                                              "id"
-                                            ],
-                                            "properties": {
-                                              "id": {
-                                                "type": "string"
-                                              },
-                                              "roots": {
-                                                "type": "array",
-                                                "items": {
-                                                  "type": "string"
-                                                }
-                                              },
-                                              "files": {
-                                                "type": "array",
-                                                "items": {
-                                                  "type": "string"
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                },
-                                "body": {
-                                  "type": "string"
-                                },
-                                "filePath": {
-                                  "type": "string"
-                                },
-                                "warnings": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "type",
                           "agentId",
                           "agent",
                           "model",
@@ -32392,31 +28750,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -32457,10 +28795,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -32725,31 +29059,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -32790,10 +29104,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -32855,31 +29165,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -32920,10 +29210,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -32985,31 +29271,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33050,10 +29316,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33146,31 +29408,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33211,10 +29453,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33276,31 +29514,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33341,10 +29559,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33410,31 +29624,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33475,10 +29669,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33543,31 +29733,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33608,10 +29778,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33770,31 +29936,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -33835,10 +29981,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -33958,31 +30100,11 @@
                                 "type": "string"
                               },
                               {
-                                "const": "module-planner",
-                                "type": "string"
-                              },
-                              {
                                 "const": "plan-reviewer",
                                 "type": "string"
                               },
                               {
                                 "const": "plan-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "architecture-evaluator",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-reviewer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "cohesion-evaluator",
                                 "type": "string"
                               },
                               {
@@ -34023,10 +30145,6 @@
                               },
                               {
                                 "const": "dependency-detector",
-                                "type": "string"
-                              },
-                              {
-                                "const": "pipeline-composer",
                                 "type": "string"
                               },
                               {
@@ -37298,52 +33416,6 @@
                                 "required": [
                                   "kind",
                                   "rationale",
-                                  "scope",
-                                  "source"
-                                ],
-                                "properties": {
-                                  "kind": {
-                                    "const": "scope-selected",
-                                    "type": "string"
-                                  },
-                                  "rationale": {
-                                    "type": "string"
-                                  },
-                                  "scope": {
-                                    "anyOf": [
-                                      {
-                                        "const": "errand",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "excursion",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "expedition",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
-                                  "source": {
-                                    "anyOf": [
-                                      {
-                                        "const": "pipeline-composer",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "planner",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  }
-                                }
-                              },
-                              {
-                                "type": "object",
-                                "required": [
-                                  "kind",
-                                  "rationale",
                                   "defaultBuild"
                                 ],
                                 "properties": {
@@ -38451,7 +34523,6 @@
                               "name",
                               "description",
                               "created",
-                              "mode",
                               "baseBranch",
                               "pipeline",
                               "plans"
@@ -38466,22 +34537,6 @@
                               "created": {
                                 "type": "string"
                               },
-                              "mode": {
-                                "anyOf": [
-                                  {
-                                    "const": "errand",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "excursion",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "expedition",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
                               "baseBranch": {
                                 "type": "string"
                               },
@@ -38491,29 +34546,12 @@
                               "pipeline": {
                                 "type": "object",
                                 "required": [
-                                  "scope",
                                   "compile",
                                   "defaultBuild",
                                   "defaultReview",
                                   "rationale"
                                 ],
                                 "properties": {
-                                  "scope": {
-                                    "anyOf": [
-                                      {
-                                        "const": "errand",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "excursion",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "expedition",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
                                   "compile": {
                                     "type": "array",
                                     "items": {
