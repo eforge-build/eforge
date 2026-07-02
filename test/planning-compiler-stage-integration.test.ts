@@ -47,11 +47,75 @@ describe('bounded planner compiler stage integration', () => {
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/orchestration.yaml'))).resolves.toContain('module-reduce-000-001');
     await expect(readFileText(path.join(cwd, 'eforge/plans/bounded-stage/architecture.md'))).resolves.toContain('Reduced stage synthesis.');
     expect(harness.calls.filter((call) => call.stage === 'planner').every((call) => call.tools === 'none')).toBe(true);
+    // Detailed PRD: high-confidence literal localization skips the exploration agent entirely.
+    expect(events.some((event) => event.type === 'agent:start' && event.planId === 'repository-exploration')).toBe(false);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration skipped'))).toBe(true);
     const diagnostics = JSON.parse(await readFileText(path.join(cwd, 'eforge/plans/bounded-stage/compiler-diagnostics.json'))) as CompilerDiagnostics;
     expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
     expect(diagnostics.compilerStatus).toBe('complete');
     expect(diagnostics.planSetName).toBe('bounded-stage');
     expect(diagnostics.repair.status).toBe('not-needed');
+  });
+
+  it('runs the exploration agent for a vague PRD and grounds localization with its hints', async () => {
+    const cwd = await workspace({ 'packages/engine/src/vague-owner.ts': 'export const grounded = true;\n' });
+    const sourceContent = prd(['Improve the grounded behavior of the engine flag handling.']);
+    const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
+    const mapOutput = completedOutput(task);
+    const harness = new StubHarness([
+      composerResponse(),
+      explorationSubmission(['packages/engine/src/vague-owner.ts'], task.criterionIds),
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-vague',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    const events = await collect(getCompileStage('planner')(ctx));
+
+    const explorationStarts = events.filter((event) => event.type === 'agent:start' && event.planId === 'repository-exploration');
+    expect(explorationStarts).toHaveLength(1);
+    const explorationCall = harness.calls[1];
+    expect(explorationCall.tools).toBe('read-only');
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 1 localization hints'))).toBe(true);
+    // The hinted owner path flows through localization into the atom planner's grounded evidence.
+    const atomPrompt = harness.prompts.find((prompt) => prompt.includes('submit_atom_output'));
+    expect(atomPrompt).toContain('packages/engine/src/vague-owner.ts');
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+  });
+
+  it('degrades to a hint-less compile when the exploration submission is malformed', async () => {
+    const cwd = await workspace({ 'packages/engine/src/vague-owner.ts': 'export const grounded = true;\n' });
+    const sourceContent = prd(['Improve the grounded behavior of the engine flag handling.']);
+    const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
+    const mapOutput = completedOutput(task);
+    const harness = new StubHarness([
+      composerResponse(),
+      { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-bad', input: { projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
+      atomSubmission(mapOutput),
+      reduceSubmission(completedReduceOutput(mapOutput)),
+    ]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-degraded',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    const events = await collect(getCompileStage('planner')(ctx));
+
+    expect(events.some((event) => event.type === 'planning:warning' && event.source === 'repository-exploration' && event.message.includes('degraded to no hints'))).toBe(true);
+    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
   });
 
   it('writes compiler diagnostics to disk even when an unresolvable localization gap fails the compile', async () => {
@@ -128,6 +192,10 @@ function completedReduceOutput(output: PlanningAtomOutput) {
 
 function atomSubmission(output: PlanningAtomOutput) {
   return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+function explorationSubmission(paths: string[], criterionIds: string[]) {
+  return { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-exploration', input: { projectHints: [{ kind: 'literal-path', query: 'grounded flag owner', paths, criterionIds }] }, output: 'ok' }] };
 }
 
 function reduceSubmission(output: ReturnType<typeof completedReduceOutput>) {
