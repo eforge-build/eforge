@@ -362,8 +362,8 @@ describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
   });
 });
 
-describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / architecture-evaluator', () => {
-  for (const role of ['plan-evaluator', 'cohesion-evaluator', 'architecture-evaluator'] as const) {
+describe('DEFAULT_RETRY_POLICIES — plan-evaluator', () => {
+  for (const role of ['plan-evaluator'] as const) {
     it(`${role} policy retries on error_max_turns, error_transient_transport, and error_pi_tool_infrastructure`, () => {
       const policy = DEFAULT_RETRY_POLICIES[role]!;
       expect(policy.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport', 'error_pi_tool_infrastructure']));
@@ -523,20 +523,6 @@ describe('isDroppedSubmission', () => {
     expect(isDroppedSubmission(events)).toBe(false);
   });
 
-  it('returns false when submit_architecture was called', () => {
-    const events: EforgeEvent[] = [
-      {
-        timestamp: ts(),
-        type: 'agent:tool_use',
-        agentId: 'a1',
-        agent: 'planner',
-        tool: 'submit_architecture',
-        toolUseId: 'tu-1',
-        input: {},
-      },
-    ];
-    expect(isDroppedSubmission(events)).toBe(false);
-  });
 
   it('returns false when plan:skip was emitted', () => {
     const events: EforgeEvent[] = [
@@ -565,10 +551,6 @@ describe('hasAuthoritativePlannerCheckpoint', () => {
     expect(hasAuthoritativePlannerCheckpoint(events)).toBe(true);
   });
 
-  it('returns true when expedition:architecture:complete is present', () => {
-    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'expedition:architecture:complete', modules: [] }];
-    expect(hasAuthoritativePlannerCheckpoint(events)).toBe(true);
-  });
 
   it('returns false for empty events', () => {
     expect(hasAuthoritativePlannerCheckpoint([])).toBe(false);
@@ -620,10 +602,6 @@ describe('isBeforePlannerSubmissionBoundary', () => {
     expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
   });
 
-  it('returns false when expedition:architecture:complete is present', () => {
-    const events: EforgeEvent[] = [{ timestamp: ts(), type: 'expedition:architecture:complete', modules: [] }];
-    expect(isBeforePlannerSubmissionBoundary(events)).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------

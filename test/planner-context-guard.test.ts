@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole, EforgeEvent, CompileContextGuardDiagnostics, CompilePreflightRisk } from '@eforge-build/engine/events';
-import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import {
   CompileScopeContextError,
   createCompileContextGuard,
@@ -122,38 +121,7 @@ describe('planner-family context guard', () => {
     }).not.toThrow();
   });
 
-  it('runModulePlanner prompt guard throws before the harness is called', async () => {
-    const backend = new StubHarness([{ text: 'not reached' }]);
-    await expect(collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: makeTempDir(),
-      planSetName: 'large',
-      moduleId: 'mod-a',
-      moduleDescription: 'Large module',
-      moduleDependsOn: [],
-      architectureContent: '# Architecture',
-      sourceContent: '# PRD\nLarge source',
-      contextGuard: { stage: 'module-planner', limits: { maxPromptBytes: 1 } },
-    }))).rejects.toThrow(CompileScopeContextError);
-    expect(backend.calls).toHaveLength(0);
-  });
 
-  it('runModulePlanner default guard preserves small prompt and completes', async () => {
-    const backend = new StubHarness([{ text: 'module planned' }]);
-    await collectEvents(runModulePlanner({
-      harness: backend,
-      cwd: makeTempDir(),
-      planSetName: 'small',
-      moduleId: 'mod-a',
-      moduleDescription: 'Small module',
-      moduleDependsOn: [],
-      architectureContent: '# Architecture',
-      sourceContent: '# PRD\nSmall source',
-    }));
-
-    expect(backend.calls).toHaveLength(1);
-    expect(backend.prompts[0]).toContain('# PRD\nSmall source');
-  });
 });
 
 function usageEvent(agent: AgentRole, usage: { input: number; total: number }, final: boolean, numTurns = 1): EforgeEvent {

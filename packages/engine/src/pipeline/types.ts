@@ -6,7 +6,6 @@ import type {
   EforgeEvent,
   PlanFile,
   ClarificationQuestion,
-  ExpeditionModule,
   ReviewIssue,
   OrchestrationConfig,
   PlannerInspectionSummary,
@@ -73,8 +72,6 @@ export interface PipelineContext {
 
   // Mutable state passed between stages
   plans: PlanFile[];
-  expeditionModules: ExpeditionModule[];
-  moduleBuildConfigs: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>;
   /** Set by planner stage when plan:skip is emitted — halts further compile stages. */
   skipped?: boolean;
 }

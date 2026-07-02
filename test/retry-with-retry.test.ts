@@ -363,36 +363,6 @@ describe('withRetry — planner post-checkpoint terminal-success integration', (
     expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
   });
 
-  it('after expedition:architecture:complete + pi-infra error, emits warning, no second attempt, no error', async () => {
-    let callCount = 0;
-    const plannerPolicy = DEFAULT_RETRY_POLICIES.planner!;
-
-    const plannerAgent = async function* (_input: PlannerContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
-      callCount++;
-      yield { timestamp: ts(), type: 'expedition:architecture:complete', modules: [] };
-      throw new AgentTerminalError('error_pi_tool_infrastructure', 'Pi tool-call infrastructure failure: hook error');
-    };
-
-    const initial: PlannerContinuationInput = {
-      sideEffects: { cwd: '/tmp/noop', planSetName: 'test', outputDir: 'eforge/plans' },
-      plannerOptions: {},
-    };
-
-    const out: EforgeEvent[] = [];
-    for await (const ev of withRetry(plannerAgent, plannerPolicy as RetryPolicy<PlannerContinuationInput>, initial)) {
-      out.push(ev);
-    }
-
-    expect(callCount).toBe(1);
-    expect(out.find((e) => e.type === 'expedition:architecture:complete')).toBeDefined();
-    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatchObject({
-      agent: 'planner',
-      code: 'infrastructure-error-post-checkpoint-downgraded',
-    });
-    expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
-  });
 
   it('after compact inspection summary + max-turns, propagates error without generic planner continuation', async () => {
     let callCount = 0;

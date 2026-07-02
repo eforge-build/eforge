@@ -12,7 +12,6 @@ import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runDependencyDetector } from '@eforge-build/engine/agents/dependency-detector';
 import { runValidationFixer } from '@eforge-build/engine/agents/validation-fixer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
@@ -77,25 +76,6 @@ describe('planning agent lane assignment', () => {
     expect(starts[0].agent).toBe('plan-evaluator');
   });
 
-  it('module-planner agent:start carries planId: planning', async () => {
-    const harness = new StubHarness([{ text: 'Module plan content.' }]);
-
-    const starts = await collectAgentStartEvents(runModulePlanner({
-      harness,
-      cwd: '/tmp',
-      planSetName: 'test-set',
-      moduleId: 'mod-1',
-      moduleDescription: 'A module',
-      moduleDependsOn: [],
-      architectureContent: 'arch doc',
-      sourceContent: 'Build a widget',
-      lane: 'planning',
-    }));
-
-    expect(starts).toHaveLength(1);
-    expect(starts[0].planId).toBe('planning');
-    expect(starts[0].agent).toBe('module-planner');
-  });
 
   it('dependency-detector agent:start carries planId: planning', async () => {
     const harness = new StubHarness([{ text: '[]' }]);

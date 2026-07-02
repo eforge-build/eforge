@@ -65,8 +65,6 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
   planner: 2,
   evaluator: 1,
   'plan-evaluator': 1,
-  'cohesion-evaluator': 1,
-  'architecture-evaluator': 1,
 };
 
 /** Provenance tag for a tunable field. `tier` = from tier recipe; `role` = role override; `plan` = plan-file override. */

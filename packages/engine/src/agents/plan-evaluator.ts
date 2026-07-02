@@ -24,14 +24,13 @@ import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 const exec = promisify(execFile);
 
 /**
- * Evaluator mode: 'plan' for plan review evaluation, 'cohesion' for cohesion
- * review evaluation, 'architecture' for architecture review evaluation, and
+ * Evaluator mode: 'plan' for plan review evaluation, and
  * 'planning-quality' for the bounded planner compiler's quality gate.
  */
-export type EvaluatorMode = 'plan' | 'cohesion' | 'architecture' | 'planning-quality';
+export type EvaluatorMode = 'plan' | 'planning-quality';
 
 /**
- * Options shared by plan, cohesion, and architecture evaluator agents.
+ * Options shared by the plan and planning-quality evaluator agents.
  */
 export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   /** Evaluator mode */
@@ -106,15 +105,6 @@ export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   lane?: string;
 }
 
-/**
- * Options for the cohesion evaluator agent.
- */
-export type CohesionEvaluatorOptions = PlanEvaluatorOptions;
-
-/**
- * Options for the architecture evaluator agent.
- */
-export type ArchitectureEvaluatorOptions = PlanEvaluatorOptions;
 
 // Mode-specific configuration
 const MODE_CONFIG = {
@@ -134,40 +124,6 @@ const MODE_CONFIG = {
 | Incorrect plan ID reference | \`depends_on\` references a plan ID that doesn't exist |
 | Missing verification step | Plan has no way to verify its own implementation |`,
       reject_criteria_extra: '',
-    },
-  },
-  cohesion: {
-    startEvent: 'planning:cohesion:evaluate:start' as const,
-    completeEvent: 'planning:cohesion:evaluate:complete' as const,
-    promptName: 'plan-evaluator',
-    role: 'cohesion-evaluator' as const,
-    promptVars: {
-      evaluator_title: 'Cohesion Fix Evaluator',
-      evaluator_context: 'A planner agent generated module plans and committed them. A blind cohesion reviewer then reviewed the module plans for cross-module issues (file overlaps, integration contracts, dependency errors, vague criteria) and left fixes as captured candidate changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
-      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (missing dependency, file overlap conflict, uncovered integration contract, vague criterion)',
-      accept_patterns_table: `| Missing dependency | Plan B modifies a file that Plan A creates but doesn't list A in \`depends_on\` |
-| Vague criterion fix | "Tests pass properly" → "\`pnpm test\` exits with code 0" |
-| Integration gap | Architecture defines a contract but no plan covers the consumer side |
-| File overlap resolution | Two plans modify same file — reviewer adds dependency to sequence them |
-| Incorrect plan ID | \`depends_on\` references a plan ID that doesn't exist |`,
-      reject_criteria_extra: '\n4. **Module boundary change** — The change alters module boundaries from the architecture',
-    },
-  },
-  architecture: {
-    startEvent: 'planning:architecture:evaluate:start' as const,
-    completeEvent: 'planning:architecture:evaluate:complete' as const,
-    promptName: 'plan-evaluator',
-    role: 'architecture-evaluator' as const,
-    promptVars: {
-      evaluator_title: 'Architecture Fix Evaluator',
-      evaluator_context: 'A planner agent generated an architecture document and committed it. A blind architecture reviewer then reviewed the architecture against the PRD for module boundary soundness, integration contract completeness, and feasibility — and left fixes as captured candidate changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
-      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (unclear module boundary clarified, missing integration contract added, shared file registry gap filled)',
-      accept_patterns_table: `| Unclear module boundary | Module boundary description was vague — reviewer clarified scope |
-| Missing integration contract | Two modules interact but no contract was defined — reviewer added one |
-| Shared file registry gap | A file is shared across modules but not listed in the registry |
-| Data model inconsistency | Architecture references a type not defined in any module |
-| PRD alignment gap | Architecture omits a requirement from the PRD |`,
-      reject_criteria_extra: '\n4. **Module decomposition change** — The change alters the module decomposition strategy from the planner',
     },
   },
   'planning-quality': {
@@ -289,7 +245,7 @@ function planningError(reason: string): EforgeEvent {
 }
 
 /**
- * Internal consolidated evaluator runner for plan, cohesion, and architecture evaluation.
+ * Internal consolidated evaluator runner for plan and planning-quality evaluation.
  *
  * Yields:
  * - Mode-specific start event at the beginning
@@ -451,35 +407,6 @@ export async function* runPlanEvaluate(
   yield* runEvaluate({ ...options, mode: 'plan' });
 }
 
-/**
- * Evaluate the cohesion reviewer's captured fixes. The engine owns snapshot
- * preparation, verdict application, cleanup, and committing.
- *
- * Yields:
- * - `planning:cohesion:evaluate:start` at the beginning
- * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `planning:cohesion:evaluate:complete` with accepted/rejected counts at the end
- */
-export async function* runCohesionEvaluate(
-  options: CohesionEvaluatorOptions,
-): AsyncGenerator<EforgeEvent> {
-  yield* runEvaluate({ ...options, mode: 'cohesion' });
-}
-
-/**
- * Evaluate the architecture reviewer's captured fixes. The engine owns snapshot
- * preparation, verdict application, cleanup, and committing.
- *
- * Yields:
- * - `planning:architecture:evaluate:start` at the beginning
- * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `planning:architecture:evaluate:complete` with accepted/rejected counts at the end
- */
-export async function* runArchitectureEvaluate(
-  options: ArchitectureEvaluatorOptions,
-): AsyncGenerator<EforgeEvent> {
-  yield* runEvaluate({ ...options, mode: 'architecture' });
-}
 
 /**
  * Options for the planning quality evaluator agent.

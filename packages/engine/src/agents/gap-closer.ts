@@ -141,8 +141,6 @@ export async function* runGapCloser(
     verbose: options.verbose,
     abortController: options.abortController,
     plans: Array.from(planFileMap.values()),
-    expeditionModules: [],
-    moduleBuildConfigs: new Map(),
     planId: 'gap-close',
     worktreePath: options.cwd,
     planFile: syntheticPlanFile,

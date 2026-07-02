@@ -13,12 +13,9 @@ import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
-import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
-import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import type { ExpectedAcceptanceCriterion } from '@eforge-build/engine/validation/acceptance-criteria';
-import { validatePipeline, formatStageRegistry, getCompileStage, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
+import { validatePipeline, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
@@ -27,9 +24,9 @@ import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 // --- eforge:region config-runtime-wiring ---
 
 describe('stage descriptor metadata', () => {
-  it('all 6 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 2 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getCompileStageDescriptors();
-    expect(descriptors.length).toBe(6);
+    expect(descriptors.length).toBe(2);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -519,8 +516,6 @@ describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
       'builder',
       'evaluator',
       'plan-evaluator',
-      'cohesion-evaluator',
-      'architecture-evaluator',
     ] as const;
 
     for (const role of requiredRoles) {
@@ -540,12 +535,10 @@ describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
 
     // AGENT_MAX_CONTINUATIONS_DEFAULTS (maxAttempts = maxContinuations + 1):
     //   planner: 2 => 3 attempts
-    //   evaluator / plan-evaluator / cohesion-evaluator / architecture-evaluator: 1 => 2 attempts
+    //   evaluator / plan-evaluator: 1 => 2 attempts
     expect(DEFAULT_RETRY_POLICIES.planner!.maxAttempts).toBe(3);
     expect(DEFAULT_RETRY_POLICIES.evaluator!.maxAttempts).toBe(2);
     expect(DEFAULT_RETRY_POLICIES['plan-evaluator']!.maxAttempts).toBe(2);
-    expect(DEFAULT_RETRY_POLICIES['cohesion-evaluator']!.maxAttempts).toBe(2);
-    expect(DEFAULT_RETRY_POLICIES['architecture-evaluator']!.maxAttempts).toBe(2);
   });
 });
 
@@ -633,38 +626,6 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
     expect(registry.forRole('builder')).not.toBe(registry.forRole('planner'));
   });
 
-  it('module-planning stage dispatches to the module-planner stub only', async () => {
-    const dir = useTempDir('eforge-role-dispatch-')();
-    mkdirSync(join(dir, 'eforge', 'plans', 'test-plan'), { recursive: true });
-    writeFileSync(join(dir, 'eforge', 'plans', 'test-plan', 'architecture.md'), '# Architecture');
-    const modulePlannerStub = new StubHarness([{ text: 'Module plan done.' }]);
-    const fallbackStub = new StubHarness([{ text: 'Fallback.' }]);
-
-    const registry = makeRoleMappedRegistry(
-      new Map<string, AgentHarness>([
-        ['module-planner', modulePlannerStub],
-      ]),
-      fallbackStub,
-    );
-
-    const stage = getCompileStage('module-planning');
-    await collectEvents(stage({
-      agentRuntimes: registry,
-      config: DEFAULT_CONFIG,
-      pipeline: { scope: 'expedition', compile: ['module-planning'], defaultBuild: ['implement'], defaultReview: { strategy: 'single', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'lenient' }, rationale: 'test' },
-      tracing: createNoopTracingContext(),
-      cwd: dir,
-      planSetName: 'test-plan',
-      sourceContent: '# Source',
-      modelTracker: { handleEvent() {} } as any,
-      plans: [],
-      expeditionModules: [{ id: 'module-01', description: 'Module 01', dependsOn: [] }],
-      moduleBuildConfigs: new Map(),
-    }));
-
-    expect(modulePlannerStub.prompts).toHaveLength(1);
-    expect(fallbackStub.prompts).toHaveLength(0);
-  });
 });
 
 // --- Parallel Reviewer: decision events ---

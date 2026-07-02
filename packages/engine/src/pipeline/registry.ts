@@ -1,5 +1,5 @@
 /**
- * Stage registry — maps, register/get functions, and formatStageRegistry.
+ * Stage registry — maps and register/get functions.
  */
 
 import type { CompileStage, BuildStage, StageDescriptor } from './types.js';

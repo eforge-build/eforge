@@ -4,7 +4,7 @@ import { relative, resolve } from 'node:path';
 
 import type { CompileArtifactSummary, OrchestrationConfig, PlanFile } from '../events.js';
 import { MAX_COMPILE_RISK_LIST_ITEMS } from '../events.js';
-import { parseExpeditionIndex, parseOrchestrationConfig, parsePlanFile, validatePlanSet } from '../plan.js';
+import { parseOrchestrationConfig, parsePlanFile, validatePlanSet } from '../plan.js';
 import { COMPILER_DIAGNOSTICS_ARTIFACT } from '../planner-compiler/compiler-diagnostics-contracts.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { validateCompilerCohesion } from './compiler-cohesion-validation.js';
@@ -37,17 +37,6 @@ export type CompileArtifactValidationResult =
       message: string;
       details: string[];
       warnings: string[];
-    };
-
-export type ExpeditionModuleInputValidationResult =
-  | { ok: true; moduleCount: number }
-  | {
-      ok: false;
-      message: string;
-      missingModuleFiles: string[];
-      emptyModuleFiles: string[];
-      invalidModuleIds: string[];
-      moduleCount: number;
     };
 
 // --- eforge:region compile-artifact-validation ---
@@ -140,67 +129,6 @@ export async function validateCompileArtifacts(
   return { ok: true, skipped: false, summary, plans, orchestration: orchConfig, warnings };
 }
 
-export async function validateExpeditionModuleInputs(
-  ctx: PipelineContext,
-): Promise<ExpeditionModuleInputValidationResult> {
-  if (ctx.expeditionModules.length === 0) return { ok: true, moduleCount: 0 };
-
-  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  const indexPath = resolve(planDir, 'index.yaml');
-  const modulesDir = resolve(planDir, 'modules');
-  const missingModuleFiles: string[] = [];
-  const emptyModuleFiles: string[] = [];
-  const invalidModuleIds: string[] = [];
-
-  let index;
-  try {
-    index = await parseExpeditionIndex(indexPath);
-  } catch (err) {
-    return expeditionFailure({
-      details: [`Invalid expedition index.yaml: ${errorMessage(err)}`],
-      missingModuleFiles,
-      emptyModuleFiles,
-      invalidModuleIds,
-      moduleCount: ctx.expeditionModules.length,
-    });
-  }
-
-  const ctxIds = new Set(ctx.expeditionModules.map((mod) => mod.id));
-  const indexIds = new Set(Object.keys(index.modules));
-  for (const id of [...ctxIds].sort()) {
-    if (!indexIds.has(id)) pushBounded(invalidModuleIds, `missing from index.yaml: ${id}`);
-  }
-  for (const id of [...indexIds].sort()) {
-    if (!ctxIds.has(id)) pushBounded(invalidModuleIds, `unexpected in index.yaml: ${id}`);
-  }
-
-  for (const id of [...indexIds].sort()) {
-    const modulePath = resolve(modulesDir, `${id}.md`);
-    const moduleRel = rel(ctx, modulePath);
-    if (!existsSync(modulePath)) {
-      pushBounded(missingModuleFiles, moduleRel);
-      continue;
-    }
-    const content = await readFile(modulePath, 'utf-8');
-    if (content.trim().length === 0) pushBounded(emptyModuleFiles, moduleRel);
-  }
-
-  if (missingModuleFiles.length > 0 || emptyModuleFiles.length > 0 || invalidModuleIds.length > 0) {
-    return expeditionFailure({
-      details: [
-        ...missingModuleFiles.map((path) => `missing expedition module: ${path}`),
-        ...emptyModuleFiles.map((path) => `empty expedition module: ${path}`),
-        ...invalidModuleIds.map((id) => `invalid expedition module id: ${id}`),
-      ],
-      missingModuleFiles,
-      emptyModuleFiles,
-      invalidModuleIds,
-      moduleCount: indexIds.size,
-    });
-  }
-
-  return { ok: true, moduleCount: indexIds.size };
-}
 // --- eforge:endregion compile-artifact-validation ---
 
 // --- eforge:region compile-artifact-validation-helpers ---
@@ -269,17 +197,6 @@ function formatCompileArtifactFailure(summary: CompileArtifactSummary, details: 
     ...details,
   ];
   return truncateUtf8(lines.join('\n'), MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
-}
-
-function expeditionFailure(input: {
-  details: string[];
-  missingModuleFiles: string[];
-  emptyModuleFiles: string[];
-  invalidModuleIds: string[];
-  moduleCount: number;
-}): ExpeditionModuleInputValidationResult {
-  const message = truncateUtf8(['Expedition module input validation failed.', ...input.details].join('\n'), MAX_COMPILE_ARTIFACT_FAILURE_MESSAGE_BYTES);
-  return { ok: false, message, missingModuleFiles: input.missingModuleFiles, emptyModuleFiles: input.emptyModuleFiles, invalidModuleIds: input.invalidModuleIds, moduleCount: input.moduleCount };
 }
 
 function emptyArtifactSummary(orchestrationExists: boolean): CompileArtifactSummary {

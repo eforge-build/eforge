@@ -6,7 +6,6 @@ import {
   evaluationSubmissionSchema,
   clarificationQuestionSchema,
   stalenessVerdictSchema,
-  expeditionModuleSchema,
   planFileFrontmatterSchema,
   pipelineCompositionSchema,
   getSchemaYaml,
@@ -19,7 +18,6 @@ import {
   getEvaluationSchemaYaml,
   getClarificationSchemaYaml,
   getStalenessSchemaYaml,
-  getModuleSchemaYaml,
   getPlanFrontmatterSchemaYaml,
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
@@ -214,14 +212,6 @@ describe('other schemas export and validate', () => {
     expect(result.success).toBe(true);
   });
 
-  it('expeditionModuleSchema accepts valid module', () => {
-    const result = safeParseWithSchema(expeditionModuleSchema, {
-      id: 'auth',
-      description: 'Authentication module',
-      dependsOn: ['foundation'],
-    });
-    expect(result.success).toBe(true);
-  });
 
   it('planFileFrontmatterSchema accepts valid frontmatter', () => {
     const result = safeParseWithSchema(planFileFrontmatterSchema, {
@@ -319,13 +309,6 @@ describe('other schemas export and validate', () => {
     expect(result.success).toBe(false);
   });
 
-  it('expeditionModuleSchema rejects missing dependsOn', () => {
-    const result = safeParseWithSchema(expeditionModuleSchema, {
-      id: 'auth',
-      description: 'Auth module',
-    });
-    expect(result.success).toBe(false);
-  });
 
   it('planFileFrontmatterSchema accepts frontmatter with migrations', () => {
     const result = safeParseWithSchema(planFileFrontmatterSchema, {
@@ -420,12 +403,6 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('obsolete');
   });
 
-  it('getModuleSchemaYaml contains module fields', () => {
-    const yaml = getModuleSchemaYaml();
-    expect(yaml).toContain('id');
-    expect(yaml).toContain('description');
-    expect(yaml).toContain('dependsOn');
-  });
 
   it('getPlanFrontmatterSchemaYaml contains frontmatter fields', () => {
     const yaml = getPlanFrontmatterSchemaYaml();

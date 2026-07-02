@@ -5,7 +5,7 @@ import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { builderEvaluate, STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
 import { AGENT_MAX_CONTINUATIONS_DEFAULTS } from '@eforge-build/engine/pipeline';
-import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
+import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,8 +25,6 @@ describe('AGENT_MAX_CONTINUATIONS_DEFAULTS', () => {
   it('contains evaluator defaults set to 1', () => {
     expect(AGENT_MAX_CONTINUATIONS_DEFAULTS['evaluator']).toBe(1);
     expect(AGENT_MAX_CONTINUATIONS_DEFAULTS['plan-evaluator']).toBe(1);
-    expect(AGENT_MAX_CONTINUATIONS_DEFAULTS['cohesion-evaluator']).toBe(1);
-    expect(AGENT_MAX_CONTINUATIONS_DEFAULTS['architecture-evaluator']).toBe(1);
   });
 });
 
@@ -178,45 +176,7 @@ describe('runPlanEvaluate continuation context', () => {
   });
 });
 
-describe('runCohesionEvaluate continuation context', () => {
-  it('passes continuation_context to prompt when continuationContext is provided', async () => {
-    const backend = new StubHarness([{
-      text: '<evaluation></evaluation>',
-    }]);
 
-    await collectEvents(runCohesionEvaluate({
-      ...makePlanEvalOptions(backend),
-      continuationContext: { attempt: 2, maxContinuations: 3 },
-    }));
-
-    expect(backend.prompts[0]).toContain('Continuation Context');
-    expect(backend.prompts[0]).toContain('attempt 2 of 3');
-    expect(backend.prompts[0]).toContain('re-inspect the captured diff');
-    expect(backend.prompts[0]).not.toContain('git reset');
-    expect(backend.prompts[0]).not.toContain('git add');
-    expect(backend.prompts[0]).not.toContain('git checkout');
-  });
-});
-
-describe('runArchitectureEvaluate continuation context', () => {
-  it('passes continuation_context to prompt when continuationContext is provided', async () => {
-    const backend = new StubHarness([{
-      text: '<evaluation></evaluation>',
-    }]);
-
-    await collectEvents(runArchitectureEvaluate({
-      ...makePlanEvalOptions(backend),
-      continuationContext: { attempt: 1, maxContinuations: 1 },
-    }));
-
-    expect(backend.prompts[0]).toContain('Continuation Context');
-    expect(backend.prompts[0]).toContain('attempt 1 of 1');
-    expect(backend.prompts[0]).toContain('re-inspect the captured diff');
-    expect(backend.prompts[0]).not.toContain('git reset');
-    expect(backend.prompts[0]).not.toContain('git add');
-    expect(backend.prompts[0]).not.toContain('git checkout');
-  });
-});
 
 // --- Prompt template verification ---
 

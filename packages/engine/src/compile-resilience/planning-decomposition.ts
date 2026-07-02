@@ -19,7 +19,6 @@ export interface PlanningUnitOutput {
   coveredCriteria?: string[];
   discoveredFiles?: string[];
   sharedContractNotes?: string[];
-  moduleSuggestions?: Array<{ id: string; description: string; dependsOn: string[]; architecture?: string }>;
   planSuggestions?: Array<{ id: string; name?: string; markdown: string; dependsOn?: string[]; buildConfigBlock?: string }>;
   unresolvedRequirements?: PlanningUnresolvedCriterion[];
   compactHandoffRef?: string;

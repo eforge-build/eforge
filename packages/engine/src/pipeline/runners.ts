@@ -79,8 +79,6 @@ export interface ReviewCycleConfig {
  */
 const RETRIABLE_REVIEWER_ROLES = new Set<AgentRole>([
   'plan-reviewer',
-  'architecture-reviewer',
-  'cohesion-reviewer',
 ]);
 
 /**
@@ -215,8 +213,6 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
  * each of these runs.
  */
 const PLAN_ARTIFACT_COMMIT_STAGES = new Set([
-  'architecture-review-cycle',
-  'cohesion-review-cycle',
   'planning-quality-review-cycle',
 ]);
 
@@ -238,7 +234,7 @@ export async function* runCompilePipeline(
     if (PLAN_ARTIFACT_COMMIT_STAGES.has(stageName)) {
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)
-      if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {
+      if (ctx.plans.length > 0) {
         const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
         await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir, ctx.modelTracker);
       }

@@ -239,12 +239,6 @@ describe('default pipeline compile stages', () => {
     expect(names.has('planning-quality-review-cycle')).toBe(true);
   });
 
-  it('getCompileStageNames includes module-planning, compile-expedition, cohesion-review-cycle', () => {
-    const names = getCompileStageNames();
-    expect(names.has('module-planning')).toBe(true);
-    expect(names.has('compile-expedition')).toBe(true);
-    expect(names.has('cohesion-review-cycle')).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------
