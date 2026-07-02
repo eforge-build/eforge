@@ -1,5 +1,4 @@
-import { analyzeAcceptanceCriteriaItem, extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
-import { findJsonObjectText } from './json-object-extractor.js';
+import { analyzeAcceptanceCriteriaItem, normalizeCriterionText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
 
 export const AC_INVENTORY_VERSION = 1;
 export const AC_EXTRACTION_MIN_CONFIDENCE = 0.7;
@@ -54,8 +53,22 @@ function stripYamlFrontmatter(markdown: string): string {
   return markdown.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 }
 
+/**
+ * Normalize text for sourceQuote grounding comparisons. Applied to both the
+ * PRD body and each criterion's sourceQuote so cosmetic differences (line
+ * wrapping, smart quotes, backticks) never break grounding.
+ */
+export function normalizeGroundingText(text: string): string {
+  return text
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeGrounding(text: string): string {
-  return stripAcceptanceCriteriaInventoryBlock(stripYamlFrontmatter(text)).replace(/\s+/g, ' ').trim();
+  return normalizeGroundingText(stripAcceptanceCriteriaInventoryBlock(stripYamlFrontmatter(text)));
 }
 
 function pathFor(index: number, field?: string): string {
@@ -121,7 +134,7 @@ export function validateCanonicalAcceptanceCriteriaInventory(
     const sourceQuote = typeof item.sourceQuote === 'string' ? item.sourceQuote.trim() : '';
     if (sourceQuote === '') {
       diagnostics.push({ kind: 'missing-source-quote', message: 'Criterion must include a non-blank sourceQuote.', path: pathFor(index, 'sourceQuote') });
-    } else if (!groundedSource.includes(sourceQuote.replace(/\s+/g, ' ').trim())) {
+    } else if (!groundedSource.includes(normalizeGroundingText(sourceQuote))) {
       diagnostics.push({ kind: 'ungrounded-source-quote', message: 'Criterion sourceQuote must appear in the formatted PRD body.', path: pathFor(index, 'sourceQuote') });
     }
 
@@ -167,52 +180,6 @@ export function formatAcceptanceInventoryDiagnostics(diagnostics: readonly Accep
 
 function invalidInventoryError(diagnostics: AcceptanceInventoryDiagnostic[]): Error {
   return new Error(formatAcceptanceInventoryDiagnostics(diagnostics));
-}
-
-export function parseAcceptanceCriteriaExtractorOutput(
-  text: string,
-  source: string,
-  options: AcceptanceInventoryValidationOptions = {},
-): CanonicalAcceptanceCriteriaInventory {
-  const jsonText = findJsonObjectText(text);
-  if (!jsonText) {
-    throw invalidInventoryError([{ kind: 'invalid-json', message: 'Acceptance criteria extractor output did not contain a JSON object.' }]);
-  }
-  const parsed = parseJsonObject(jsonText);
-  if (parsed.diagnostic) throw invalidInventoryError([parsed.diagnostic]);
-  const result = validateCanonicalAcceptanceCriteriaInventory(parsed.value, source, { ...options, requireIds: false });
-  if (!result.valid) throw invalidInventoryError(result.diagnostics);
-  return result.inventory;
-}
-
-export interface DeriveAcceptanceCriteriaInventoryOptions {
-  allowFallbackSections?: boolean;
-  allowNoAcceptanceCriteria?: boolean;
-}
-
-export function deriveAcceptanceCriteriaInventoryFromPrdBody(
-  body: string,
-  options: DeriveAcceptanceCriteriaInventoryOptions = {},
-): CanonicalAcceptanceCriteriaInventory {
-  const visibleBody = stripAcceptanceCriteriaInventoryBlock(body);
-  const criteria = extractExpectedAcceptanceCriteria(visibleBody, { allowFallbackSections: options.allowFallbackSections });
-  const inventory: CanonicalAcceptanceCriteriaInventory = {
-    version: AC_INVENTORY_VERSION,
-    criteria: criteria.map((criterion, index): CanonicalAcceptanceCriterion => ({
-      id: expectedId(index),
-      text: normalizeCriterionText(criterion.text),
-      raw: criterion.raw.trim(),
-      sourceQuote: criterion.raw.trim(),
-      confidence: 1,
-    })),
-  };
-
-  const result = validateCanonicalAcceptanceCriteriaInventory(inventory, visibleBody, {
-    allowNoAcceptanceCriteria: options.allowNoAcceptanceCriteria ?? true,
-    requireIds: true,
-  });
-  if (!result.valid) throw invalidInventoryError(result.diagnostics);
-  return result.inventory;
 }
 
 export function appendAcceptanceCriteriaInventoryBlock(body: string, inventory: CanonicalAcceptanceCriteriaInventory): string {

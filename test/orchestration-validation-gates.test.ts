@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize, validate, prdValidate, recordArtifact } from '@eforge-build/engine/orchestrator/phases';
-import { appendAcceptanceCriteriaInventoryBlock, parseAcceptanceCriteriaExtractorOutput, requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { appendAcceptanceCriteriaInventoryBlock, requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { initializeState, applyResumeSeed, type ResumeSeedOptions, Orchestrator } from '@eforge-build/engine/orchestrator';
@@ -20,6 +20,7 @@ import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { StubHarness } from './stub-harness.js';
+import { buildInventory } from './intake-test-helpers.js';
 
 
 
@@ -575,14 +576,11 @@ describe('prdValidate — no-validator acceptance gate', () => {
 - All existing tests pass
 `.trim();
 
-    const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
-      version: 1,
-      criteria: [
-        { text: 'Add login page with username and password', sourceQuote: 'Add login page with username and password', confidence: 0.95 },
-        { text: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', sourceQuote: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', confidence: 0.95 },
-        { text: 'All existing tests pass', sourceQuote: 'All existing tests pass', confidence: 0.95 },
-      ],
-    }), prdMarkdown);
+    const inventory = buildInventory([
+      { text: 'Add login page with username and password', sourceQuote: 'Add login page with username and password', confidence: 0.95 },
+      { text: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', sourceQuote: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', confidence: 0.95 },
+      { text: 'All existing tests pass', sourceQuote: 'All existing tests pass', confidence: 0.95 },
+    ], prdMarkdown);
     const queuedPrdMarkdown = appendAcceptanceCriteriaInventoryBlock(prdMarkdown, inventory);
     const persistedInventory = requireAcceptanceCriteriaInventoryFromPrd(queuedPrdMarkdown);
     const derived = persistedInventory.criteria.map((criterion) => ({ id: criterion.id, text: criterion.text, raw: criterion.raw }));

@@ -7,11 +7,9 @@ import { DEFAULT_CONFIG, type EforgeConfig } from '@eforge-build/engine/config';
 import type { BuildOptions, CompileOptions, EforgeEvent } from '@eforge-build/engine/events';
 import { runQueuedPrdBuild, type QueuedPrdBuildContext } from '@eforge-build/engine/queue/build-single-prd';
 import { QueueSkipReason, type QueuedPrd } from '@eforge-build/engine/prd-queue';
-import {
-  appendAcceptanceCriteriaInventoryBlock,
-  parseAcceptanceCriteriaExtractorOutput,
-} from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { appendAcceptanceCriteriaInventoryBlock } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { StubHarness } from './stub-harness.js';
+import { buildInventory } from './intake-test-helpers.js';
 
 async function makeCwd(prefix = 'eforge-build-single-prd-ordering-'): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
@@ -45,16 +43,13 @@ function validPrdBody(): string {
     '',
     '- Build callbacks receive landing overrides.',
   ].join('\n');
-  const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
-    version: 1,
-    criteria: [
-      {
-        text: 'Build callbacks receive landing overrides.',
-        sourceQuote: 'Build callbacks receive landing overrides.',
-        confidence: 0.95,
-      },
-    ],
-  }), body);
+  const inventory = buildInventory([
+    {
+      text: 'Build callbacks receive landing overrides.',
+      sourceQuote: 'Build callbacks receive landing overrides.',
+      confidence: 0.95,
+    },
+  ], body);
   return appendAcceptanceCriteriaInventoryBlock(body, inventory);
 }
 

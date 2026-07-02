@@ -766,7 +766,7 @@ describe('selectNowEnqueueCards', () => {
     });
     const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowEnqueueCards(runs, { s1: detail }, now);
-    expect(cards[0].step).toBe('Formatting PRD');
+    expect(cards[0].step).toBe('Formatting PRD & extracting acceptance criteria');
     expect(cards[0].title).toBe('inbox/my-prd.md');
   });
 

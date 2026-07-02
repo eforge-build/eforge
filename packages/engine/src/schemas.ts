@@ -704,6 +704,34 @@ export function getPlanReviewSubmissionSchemaYaml(): string {
 }
 
 // ---------------------------------------------------------------------------
+// PRD intake submission schema
+// ---------------------------------------------------------------------------
+
+/** Schema for one extracted acceptance criterion in an intake submission. */
+// Upper bounds are deliberately generous: they exist to bound resource usage
+// on a misbehaving model, not to constrain legitimate submissions.
+export const intakeCriterionSchema = Type.Object({
+  text: Type.String({ minLength: 1, maxLength: 2_000, description: 'A flat, standalone, objectively verifiable acceptance criterion.' }),
+  sourceQuote: Type.String({ minLength: 1, maxLength: 5_000, description: 'Exact contiguous quote copied from formattedBody that grounds this criterion.' }),
+  confidence: Type.Number({ minimum: 0, maximum: 1, description: 'Extraction confidence between 0 and 1.' }),
+  warnings: Type.Optional(Type.Array(Type.String({ maxLength: 2_000 }), { maxItems: 20, description: 'Warnings about this criterion (e.g. downgraded manual-only notes).' })),
+}, { description: 'One canonical acceptance criterion grounded in the formatted PRD body' });
+
+/** Schema for the intake agent's single structured submission. */
+export const intakeSubmissionSchema = Type.Object({
+  formattedBody: Type.String({ minLength: 1, maxLength: 200_000, description: 'The formatted PRD markdown, starting with a # Title H1 heading.' }),
+  criteria: Type.Array(intakeCriterionSchema, { maxItems: 100, description: 'Canonical acceptance criteria extracted from formattedBody; empty only when the input truly defines none.' }),
+  warnings: Type.Optional(Type.Array(Type.String({ maxLength: 2_000 }), { maxItems: 50, description: 'Inventory-level warnings (e.g. no acceptance criteria found).' })),
+}, { description: 'Formatted PRD body plus its canonical acceptance criteria inventory' });
+
+export type IntakeSubmission = Static<typeof intakeSubmissionSchema>;
+
+/** Schema YAML for intake submissions. */
+export function getIntakeSubmissionSchemaYaml(): string {
+  return getSchemaYaml('intake-submission', intakeSubmissionSchema);
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
 

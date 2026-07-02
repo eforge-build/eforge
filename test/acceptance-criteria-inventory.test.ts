@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { runAcceptanceCriteriaExtractor } from '@eforge-build/engine/agents/acceptance-criteria-extractor';
 import {
   extractExpectedAcceptanceCriteria,
   normalizeCriterionText,
@@ -11,13 +10,13 @@ import {
 import {
   AC_EXTRACTION_MIN_CONFIDENCE,
   appendAcceptanceCriteriaInventoryBlock,
-  parseAcceptanceCriteriaExtractorOutput,
+  normalizeGroundingText,
   validateCanonicalAcceptanceCriteriaInventory,
   readAcceptanceCriteriaInventoryBlock,
   requireAcceptanceCriteriaInventoryFromPrd,
   stripAcceptanceCriteriaInventoryBlock,
 } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
-import { StubHarness } from './stub-harness.js';
+import { buildInventory, type IntakeCriterionInput } from './intake-test-helpers.js';
 
 const CANONICAL_SOURCE = [
   '# Feature',
@@ -28,64 +27,26 @@ const CANONICAL_SOURCE = [
   '- `pnpm type-check` exits 0.',
 ].join('\n');
 
-function validExtractorJson(): string {
-  return JSON.stringify({
-    version: 1,
-    criteria: [
-      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
-      { text: '`pnpm type-check` exits 0.', sourceQuote: '`pnpm type-check` exits 0.', confidence: 0.9 },
-    ],
-  });
-}
+const CANONICAL_CRITERIA: IntakeCriterionInput[] = [
+  { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
+  { text: '`pnpm type-check` exits 0.', sourceQuote: '`pnpm type-check` exits 0.', confidence: 0.9 },
+];
 
 // ---------------------------------------------------------------------------
-// extractor agent helper
+// grounding normalization
 // ---------------------------------------------------------------------------
 
-describe('runAcceptanceCriteriaExtractor', () => {
-  it('uses the prd-validator role with tools disabled and yields ordinary agent events', async () => {
-    const harness = new StubHarness([{ text: validExtractorJson() }]);
-    const events = [];
-    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE, verbose: true });
-    let result = await gen.next();
-    while (!result.done) {
-      events.push(result.value);
-      result = await gen.next();
-    }
-
-    expect(result.value.criteria.map((criterion) => criterion.id)).toEqual(['ac-001', 'ac-002']);
-    expect(harness.calls[0].tools).toBe('none');
-    expect(events.find((event) => event.type === 'agent:start')?.agent).toBe('prd-validator');
-    expect(events.map((event) => event.type)).toContain('agent:start');
-    expect(events.map((event) => event.type)).toContain('agent:message');
+describe('normalizeGroundingText', () => {
+  it('collapses whitespace runs and trims', () => {
+    expect(normalizeGroundingText('  a\n   b\tc  ')).toBe('a b c');
   });
 
-  it('falls back to accumulated messages when resultText is blank', async () => {
-    const harness = new StubHarness([{ text: validExtractorJson(), resultText: '   ' }]);
-    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE });
-    let result = await gen.next();
-    while (!result.done) result = await gen.next();
-
-    expect(result.value.criteria[0].id).toBe('ac-001');
+  it('normalizes smart quotes to straight quotes', () => {
+    expect(normalizeGroundingText('status: “ok” and ‘done’')).toBe('status: "ok" and \'done\'');
   });
 
-  it('fails closed when the harness emits no parseable output', async () => {
-    const harness = new StubHarness([{ resultText: '' }]);
-    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE });
-    let result = await gen.next();
-    await expect(async () => {
-      while (!result.done) result = await gen.next();
-    }).rejects.toThrow(/produced no output/);
-  });
-
-  it('can ask for explicit-only extraction before enqueue formatting', async () => {
-    const harness = new StubHarness([{ text: JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] }) }]);
-    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: 'Fix the widget from context', explicitOnly: true, allowNoAcceptanceCriteria: true });
-    let result = await gen.next();
-    while (!result.done) result = await gen.next();
-
-    expect(result.value.criteria).toEqual([]);
-    expect(harness.prompts[0]).toContain('Do not infer criteria from scope, implementation notes, file lists, or general context');
+  it('strips backticks', () => {
+    expect(normalizeGroundingText('`pnpm type-check` exits 0.')).toBe('pnpm type-check exits 0.');
   });
 });
 
@@ -94,34 +55,9 @@ describe('runAcceptanceCriteriaExtractor', () => {
 // ---------------------------------------------------------------------------
 
 describe('canonical acceptance criteria inventory', () => {
-  it('parses valid extractor JSON and assigns stable ac ids', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+  it('validates criteria and assigns stable ac ids', () => {
+    const inventory = buildInventory(CANONICAL_CRITERIA, CANONICAL_SOURCE);
     expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
-  });
-
-  it('parses prose-prefixed extractor JSON', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput(`Here is the extraction:\n${validExtractorJson()}`, CANONICAL_SOURCE);
-    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
-  });
-
-  it('parses prose-suffixed extractor JSON', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput(`${validExtractorJson()}\nDone.`, CANONICAL_SOURCE);
-    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
-  });
-
-  it('parses fenced extractor JSON surrounded by prose', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput([
-      'Here is the extraction:',
-      '```json',
-      validExtractorJson(),
-      '```',
-      'Done.',
-    ].join('\n'), CANONICAL_SOURCE);
-    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
-  });
-
-  it('rejects extractor output with no balanced JSON object', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput('I do not see acceptance criteria.', CANONICAL_SOURCE)).toThrow(/JSON object/);
   });
 
   it('accepts source quotes grounded after whitespace normalization', () => {
@@ -133,63 +69,61 @@ describe('canonical acceptance criteria inventory', () => {
       '- Engine emits `enqueue:complete` after',
       '  writing the PRD.',
     ].join('\n');
-    const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
-      version: 1,
-      criteria: [{
-        text: 'Engine emits `enqueue:complete` after writing the PRD.',
-        sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.',
-        confidence: 0.95,
-      }],
-    }), source);
-
+    const inventory = buildInventory([CANONICAL_CRITERIA[0]], source);
     expect(inventory.criteria[0].id).toBe('ac-001');
   });
 
-  it('rejects non-object and missing criteria extractor payloads', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput('[]', CANONICAL_SOURCE)).toThrow(/JSON object/);
-    expect(() => parseAcceptanceCriteriaExtractorOutput('{"version":1}', CANONICAL_SOURCE)).toThrow(/criteria array/);
+  it('accepts source quotes that differ only by smart quotes and backticks', () => {
+    const source = '# Feature\n\n## Acceptance Criteria\n\n- The API returns `status: "ok"` for health checks.';
+    const inventory = buildInventory([
+      { text: 'The API returns status "ok" for health checks.', sourceQuote: 'The API returns status: “ok” for health checks.', confidence: 0.9 },
+    ], source);
+    expect(inventory.criteria[0].id).toBe('ac-001');
   });
 
-  it('continues canonical schema validation after extracting prose-wrapped JSON', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput('Here is the extraction:\n{"version":1}\nDone.', CANONICAL_SOURCE)).toThrow(/criteria array/);
+  it('rejects payloads without a criteria array', () => {
+    const result = validateCanonicalAcceptanceCriteriaInventory({ version: 1 }, CANONICAL_SOURCE);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.diagnostics.some((d) => /criteria array/.test(d.message))).toBe(true);
+    }
   });
 
   it('rejects ungrounded source quotes', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
-      version: 1,
-      criteria: [{
-        text: 'Engine emits `enqueue:complete` after writing the PRD.',
-        sourceQuote: 'A source quote that does not appear in the PRD.',
-        confidence: 0.95,
-      }],
-    }), CANONICAL_SOURCE)).toThrow(/formatted PRD body/);
+    expect(() => buildInventory([
+      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'A source quote that does not appear in the PRD.', confidence: 0.95 },
+    ], CANONICAL_SOURCE)).toThrow(/formatted PRD body/);
   });
 
   it('rejects empty inventories when not allowed', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput('{"version":1,"criteria":[]}', CANONICAL_SOURCE)).toThrow(/empty/i);
+    expect(() => buildInventory([], CANONICAL_SOURCE)).toThrow(/empty/i);
+    expect(buildInventory([], CANONICAL_SOURCE, { allowNoAcceptanceCriteria: true }).criteria).toEqual([]);
   });
 
   it('rejects criteria without a source quote', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text: 'Something concrete happens.', confidence: 0.9 }] }), CANONICAL_SOURCE)).toThrow(/sourceQuote/);
+    expect(() => buildInventory([
+      { text: 'Something concrete happens.', sourceQuote: '', confidence: 0.9 },
+    ], CANONICAL_SOURCE)).toThrow(/sourceQuote/);
   });
 
   it('rejects low-confidence criteria', () => {
-    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text: 'Something concrete happens.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: AC_EXTRACTION_MIN_CONFIDENCE - 0.01 }] }), CANONICAL_SOURCE)).toThrow(/confidence/);
+    expect(() => buildInventory([
+      { text: 'Something concrete happens.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: AC_EXTRACTION_MIN_CONFIDENCE - 0.01 },
+    ], CANONICAL_SOURCE)).toThrow(/confidence/);
   });
 
   it('rejects duplicate, grouping-label, bare-command, manual-only, and vague criteria', () => {
     const cases = ['Tests cover:', '`pnpm type-check`.', 'Manually verify dashboard rendering in the browser.', 'Works correctly.'];
     for (const text of cases) {
-      expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text, sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 }] }), CANONICAL_SOURCE)).toThrow();
+      expect(() => buildInventory([
+        { text, sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
+      ], CANONICAL_SOURCE)).toThrow();
     }
-    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [
-      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
-      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
-    ] }), CANONICAL_SOURCE)).toThrow(/duplicate/);
+    expect(() => buildInventory([CANONICAL_CRITERIA[0], CANONICAL_CRITERIA[0]], CANONICAL_SOURCE)).toThrow(/duplicate/);
   });
 
   it('serializes, reads, and strips exactly one hidden inventory block', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+    const inventory = buildInventory(CANONICAL_CRITERIA, CANONICAL_SOURCE);
     const withBlock = appendAcceptanceCriteriaInventoryBlock(CANONICAL_SOURCE, inventory);
     expect(readAcceptanceCriteriaInventoryBlock(withBlock)).toContain('ac-001');
     expect(stripAcceptanceCriteriaInventoryBlock(withBlock)).toBe(CANONICAL_SOURCE);
@@ -227,7 +161,7 @@ describe('canonical acceptance criteria inventory', () => {
   });
 
   it('rejects malformed, multiple, and out-of-order persisted inventory blocks with re-enqueue diagnostics', () => {
-    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+    const inventory = buildInventory(CANONICAL_CRITERIA, CANONICAL_SOURCE);
     const withBlock = appendAcceptanceCriteriaInventoryBlock(CANONICAL_SOURCE, inventory);
     const secondBlock = appendAcceptanceCriteriaInventoryBlock('# Other PRD', inventory);
     const malformedBlock = `${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\nnot json\neforge:end-acceptance-criteria-inventory -->`;
