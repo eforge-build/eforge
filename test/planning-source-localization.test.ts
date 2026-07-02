@@ -146,6 +146,31 @@ describe('planning source localization foundation', () => {
     expect(directory.budgetNotes.join('\n')).toContain('candidate-files:');
   });
 
+  it('caps surface-kind needs at the surface candidate budget with a diagnostic', async () => {
+    const temp = await workspace({
+      'settings/app.config.ts': 'export const appConfig = { retention: 1 };',
+      'settings/db.config.ts': 'export const dbConfig = { retention: 1 };',
+      'settings/cache.config.ts': 'export const cacheConfig = { retention: 1 };',
+      'settings/auth.config.ts': 'export const authConfig = { retention: 1 };',
+      'settings/log.config.ts': 'export const logConfig = { retention: 1 };',
+      'src/worker.ts': 'export function work() {}',
+    });
+    const content = prd(['Retention configuration options are adjustable.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+    const surfaceRecords = bundle.records.filter((record) => record.kind === 'config');
+
+    expect(surfaceRecords.length).toBeGreaterThan(0);
+    for (const record of surfaceRecords) expect(record.candidateFiles.length, record.needId).toBeLessThanOrEqual(bundle.limits.maxSurfaceCandidatesPerNeed);
+    expect(surfaceRecords.some((record) => record.diagnostics.some((diagnostic) => diagnostic.code === 'surface-candidate-budget'))).toBe(true);
+
+    const raised = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph, limits: { maxSurfaceCandidatesPerNeed: 10 } });
+    const raisedCounts = raised.records.filter((record) => record.kind === 'config').map((record) => record.candidateFiles.length);
+    expect(Math.max(...raisedCounts)).toBeGreaterThan(bundle.limits.maxSurfaceCandidatesPerNeed);
+  });
+
   it('assigns global inventory candidates to atoms through criteria, subsystem, and interface overlap', async () => {
     const temp = await workspace({ 'workspace/catalog/src/catalog-schema.ts': 'export type CatalogSchema = { id: string };' });
     const content = prd(['Catalog schema contract is implemented in `workspace/catalog/src/catalog-schema.ts`.', 'Catalog route API consumes the schema contract.']);

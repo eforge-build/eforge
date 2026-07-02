@@ -29,6 +29,14 @@ export function derivePlanningAtomGraph(input: DerivePlanningAtomGraphInput): Pl
 
 function buildAtoms(inventory: SourceInventory, limits: PlanningDecompositionLimits): PlanningAtom[] {
   if (inventory.criteria.length === 0) return [emptyAtom(inventory, limits)];
+  // Collapse to a single atom whenever the whole criterion set fits one
+  // planning unit. Subsystem diversity is deliberately ignored here: the
+  // byte budget is the real constraint on a planner's context, and a single
+  // atom re-enables the single-atom reduce passthrough for small PRDs.
+  const totalCriteriaBytes = inventory.criteria.reduce((sum, criterion) => sum + criterion.byteLength, 0);
+  if (inventory.criteria.length <= limits.maxCriteriaPerUnit && totalCriteriaBytes <= limits.maxPromptSourceBytes) {
+    return [atomForCriteria('atom-root', 'Root planning', 'general', inventory.criteria, inventory, limits)];
+  }
   const foundation = foundationCriteria(inventory.criteria);
   const atoms: PlanningAtom[] = [];
   for (const [index, group] of chunkCriteria(foundation, limits).entries()) atoms.push(atomForCriteria(`atom-foundation-contracts${index === 0 ? '' : `-${String(index + 1).padStart(3, '0')}`}`, 'Foundation contracts', 'foundation-contract', group, inventory, limits));

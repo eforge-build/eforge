@@ -55,6 +55,22 @@ describe('planning shared brief at realistic scale (todo-api eval regression)', 
     for (const atomBrief of brief.atomBriefs) expect(atomBrief.sectionIds.length).toBeLessThanOrEqual(brief.limits.maxSectionsPerAtom);
   });
 
+  it('collapses the small PRD to a single root atom so budgets never bind', async () => {
+    const { graph, brief, localization } = await deriveFixtureBrief();
+
+    // Single-unit collapse: six criteria fit one planning unit, so the graph
+    // must not fragment into foundation/subsystem atoms (which defeated the
+    // single-atom reduce passthrough and multiplied shared sections).
+    expect(graph.atoms.map((atom) => atom.atomId)).toEqual(['atom-root']);
+    // Surface-kind localization is capped, so no need sweeps in the whole repo.
+    const surfaceCap = localization.limits.maxSurfaceCandidatesPerNeed;
+    for (const record of localization.records.filter((item) => ['manifest', 'entrypoint', 'docs', 'test', 'config', 'command', 'route', 'api', 'ui', 'extension', 'consumer-surface'].includes(item.kind))) {
+      expect(record.candidateFiles.length, record.needId).toBeLessThanOrEqual(surfaceCap);
+    }
+    // With the shrunken fan-out the default budgets no longer bind at all.
+    expect(brief.budgetDiagnostics).toEqual([]);
+  });
+
   it('keeps demoted or dropped evidence available to materialization', async () => {
     const { graph, brief } = await deriveFixtureBrief();
 
@@ -65,13 +81,21 @@ describe('planning shared brief at realistic scale (todo-api eval regression)', 
     expect(bundle.validationErrors).toEqual([]);
   });
 
-  it('records budget diagnostics instead of failing when fan-out exceeds budgets', async () => {
-    const { brief } = await deriveFixtureBrief();
+  it('records budget diagnostics instead of failing when budgets bind', async () => {
+    // Reproduce the pre-collapse fragmentation shape (multiple atoms sharing
+    // evidence) with a tight total budget so the degradation path stays
+    // covered now that default budgets comfortably fit this fixture.
+    const fragmented = { ...limits, maxCriteriaPerUnit: 2 };
+    const inventory = deriveSourceInventory({ content: NORMALIZED_HEALTH_CHECK_PRD, hash, path: 'docs/add-health-check.md' });
+    const graph = derivePlanningAtomGraph({ content: NORMALIZED_HEALTH_CHECK_PRD, hash, path: 'docs/add-health-check.md', limits: fragmented, inventory });
+    const localization = await deriveSourceLocalization({ cwd: FIXTURE_REPO, inventory, graph });
+    const brief = deriveSharedPlanningBrief({ graph, sourceLocalizationBundle: localization, limits: { maxTotalBriefBytes: 600 } });
 
+    expect(graph.atoms.length).toBeGreaterThan(1);
     expect(brief.evidenceOwnership.length).toBeGreaterThan(0);
-    // Realistic fan-out exceeds at least one budget for this fixture; the
-    // overflow must surface as diagnostics, never as a compile failure.
     expect(brief.budgetDiagnostics.length).toBeGreaterThan(0);
     for (const diagnostic of brief.budgetDiagnostics) expect(diagnostic.sectionId).toBeTruthy();
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+    expect(brief.byteLength).toBeLessThanOrEqual(600);
   });
 });
