@@ -215,7 +215,9 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
 
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:decomposition:start')).toBe(false);
-    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    // planning:complete is emitted by the planning-quality-review-cycle stage, not the planner stage.
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('running planning quality review'))).toBe(true);
+    expect(ctx.pipeline.compile).toEqual(['planner', 'planning-quality-review-cycle']);
     const atomPromptCount = harness.calls.filter((call) => call.customTools?.some((tool) => tool.name === 'submit_atom_output')).length;
     const reducePromptCount = harness.calls.filter((call) => call.customTools?.some((tool) => tool.name === 'submit_reduce_output')).length;
     expect(atomPromptCount).toBe(expectedTasks(content, cfg).length);
@@ -247,7 +249,8 @@ describe('compile planner stage bounded compiler orchestration branch', () => {
 
     expect(events.some((event) => event.type === 'planning:scope-context:failure')).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Starting bounded planner compiler'))).toBe(true);
-    expect(events.some((event) => event.type === 'planning:complete')).toBe(true);
+    // planning:complete is emitted by the planning-quality-review-cycle stage, not the planner stage.
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('running planning quality review'))).toBe(true);
     expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
     expect(harness.prompts.some((prompt) => prompt.includes(sentinel))).toBe(true);
     expect(harness.calls.slice(2).every((call) => call.tools === 'none')).toBe(true);

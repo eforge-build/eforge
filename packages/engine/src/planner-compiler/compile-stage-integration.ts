@@ -1,11 +1,8 @@
-import { resolve } from 'node:path';
-
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { EforgeEvent } from '../events.js';
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { validateCompileArtifacts } from '../compile-resilience/artifact-validation.js';
 import { resolvePlanningDecompositionLimits } from '../config.js';
-import { parseOrchestrationConfig } from '../plan.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
 import { derivePlanningAtomGraph } from './atom-graph.js';
@@ -87,10 +84,10 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     throw new Error(validation.message);
   }
 
-  const orchPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
-  const orch = await parseOrchestrationConfig(orchPath);
-  const planConfigs = orch.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review }));
-  yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans: validation.plans, planConfigs };
+  // planning:complete is emitted by the planning-quality-review-cycle stage
+  // (always next in the rewritten pipeline) after the gate revalidates the
+  // artifacts, so accepted orchestration fixes are reflected in planConfigs.
+  yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Bounded planner compiler artifacts validated; running planning quality review.' };
 }
 
 async function* writeCompilerDiagnosticsBestEffort(ctx: PipelineContext, diagnostics: CompilerDiagnostics): AsyncGenerator<EforgeEvent> {
@@ -174,7 +171,9 @@ async function* streamEvents<T>(run: (emit: (event: EforgeEvent) => void) => Pro
 function boundedCompilerPipeline(ctx: PipelineContext, pipelineDefaults: PlanningArtifactPipelineDefaults): PipelineContext['pipeline'] {
   return {
     ...ctx.pipeline,
-    compile: ctx.pipeline.compile.includes('plan-review-cycle') ? ['planner', 'plan-review-cycle'] : ['planner'],
+    // The planning quality gate is unconditional on the compiler path,
+    // regardless of what the composer selected.
+    compile: ['planner', 'planning-quality-review-cycle'],
     defaultBuild: pipelineDefaults.defaultBuild,
     defaultReview: pipelineDefaults.defaultReview,
     rationale: `${ctx.pipeline.rationale}\nBounded planner compiler produced final plan artifacts directly.\n${pipelineDefaults.rationale}`,

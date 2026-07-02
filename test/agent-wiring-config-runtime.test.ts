@@ -28,9 +28,9 @@ import { createNoopTracingContext } from '@eforge-build/engine/tracing';
 // --- eforge:region config-runtime-wiring ---
 
 describe('stage descriptor metadata', () => {
-  it('all 6 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 7 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getCompileStageDescriptors();
-    expect(descriptors.length).toBe(6);
+    expect(descriptors.length).toBe(7);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -101,7 +101,7 @@ describe('formatStageRegistry', () => {
   it('contains all registered stage names', () => {
     const output = formatStageRegistry();
     const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
-    expect(allNames.length).toBe(17);
+    expect(allNames.length).toBe(18);
     for (const name of allNames) {
       expect(output).toContain(name);
     }

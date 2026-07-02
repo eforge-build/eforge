@@ -210,8 +210,20 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
 // ---------------------------------------------------------------------------
 
 /**
+ * Compile stages whose reviewers read committed plan artifacts (and whose
+ * evaluators snapshot against HEAD~1) — plan artifacts are committed before
+ * each of these runs.
+ */
+const PLAN_ARTIFACT_COMMIT_STAGES = new Set([
+  'plan-review-cycle',
+  'architecture-review-cycle',
+  'cohesion-review-cycle',
+  'planning-quality-review-cycle',
+]);
+
+/**
  * Run the compile pipeline stages in sequence.
- * Handles the git commit of plan artifacts before the plan-review-cycle stage.
+ * Handles the git commit of plan artifacts before review-cycle stages.
  */
 export async function* runCompilePipeline(
   ctx: PipelineContext,
@@ -224,7 +236,7 @@ export async function* runCompilePipeline(
   const MAX_RESTARTS = 5;
   while (i < ctx.pipeline.compile.length) {
     const stageName = ctx.pipeline.compile[i];
-    if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle' || stageName === 'cohesion-review-cycle') {
+    if (PLAN_ARTIFACT_COMMIT_STAGES.has(stageName)) {
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)
       if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {

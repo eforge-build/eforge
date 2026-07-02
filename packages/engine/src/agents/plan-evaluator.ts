@@ -24,9 +24,11 @@ import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 const exec = promisify(execFile);
 
 /**
- * Evaluator mode: 'plan' for plan review evaluation, 'cohesion' for cohesion review evaluation.
+ * Evaluator mode: 'plan' for plan review evaluation, 'cohesion' for cohesion
+ * review evaluation, 'architecture' for architecture review evaluation, and
+ * 'planning-quality' for the bounded planner compiler's quality gate.
  */
-export type EvaluatorMode = 'plan' | 'cohesion' | 'architecture';
+export type EvaluatorMode = 'plan' | 'cohesion' | 'architecture' | 'planning-quality';
 
 /**
  * Options shared by plan, cohesion, and architecture evaluator agents.
@@ -168,6 +170,31 @@ const MODE_CONFIG = {
       reject_criteria_extra: '\n4. **Module decomposition change** — The change alters the module decomposition strategy from the planner',
     },
   },
+  'planning-quality': {
+    startEvent: 'planning:evaluate:start' as const,
+    completeEvent: 'planning:evaluate:complete' as const,
+    promptName: 'plan-evaluator',
+    role: 'plan-evaluator' as const,
+    // Whole-file deletion (or rename-away) of these artifacts is never a
+    // legitimate fix; enforced deterministically by validateProtectedArtifacts.
+    protectedArtifacts: ['orchestration.yaml', 'architecture.md', 'acceptance-coverage.md', 'compiler-diagnostics.json'] as const,
+    promptVars: {
+      evaluator_title: 'Planning Quality Fix Evaluator',
+      evaluator_context: 'A bounded planner compiler generated planning artifacts (plan files, orchestration.yaml, architecture.md, acceptance-coverage.md, compiler-diagnostics.json) and committed them. A blind planning quality reviewer then audited coverage, coherence, buildability, traceability, and pipeline sanity — and left fixes as captured candidate changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
+      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (uncovered acceptance criterion, missing dependency, artifact disagreement, ownership conflict, review settings mismatched to plan risk)',
+      accept_patterns_table: `| Missing dependency | Plan B uses outputs of Plan A but doesn't list A in \`depends_on\` |
+| Coverage gap closed | An acceptance criterion had no plan coverage — fix adds concrete plan content covering it |
+| Artifact disagreement | architecture.md contracts or ownership disagree with the plan files — fix aligns them |
+| Ownership conflict resolved | Two plans claim the same file — fix declares a dependency to sequence them |
+| Review settings corrected | A large risky plan carried lighter review settings than a trivial plan |
+| Incorrect file path | Plan references a path that doesn't exist in the repository |`,
+      reject_criteria_extra: `
+4. **Coverage weakened or deleted** — The change removes or waters down acceptance coverage entries instead of resolving them with plan content
+5. **Compiler diagnostics modified** — The change edits or deletes compiler-diagnostics.json; diagnostics record what the compiler did and are never a fix target
+6. **PRD semantics changed** — The change alters what the source/PRD requires rather than how the plans satisfy it
+7. **Structurally invalid artifacts** — The change would leave orchestration.yaml or a plan file unparseable or structurally invalid`,
+    },
+  },
 } as const;
 
 function mergeDisallowedTools(existing: string[] | undefined): string[] {
@@ -211,6 +238,37 @@ function validatePathGuard(
       if (!isWithinPrefix(guardedPath, prefix)) {
         throw new Error(`Evaluation verdict path is outside the allowed planning artifact directory (${prefix}): ${guardedPath}`);
       }
+    }
+  }
+}
+
+/**
+ * Deterministic backstop for protected planning artifacts: an accepted verdict
+ * must never delete (or rename away) one of the compiler's core artifacts.
+ * Content edits stay LLM-adjudicated via the prompt's reject criteria; only
+ * whole-file removal is blocked here, mirroring validatePathGuard's failure path.
+ */
+function validateProtectedArtifacts(
+  verdicts: EvaluationVerdict[],
+  allowedPathPrefix: string | undefined,
+  protectedArtifacts: readonly string[] | undefined,
+  snapshot?: EvaluationSnapshot,
+): void {
+  if (!protectedArtifacts || protectedArtifacts.length === 0 || !snapshot) return;
+  const prefix = allowedPathPrefix ? normalizePathPrefix(allowedPathPrefix) : undefined;
+  const protectedPaths = new Set(protectedArtifacts.map((name) => (prefix ? `${prefix}/${name}` : name)));
+  const candidates = new Map(snapshot.files.map(file => [file.path, file]));
+  for (const verdict of verdicts) {
+    if (verdict.action !== 'accept') continue;
+    const file = validateEvaluationPath(verdict.file);
+    const candidate = candidates.get(file);
+    if (!candidate) continue;
+    const oldPath = candidate.oldPath ? validateEvaluationPath(candidate.oldPath) : undefined;
+    if (candidate.status === 'deleted' && protectedPaths.has(file)) {
+      throw new Error(`Evaluation verdict would delete a protected planning artifact: ${file}`);
+    }
+    if (oldPath !== undefined && oldPath !== file && protectedPaths.has(oldPath)) {
+      throw new Error(`Evaluation verdict would rename away a protected planning artifact: ${oldPath}`);
     }
   }
 }
@@ -348,10 +406,13 @@ The previous evaluator run was interrupted before a final verdict submission was
     return;
   }
 
+  const effectivePathPrefix = options.allowedPathPrefix ?? posix.join(options.outputDir ?? 'eforge/plans', planSetName);
   try {
-    validatePathGuard(
+    validatePathGuard(verdicts, effectivePathPrefix, options.evaluationSnapshot);
+    validateProtectedArtifacts(
       verdicts,
-      options.allowedPathPrefix ?? posix.join(options.outputDir ?? 'eforge/plans', planSetName),
+      effectivePathPrefix,
+      'protectedArtifacts' in config ? config.protectedArtifacts : undefined,
       options.evaluationSnapshot,
     );
     const application = await applyEvaluationVerdicts(options.evaluationSnapshot, verdicts, {
@@ -418,4 +479,27 @@ export async function* runArchitectureEvaluate(
   options: ArchitectureEvaluatorOptions,
 ): AsyncGenerator<EforgeEvent> {
   yield* runEvaluate({ ...options, mode: 'architecture' });
+}
+
+/**
+ * Options for the planning quality evaluator agent.
+ */
+export type PlanningQualityEvaluatorOptions = PlanEvaluatorOptions;
+
+/**
+ * Evaluate the planning quality reviewer's captured fixes. The engine owns
+ * snapshot preparation, verdict application, cleanup, and committing. In
+ * addition to the path guard, a deterministic protected-artifact guard blocks
+ * accepted deletions of orchestration.yaml, architecture.md,
+ * acceptance-coverage.md, and compiler-diagnostics.json.
+ *
+ * Yields:
+ * - `planning:evaluate:start` at the beginning
+ * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
+ * - `planning:evaluate:complete` with accepted/rejected counts at the end
+ */
+export async function* runPlanningQualityEvaluate(
+  options: PlanningQualityEvaluatorOptions,
+): AsyncGenerator<EforgeEvent> {
+  yield* runEvaluate({ ...options, mode: 'planning-quality' });
 }
