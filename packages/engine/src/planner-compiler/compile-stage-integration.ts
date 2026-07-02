@@ -13,6 +13,8 @@ import { decideExplorationSkip } from './exploration-contracts.js';
 import { runRepositoryExplorationAgent } from './exploration-agent.js';
 import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
+import { runPlanningSatisfactionGate } from './satisfaction-gate-agent.js';
+import type { PlanningSatisfactionSkipDecision } from './satisfaction-gate-contracts.js';
 import type { SourceLocalizationInputHints } from './source-localization-contracts.js';
 import { deriveSourceLocalization } from './source-localization.js';
 import { deriveSourceInventory } from './source-inventory.js';
@@ -24,6 +26,16 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   const { agentConfig, harness } = await resolveAgentRuntimeForInvocationWithExtensions('planner', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'planner' }, runtimeChoiceRouterOptions(ctx));
   const limits = resolvePlanningDecompositionLimits(ctx.config);
   const sourceContent = ctx.promptSourceContent ?? ctx.compilePromptSourceBundle?.promptSource ?? ctx.sourceContent;
+  const satisfactionDecision = yield* resolveSatisfactionSkip(ctx, { sourceContent, harness, agentOptions: agentConfig, limits });
+  if (satisfactionDecision.skip) {
+    // Authoritative planner outcome: no plan artifacts are written, the
+    // stage runner halts remaining compile stages on ctx.skipped, and the
+    // queue records the run as skipped with this reason.
+    yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: satisfactionDecision.reason };
+    ctx.skipped = true;
+    ctx.plans = [];
+    return;
+  }
   const sourceLocalizationHints = yield* resolveExplorationHints(ctx, { sourceContent, harness, agentOptions: agentConfig, limits });
   let compilerResult: BoundedPlannerCompilerResult;
   try {
@@ -101,6 +113,37 @@ async function* writeCompilerDiagnosticsBestEffort(ctx: PipelineContext, diagnos
 }
 
 interface ExplorationStageInput { sourceContent: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits: PlanningDecompositionLimits }
+
+/**
+ * Run the PRD-satisfaction gate before any planning work: a bounded
+ * read-only agent verifies whether every acceptance criterion is already
+ * implemented in the repository. Fail-open - any error or ungrounded
+ * submission resolves to skip=false and the compile proceeds. Only an
+ * external abort propagates.
+ */
+async function* resolveSatisfactionSkip(ctx: PipelineContext, input: ExplorationStageInput): AsyncGenerator<EforgeEvent, PlanningSatisfactionSkipDecision> {
+  try {
+    const inventory = deriveSourceInventory({ content: input.sourceContent, hash: ctx.compilePromptSourceBundle?.sourceHash });
+    if (inventory.criteria.length === 0) return { skip: false, reason: 'source has no acceptance criteria to verify against the repository' };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Satisfaction gate checking ${inventory.criteria.length} acceptance criteria against the repository...` };
+    const result = yield* streamEvents((emit) => runPlanningSatisfactionGate({
+      cwd: ctx.cwd,
+      harness: input.harness,
+      agentOptions: input.agentOptions,
+      inventory,
+      maxToolUses: input.limits.maxLocalExplorationToolUses,
+      abortSignal: ctx.abortController?.signal,
+      onEvent: emit,
+    }));
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Satisfaction gate ${result.decision.skip ? 'skipping compile' : 'proceeding with compile'} after ${result.toolUses} tool uses: ${result.decision.reason}` };
+    return result.decision;
+  } catch (err) {
+    if (ctx.abortController?.signal.aborted) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Satisfaction gate failed; proceeding with compile: ${message}`, source: 'satisfaction-gate' };
+    return { skip: false, reason: `gate unavailable: ${message}` };
+  }
+}
 
 /**
  * Run the bounded repository exploration agent when deterministic

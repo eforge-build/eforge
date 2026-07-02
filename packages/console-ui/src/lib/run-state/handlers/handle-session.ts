@@ -15,16 +15,17 @@ export const handleSessionStart: EventHandler<'session:start'> = (event, state) 
 };
 
 export const handleSessionEnd: EventHandler<'session:end'> = (event, state) => {
-  // EforgeResult.status can be 'skipped' but RunState.resultStatus only holds
-  // 'completed' | 'failed' | null — treat 'skipped' as no change (preserve existing).
-  const resultStatus: 'completed' | 'failed' | null =
-    event.result?.status === 'completed' || event.result?.status === 'failed'
+  const resultStatus: 'completed' | 'failed' | 'skipped' | null =
+    event.result?.status === 'completed' || event.result?.status === 'failed' || event.result?.status === 'skipped'
       ? event.result.status
       : state.resultStatus;
   return {
     isComplete: true,
     endTime: event.timestamp ? new Date(event.timestamp).getTime() : state.endTime,
     resultStatus,
+    // A skipped run's reason arrives via planning:skip when events are
+    // complete; fall back to the session summary for server-status loads.
+    ...(resultStatus === 'skipped' && !state.skipReason && event.result?.summary ? { skipReason: event.result.summary } : {}),
   };
 };
 

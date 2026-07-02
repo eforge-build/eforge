@@ -22,6 +22,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const sourceContent = prd(['engine updates `packages/engine/src/missing.ts` with bounded source evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'missing source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'missing-evidence');
@@ -36,6 +37,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const sourceContent = prd(['engine updates `packages/engine/src/huge.ts` with bounded source evidence.']);
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission({ atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'oversized source evidence' }),
     ]);
     const ctx = compilerContext(cwd, sourceContent, harness, 'oversized-evidence');
@@ -53,6 +55,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const [task] = expectedTasks(sourceContent, resolvePlanningDecompositionLimits(DEFAULT_CONFIG));
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
@@ -60,7 +63,7 @@ describe('bounded planner compiler runtime hardening', () => {
 
     await collect(getCompileStage('planner')(ctx));
 
-    const sourceEvidenceSection = promptSection(harness.prompts[0], '## Source evidence', '## Structured submission rules');
+    const sourceEvidenceSection = promptSection(harness.prompts[1], '## Source evidence', '## Structured submission rules');
     expect(sourceEvidenceSection).toContain('packages/engine/src/a.ts');
     expect(sourceEvidenceSection).not.toContain('eforge/plans/old/orchestration.yaml');
     expect(sourceEvidenceSection).not.toContain('generated: true');
@@ -74,6 +77,7 @@ describe('bounded planner compiler runtime hardening', () => {
     const mapOutput = completedOutput(task);
     const reduceOutput = reduceOutputWithGapAndConflict(mapOutput);
     const harness = new StubHarness([
+      unsatisfiedGateSubmission(),
       atomSubmission(mapOutput),
       reduceSubmission(reduceOutput),
     ]);
@@ -149,6 +153,11 @@ function reduceOutputWithGapAndConflict(output: PlanningAtomOutput) {
 
 function atomSubmission(output: PlanningAtomOutput | { atomId: string; status: 'failed'; aspectUpdates: []; error: string }) {
   return { toolCalls: [{ tool: 'submit_atom_output', toolUseId: `submit-${output.atomId}`, input: output, output: 'ok' }] };
+}
+
+/** The satisfaction gate runs first on every compile; report "not satisfied" so the compile proceeds. */
+function unsatisfiedGateSubmission() {
+  return { toolCalls: [{ tool: 'submit_satisfaction_assessment', toolUseId: 'submit-gate', input: { alreadySatisfied: false, reason: 'Requested work is not implemented yet.', verdicts: [] }, output: 'ok' }] };
 }
 
 function reduceSubmission(output: ReturnType<typeof completedReduceOutput> | ReturnType<typeof reduceOutputWithGapAndConflict>) {

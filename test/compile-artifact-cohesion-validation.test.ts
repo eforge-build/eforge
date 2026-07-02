@@ -91,6 +91,31 @@ describe('compile artifact cohesion validation', () => {
     expect(dependency.ok ? '' : dependency.message).toContain('plan dependency mismatch for module-b');
   });
 
+  it('accepts a redundant transitive dependency edge (literal manifest vs parse-reduced orchestration)', async () => {
+    // module-c declares [module-a, module-b] while module-b -> module-a. The
+    // on-disk orchestration.yaml carries the same literal list, but
+    // parseOrchestrationConfig transitively reduces it to [module-b] at read
+    // time. Closures agree, so cohesion validation must pass.
+    const ctx = await writeCompilerSet(tempDir(), { chain: true, planSetName: 'cohesion-transitive' });
+
+    const architecture = await readFile(resolve(planDir(ctx), 'architecture.md'), 'utf8');
+    const parsed = parseArchitectureManifest(architecture);
+    expect(parsed.manifest?.plans.find((plan) => plan.planId === 'module-c')?.dependsOnPlanIds).toEqual(['module-a', 'module-b']);
+
+    await expect(validateCompileArtifacts(ctx)).resolves.toMatchObject({ ok: true });
+    await expect(validateCompileArtifacts(ctx, { compilerArtifacts: 'require' })).resolves.toMatchObject({ ok: true });
+  });
+
+  it('still fails when dependency closures genuinely disagree', async () => {
+    const ctx = await writeCompilerSet(tempDir(), { chain: true, planSetName: 'cohesion-closure-mismatch' });
+    await rewriteManifest(ctx, (manifest) => ({ ...manifest, plans: manifest.plans.map((plan) => plan.planId === 'module-c' ? { ...plan, dependsOnPlanIds: ['module-a'] } : plan) }));
+
+    const result = await validateCompileArtifacts(ctx);
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.message).toContain('plan dependency mismatch for module-c');
+  });
+
   it('fails when a plan boundary heading is missing from architecture.md', async () => {
     const ctx = await writeCompilerSet(tempDir());
     const architecturePath = resolve(planDir(ctx), 'architecture.md');
@@ -203,17 +228,18 @@ function diagnosticsGap(overrides: { gapId: string; resolution: CompilerDiagnost
   };
 }
 
-async function writeCompilerSet(cwd: string, options: { dependency?: boolean; planSetName?: string } = {}): Promise<PipelineContext> {
+async function writeCompilerSet(cwd: string, options: { dependency?: boolean; chain?: boolean; planSetName?: string } = {}): Promise<PipelineContext> {
   const planSetName = options.planSetName ?? 'cohesion-set';
-  const compilerResult = multiPlanCompilerResult(options.dependency ?? true);
+  const compilerResult = multiPlanCompilerResult(options.dependency ?? true, options.chain ?? false);
   const artifacts = synthesizePlanningArtifacts({ compilerResult });
   if (artifacts.validationErrors.length > 0) throw new Error(`fixture synthesis failed: ${artifacts.validationErrors.join('; ')}`);
   await writePlanningCompilerArtifacts({ cwd, outputDir: 'eforge/plans', planSetName, baseBranch: 'main', pipeline: PIPELINE, artifacts, diagnostics: buildCompilerDiagnostics({ compilerResult, planSetName }) });
   return makePipelineCtx({ cwd, planSetName, pipeline: PIPELINE });
 }
 
-function multiPlanCompilerResult(dependency: boolean): BoundedPlannerCompilerResult {
-  const content = ['# Cohesion Validation', '', '## Acceptance Criteria', '- engine updates `packages/engine/src/a.ts`.', '- docs update `packages/engine/src/b.ts`.'].join('\n');
+function multiPlanCompilerResult(dependency: boolean, chain: boolean): BoundedPlannerCompilerResult {
+  const criteria = ['- engine updates `packages/engine/src/a.ts`.', '- docs update `packages/engine/src/b.ts`.', ...(chain ? ['- cli updates `packages/engine/src/c.ts`.'] : [])];
+  const content = ['# Cohesion Validation', '', '## Acceptance Criteria', ...criteria].join('\n');
   const inventory = deriveSourceInventory({ content, hash: hash(content), path: 'cohesion.md' });
   const graph = derivePlanningAtomGraph({ content, hash: hash(content), path: 'cohesion.md', limits, inventory });
   const derivedBrief = deriveSharedPlanningBrief({ graph });
@@ -233,6 +259,9 @@ function multiPlanCompilerResult(dependency: boolean): BoundedPlannerCompilerRes
     moduleCandidates: [
       { moduleId: 'module-a', title: 'Engine module', criterionIds: tasks[0].criterionIds, aspectIds: tasks[0].aspectIds, description: 'Implement the engine update.', validationExpectation: 'Engine checks pass.' },
       { moduleId: 'module-b', title: 'Docs module', criterionIds: tasks[1].criterionIds, aspectIds: tasks[1].aspectIds, description: 'Implement the docs update.', validationExpectation: 'Docs checks pass.', ...(dependency ? { dependsOnModuleIds: ['module-a'] } : {}) },
+      // The redundant module-a edge (also reachable via module-b) exercises the
+      // literal-manifest vs parse-reduced-orchestration asymmetry.
+      ...(chain ? [{ moduleId: 'module-c', title: 'Cli module', criterionIds: tasks[2].criterionIds, aspectIds: tasks[2].aspectIds, description: 'Implement the cli update.', validationExpectation: 'Cli checks pass.', dependsOnModuleIds: ['module-a', 'module-b'] }] : []),
     ],
     validationStrategy: 'Run relevant checks.',
   };

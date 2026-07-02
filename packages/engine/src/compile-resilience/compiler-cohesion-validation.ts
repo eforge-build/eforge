@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import type { OrchestrationConfig, PlanFile } from '../events.js';
+import { transitiveReduce } from '../plan.js';
 import { parseArchitectureManifest, type PlanningArchitectureManifest } from '../planner-compiler/architecture-manifest-contracts.js';
 import { COMPILER_DIAGNOSTICS_ARTIFACT, validateCompilerDiagnostics, type CompilerDiagnostics } from '../planner-compiler/compiler-diagnostics-contracts.js';
 
@@ -82,13 +83,22 @@ function validatePlanAgreement(manifest: PlanningArchitectureManifest, markdown:
     if (!manifestPlans.has(planId)) details.push(`orchestration plan missing from architecture manifest: ${planId}`);
     if (!markdown.includes(`### ${planId} `) && !markdown.includes(`### ${planId} —`)) details.push(`architecture.md missing plan boundary heading: ${planId}`);
   }
-  for (const [planId, manifestPlan] of manifestPlans) {
-    const orchestrationPlan = orchestrationPlans.get(planId);
-    if (!orchestrationPlan) continue;
-    const manifestDeps = [...manifestPlan.dependsOnPlanIds].sort().join(',');
-    const orchestrationDeps = [...(orchestrationPlan.dependsOn ?? [])].sort().join(',');
+  // Dependency agreement is judged on canonical (transitively reduced) form:
+  // parseOrchestrationConfig reduces dependsOn at read time while the manifest
+  // carries the planner's literal edges, so a literal comparison rejects plan
+  // sets whose dependency closures agree but differ by redundant edges.
+  const manifestCanonical = canonicalDepsByPlanId(manifest.plans.map((plan) => ({ id: plan.planId, dependsOn: [...plan.dependsOnPlanIds] })));
+  const orchestrationCanonical = canonicalDepsByPlanId(orchestration.plans.map((plan) => ({ id: plan.id, dependsOn: [...(plan.dependsOn ?? [])] })));
+  for (const planId of manifestPlans.keys()) {
+    if (!orchestrationPlans.has(planId)) continue;
+    const manifestDeps = manifestCanonical.get(planId) ?? '';
+    const orchestrationDeps = orchestrationCanonical.get(planId) ?? '';
     if (manifestDeps !== orchestrationDeps) details.push(`plan dependency mismatch for ${planId}: architecture manifest [${manifestDeps}] vs orchestration [${orchestrationDeps}]`);
   }
+}
+
+function canonicalDepsByPlanId(plans: Array<{ id: string; dependsOn: string[] }>): Map<string, string> {
+  return new Map(transitiveReduce(plans).map((plan) => [plan.id, [...plan.dependsOn].sort().join(',')]));
 }
 
 function validateFileOwnership(manifest: PlanningArchitectureManifest, orchestration: OrchestrationConfig, details: string[]): void {

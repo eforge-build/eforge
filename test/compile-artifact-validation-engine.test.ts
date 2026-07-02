@@ -16,6 +16,7 @@ import {
   expectedTasks,
   noFixReviewerResponse,
   prd,
+  unsatisfiedGateSubmission,
 } from './planning-compiler-fixtures.js';
 
 const makeTempDir = useTempDir('eforge-artifact-engine-');
@@ -40,7 +41,7 @@ describe('engine compile artifact validation', () => {
     const cwd = await setupProject();
     const planSet = 'valid-artifacts';
     const task = fastPathTask();
-    const harness = new StubHarness([atomSubmission(fastPathAtomOutput(task)), noFixReviewerResponse()]);
+    const harness = new StubHarness([unsatisfiedGateSubmission(), atomSubmission(fastPathAtomOutput(task)), noFixReviewerResponse()]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness });
     const events: EforgeEvent[] = [];
     for await (const event of engine.compile(SOURCE_CONTENT, { name: planSet })) events.push(event);
@@ -57,7 +58,8 @@ describe('engine compile artifact validation', () => {
     const cwd = await setupProject();
     const planSet = 'missing-artifacts';
     // The atom planner never calls submit_atom_output, so the compiler fails closed.
-    const harness = new StubHarness([{ text: 'no submission' }, { text: 'no submission either' }]);
+    // The first response feeds the satisfaction gate, which fails open to compiling.
+    const harness = new StubHarness([{ text: 'gate makes no submission' }, { text: 'no submission' }, { text: 'no submission either' }]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness });
     const events: EforgeEvent[] = [];
     for await (const event of engine.compile(SOURCE_CONTENT, { name: planSet })) events.push(event);

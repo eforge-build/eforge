@@ -212,7 +212,9 @@ export interface RunState {
   cacheCreation: number;
   totalCost: number;
   isComplete: boolean;
-  resultStatus: 'completed' | 'failed' | null;
+  resultStatus: 'completed' | 'failed' | 'skipped' | null;
+  /** Satisfaction-gate skip reason from planning:skip, when the run skipped. */
+  skipReason: string | null;
   fileChanges: Map<string, string[]>;
   reviewIssues: Record<string, import('@eforge-build/client/browser').ReviewIssue[]>;
   agentThreads: AgentThread[];

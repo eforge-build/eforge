@@ -75,6 +75,21 @@ export function reduceSubmission(output: PlanningReduceOutput) {
   return { toolCalls: [{ tool: 'submit_reduce_output', toolUseId: `submit-${output.nodeId}`, input: output, output: 'ok' }] };
 }
 
+/**
+ * Satisfaction-gate response for stage-level tests: the gate runs first on
+ * every compile, so scripted harnesses must consume one run before their
+ * exploration/atom/reduce entries. Reports "not satisfied" so the compile
+ * proceeds.
+ */
+export function unsatisfiedGateSubmission() {
+  return { toolCalls: [{ tool: 'submit_satisfaction_assessment', toolUseId: 'submit-gate', input: { alreadySatisfied: false, reason: 'Requested work is not implemented yet.', verdicts: [] }, output: 'ok' }] };
+}
+
+/** Satisfaction-gate response claiming every criterion is already implemented. */
+export function satisfiedGateSubmission(criterionIds: string[], evidencePaths: string[]) {
+  return { toolCalls: [{ tool: 'submit_satisfaction_assessment', toolUseId: 'submit-gate', input: { alreadySatisfied: true, reason: 'All acceptance criteria are already implemented.', verdicts: criterionIds.map((criterionId) => ({ criterionId, satisfied: true, evidencePaths, explanation: 'Implemented in the current tree.' })) }, output: 'ok' }] };
+}
+
 
 /** A no-fix reviewer script: empty issues block, no submission tool call. */
 export function noFixReviewerResponse() {

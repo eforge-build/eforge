@@ -25,6 +25,7 @@ import {
   overflowRisk,
   prd,
   readFileText,
+  unsatisfiedGateSubmission,
   workspace,
 } from './planning-compiler-fixtures.js';
 
@@ -76,7 +77,7 @@ function makeCompilerCtx(cwd: string, planSetName: string, harness: StubHarness)
 
 /** Full compile pipeline script: single atom, then the gate responses. */
 function pipelineScript(task: PlanningAtomTask, gateResponses: StubResponse[]): StubResponse[] {
-  return [atomSubmission(fastPathAtomOutput(task)), ...gateResponses];
+  return [unsatisfiedGateSubmission(), atomSubmission(fastPathAtomOutput(task)), ...gateResponses];
 }
 
 async function collectRejecting(gen: AsyncGenerator<EforgeEvent>): Promise<{ events: EforgeEvent[]; error: Error }> {
