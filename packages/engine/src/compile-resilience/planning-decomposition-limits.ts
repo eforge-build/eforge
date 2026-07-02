@@ -1,5 +1,6 @@
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { EforgeConfig } from '../config.js';
+import type { SharedPlanningBriefLimits } from '../planner-compiler/shared-brief-contracts.js';
 
 export interface PlanningDecompositionConfig {
   planningUnitParallelism: number;
@@ -13,6 +14,9 @@ export interface PlanningDecompositionConfig {
   planningUnitMaxCriteriaPerUnit: number;
   planningUnitMaxSubsystemsPerUnit: number;
   planningUnitMaxSplitAttemptsPerUnit: number;
+  planningSharedBriefMaxTotalBytes: number;
+  planningSharedBriefMaxSectionBytes: number;
+  planningSharedBriefMaxSectionsPerAtom: number;
 }
 
 export const PLANNING_DECOMPOSITION_CONFIG_MAXIMA: Readonly<PlanningDecompositionConfig> = Object.freeze({
@@ -27,6 +31,9 @@ export const PLANNING_DECOMPOSITION_CONFIG_MAXIMA: Readonly<PlanningDecompositio
   planningUnitMaxCriteriaPerUnit: 64,
   planningUnitMaxSubsystemsPerUnit: 32,
   planningUnitMaxSplitAttemptsPerUnit: 8,
+  planningSharedBriefMaxTotalBytes: 200_000,
+  planningSharedBriefMaxSectionBytes: 50_000,
+  planningSharedBriefMaxSectionsPerAtom: 64,
 });
 
 export const DEFAULT_PLANNING_DECOMPOSITION_CONFIG: Readonly<PlanningDecompositionConfig> = Object.freeze({
@@ -41,6 +48,9 @@ export const DEFAULT_PLANNING_DECOMPOSITION_CONFIG: Readonly<PlanningDecompositi
   planningUnitMaxCriteriaPerUnit: 20,
   planningUnitMaxSubsystemsPerUnit: 2,
   planningUnitMaxSplitAttemptsPerUnit: 2,
+  planningSharedBriefMaxTotalBytes: 12_000,
+  planningSharedBriefMaxSectionBytes: 1_500,
+  planningSharedBriefMaxSectionsPerAtom: 8,
 });
 
 export function resolvePlanningDecompositionLimits(config: Pick<EforgeConfig, 'compile'>): PlanningDecompositionLimits {
@@ -60,4 +70,12 @@ export function resolvePlanningDecompositionLimits(config: Pick<EforgeConfig, 'c
     limits.maxObservedTurns = config.compile.planningUnitMaxObservedTurns;
   }
   return Object.freeze(limits);
+}
+
+export function resolveSharedPlanningBriefLimits(config: Pick<EforgeConfig, 'compile'>): Partial<SharedPlanningBriefLimits> {
+  return Object.freeze({
+    maxTotalBriefBytes: config.compile.planningSharedBriefMaxTotalBytes,
+    maxSectionBytes: config.compile.planningSharedBriefMaxSectionBytes,
+    maxSectionsPerAtom: config.compile.planningSharedBriefMaxSectionsPerAtom,
+  });
 }

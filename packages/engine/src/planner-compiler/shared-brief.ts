@@ -1,6 +1,7 @@
 import type { PlanningAtom, PlanningAtomGraph } from './atom-graph.js';
 import { classifyEvidenceCandidate, evidenceSlug, normalizeEvidenceValue } from './evidence-hygiene.js';
 import { stableSlug, utf8ByteLength } from './source-analysis.js';
+import { selectSectionsWithinBudgets, type SectionBudgetSelection } from './shared-brief-budget.js';
 import { DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, validateSharedPlanningBrief, type PlanningAtomBrief, type PlanningAtomBriefEvidenceSummary, type PlanningAtomBriefSection, type PlanningEvidenceOwnership, type SharedPlanningBrief, type SharedPlanningBriefLimits, type SharedPlanningBriefSection, type SharedPlanningInterfaceSummary } from './shared-brief-contracts.js';
 import type { SourceLocalizationBundle, SourceLocalizationCandidate, SourceLocalizationConfidence, SourceLocalizationRecord, SourceLocalizationStatus } from './source-localization-contracts.js';
 
@@ -10,9 +11,13 @@ export function deriveSharedPlanningBrief(input: DeriveSharedPlanningBriefInput)
   const limits = { ...DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, ...(input.limits ?? {}) };
   const evidenceOwnership = deriveEvidenceOwnership(input.graph, input.sourceLocalizationBundle);
   const interfaceSummaries = deriveInterfaceSummaries(input.graph, input.sourceLocalizationBundle);
-  const sections = deriveSections(input.graph, evidenceOwnership, interfaceSummaries, limits);
-  const atomBriefs = deriveAtomBriefs(input.graph, evidenceOwnership, interfaceSummaries, sections);
-  const brief: SharedPlanningBrief = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, evidenceOwnership, interfaceSummaries, atomBriefs, sections, byteLength: sections.reduce((sum, section) => sum + section.byteLength, 0), limits };
+  const candidateSections = deriveSections(input.graph, evidenceOwnership, interfaceSummaries, limits);
+  const sectionIdByEvidencePath = new Map(evidenceOwnership.filter((entry) => entry.shared).map((entry) => [entry.path, `shared-evidence-${evidenceSlug(entry.path)}`] as const));
+  const selection = selectSectionsWithinBudgets({ graph: input.graph, ownership: evidenceOwnership, sections: candidateSections, sectionIdByEvidencePath, limits });
+  const atomBriefs = deriveAtomBriefs(input.graph, evidenceOwnership, interfaceSummaries, selection);
+  const brief: SharedPlanningBrief = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, evidenceOwnership, interfaceSummaries, atomBriefs, sections: selection.sections, byteLength: selection.sections.reduce((sum, section) => sum + section.byteLength, 0), limits, budgetDiagnostics: selection.diagnostics };
+  // Budgets are enforced by construction in selectSectionsWithinBudgets; a
+  // validation failure here is a compiler defect, not an input condition.
   const validation = validateSharedPlanningBrief(brief, input.graph, limits);
   if (!validation.ok) throw new Error(`Invalid shared planning brief: ${validation.errors.join('; ')}`);
   return brief;
@@ -31,7 +36,7 @@ function deriveEvidenceOwnership(graph: PlanningAtomGraph, localization?: Source
   return [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, item]) => ownershipForPath(path, [...item.atomIds], graph, item));
 }
 
-interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus }
+interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus; criterionLinked?: boolean }
 
 function addLocalizedOwnership(record: SourceLocalizationRecord, graph: PlanningAtomGraph, byPath: Map<string, OwnershipAccumulator>): void {
   const atomIds = localizationAtomIds(record, graph);
@@ -52,8 +57,11 @@ function addOwnershipPath(byPath: Map<string, OwnershipAccumulator>, rawPath: st
     existing.localizationConfidence = bestConfidence(existing.localizationConfidence, metadata.candidate.confidence);
     existing.localizationStatus = bestStatus(existing.localizationStatus, metadata.record.status);
     existing.candidateRank = Math.min(existing.candidateRank ?? metadata.candidateRank, metadata.candidateRank);
+    if (metadata.record.linkedCriterionIds.length > 0) existing.criterionLinked = true;
   } else {
     existing.reasons.add(metadata.reason);
+    // Exact evidence paths come straight from criterion text.
+    existing.criterionLinked = true;
   }
   byPath.set(path, existing);
 }
@@ -63,7 +71,12 @@ function localizationAtomIds(record: SourceLocalizationRecord, graph: PlanningAt
   if (assigned.length > 0) return [...new Set(assigned)].sort();
   const byCriterion = graph.atoms.filter((atom) => record.linkedCriterionIds.some((criterionId) => atom.criterionIds.includes(criterionId))).map((atom) => atom.atomId);
   if (byCriterion.length > 0) return [...new Set(byCriterion)].sort();
-  return record.linkedCriterionIds.length === 0 ? graph.atoms.map((atom) => atom.atomId).sort() : [];
+  // Global records (no atom assignment, no linked criteria) get one
+  // deterministic owner instead of broadcasting to every atom: broadcast made
+  // every such path a shared section and blew per-atom section budgets. The
+  // owner atom receives the materialized evidence and can propagate findings.
+  if (record.linkedCriterionIds.length === 0 && graph.atoms.length > 0) return [choosePrimaryAtom(graph.atoms.map((atom) => atom.atomId), graph).atomId];
+  return [];
 }
 
 function ownershipForPath(path: string, referencedByAtomIds: string[], graph: PlanningAtomGraph, metadata?: OwnershipAccumulator): PlanningEvidenceOwnership {
@@ -81,14 +94,17 @@ function ownershipForPath(path: string, referencedByAtomIds: string[], graph: Pl
   };
 }
 
-function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale'> {
-  if (!metadata || metadata.localizationNeedIds.size === 0) return {};
+function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale' | 'criterionLinked'> {
+  if (!metadata) return {};
+  const criterionLinked = metadata.criterionLinked === true ? { criterionLinked: true } : {};
+  if (metadata.localizationNeedIds.size === 0) return criterionLinked;
   return {
     localizationNeedIds: [...metadata.localizationNeedIds].sort(),
     ...(metadata.localizationStatus ? { localizationStatus: metadata.localizationStatus } : {}),
     ...(metadata.localizationConfidence ? { localizationConfidence: metadata.localizationConfidence } : {}),
     ...(metadata.candidateRank !== undefined ? { candidateRank: metadata.candidateRank } : {}),
     ownershipRationale: [...metadata.reasons].sort().join(' | '),
+    ...criterionLinked,
   };
 }
 
@@ -158,22 +174,27 @@ function deriveSections(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwn
   const evidenceSections = ownership.filter((entry) => entry.shared && entry.primaryAtomId).map((entry) => section(`shared-evidence-${evidenceSlug(entry.path)}`, 'evidence', entry.referencedByAtomIds, bounded(`Shared evidence path: ${entry.path}\nPrimary atom: ${entry.primaryAtomId}\nConsumer atoms: ${entry.consumerAtomIds.join(', ') || '(none)'}${entry.localizationNeedIds?.length ? `\nLocalization needs: ${entry.localizationNeedIds.join(', ')}` : ''}${entry.localizationConfidence ? `\nLocalization confidence: ${entry.localizationConfidence}` : ''}${entry.candidateRank !== undefined ? `\nCandidate rank: ${entry.candidateRank}` : ''}${entry.ownershipRationale ? `\nWhy selected: ${entry.ownershipRationale}` : ''}\nUse the primary atom's accepted shared finding instead of repeating detailed exploration.`, limits.maxSectionBytes), entry.primaryAtomId));
   const interfaceSections = interfaceSummaries.map((item) => section(`shared-interface-${stableSlug(item.key)}`, 'interface', item.atomIds, bounded(item.summary, limits.maxSectionBytes), item.primaryAtomId));
   const dependencySection = graph.edges.length > 0 ? [section('atom-dependency-overview', 'dependency', graph.atoms.map((atom) => atom.atomId), bounded(`Atom dependency edges:\n${graph.edges.map((edge) => `- ${edge.fromAtomId} -> ${edge.toAtomId}: ${edge.reason}`).join('\n')}`, limits.maxSectionBytes))] : [];
-  const avoidance = graph.atoms.length > 0 ? [section('evidence-avoidance-guidance', 'avoidance', graph.atoms.map((atom) => atom.atomId), 'Avoid generated planner artifacts, .decomposition outputs, orchestration files, broad package roots, and tool-noise paths as implementation evidence.')] : [];
+  const avoidance = graph.atoms.length > 0 ? [section('evidence-avoidance-guidance', 'avoidance', graph.atoms.map((atom) => atom.atomId), bounded('Avoid generated planner artifacts, .decomposition outputs, orchestration files, broad package roots, and tool-noise paths as implementation evidence.', limits.maxSectionBytes))] : [];
   return [...evidenceSections, ...interfaceSections, ...dependencySection, ...avoidance].sort((a, b) => a.sectionId.localeCompare(b.sectionId));
 }
 
-function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], sections: SharedPlanningBriefSection[]): PlanningAtomBrief[] {
-  const sectionByEvidencePath = new Map(ownership.filter((entry) => entry.shared).map((entry) => [entry.path, `shared-evidence-${evidenceSlug(entry.path)}`]));
+function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], selection: SectionBudgetSelection): PlanningAtomBrief[] {
   const sectionByInterfaceKey = new Map(interfaceSummaries.map((entry) => [entry.key, `shared-interface-${stableSlug(entry.key)}`]));
+  const retainedSectionIds = new Set(selection.sections.map((section) => section.sectionId));
   return graph.atoms.map((atom) => {
     const ownedEvidencePaths = ownership.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.path).sort();
     const localEvidencePaths = ownership.filter((entry) => !entry.shared && entry.referencedByAtomIds.includes(atom.atomId)).map((entry) => entry.path).sort();
     const ownedInterfaceKeys = interfaceSummaries.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.key).sort();
-    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: sectionByEvidencePath.get(entry.path)!, ...evidenceRefMetadata(entry) })).sort((a, b) => a.path.localeCompare(b.path));
-    const sharedInterfaceRefs = interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId)).map((entry) => ({ key: entry.key, primaryAtomId: entry.primaryAtomId, sectionId: sectionByInterfaceKey.get(entry.key)! })).sort((a, b) => a.key.localeCompare(b.key));
-    const sectionIds = sectionIdsForAtom(atom.atomId, sections, [...ownedEvidencePaths, ...sharedEvidenceRefs.map((ref) => ref.path)], sectionByEvidencePath);
-    const atomSections = sections.filter((section) => sectionIds.includes(section.sectionId)).map(briefSection);
-    const prerequisiteAtomIds = [...new Set([...sharedEvidenceRefs.map((ref) => ref.primaryAtomId), ...sharedInterfaceRefs.map((ref) => ref.primaryAtomId)])].sort();
+    // Refs may only point at retained sections; prerequisites are computed
+    // from ownership/interface data so scheduling survives section drops.
+    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(`shared-evidence-${evidenceSlug(entry.path)}`)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: `shared-evidence-${evidenceSlug(entry.path)}`, ...evidenceRefMetadata(entry) })).sort((a, b) => a.path.localeCompare(b.path));
+    const sharedInterfaceRefs = interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(sectionByInterfaceKey.get(entry.key)!)).map((entry) => ({ key: entry.key, primaryAtomId: entry.primaryAtomId, sectionId: sectionByInterfaceKey.get(entry.key)! })).sort((a, b) => a.key.localeCompare(b.key));
+    const sectionIds = selection.sectionIdsByAtom.get(atom.atomId) ?? [];
+    const atomSections = selection.sections.filter((section) => sectionIds.includes(section.sectionId)).map(briefSection);
+    const prerequisiteAtomIds = [...new Set([
+      ...ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId)).map((entry) => entry.primaryAtomId!),
+      ...interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId)).map((entry) => entry.primaryAtomId),
+    ])].sort();
     const evidenceSummaries = ownership.filter((entry) => entry.referencedByAtomIds.includes(atom.atomId)).map(evidenceSummary).sort((a, b) => a.path.localeCompare(b.path));
     return { atomId: atom.atomId, ownedEvidencePaths, localEvidencePaths, ownedInterfaceKeys, sharedEvidenceRefs, sharedInterfaceRefs, prerequisiteAtomIds, sectionIds, sections: atomSections, evidenceSummaries, byteLength: atomSections.reduce((sum, section) => sum + section.byteLength, 0) };
   }).sort((a, b) => a.atomId.localeCompare(b.atomId));
@@ -199,12 +220,6 @@ function evidenceSummary(entry: PlanningEvidenceOwnership): PlanningAtomBriefEvi
   };
 }
 
-function sectionIdsForAtom(atomId: string, sections: SharedPlanningBriefSection[], paths: string[], sectionByEvidencePath: Map<string, string>): string[] {
-  const evidenceSections = paths.flatMap((path) => sectionByEvidencePath.get(path) ? [sectionByEvidencePath.get(path)!] : []);
-  const commonSections = sections.filter((section) => section.kind !== 'evidence' && section.atomIds.includes(atomId)).map((section) => section.sectionId);
-  return [...new Set([...evidenceSections, ...commonSections])].sort();
-}
-
 function briefSection(section: SharedPlanningBriefSection): PlanningAtomBriefSection {
   return { sectionId: section.sectionId, kind: section.kind, ...(section.primaryAtomId ? { primaryAtomId: section.primaryAtomId } : {}), content: section.content, byteLength: section.byteLength };
 }
@@ -213,8 +228,21 @@ function section(sectionId: string, kind: SharedPlanningBriefSection['kind'], at
   return { sectionId, kind, atomIds: [...new Set(atomIds)].sort(), ...(primaryAtomId ? { primaryAtomId } : {}), content, byteLength: utf8ByteLength(content) };
 }
 
+const TRUNCATION_ELLIPSIS = '…';
+
 function bounded(value: string, maxBytes: number): string {
-  return utf8ByteLength(value) <= maxBytes ? value : `${value.slice(0, Math.max(0, maxBytes - 1))}…`;
+  if (utf8ByteLength(value) <= maxBytes) return value;
+  const contentBudget = maxBytes - utf8ByteLength(TRUNCATION_ELLIPSIS);
+  if (contentBudget <= 0) return '';
+  let result = '';
+  let usedBytes = 0;
+  for (const char of value) {
+    const charBytes = utf8ByteLength(char);
+    if (usedBytes + charBytes > contentBudget) break;
+    result += char;
+    usedBytes += charBytes;
+  }
+  return `${result}${TRUNCATION_ELLIPSIS}`;
 }
 
 function requireAtom(graph: PlanningAtomGraph, atomId: string): PlanningAtom {

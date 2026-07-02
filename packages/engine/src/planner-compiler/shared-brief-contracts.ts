@@ -6,8 +6,29 @@ import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './s
 export type SharedPlanningBriefSectionKind = 'evidence' | 'interface' | 'dependency' | 'avoidance';
 
 export interface SharedPlanningBriefLimits { maxTotalBriefBytes: number; maxSectionBytes: number; maxSectionsPerAtom: number; maxSharedFindingsPerAtom: number; maxSharedFindingBytes: number }
-export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string }
+export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; criterionLinked?: boolean }
 export interface PlanningEvidenceOwnership extends PlanningEvidenceLocalizationMetadata { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
+
+/**
+ * The single definition of evidence value, shared by shared-brief section
+ * selection and evidence materialization so both budgets keep the same
+ * entries under contention: criterion-grounded paths first, then localization
+ * confidence, candidate rank, atom reach, path.
+ */
+export function compareEvidenceOwnershipValue(a: PlanningEvidenceOwnership, b: PlanningEvidenceOwnership): number {
+  return Number(b.criterionLinked === true) - Number(a.criterionLinked === true)
+    || evidenceConfidenceRank(b.localizationConfidence) - evidenceConfidenceRank(a.localizationConfidence)
+    || (a.candidateRank ?? Number.MAX_SAFE_INTEGER) - (b.candidateRank ?? Number.MAX_SAFE_INTEGER)
+    || b.referencedByAtomIds.length - a.referencedByAtomIds.length
+    || a.path.localeCompare(b.path);
+}
+
+function evidenceConfidenceRank(confidence: SourceLocalizationConfidence | undefined): number {
+  if (confidence === 'high') return 3;
+  if (confidence === 'medium') return 2;
+  if (confidence === 'low') return 1;
+  return 0;
+}
 export interface PlanningAtomBriefEvidenceSummary extends PlanningEvidenceLocalizationMetadata { path: string; shared: boolean; primaryAtomId?: string; consumerAtomIds: string[] }
 export interface PlanningSharedEvidenceRef extends PlanningEvidenceLocalizationMetadata { path: string; primaryAtomId: string; sectionId: string }
 export interface PlanningSharedInterfaceRef { key: string; primaryAtomId: string; sectionId: string }
@@ -15,7 +36,9 @@ export interface PlanningAtomBriefSection { sectionId: string; kind: SharedPlann
 export interface PlanningAtomBrief { atomId: string; ownedEvidencePaths: string[]; localEvidencePaths: string[]; ownedInterfaceKeys: string[]; sharedEvidenceRefs: PlanningSharedEvidenceRef[]; sharedInterfaceRefs: PlanningSharedInterfaceRef[]; prerequisiteAtomIds: string[]; sectionIds: string[]; sections: PlanningAtomBriefSection[]; evidenceSummaries?: PlanningAtomBriefEvidenceSummary[]; byteLength: number }
 export interface SharedPlanningBriefSection { sectionId: string; kind: SharedPlanningBriefSectionKind; atomIds: string[]; primaryAtomId?: string; content: string; byteLength: number }
 export interface SharedPlanningInterfaceSummary { key: string; atomIds: string[]; primaryAtomId: string; consumerAtomIds: string[]; summary: string }
-export interface SharedPlanningBrief { graphId: string; sourceHash: string; evidenceOwnership: PlanningEvidenceOwnership[]; interfaceSummaries: SharedPlanningInterfaceSummary[]; atomBriefs: PlanningAtomBrief[]; sections: SharedPlanningBriefSection[]; byteLength: number; limits: SharedPlanningBriefLimits }
+export interface SharedPlanningBrief { graphId: string; sourceHash: string; evidenceOwnership: PlanningEvidenceOwnership[]; interfaceSummaries: SharedPlanningInterfaceSummary[]; atomBriefs: PlanningAtomBrief[]; sections: SharedPlanningBriefSection[]; byteLength: number; limits: SharedPlanningBriefLimits; budgetDiagnostics: SharedBriefBudgetDiagnostic[] }
+export type SharedBriefBudgetDiagnosticCode = 'atom-section-demoted' | 'section-dropped-unreferenced' | 'section-dropped-total-budget';
+export interface SharedBriefBudgetDiagnostic { code: SharedBriefBudgetDiagnosticCode; sectionId: string; atomId?: string; path?: string; message: string }
 export interface PlanningSharedFinding { findingId: string; sourceAtomId: string; evidencePath?: string; interfaceKey?: string; aspectIds: string[]; summary: string; validationExpectation?: string; byteLength: number }
 export type SharedPlanningBriefValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
 export interface ValidatePlanningSharedFindingsInput { atomId: string; aspectIds: string[]; interfaceKeys: string[]; ownedEvidencePaths: string[]; ownedInterfaceKeys?: string[]; findings: PlanningSharedFinding[]; limits?: SharedPlanningBriefLimits }

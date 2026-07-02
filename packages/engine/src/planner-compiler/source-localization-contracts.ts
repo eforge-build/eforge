@@ -10,12 +10,13 @@ export interface SourceLocalizationRecord { needId: string; kind: SourceLocaliza
 export interface SourceLocalizationBundle { sourceHash?: string; graphId?: string; records: SourceLocalizationRecord[]; byAtomId: Record<string, string[]>; diagnostics: SourceLocalizationDiagnostic[]; limits: SourceLocalizationLimits; indexDiagnostics: SourceLocalizationDiagnostic[] }
 export interface SourceLocalizationHint { kind: SourceLocalizationNeedKind; query: string; paths?: string[]; keywords?: string[]; subsystemHints?: string[]; interfaceKeys?: string[]; criterionIds?: string[]; aspectIds?: string[]; atomIds?: string[] }
 export interface SourceLocalizationInputHints { ignorePrefixes?: string[]; ignoreGlobs?: string[]; projectHints?: SourceLocalizationHint[] }
-export interface SourceLocalizationLimits { maxIndexedFiles: number; maxCandidateFilesPerNeed: number; maxDirectoryExpansionFiles: number; maxBytesPerScannedFile: number; maxTotalScannedBytes: number }
+export interface SourceLocalizationLimits { maxIndexedFiles: number; maxCandidateFilesPerNeed: number; maxSurfaceCandidatesPerNeed: number; maxDirectoryExpansionFiles: number; maxBytesPerScannedFile: number; maxTotalScannedBytes: number }
 export interface NormalizedSourceLocalizationInputs { hints: SourceLocalizationInputHints; limits: SourceLocalizationLimits; diagnostics: SourceLocalizationDiagnostic[] }
 
 export const DEFAULT_SOURCE_LOCALIZATION_LIMITS: SourceLocalizationLimits = {
   maxIndexedFiles: 10_000,
   maxCandidateFilesPerNeed: 12,
+  maxSurfaceCandidatesPerNeed: 3,
   maxDirectoryExpansionFiles: 20,
   maxBytesPerScannedFile: 64_000,
   maxTotalScannedBytes: 2_000_000,
@@ -24,6 +25,7 @@ export const DEFAULT_SOURCE_LOCALIZATION_LIMITS: SourceLocalizationLimits = {
 const SOURCE_LOCALIZATION_LIMIT_MAXIMA: SourceLocalizationLimits = {
   maxIndexedFiles: 100_000,
   maxCandidateFilesPerNeed: 100,
+  maxSurfaceCandidatesPerNeed: 100,
   maxDirectoryExpansionFiles: 500,
   maxBytesPerScannedFile: 1_000_000,
   maxTotalScannedBytes: 50_000_000,

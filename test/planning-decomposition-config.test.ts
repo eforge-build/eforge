@@ -8,6 +8,7 @@ import {
   mergePartialConfigs,
   resolveConfig,
   resolvePlanningDecompositionLimits,
+  resolveSharedPlanningBriefLimits,
   PLANNING_DECOMPOSITION_CONFIG_MAXIMA,
 } from '../packages/engine/src/config.js';
 
@@ -36,6 +37,9 @@ const compileIntegerKeys = [
   'planningUnitMaxCriteriaPerUnit',
   'planningUnitMaxSubsystemsPerUnit',
   'planningUnitMaxSplitAttemptsPerUnit',
+  'planningSharedBriefMaxTotalBytes',
+  'planningSharedBriefMaxSectionBytes',
+  'planningSharedBriefMaxSectionsPerAtom',
 ] as const;
 
 describe('planning decomposition compile config', () => {
@@ -50,6 +54,11 @@ describe('planning decomposition compile config', () => {
   it('accepts overrides and maps them to client-owned limits', () => {
     const config = resolveConfig({ compile: { planningUnitParallelism: 4, planningUnitMaxDepth: 5, planningUnitMaxObservedTurns: 7 } });
     expect(resolvePlanningDecompositionLimits(config)).toEqual({ ...expectedDefaults, parallelism: 4, maxDepth: 5, maxObservedTurns: 7 });
+  });
+
+  it('resolves shared-brief budgets from config with tunable overrides', () => {
+    expect(resolveSharedPlanningBriefLimits(resolveConfig({}))).toEqual({ maxTotalBriefBytes: 12000, maxSectionBytes: 1500, maxSectionsPerAtom: 8 });
+    expect(resolveSharedPlanningBriefLimits(resolveConfig({ compile: { planningSharedBriefMaxTotalBytes: 24000, planningSharedBriefMaxSectionsPerAtom: 12 } }))).toEqual({ maxTotalBriefBytes: 24000, maxSectionBytes: 1500, maxSectionsPerAtom: 12 });
   });
 
   it('rejects zero, negative, and fractional compile integers for every planning limit', () => {

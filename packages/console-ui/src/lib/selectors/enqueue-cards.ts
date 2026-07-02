@@ -35,8 +35,7 @@ export interface NowEnqueueCard {
 
 /** Maps the agent running during enqueue to a human step label. */
 const ENQUEUE_STEP_BY_AGENT: Record<string, string> = {
-  formatter: 'Formatting PRD',
-  'prd-validator': 'Extracting acceptance criteria',
+  formatter: 'Formatting PRD & extracting acceptance criteria',
   'dependency-detector': 'Detecting dependencies',
 };
 

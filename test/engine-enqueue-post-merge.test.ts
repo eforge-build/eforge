@@ -7,8 +7,9 @@ import type { EforgeEvent, BuildOptions, CompileOptions } from '@eforge-build/en
 import { loadQueue, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { runQueuedPrdBuild, type QueuedPrdBuildContext } from '@eforge-build/engine/queue/build-single-prd';
 import type { EforgeConfig } from '@eforge-build/engine/config';
-import { appendAcceptanceCriteriaInventoryBlock, parseAcceptanceCriteriaExtractorOutput } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { appendAcceptanceCriteriaInventoryBlock } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { StubHarness } from './stub-harness.js';
+import { buildInventory, intakeResponse, type IntakeCriterionInput } from './intake-test-helpers.js';
 import { useTempDir } from './test-tmpdir.js';
 
 const makeTempDir = useTempDir('eforge-engine-enqueue-post-merge-');
@@ -36,24 +37,17 @@ function formattedPrd(): string {
   ].join('\n');
 }
 
-function emptyExplicitExtractorOutput(): string {
-  return JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] });
-}
-
-function extractorOutput(): string {
-  return JSON.stringify({
-    version: 1,
-    criteria: [{
-      text: 'The queued PRD preserves post-merge commands.',
-      sourceQuote: 'The queued PRD preserves post-merge commands.',
-      confidence: 0.95,
-    }],
-  });
+function prdCriteria(): IntakeCriterionInput[] {
+  return [{
+    text: 'The queued PRD preserves post-merge commands.',
+    sourceQuote: 'The queued PRD preserves post-merge commands.',
+    confidence: 0.95,
+  }];
 }
 
 function inventoryPrdBody(): string {
   const body = formattedPrd();
-  return appendAcceptanceCriteriaInventoryBlock(body, parseAcceptanceCriteriaExtractorOutput(extractorOutput(), body));
+  return appendAcceptanceCriteriaInventoryBlock(body, buildInventory(prdCriteria(), body));
 }
 
 async function collect(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
@@ -68,7 +62,7 @@ describe('EforgeEngine.enqueue postMerge queue metadata', () => {
     await setupProject(tmpDir);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
-      agentRuntimes: new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: formattedPrd() }, { text: extractorOutput() }]),
+      agentRuntimes: new StubHarness([intakeResponse(formattedPrd(), prdCriteria())]),
       config: { plugins: { enabled: false } },
     });
 
@@ -93,7 +87,7 @@ describe('EforgeEngine.enqueue postMerge queue metadata', () => {
     await setupProject(tmpDir);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
-      agentRuntimes: new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: formattedPrd() }, { text: extractorOutput() }]),
+      agentRuntimes: new StubHarness([intakeResponse(formattedPrd(), prdCriteria())]),
       config: { plugins: { enabled: false } },
     });
 

@@ -62,10 +62,22 @@ export function assignNeedsToAtoms(needs: SourceLocalizationNeed[], graph?: Plan
 function resolveNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits: SourceLocalizationLimits): SourceLocalizationRecord {
   const diagnostics: SourceLocalizationDiagnostic[] = [];
   const scored = scoreNeed(need, index, limits, diagnostics).sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
-  const capped = dedupeCandidates(scored).slice(0, limits.maxCandidateFilesPerNeed);
-  if (scored.length > capped.length) diagnostics.push({ code: 'candidate-budget', message: `Candidate list capped at ${limits.maxCandidateFilesPerNeed}.`, severity: 'info', needId: need.id });
+  const cap = candidateCapForNeed(need, limits);
+  const capped = dedupeCandidates(scored).slice(0, cap);
+  if (scored.length > capped.length) diagnostics.push({ code: SURFACE_KINDS.has(need.kind) ? 'surface-candidate-budget' : 'candidate-budget', message: `Candidate list capped at ${cap}.`, severity: 'info', needId: need.id });
   const status = recordStatus(need, capped, diagnostics);
-  return { needId: need.id, kind: need.kind, query: need.query, status, candidateFiles: capped, confidence: confidenceFor(capped[0]?.score ?? 0), reason: capped[0]?.reason ?? (diagnostics[0]?.message ?? 'no repository signal'), linkedCriterionIds: [...need.criterionIds], linkedAspectIds: [...need.aspectIds], assignedAtomIds: [...need.assignedAtomIds], diagnostics, budgetNotes: budgetNotes(index, limits, scored.length) };
+  return { needId: need.id, kind: need.kind, query: need.query, status, candidateFiles: capped, confidence: confidenceFor(capped[0]?.score ?? 0), reason: capped[0]?.reason ?? (diagnostics[0]?.message ?? 'no repository signal'), linkedCriterionIds: [...need.criterionIds], linkedAspectIds: [...need.aspectIds], assignedAtomIds: [...need.assignedAtomIds], diagnostics, budgetNotes: budgetNotes(index, limits, scored.length, cap) };
+}
+
+/**
+ * Surface-kind needs match files by classification, not name, so on any real
+ * repo they would otherwise sweep in every file of that class (every config,
+ * every doc, ...). Cap them to the top-scored few - affinity overlap already
+ * boosts genuinely related files. Literal-path/directory/interface/subsystem/
+ * symbol/keyword needs stay at the general candidate budget.
+ */
+function candidateCapForNeed(need: SourceLocalizationNeed, limits: SourceLocalizationLimits): number {
+  return SURFACE_KINDS.has(need.kind) ? Math.min(limits.maxSurfaceCandidatesPerNeed, limits.maxCandidateFilesPerNeed) : limits.maxCandidateFilesPerNeed;
 }
 
 function scoreNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits: SourceLocalizationLimits, diagnostics: SourceLocalizationDiagnostic[]): SourceLocalizationCandidate[] {
@@ -191,8 +203,8 @@ function recordStatus(need: SourceLocalizationNeed, candidates: SourceLocalizati
   return candidates[0].confidence === 'low' ? 'partial' : 'resolved';
 }
 
-function budgetNotes(index: RepositoryIndex, limits: SourceLocalizationLimits, candidateCount: number): string[] {
-  return [`indexed-files:${index.files.length}/${limits.maxIndexedFiles}`, `candidate-files:${Math.min(candidateCount, limits.maxCandidateFilesPerNeed)}/${limits.maxCandidateFilesPerNeed}`, `scan-bytes-per-file:${limits.maxBytesPerScannedFile}`, `scan-bytes-total:${limits.maxTotalScannedBytes}`];
+function budgetNotes(index: RepositoryIndex, limits: SourceLocalizationLimits, candidateCount: number, candidateCap: number): string[] {
+  return [`indexed-files:${index.files.length}/${limits.maxIndexedFiles}`, `candidate-files:${Math.min(candidateCount, candidateCap)}/${candidateCap}`, `scan-bytes-per-file:${limits.maxBytesPerScannedFile}`, `scan-bytes-total:${limits.maxTotalScannedBytes}`];
 }
 
 function byAtom(records: SourceLocalizationRecord[]): Record<string, string[]> {

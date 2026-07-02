@@ -35,8 +35,7 @@ import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/
 import { parseRecoverySidecarPayload, projectRecoverySidecar } from './recovery/sidecar-read.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { emitBuildDecisionForPlan } from './decisions.js';
-import { runFormatter } from './agents/formatter.js';
-import { runAcceptanceCriteriaExtractor } from './agents/acceptance-criteria-extractor.js';
+import { runIntake } from './agents/intake.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
 import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './extensions/index.js';
@@ -74,7 +73,7 @@ import type { CompletionRegistry } from './artifacts/completions.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
-import { stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
+import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
 import { buildCompilePromptSourceBundle } from './compile-resilience/preflight.js';
 import { compileScopeTerminalFailureEvent, scopeContextFailureEvent, toCompileScopeContextError } from './compile-resilience/context-recovery.js';
@@ -485,9 +484,11 @@ export class EforgeEngine {
   }
 
   /**
-   * Enqueue: format a source document and add it to the PRD queue.
-   * Runs the formatter agent to normalize content, then writes the
-   * PRD file with frontmatter to the queue directory.
+   * Enqueue: run intake on a source document and add it to the PRD queue.
+   * A single intake agent formats the input into the strict PRD shape and
+   * extracts the canonical acceptance criteria inventory in one structured,
+   * mechanically validated submission; the formatted PRD is then written
+   * with frontmatter (and the inventory block) to the queue directory.
    */
   async *enqueue(source: string, options: Partial<EnqueueOptions> = {}): AsyncGenerator<EforgeEvent> {
     const cwd = this.cwd;
@@ -506,56 +507,28 @@ export class EforgeEngine {
 
     yield { timestamp: new Date().toISOString(), type: 'enqueue:start', source };
 
-    // First ask the LLM for explicit ACs in the submitted source. If there are
-    // none, format rough input and infer ACs from that normalized context.
-    let formattedBody = sourceContent;
+    // Delegate intake to a single planning-tier agent: it formats the input
+    // into the strict PRD shape and extracts the canonical acceptance
+    // criteria inventory in one structured submission.
     try {
-      const extractorConfig = resolveAgentConfig('prd-validator', this.config);
-      const sourceExtractorGen = runAcceptanceCriteriaExtractor({
-        ...extractorConfig,
+      const intakeConfig = resolveAgentConfig('formatter', this.config);
+      const intakeGen = runIntake({
+        ...intakeConfig,
         cwd,
-        prdContent: sourceContent,
+        sourceContent,
         verbose,
         abortController,
         phase: 'standalone',
-        harness: this.agentRuntimes.forRole('prd-validator'),
-        allowNoAcceptanceCriteria: true,
-        explicitOnly: true,
+        harness: this.agentRuntimes.forRole('formatter'),
+        allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
       });
-      let sourceExtractorResult = await sourceExtractorGen.next();
-      while (!sourceExtractorResult.done) {
-        yield sourceExtractorResult.value;
-        sourceExtractorResult = await sourceExtractorGen.next();
+      let intakeIteration = await intakeGen.next();
+      while (!intakeIteration.done) {
+        yield intakeIteration.value;
+        intakeIteration = await intakeGen.next();
       }
-      let acceptanceCriteriaInventory: CanonicalAcceptanceCriteriaInventory | undefined = sourceExtractorResult.value;
-
-      if (acceptanceCriteriaInventory.criteria.length === 0) {
-        const formatterConfig = resolveAgentConfig('formatter', this.config);
-        const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, phase: 'standalone', harness: this.agentRuntimes.forRole('formatter') });
-        let result = await gen.next();
-        while (!result.done) {
-          yield result.value;
-          result = await gen.next();
-        }
-        if (result.value?.body) formattedBody = result.value.body;
-
-        const formattedExtractorGen = runAcceptanceCriteriaExtractor({
-          ...extractorConfig,
-          cwd,
-          prdContent: formattedBody,
-          verbose,
-          abortController,
-          phase: 'standalone',
-          harness: this.agentRuntimes.forRole('prd-validator'),
-          allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
-        });
-        let formattedExtractorResult = await formattedExtractorGen.next();
-        while (!formattedExtractorResult.done) {
-          yield formattedExtractorResult.value;
-          formattedExtractorResult = await formattedExtractorGen.next();
-        }
-        acceptanceCriteriaInventory = formattedExtractorResult.value;
-      }
+      const formattedBody = intakeIteration.value.body;
+      const acceptanceCriteriaInventory = intakeIteration.value.inventory;
 
       // Infer title from formatted content (or from name override)
       const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);

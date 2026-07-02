@@ -18,6 +18,7 @@ import {
   getCompiledResumeFrontmatter,
   parseFrontmatter,
   serializeFrontmatterFieldValue,
+  serializeFrontmatterStringScalar,
   validatePostMergeCommands,
   validatePrdFrontmatter,
 } from './prd-frontmatter.js';
@@ -566,7 +567,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
 
   // Serialize frontmatter
   const fmLines: string[] = [
-    `title: ${title}`,
+    `title: ${serializeFrontmatterStringScalar(title)}`,
     `created: ${created}`,
   ];
   if (priority !== undefined) {

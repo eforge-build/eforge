@@ -425,11 +425,11 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC quality guidance in formatter/planner prompts (plan skill removed)
+// AC quality guidance in intake/planner prompts (plan skill removed)
 // ---------------------------------------------------------------------------
 
-describe('formatter prompt — AC quality guidance', () => {
-  const raw = readRepoFile('packages/engine/src/prompts/formatter.md');
+describe('intake prompt — AC quality guidance', () => {
+  const raw = readRepoFile('packages/engine/src/prompts/intake.md');
 
   it('documents the flat, standalone, atomic, objectively validatable AC rule', () => {
     expect(raw).toMatch(/flat.*standalone.*atomic.*objectively validatable/s);
@@ -499,21 +499,19 @@ describe('plan-skill removal versioning', () => {
 // ---------------------------------------------------------------------------
 
 describe('manual-only AC prompt guidance', () => {
-  const formatterPrompt = readRepoFile('packages/engine/src/prompts/formatter.md');
-  const extractorPrompt = readRepoFile('packages/engine/src/prompts/acceptance-criteria-extractor.md');
+  const intakePrompt = readRepoFile('packages/engine/src/prompts/intake.md');
   const validatorPrompt = readRepoFile('packages/engine/src/prompts/prd-validator.md');
 
-  it('formatter prompt forbids manual-only/visual-only ACs and preserves notes', () => {
-    expect(formatterPrompt).toMatch(/manual-only.*visual-only/s);
-    expect(formatterPrompt).toContain('Manually verify dashboard rendering in the browser.');
-    expect(formatterPrompt).toContain('Visually inspect UI');
-    expect(formatterPrompt).toContain('Manual Verification Notes');
-    expect(formatterPrompt).toMatch(/concrete automatable outcome|automatable criterion/s);
+  it('intake prompt forbids manual-only/visual-only ACs and preserves notes', () => {
+    expect(intakePrompt).toMatch(/manual-only.*visual-only/s);
+    expect(intakePrompt).toContain('Manually verify dashboard rendering in the browser.');
+    expect(intakePrompt).toContain('Visually inspect UI');
+    expect(intakePrompt).toContain('Manual Verification Notes');
+    expect(intakePrompt).toMatch(/concrete automatable outcome|automatable criterion/s);
   });
 
-  it('acceptance criteria extractor prompt omits manual-only notes and emits warnings', () => {
-    expect(extractorPrompt).toMatch(/Omit manual-only or visual-only notes/);
-    expect(extractorPrompt).toMatch(/warnings?.*omitted|omitted.*warning/s);
+  it('intake prompt warns when manual-only notes are omitted or downgraded', () => {
+    expect(intakePrompt).toMatch(/omit or downgrade.*warning/is);
   });
 
   it('PRD validator prompt treats Manual Verification Notes as informational and Expected AC as authoritative', () => {

@@ -844,7 +844,7 @@ Available per-role fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedToo
 
 ## Custom Prompts
 
-Override any bundled agent prompt by placing a `.md` file in `eforge/prompts/` with the same name as the role:
+Override any bundled agent prompt by placing a `.md` file in `eforge/prompts/` with the same name as the bundled prompt file:
 
 ```yaml
 agents:
@@ -852,6 +852,8 @@ agents:
 ```
 
 If `eforge/prompts/reviewer.md` exists, it replaces the bundled reviewer prompt entirely. Use `promptAppend` on a role for additive rules instead of full replacement.
+
+Prompt file names match the role name for most roles, but not all: the `formatter` role runs the intake prompt, so override it with `eforge/prompts/intake.md` (a `formatter.md` file has no effect).
 
 ## Hooks
 

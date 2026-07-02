@@ -4,7 +4,7 @@ import { classifyEvidenceCandidate } from './evidence-hygiene.js';
 import { utf8ByteLength } from './source-analysis.js';
 import { DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceLimits, type PlanningSourceEvidenceRecord, type PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
-import type { PlanningEvidenceOwnership, SharedPlanningBrief } from './shared-brief-contracts.js';
+import { compareEvidenceOwnershipValue, type PlanningEvidenceOwnership, type SharedPlanningBrief } from './shared-brief-contracts.js';
 
 export interface MaterializePlanningSourceEvidenceInput { cwd: string; graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; limits?: Partial<PlanningSourceEvidenceLimits> }
 
@@ -12,12 +12,25 @@ export async function materializePlanningSourceEvidence(input: MaterializePlanni
   const limits = { ...DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, ...(input.limits ?? {}) };
   const state = { totalBytes: 0, filesByAtom: new Map<string, number>(), bytesByAtom: new Map<string, number>() };
   const records: PlanningSourceEvidenceRecord[] = [];
-  for (const [index, ownership] of input.sharedBrief.evidenceOwnership.entries()) {
+  for (const [index, ownership] of rankOwnershipForMaterialization(input.sharedBrief.evidenceOwnership).entries()) {
     records.push(index >= limits.maxFilesTotal ? budgetRecord(ownership, 'max-files-total') : await materializeOne(input.cwd, ownership, limits, state));
   }
   const bundle: PlanningSourceEvidenceBundle = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, records: records.sort((a, b) => a.path.localeCompare(b.path)), byAtomId: buildByAtom(records), bytesByAtomId: mapToSortedRecord(state.bytesByAtom), filesByAtomId: mapToSortedRecord(state.filesByAtom), totalBytes: state.totalBytes, limits, validationErrors: [] };
   const validation = validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle, limits });
   return { ...bundle, validationErrors: validation.ok ? [] : validation.errors };
+}
+
+/**
+ * When file and byte budgets bind, they must keep the highest-value evidence,
+ * not the alphabetically-first: ownership order is path-sorted, so iterating
+ * it directly materializes docs/config sweep-ins while src/ and test/ files
+ * (alphabetically late) starve - fatal once a single-atom graph funnels every
+ * path into one per-atom budget. Value order is the shared comparator also
+ * used by shared-brief section selection. Output records are re-sorted by
+ * path, so only budget contention order changes.
+ */
+function rankOwnershipForMaterialization(ownership: PlanningEvidenceOwnership[]): PlanningEvidenceOwnership[] {
+  return [...ownership].sort(compareEvidenceOwnershipValue);
 }
 
 async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership, limits: PlanningSourceEvidenceLimits, state: { totalBytes: number; filesByAtom: Map<string, number>; bytesByAtom: Map<string, number> }): Promise<PlanningSourceEvidenceRecord> {

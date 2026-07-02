@@ -40,6 +40,8 @@ agents:
   bare: false                 # Pass --bare to Claude Code subprocess (auto-true when ANTHROPIC_API_KEY set)
   # promptDir: eforge/prompts  # Directory of .md files that shadow bundled prompts by name match.
   #                            # If eforge/prompts/reviewer.md exists, it replaces the bundled reviewer prompt.
+  #                            # Prompt file names usually match role names, but not always: the formatter
+  #                            # role runs the intake prompt, so override it with intake.md (not formatter.md).
   # tiers:                    # Per-tier recipes — each tier is a self-contained harness + model + effort unit
   #   planning:               # Four built-in tiers: planning, implementation, review, evaluation
   #     harness: pi           #   harness: 'pi' (recommended) or 'claude-sdk' (supported secondary)
@@ -674,7 +676,7 @@ Every agent role has a built-in default tier. Most projects never need to change
 | Role | Default Tier | Description |
 |------|-------------|-------------|
 | `planner` | `planning` | Bounded planner compiler |
-| `formatter` | `planning` | PRD formatting |
+| `formatter` | `planning` | PRD intake: formatting and acceptance criteria extraction |
 | `merge-conflict-resolver` | `planning` | Merge conflict resolution |
 | `doc-author` | `implementation` | Plan-driven doc authoring |
 | `doc-syncer` | `implementation` | Diff-driven doc sync |
@@ -1027,4 +1029,4 @@ Within a single build, plans run as soon as their dependencies are met. Since pl
 
 ### Enqueuing
 
-Enqueuing is always single-threaded. The formatter processes one PRD at a time before adding it to the queue. No configuration is needed or available.
+Enqueuing is always single-threaded. The intake agent (formatter role) formats one PRD at a time and extracts its acceptance criteria before adding it to the queue. No configuration is needed or available.

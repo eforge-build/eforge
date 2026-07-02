@@ -39,7 +39,7 @@ function makeEnqueueCard(overrides: Partial<NowEnqueueCard> = {}): NowEnqueueCar
     title: 'Preparing Build PRD',
     durationMs: 12_000,
     streamStatus: 'connected',
-    step: 'Extracting acceptance criteria',
+    step: 'Formatting PRD & extracting acceptance criteria',
     latestError: null,
     tokens: 8_900,
     cost: 0.17,
@@ -53,7 +53,7 @@ describe('QueueCard - intake lane', () => {
     expect(screen.getByText('Queue')).toBeDefined();
     expect(screen.getByText('Intake')).toBeDefined();
     expect(screen.getByText('Preparing Build PRD')).toBeDefined();
-    expect(screen.getByText('Extracting acceptance criteria')).toBeDefined();
+    expect(screen.getByText('Formatting PRD & extracting acceptance criteria')).toBeDefined();
   });
 });
 

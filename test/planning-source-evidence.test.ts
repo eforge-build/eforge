@@ -81,6 +81,22 @@ describe('planning source evidence materialization', () => {
     expect(statuses.get('packages')).toBe('non-actionable');
   });
 
+  it('spends binding file budgets on criterion-linked evidence, not alphabetical path order', async () => {
+    await writeEvidence('packages/engine/src/linked.ts', 'export const linked = true;\n');
+    await writeEvidence('packages/engine/src/aaa-sweep.ts', 'export const sweep = true;\n');
+    const data = await fixture(['engine updates `packages/engine/src/linked.ts`.']);
+    const atomId = data.graph.atoms[0].atomId;
+    // An alphabetically-first surface sweep-in competes for the single slot.
+    data.brief.evidenceOwnership.unshift({ path: 'packages/engine/src/aaa-sweep.ts', referencedByAtomIds: [atomId], consumerAtomIds: [], shared: false, reason: 'surface-sweep', localizationConfidence: 'medium', candidateRank: 4 });
+
+    const bundle = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxFilesPerAtom: 1 } });
+    const statuses = new Map(bundle.records.map((record) => [record.path, record.status]));
+
+    expect(data.brief.evidenceOwnership.find((entry) => entry.path === 'packages/engine/src/linked.ts')?.criterionLinked).toBe(true);
+    expect(statuses.get('packages/engine/src/linked.ts')).toBe('materialized');
+    expect(statuses.get('packages/engine/src/aaa-sweep.ts')).toBe('budget-exceeded');
+  });
+
   it('marks records as budget-exceeded when total or per-atom evidence budgets are exhausted', async () => {
     await writeEvidence('packages/engine/src/a.ts', 'a'.repeat(40));
     await writeEvidence('packages/engine/src/b.ts', 'b'.repeat(40));

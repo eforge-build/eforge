@@ -1,0 +1,9 @@
+plan:
+  outputDir: eforge/plans
+agents:
+  tiers:
+    default: standard
+build:
+  validation:
+    commands:
+      - pnpm test

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
-import { runAcceptanceCriteriaExtractor } from '../agents/acceptance-criteria-extractor.js';
+import { runIntake } from '../agents/intake.js';
 import { runStalenessAssessor } from '../agents/staleness-assessor.js';
 import { resolveTrunkBranch } from '../branch-policy.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
@@ -252,23 +252,23 @@ async function* extractRevisionInventory(
 ): AsyncGenerator<EforgeEvent, SimpleResult<string>> {
   const visibleRevision = stripAcceptanceCriteriaInventoryBlock(revision).trimEnd();
   try {
-    const extractorConfig = resolveAgentConfig('prd-validator', ctx.config);
-    const extractorGen = runAcceptanceCriteriaExtractor({
-      ...extractorConfig,
+    const intakeConfig = resolveAgentConfig('formatter', ctx.config);
+    const intakeGen = runIntake({
+      ...intakeConfig,
       cwd: ctx.cwd,
-      prdContent: visibleRevision,
+      sourceContent: visibleRevision,
       verbose: options.verbose,
       abortController: options.abortController,
       phase: 'standalone',
-      harness: ctx.agentRuntimes.forRole('prd-validator'),
+      harness: ctx.agentRuntimes.forRole('formatter'),
       allowNoAcceptanceCriteria: ctx.config.build.validation.allowNoAcceptanceCriteria,
     });
-    let extractorResult = await extractorGen.next();
-    while (!extractorResult.done) {
-      yield extractorResult.value;
-      extractorResult = await extractorGen.next();
+    let intakeIteration = await intakeGen.next();
+    while (!intakeIteration.done) {
+      yield intakeIteration.value;
+      intakeIteration = await intakeGen.next();
     }
-    const revisedContent = appendAcceptanceCriteriaInventoryBlock(visibleRevision, extractorResult.value).trimEnd();
+    const revisedContent = appendAcceptanceCriteriaInventoryBlock(intakeIteration.value.body, intakeIteration.value.inventory).trimEnd();
     return { ok: true, value: revisedContent };
   } catch (err) {
     return { ok: false, message: errorMessage(err) };

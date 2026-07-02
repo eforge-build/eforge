@@ -9,7 +9,8 @@ import { EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { StubHarness } from './stub-harness.js';
-import { appendAcceptanceCriteriaInventoryBlock, parseAcceptanceCriteriaExtractorOutput } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { appendAcceptanceCriteriaInventoryBlock } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { buildInventory, intakeResponse, type IntakeCriterionInput } from './intake-test-helpers.js';
 import { useTempDir } from './test-tmpdir.js';
 
 const makeTempDir = useTempDir('eforge-engine-enqueue-after-');
@@ -67,25 +68,17 @@ function validFormattedPrd(): string {
   ].join('\n');
 }
 
-function emptyExplicitExtractorOutput(): string {
-  return JSON.stringify({ version: 1, criteria: [], warnings: ['No explicit acceptance criteria found'] });
-}
-
-function validExtractorOutput(): string {
-  return JSON.stringify({
-    version: 1,
-    criteria: [{
-      text: 'The dependent PRD is queued with the selected upstream dependency.',
-      sourceQuote: 'The dependent PRD is queued with the selected upstream dependency.',
-      confidence: 0.95,
-    }],
-  });
+function validCriteria(): IntakeCriterionInput[] {
+  return [{
+    text: 'The dependent PRD is queued with the selected upstream dependency.',
+    sourceQuote: 'The dependent PRD is queued with the selected upstream dependency.',
+    confidence: 0.95,
+  }];
 }
 
 function validInventoryPrdBody(): string {
   const body = validFormattedPrd();
-  const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorOutput(), body);
-  return appendAcceptanceCriteriaInventoryBlock(body, inventory);
+  return appendAcceptanceCriteriaInventoryBlock(body, buildInventory(validCriteria(), body));
 }
 
 describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
@@ -94,7 +87,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     await setupProject(tmpDir);
     await writeActiveQueuePrd(tmpDir, 'upstream-build');
 
-    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }]);
+    const harness = new StubHarness([intakeResponse(validFormattedPrd(), validCriteria())]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -118,7 +111,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     await writeActiveQueuePrd(tmpDir, 'explicit-upstream');
     await writeActiveQueuePrd(tmpDir, 'other-queued-build');
 
-    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }]);
+    const harness = new StubHarness([intakeResponse(validFormattedPrd(), validCriteria())]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -130,7 +123,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       events.push(event);
     }
 
-    expect(harness.calls).toHaveLength(3);
+    expect(harness.calls).toHaveLength(1);
     expect(events.some((event) => event.type === 'enqueue:complete')).toBe(true);
     const complete = findEnqueueComplete(events);
     expect(complete).toBeDefined();
@@ -160,7 +153,7 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       'eforge:end-acceptance-criteria-inventory -->',
     ].join('\n'), 'utf-8');
 
-    const harness = new StubHarness([{ text: emptyExplicitExtractorOutput() }, { text: validFormattedPrd() }, { text: validExtractorOutput() }, { text: '[]' }]);
+    const harness = new StubHarness([intakeResponse(validFormattedPrd(), validCriteria()), { text: '[]' }]);
     const engine = await EforgeEngine.create({
       cwd: tmpDir,
       agentRuntimes: harness,
@@ -173,9 +166,9 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
     }
 
     expect(events.some((event) => event.type === 'enqueue:complete')).toBe(true);
-    expect(harness.calls).toHaveLength(4);
-    expect(harness.prompts[3]).toContain('Visible queued PRD prose.');
-    expect(harness.prompts[3]).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(harness.calls).toHaveLength(2);
+    expect(harness.prompts[1]).toContain('Visible queued PRD prose.');
+    expect(harness.prompts[1]).not.toContain('eforge:acceptance-criteria-inventory');
   });
 
   it('strips hidden inventory blocks from staleness assessor PRD content', async () => {
@@ -195,10 +188,9 @@ describe('EforgeEngine.enqueue — explicit afterQueueId', () => {
       '',
       '- The stale PRD remains valid for the current codebase.',
     ].join('\n');
-    const staleInventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
-      version: 1,
-      criteria: [{ text: 'The stale PRD remains valid for the current codebase.', sourceQuote: 'The stale PRD remains valid for the current codebase.', confidence: 0.95 }],
-    }), staleBody);
+    const staleInventory = buildInventory([
+      { text: 'The stale PRD remains valid for the current codebase.', sourceQuote: 'The stale PRD remains valid for the current codebase.', confidence: 0.95 },
+    ], staleBody);
     const prdContent = `---\ntitle: Stale PRD\ncreated: 2026-01-01\n---\n\n${appendAcceptanceCriteriaInventoryBlock(staleBody, staleInventory)}`;
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     await mkdir(queueDir, { recursive: true });

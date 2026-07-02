@@ -42,10 +42,61 @@ describe('planning shared brief and evidence ownership', () => {
     expect(atomBrief.ownedEvidencePaths).toEqual([]);
   });
 
-  it('fails closed when the shared brief exceeds its byte budget', () => {
+  it('fits the byte budget by construction, dropping lowest-value sections with diagnostics', () => {
     const { graph } = fixture();
 
-    expect(() => deriveSharedPlanningBrief({ graph, limits: { maxTotalBriefBytes: 1 } })).toThrow(/shared brief budget exceeded/);
+    const brief = deriveSharedPlanningBrief({ graph, limits: { maxTotalBriefBytes: 1 } });
+
+    expect(brief.byteLength).toBeLessThanOrEqual(1);
+    expect(brief.sections).toEqual([]);
+    expect(brief.budgetDiagnostics.some((diagnostic) => diagnostic.code === 'section-dropped-total-budget')).toBe(true);
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('demotes lowest-value evidence sections beyond the per-atom section budget', () => {
+    const { graph } = fixture();
+
+    const brief = deriveSharedPlanningBrief({ graph, limits: { maxSectionsPerAtom: 1 } });
+
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+    for (const atomBrief of brief.atomBriefs) expect(atomBrief.sectionIds.length).toBeLessThanOrEqual(1);
+    expect(brief.budgetDiagnostics.some((diagnostic) => diagnostic.code === 'atom-section-demoted')).toBe(true);
+    // Demoted paths stay visible through evidence summaries and ownership.
+    expect(brief.evidenceOwnership.map((entry) => entry.path)).toContain('packages/engine/src/shared.ts');
+  });
+
+  it('assigns criterion-less global localization records to one owner atom instead of broadcasting', () => {
+    const { graph } = fixture();
+    const globalRecord = {
+      needId: 'inventory-evidence-tsconfig-json',
+      kind: 'literal-path' as const,
+      query: 'tsconfig.json',
+      status: 'resolved' as const,
+      candidateFiles: [{ path: 'tsconfig.json', score: 100, reason: 'literal path match', confidence: 'high' as const, signals: ['literal-path'] }],
+      confidence: 'high' as const,
+      reason: 'literal path match',
+      linkedCriterionIds: [],
+      linkedAspectIds: [],
+      assignedAtomIds: [],
+      diagnostics: [],
+      budgetNotes: [],
+    };
+
+    const brief = deriveSharedPlanningBrief({ graph, sourceLocalizationBundle: { records: [globalRecord], byAtomId: {}, diagnostics: [], limits: { maxIndexedFiles: 100, maxCandidateFilesPerNeed: 12, maxDirectoryExpansionFiles: 20, maxBytesPerScannedFile: 10_000, maxTotalScannedBytes: 100_000 }, indexDiagnostics: [] } });
+    const ownership = brief.evidenceOwnership.find((entry) => entry.path === 'tsconfig.json');
+
+    expect(graph.atoms.length).toBeGreaterThan(1);
+    expect(ownership?.referencedByAtomIds.length).toBe(1);
+    expect(ownership?.shared).toBe(false);
+  });
+
+  it('truncates oversized sections to the exact section byte budget', () => {
+    const { graph } = fixture();
+
+    const brief = deriveSharedPlanningBrief({ graph, limits: { maxSectionBytes: 64 } });
+
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+    for (const section of brief.sections) expect(section.byteLength).toBeLessThanOrEqual(64);
   });
 
   it('validates shared findings against owned evidence and atom aspects', () => {

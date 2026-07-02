@@ -57,6 +57,20 @@ describe('planning source inventory and atom graph', () => {
     expect(graph.atoms.flatMap((atom) => atom.facetIds).some((facet) => facet.includes('packages-engine-src-config-ts'))).toBe(true);
   });
 
+  it('collapses a small criterion set into a single root atom regardless of subsystem spread', () => {
+    const content = prd([
+      'engine updates `packages/engine/src/config.ts` for runtime choice schema.',
+      'client updates `packages/client/src/events.ts` for choice metadata.',
+      'docs update `docs/config.md` for profile examples.',
+    ]);
+
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), path: 'prd.md', limits: { ...limits, maxCriteriaPerUnit: 10, maxSubsystemsPerUnit: 1 } });
+
+    expect(graph.atoms.map((atom) => atom.atomId)).toEqual(['atom-root']);
+    expect(graph.atoms[0].reason).toBe('general');
+    expect(graph.atoms[0].criterionIds).toEqual(['ac-001', 'ac-002', 'ac-003']);
+  });
+
   it('splits oversized single criteria into source-budgeted atoms without relying on failure recursion', () => {
     const longCriterion = `engine updates packages/engine/src/large.ts ${'with detailed behavior '.repeat(80)}`;
     const content = prd([longCriterion, 'test covers packages/engine/src/large.ts behavior.']);

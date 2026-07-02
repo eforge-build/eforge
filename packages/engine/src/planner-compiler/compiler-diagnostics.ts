@@ -44,8 +44,19 @@ export function buildCompilerDiagnostics(input: BuildCompilerDiagnosticsInput): 
     repair: repairSection(result.repairDiagnostics, omitted),
     residue: residueSection(result, omitted),
     evidenceFailures: cap(evidenceFailureEntries(result), 128, omitted, 'evidenceFailures'),
+    sharedBriefBudget: cap(sharedBriefBudgetEntries(result), 128, omitted, 'sharedBriefBudget'),
     omitted,
   };
+}
+
+function sharedBriefBudgetEntries(result: BoundedPlannerCompilerResult): CompilerDiagnostics['sharedBriefBudget'] {
+  return (result.sharedBrief.budgetDiagnostics ?? []).map((diagnostic) => ({
+    code: diagnostic.code,
+    sectionId: bounded(diagnostic.sectionId, 300),
+    ...(diagnostic.atomId ? { atomId: bounded(diagnostic.atomId, 160) } : {}),
+    ...(diagnostic.path ? { path: bounded(diagnostic.path, 300) } : {}),
+    message: bounded(diagnostic.message, 500),
+  }));
 }
 
 export function serializeCompilerDiagnostics(diagnostics: CompilerDiagnostics): string {
@@ -295,7 +306,7 @@ function dropCoverageCriteria(diagnostics: CompilerDiagnostics): CompilerDiagnos
 }
 
 function emptyOmittedCounts(): CompilerDiagnosticsOmittedCounts {
-  return { gaps: 0, conflicts: 0, repairAttempts: 0, evidenceFailures: 0, coverageAspects: 0, coverageCriteria: 0, residueCandidates: 0, validationErrors: 0, descriptionBytes: 0 };
+  return { gaps: 0, conflicts: 0, repairAttempts: 0, evidenceFailures: 0, coverageAspects: 0, coverageCriteria: 0, residueCandidates: 0, validationErrors: 0, descriptionBytes: 0, sharedBriefBudget: 0 };
 }
 
 function cap<T>(items: T[], maxItems: number, omitted: CompilerDiagnosticsOmittedCounts, key: Exclude<keyof CompilerDiagnosticsOmittedCounts, 'descriptionBytes'>): T[] {

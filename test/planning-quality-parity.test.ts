@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, resolvePlanningDecompositionLimits } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, resolveConfig, resolvePlanningDecompositionLimits, type EforgeConfig } from '@eforge-build/engine/config';
 import type { AgentRole, EforgeEvent } from '@eforge-build/engine/events';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import { parseOrchestrationConfig } from '@eforge-build/engine/plan';
@@ -51,9 +51,17 @@ async function gitWorkspace(files: Record<string, string>): Promise<string> {
   return cwd;
 }
 
+/**
+ * Excursion/expedition fixtures compile with a tight per-unit criterion cap:
+ * under production defaults their small PRDs now collapse to a single root
+ * atom (the errand fixture's job), and these fixtures exist to exercise the
+ * multi-atom map and reduce-tree machinery.
+ */
+const FRAGMENTING_CONFIG = resolveConfig({ compile: { planningUnitMaxCriteriaPerUnit: 2 } });
+
 /** Deterministically derive the same atom tasks and reduce tree the compiler will use. */
-function derivedPlan(content: string): { tasks: PlanningAtomTask[]; tree: PlanningReduceTree } {
-  const limits = resolvePlanningDecompositionLimits(DEFAULT_CONFIG);
+function derivedPlan(content: string, config: EforgeConfig): { tasks: PlanningAtomTask[]; tree: PlanningReduceTree } {
+  const limits = resolvePlanningDecompositionLimits(config);
   const inventory = deriveSourceInventory({ content, hash: hash(content), path: undefined });
   const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
   const sharedBrief = deriveSharedPlanningBrief({ graph });
@@ -164,10 +172,12 @@ async function compileParityFixture(input: {
   criteria: string[];
   files: Record<string, string>;
   fastPath?: boolean;
+  config?: EforgeConfig;
 }): Promise<ParityRun> {
+  const config = input.config ?? DEFAULT_CONFIG;
   const sourceContent = prd(input.criteria);
   const cwd = await gitWorkspace(input.files);
-  const { tasks, tree } = derivedPlan(sourceContent);
+  const { tasks, tree } = derivedPlan(sourceContent, config);
 
   const keyed = new Map<string, unknown>();
   for (const task of tasks) keyed.set(task.atomId, completedAtomOutput(task, { digest: input.fastPath ?? false }));
@@ -179,6 +189,7 @@ async function compileParityFixture(input: {
   const ctx = makePipelineCtx({
     cwd,
     sourceContent,
+    config,
     planSetName: input.planSetName,
     agentRuntimes: singletonRegistry(harness as AgentHarness),
     compilePreflight: overflowRisk(sourceContent),
@@ -259,6 +270,7 @@ describe('bounded compiler parity fixtures', () => {
       planSetName: 'parity-excursion',
       scope: 'excursion',
       criteria,
+      config: FRAGMENTING_CONFIG,
       files: {
         'packages/engine/src/scheduler.ts': 'export const scheduler = true;\n',
         'packages/engine/src/metrics.ts': 'export const metrics = true;\n',
@@ -292,6 +304,7 @@ describe('bounded compiler parity fixtures', () => {
       scope: 'expedition',
       criteria,
       files,
+      config: FRAGMENTING_CONFIG,
     });
 
     // Expedition scale: multiple atoms and a real reduce tree.

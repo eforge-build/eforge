@@ -752,6 +752,21 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 8
+        },
+        "planningSharedBriefMaxTotalBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 200000
+        },
+        "planningSharedBriefMaxSectionBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 50000
+        },
+        "planningSharedBriefMaxSectionsPerAtom": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 64
         }
       },
       "additionalProperties": false,
