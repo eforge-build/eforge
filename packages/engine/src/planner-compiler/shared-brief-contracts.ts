@@ -6,7 +6,7 @@ import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './s
 export type SharedPlanningBriefSectionKind = 'evidence' | 'interface' | 'dependency' | 'avoidance';
 
 export interface SharedPlanningBriefLimits { maxTotalBriefBytes: number; maxSectionBytes: number; maxSectionsPerAtom: number; maxSharedFindingsPerAtom: number; maxSharedFindingBytes: number }
-export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string }
+export interface PlanningEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; criterionLinked?: boolean }
 export interface PlanningEvidenceOwnership extends PlanningEvidenceLocalizationMetadata { path: string; referencedByAtomIds: string[]; primaryAtomId?: string; consumerAtomIds: string[]; shared: boolean; reason: string }
 export interface PlanningAtomBriefEvidenceSummary extends PlanningEvidenceLocalizationMetadata { path: string; shared: boolean; primaryAtomId?: string; consumerAtomIds: string[] }
 export interface PlanningSharedEvidenceRef extends PlanningEvidenceLocalizationMetadata { path: string; primaryAtomId: string; sectionId: string }

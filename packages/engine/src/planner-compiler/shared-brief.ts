@@ -36,7 +36,7 @@ function deriveEvidenceOwnership(graph: PlanningAtomGraph, localization?: Source
   return [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, item]) => ownershipForPath(path, [...item.atomIds], graph, item));
 }
 
-interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus }
+interface OwnershipAccumulator { atomIds: Set<string>; localizationNeedIds: Set<string>; reasons: Set<string>; candidateRank?: number; localizationConfidence?: SourceLocalizationConfidence; localizationStatus?: SourceLocalizationStatus; criterionLinked?: boolean }
 
 function addLocalizedOwnership(record: SourceLocalizationRecord, graph: PlanningAtomGraph, byPath: Map<string, OwnershipAccumulator>): void {
   const atomIds = localizationAtomIds(record, graph);
@@ -57,8 +57,11 @@ function addOwnershipPath(byPath: Map<string, OwnershipAccumulator>, rawPath: st
     existing.localizationConfidence = bestConfidence(existing.localizationConfidence, metadata.candidate.confidence);
     existing.localizationStatus = bestStatus(existing.localizationStatus, metadata.record.status);
     existing.candidateRank = Math.min(existing.candidateRank ?? metadata.candidateRank, metadata.candidateRank);
+    if (metadata.record.linkedCriterionIds.length > 0) existing.criterionLinked = true;
   } else {
     existing.reasons.add(metadata.reason);
+    // Exact evidence paths come straight from criterion text.
+    existing.criterionLinked = true;
   }
   byPath.set(path, existing);
 }
@@ -91,14 +94,17 @@ function ownershipForPath(path: string, referencedByAtomIds: string[], graph: Pl
   };
 }
 
-function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale'> {
-  if (!metadata || metadata.localizationNeedIds.size === 0) return {};
+function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale' | 'criterionLinked'> {
+  if (!metadata) return {};
+  const criterionLinked = metadata.criterionLinked === true ? { criterionLinked: true } : {};
+  if (metadata.localizationNeedIds.size === 0) return criterionLinked;
   return {
     localizationNeedIds: [...metadata.localizationNeedIds].sort(),
     ...(metadata.localizationStatus ? { localizationStatus: metadata.localizationStatus } : {}),
     ...(metadata.localizationConfidence ? { localizationConfidence: metadata.localizationConfidence } : {}),
     ...(metadata.candidateRank !== undefined ? { candidateRank: metadata.candidateRank } : {}),
     ownershipRationale: [...metadata.reasons].sort().join(' | '),
+    ...criterionLinked,
   };
 }
 

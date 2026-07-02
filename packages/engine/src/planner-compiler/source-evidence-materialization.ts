@@ -12,12 +12,31 @@ export async function materializePlanningSourceEvidence(input: MaterializePlanni
   const limits = { ...DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, ...(input.limits ?? {}) };
   const state = { totalBytes: 0, filesByAtom: new Map<string, number>(), bytesByAtom: new Map<string, number>() };
   const records: PlanningSourceEvidenceRecord[] = [];
-  for (const [index, ownership] of input.sharedBrief.evidenceOwnership.entries()) {
+  for (const [index, ownership] of rankOwnershipForMaterialization(input.sharedBrief.evidenceOwnership).entries()) {
     records.push(index >= limits.maxFilesTotal ? budgetRecord(ownership, 'max-files-total') : await materializeOne(input.cwd, ownership, limits, state));
   }
   const bundle: PlanningSourceEvidenceBundle = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, records: records.sort((a, b) => a.path.localeCompare(b.path)), byAtomId: buildByAtom(records), bytesByAtomId: mapToSortedRecord(state.bytesByAtom), filesByAtomId: mapToSortedRecord(state.filesByAtom), totalBytes: state.totalBytes, limits, validationErrors: [] };
   const validation = validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle, limits });
   return { ...bundle, validationErrors: validation.ok ? [] : validation.errors };
+}
+
+/**
+ * When file and byte budgets bind, they must keep the highest-value evidence,
+ * not the alphabetically-first: ownership order is path-sorted, so iterating
+ * it directly materializes docs/config sweep-ins while src/ and test/ files
+ * (alphabetically late) starve - fatal once a single-atom graph funnels every
+ * path into one per-atom budget. Criterion-linked paths win, then localization
+ * confidence, then candidate rank, then wider atom reach. Output records are
+ * re-sorted by path, so only budget contention order changes.
+ */
+function rankOwnershipForMaterialization(ownership: PlanningEvidenceOwnership[]): PlanningEvidenceOwnership[] {
+  const confidenceRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  return [...ownership].sort((a, b) =>
+    Number(b.criterionLinked === true) - Number(a.criterionLinked === true)
+    || (confidenceRank[a.localizationConfidence ?? ''] ?? 3) - (confidenceRank[b.localizationConfidence ?? ''] ?? 3)
+    || (a.candidateRank ?? Number.MAX_SAFE_INTEGER) - (b.candidateRank ?? Number.MAX_SAFE_INTEGER)
+    || b.referencedByAtomIds.length - a.referencedByAtomIds.length
+    || a.path.localeCompare(b.path));
 }
 
 async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership, limits: PlanningSourceEvidenceLimits, state: { totalBytes: number; filesByAtom: Map<string, number>; bytesByAtom: Map<string, number> }): Promise<PlanningSourceEvidenceRecord> {

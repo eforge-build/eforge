@@ -81,6 +81,20 @@ describe('planning shared brief at realistic scale (todo-api eval regression)', 
     expect(bundle.validationErrors).toEqual([]);
   });
 
+  it('spends binding per-atom file budgets on ranked evidence, not path order', async () => {
+    // Regression: with a single root atom every path funnels into one per-atom
+    // file budget; path-ordered materialization starved src/test files (which
+    // sort late) in favor of alphabetically-early sweep-ins, and the planner
+    // then failed the compile via an unrepairable evidence gap.
+    const { graph, brief } = await deriveFixtureBrief();
+
+    const bundle = await materializePlanningSourceEvidence({ cwd: FIXTURE_REPO, graph, sharedBrief: brief, limits: { maxFilesPerAtom: 5 } });
+    const statuses = new Map(bundle.records.map((record) => [record.path, record.status]));
+
+    expect(statuses.get('test/todos.test.ts')).toBe('materialized');
+    expect(statuses.get('.pi/extensions/marker/index.ts')).toBe('budget-exceeded');
+  });
+
   it('records budget diagnostics instead of failing when budgets bind', async () => {
     // Reproduce the pre-collapse fragmentation shape (multiple atoms sharing
     // evidence) with a tight total budget so the degradation path stays
