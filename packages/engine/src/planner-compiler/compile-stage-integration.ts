@@ -216,7 +216,7 @@ function boundedCompilerPipeline(ctx: PipelineContext, pipelineDefaults: Plannin
   return {
     ...ctx.pipeline,
     // The planning quality gate is unconditional on the compiler path,
-    // regardless of what the composer selected.
+    // regardless of what the compiler selected.
     compile: ['planner', 'planning-quality-review-cycle'],
     defaultBuild: pipelineDefaults.defaultBuild,
     defaultReview: pipelineDefaults.defaultReview,

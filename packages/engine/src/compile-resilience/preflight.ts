@@ -4,7 +4,6 @@ import { MAX_COMPILE_RISK_LIST_ITEMS } from '@eforge-build/client';
 
 import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
 
-export const MODERATE_SOURCE_BYTES = 40_000;
 export const GENERATED_INVENTORY_MIN_BYTES = 4_000;
 export const MACHINE_READABLE_SECTION_MIN_BYTES = 2_000;
 export const LARGE_CODE_FENCE_MIN_BYTES = 8_000;

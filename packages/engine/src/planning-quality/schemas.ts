@@ -24,7 +24,7 @@ const replaceAcceptanceCoverageFixSchema = Type.Object({
   content: Type.String({ minLength: 1, description: 'New acceptance-coverage.md markdown content' }),
 }, { description: 'Replace the entire acceptance-coverage.md file' });
 
-export const planningQualityReviewFixSchema = Type.Union([
+const planningQualityReviewFixSchema = Type.Union([
   ...planReviewFixSchema.anyOf,
   replaceArchitectureFixSchema,
   replaceAcceptanceCoverageFixSchema,

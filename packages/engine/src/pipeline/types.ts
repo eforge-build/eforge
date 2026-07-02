@@ -105,7 +105,7 @@ export type BuildStage = (ctx: BuildStageContext) => AsyncGenerator<EforgeEvent>
 /** Phase a stage belongs to. */
 export type StagePhase = 'compile' | 'build';
 
-/** Rich metadata describing a pipeline stage for downstream consumers (e.g., pipeline composer). */
+/** Rich metadata describing a pipeline stage for downstream consumers (e.g., the planner compiler). */
 export interface StageDescriptor {
   /** Unique stage name (must match the registration key). */
   name: string;

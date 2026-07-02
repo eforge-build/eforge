@@ -217,46 +217,6 @@ export interface AgentHarness {
 }
 
 // ---------------------------------------------------------------------------
-// Debug Payload Capture
-// ---------------------------------------------------------------------------
-
-/**
- * Snapshot of the request a backend is about to send. Used by the
- * `eforge debug-composer` command and other diagnostic tooling to compare how
- * different backends frame the same agent run (system prompt, tools, model,
- * etc.) without needing to proxy the actual HTTP traffic.
- */
-export interface HarnessDebugPayload {
-  /** Which harness produced this payload. */
-  harness: 'claude-sdk' | 'pi';
-  /** The agent role this payload is for (e.g. `'planner'`). */
-  agent: AgentRole;
-  /** The user prompt string passed into the run. */
-  userPrompt: string;
-  /** The fully-constructed system prompt as the backend sees it. */
-  systemPrompt: string;
-  /** Tool definitions the backend will expose to the model. Empty array means no tools. */
-  tools: Array<{ name: string; description?: string; parameters?: unknown }>;
-  /** Model identifier (id plus provider for pi). */
-  model: { id: string; provider?: string };
-  /** Effort level, if set. */
-  effort?: EffortLevel;
-  /** Thinking config, if set. */
-  thinking?: ThinkingConfig;
-  /** Max turns for the run. */
-  maxTurns: number;
-  /** Tool allowlist, if any. */
-  allowedTools?: string[];
-  /** Tool denylist (after `disableSubagents` is applied on claude-sdk), if any. */
-  disallowedTools?: string[];
-  /** Arbitrary backend-specific context (e.g. settingSources, contextFiles, thinkingLevel). */
-  extra?: Record<string, unknown>;
-}
-
-/** Callback fired by a harness just before it dispatches a run to its SDK. */
-export type HarnessDebugCallback = (payload: HarnessDebugPayload) => void | Promise<void>;
-
-// ---------------------------------------------------------------------------
 // Typed Terminal Errors
 // ---------------------------------------------------------------------------
 

@@ -2,11 +2,10 @@ import type { EforgeEvent } from '../events.js';
 import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
-import { findJsonObjectText } from '../validation/json-object-extractor.js';
 import { utf8ByteLength } from './source-analysis.js';
-import type { PlanningAtomModuleCandidate, PlanningAtomOutput, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
-import { PlanningReduceOutputSchema, type PlanningReduceConflict, type PlanningReduceGap, type PlanningReduceOutput, type PlanningReduceOutputStatus, type PlanningReduceTask } from './reduce-contracts.js';
-import { coercePlanningReduceDigest, minimumReduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import type { PlanningAtomOutput } from './atom-planning-contracts.js';
+import { PlanningReduceOutputSchema, type PlanningReduceOutput, type PlanningReduceTask } from './reduce-contracts.js';
+import { minimumReduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, validatePlanningReduceDigest, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -128,31 +127,6 @@ function createReduceOutputSubmissionTool(submitToolName: string, task: Planning
   };
 }
 
-export function parsePlanningReduceOutput(text: string, expectedNodeId: string): PlanningReduceOutput {
-  const jsonText = findJsonObjectText(text);
-  if (!jsonText) throw new Error('Reducer output did not contain a JSON object');
-  const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-  return coercePlanningReduceOutput(parsed, expectedNodeId);
-}
-
-function coercePlanningReduceOutput(value: Record<string, unknown>, expectedNodeId: string): PlanningReduceOutput {
-  const nodeId = stringValue(value.nodeId) ?? expectedNodeId;
-  const status = reduceStatus(value.status);
-  if (!status) throw new Error(`Reducer output has invalid status:${String(value.status)}`);
-  return {
-    nodeId,
-    status,
-    compactSummary: stringValue(value.compactSummary) ?? '',
-    ...(objectValueOrUndefined(value.reduceDigest) ? { reduceDigest: coercePlanningReduceDigest(objectValue(value.reduceDigest)) } : {}),
-    ...(arrayValue(value.planFragments).length > 0 ? { planFragments: arrayValue(value.planFragments).map(coercePlanFragment) } : {}),
-    ...(arrayValue(value.moduleCandidates).length > 0 ? { moduleCandidates: arrayValue(value.moduleCandidates).map(coerceModuleCandidate) } : {}),
-    ...(arrayValue(value.conflicts).length > 0 ? { conflicts: arrayValue(value.conflicts).map(coerceConflict) } : {}),
-    ...(arrayValue(value.gaps).length > 0 ? { gaps: arrayValue(value.gaps).map(coerceGap) } : {}),
-    ...(stringValue(value.validationStrategy) !== undefined ? { validationStrategy: stringValue(value.validationStrategy) } : {}),
-    ...(stringValue(value.error) !== undefined ? { error: stringValue(value.error) } : {}),
-  };
-}
-
 function reduceDigestForAtomOutput(output: PlanningAtomOutput): PlanningReduceDigest {
   if (output.reduceDigest) return output.reduceDigest;
   const fragments = output.planFragments ?? [];
@@ -200,64 +174,3 @@ function boundedOrReference(value: string | undefined, fallback: string): string
 }
 
 function uniq(values: string[]): string[] { return [...new Set(values.filter((value) => value.trim().length > 0))].sort(); }
-
-function coercePlanFragment(value: unknown): PlanningAtomPlanFragment {
-  const record = objectValue(value);
-  return { fragmentId: requiredString(record.fragmentId, 'plan fragment id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), markdown: requiredString(record.markdown, 'plan fragment markdown'), ...(stringArrayValue(record.dependsOnFragmentIds).length > 0 ? { dependsOnFragmentIds: stringArrayValue(record.dependsOnFragmentIds) } : {}) };
-}
-
-function coerceModuleCandidate(value: unknown): PlanningAtomModuleCandidate {
-  const record = objectValue(value);
-  return { moduleId: requiredString(record.moduleId, 'module candidate id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), description: requiredString(record.description, 'module candidate description'), validationExpectation: requiredString(record.validationExpectation, 'module candidate validation expectation'), ...(stringArrayValue(record.dependsOnModuleIds).length > 0 ? { dependsOnModuleIds: stringArrayValue(record.dependsOnModuleIds) } : {}) };
-}
-
-function coerceConflict(value: unknown): PlanningReduceConflict {
-  const record = objectValue(value);
-  return { conflictId: requiredString(record.conflictId, 'conflict id'), title: stringValue(record.title) ?? '', criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), description: requiredString(record.description, 'conflict description'), ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}) };
-}
-
-function coerceGap(value: unknown): PlanningReduceGap {
-  const record = objectValue(value);
-  return {
-    gapId: requiredString(record.gapId, 'gap id'),
-    title: stringValue(record.title) ?? '',
-    criterionIds: stringArrayValue(record.criterionIds),
-    aspectIds: stringArrayValue(record.aspectIds),
-    description: requiredString(record.description, 'gap description'),
-    representationRequired: record.representationRequired === true,
-    ...(stringArrayValue(record.sourceIds).length > 0 ? { sourceIds: stringArrayValue(record.sourceIds) } : {}),
-    ...(reduceGapIssueKind(record.issueKind) ? { issueKind: reduceGapIssueKind(record.issueKind) } : {}),
-    ...(typeof record.sourceLocalizationSignal === 'boolean' ? { sourceLocalizationSignal: record.sourceLocalizationSignal } : {}),
-    ...(stringArrayValue(record.sourceNeedIds).length > 0 ? { sourceNeedIds: stringArrayValue(record.sourceNeedIds) } : {}),
-    ...(stringArrayValue(record.affectedAtomIds).length > 0 ? { affectedAtomIds: stringArrayValue(record.affectedAtomIds) } : {}),
-    ...(stringArrayValue(record.ownerPaths).length > 0 ? { ownerPaths: stringArrayValue(record.ownerPaths) } : {}),
-    ...(stringArrayValue(record.productScopedOutputRefs).length > 0 ? { productScopedOutputRefs: stringArrayValue(record.productScopedOutputRefs) } : {}),
-    ...(stringArrayValue(record.productScopedValidationRefs).length > 0 ? { productScopedValidationRefs: stringArrayValue(record.productScopedValidationRefs) } : {}),
-  };
-}
-
-function reduceGapIssueKind(value: unknown): PlanningReduceGap['issueKind'] | undefined {
-  return value === 'generic' || value === 'missing-owner-path' || value === 'missing-contract-evidence' || value === 'missing-entrypoint-evidence' || value === 'missing-config-evidence' || value === 'missing-consumer-surface-evidence' || value === 'directory-only-evidence' || value === 'missing-materialized-source' || value === 'localization-ambiguity' ? value : undefined;
-}
-
-function reduceStatus(value: unknown): PlanningReduceOutputStatus | undefined {
-  return value === 'completed' || value === 'failed' || value === 'incomplete' ? value : undefined;
-}
-
-function objectValue(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
-  throw new Error('Reducer output contains invalid object');
-}
-
-function objectValueOrUndefined(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-}
-
-function arrayValue(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
-function stringValue(value: unknown): string | undefined { return typeof value === 'string' ? value : undefined; }
-function stringArrayValue(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []; }
-function requiredString(value: unknown, label: string): string {
-  const text = stringValue(value);
-  if (text === undefined) throw new Error(`Reducer output missing ${label}`);
-  return text;
-}

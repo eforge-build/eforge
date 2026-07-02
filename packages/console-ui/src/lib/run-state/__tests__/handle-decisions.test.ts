@@ -83,7 +83,7 @@ const planSetShapeDecision: PlanningDecision = {
 
 const buildPipelineDecision: PlanningDecision = {
   kind: 'build-pipeline-chosen',
-  rationale: 'Default pipeline stages for excursion',
+  rationale: 'Default pipeline stages',
   defaultBuild: ['implement', 'review-cycle'],
 };
 

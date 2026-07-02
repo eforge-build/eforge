@@ -18,7 +18,7 @@ const LocalizationOwnerStatusSchema = Type.Union([Type.Literal('resolved'), Type
 const EvidenceStatusSchema = Type.Union([Type.Literal('materialized'), Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded'), Type.Literal('none')]);
 const EvidenceFailureStatusSchema = Type.Union([Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded')]);
 
-export const CompilerDiagnosticsCoverageCriterionSchema = Type.Object({
+const CompilerDiagnosticsCoverageCriterionSchema = Type.Object({
   criterionId: boundedString(80),
   complete: Type.Boolean(),
   requiredAspectIds: boundedIds(240, 128),
@@ -28,7 +28,7 @@ export const CompilerDiagnosticsCoverageCriterionSchema = Type.Object({
   pendingAspectIds: boundedIds(240, 128),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsCoverageAspectSchema = Type.Object({
+const CompilerDiagnosticsCoverageAspectSchema = Type.Object({
   aspectId: boundedString(240),
   criterionId: boundedString(80),
   status: Type.Union([Type.Literal('pending'), Type.Literal('resolved'), Type.Literal('skipped'), Type.Literal('represented')]),
@@ -38,7 +38,7 @@ export const CompilerDiagnosticsCoverageAspectSchema = Type.Object({
   representedByModuleId: Type.Optional(boundedString(160)),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsGapSchema = Type.Object({
+const CompilerDiagnosticsGapSchema = Type.Object({
   gapId: boundedString(160),
   title: boundedString(240),
   reduceNodeId: boundedString(160),
@@ -57,7 +57,7 @@ export const CompilerDiagnosticsGapSchema = Type.Object({
   representedByCandidateId: Type.Optional(boundedString(160)),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsConflictSchema = Type.Object({
+const CompilerDiagnosticsConflictSchema = Type.Object({
   conflictId: boundedString(160),
   title: boundedString(240),
   reduceNodeId: boundedString(160),
@@ -70,7 +70,7 @@ export const CompilerDiagnosticsConflictSchema = Type.Object({
 
 const RepairCoverageEntrySchema = (idLength: number) => Type.Object({ id: boundedString(idLength), status: RepairCoverageStatusSchema }, { additionalProperties: false });
 
-export const CompilerDiagnosticsRepairAttemptSchema = Type.Object({
+const CompilerDiagnosticsRepairAttemptSchema = Type.Object({
   attempt: Type.Integer({ minimum: 0, maximum: 100 }),
   maxAttempts: Type.Integer({ minimum: 0, maximum: 100 }),
   status: RepairStatusSchema,
@@ -92,7 +92,7 @@ export const CompilerDiagnosticsRepairAttemptSchema = Type.Object({
   residueSynthesisBlocked: Type.Boolean(),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsResidueCandidateSchema = Type.Object({
+const CompilerDiagnosticsResidueCandidateSchema = Type.Object({
   candidateId: boundedString(160),
   title: boundedString(240),
   kind: Type.Union([Type.Literal('residue'), Type.Literal('follow-up')]),
@@ -105,7 +105,7 @@ export const CompilerDiagnosticsResidueCandidateSchema = Type.Object({
   sourceRefs: boundedIds(300, 32),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsEvidenceFailureSchema = Type.Object({
+const CompilerDiagnosticsEvidenceFailureSchema = Type.Object({
   path: boundedString(500),
   status: EvidenceFailureStatusSchema,
   reason: Type.Optional(boundedString(500)),
@@ -113,7 +113,7 @@ export const CompilerDiagnosticsEvidenceFailureSchema = Type.Object({
   referencedByAtomIds: boundedIds(160, 16),
 }, { additionalProperties: false });
 
-export const CompilerDiagnosticsSharedBriefBudgetEntrySchema = Type.Object({
+const CompilerDiagnosticsSharedBriefBudgetEntrySchema = Type.Object({
   code: Type.Union([Type.Literal('atom-section-demoted'), Type.Literal('section-dropped-unreferenced'), Type.Literal('section-dropped-total-budget')]),
   sectionId: boundedString(300),
   atomId: Type.Optional(boundedString(160)),

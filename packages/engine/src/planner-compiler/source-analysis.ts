@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
-import { extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from '../validation/acceptance-criteria.js';
 
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
-export interface RequirementRecord { id: string; text: string; raw: string; line: number; headingPath: string[]; byteStart: number; byteEnd: number; byteLength: number; subsystemHints: string[]; interfaceKeys: string[]; sharedFileKeys: string[]; evidence: string }
 
 const GENERIC_SURFACE_TERMS = ['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'api'];
 const PATH_LIKE_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g;
@@ -40,36 +38,6 @@ export function parseMarkdownLines(content: string): MarkdownLine[] {
   });
 }
 
-export function analyzePlanningSource(content: string): RequirementRecord[] {
-  const criteria = extractExpectedAcceptanceCriteria(content, { allowFallbackSections: true });
-  const lines = parseMarkdownLines(content);
-  const usedLines = new Set<number>();
-  return criteria.map((criterion) => locateRequirement(criterion, lines, usedLines));
-}
-
-function locateRequirement(criterion: ExpectedAcceptanceCriterion, lines: MarkdownLine[], usedLines: Set<number>): RequirementRecord {
-  const rawNorm = normalizeCriterionText(criterion.raw);
-  const textNorm = normalizeCriterionText(criterion.text);
-  const found = lines.find((line) => !usedLines.has(line.line) && (normalizeCriterionText(line.text) === rawNorm || normalizeCriterionText(line.text).includes(textNorm))) ?? lines.find((line) => !usedLines.has(line.line) && normalizeCriterionText(line.text).includes(textNorm));
-  const line = found ?? { line: 1, text: criterion.raw, startByte: 0, endByte: utf8ByteLength(criterion.raw), headingPath: [] };
-  usedLines.add(line.line);
-  const subsystemHints = inferSubsystemHints(`${criterion.text} ${line.headingPath.join(' ')}`);
-  return {
-    id: criterion.id,
-    text: criterion.text,
-    raw: criterion.raw,
-    line: line.line,
-    headingPath: line.headingPath,
-    byteStart: line.startByte,
-    byteEnd: line.endByte,
-    byteLength: Math.max(1, line.endByte - line.startByte),
-    subsystemHints,
-    interfaceKeys: inferInterfaceKeys(criterion.text),
-    sharedFileKeys: inferSharedFileKeys(criterion.text),
-    evidence: boundEvidence(criterion.text),
-  };
-}
-
 export function inferSubsystemHints(value: string): string[] {
   const lower = value.toLowerCase();
   const hints = new Set<string>();
@@ -85,10 +53,6 @@ export function inferInterfaceKeys(value: string): string[] {
   const keys = new Set(INTERFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([key]) => key));
   for (const surface of GENERIC_SURFACE_TERMS) if (new RegExp(`\\b${surface}s?\\b`, 'i').test(value)) keys.add(surface);
   return [...keys].sort();
-}
-
-export function inferSharedFileKeys(value: string): string[] {
-  return pathLikeValues(value).filter((candidate) => candidate.includes('/') && !candidate.endsWith('/')).sort();
 }
 
 function pathLikeValues(value: string): string[] {

@@ -846,7 +846,7 @@ export async function applyArchitectureReviewFixes(options: ApplyArchitectureRev
 /**
  * Inject a pipeline composition (and optionally override base_branch) into an existing orchestration.yaml.
  * Reads the YAML, adds/replaces the `pipeline` field, and writes it back.
- * Used by the pipeline after the composer and planner agents run.
+ * Used by the pipeline after the planner compiler runs.
  */
 export async function injectPipelineIntoOrchestrationYaml(
   orchestrationYamlPath: string,
@@ -867,7 +867,7 @@ export async function injectPipelineIntoOrchestrationYaml(
   // Backfill per-plan build/review from pipeline defaults for any plan that
   // omitted them. Planner submissions may now include per-plan build/review
   // overrides; writePlanSet passes them through when present. This step
-  // fills in the composer defaults only for plans that omitted them, so
+  // fills in the pipeline defaults only for plans that omitted them, so
   // parseOrchestrationConfig always sees both fields populated.
   if (Array.isArray(data.plans)) {
     data.plans = (data.plans as Array<Record<string, unknown>>).map((p) => ({

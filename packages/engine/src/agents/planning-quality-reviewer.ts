@@ -18,7 +18,7 @@ import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 /**
  * Options for the planning quality reviewer agent.
  */
-export interface PlanningQualityReviewerOptions extends SdkPassthroughConfig {
+interface PlanningQualityReviewerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
   harness: AgentHarness;
   /** The original source/PRD content to review plans against */

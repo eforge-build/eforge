@@ -26,7 +26,7 @@ export async function executePlanningReduceNode(input: Pick<RunPlanningReduceInp
   }
 }
 
-export function buildTaskForReduceNode(tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): PlanningReduceTask {
+function buildTaskForReduceNode(tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): PlanningReduceTask {
   const node = requireReduceNode(tree, nodeId);
   return buildPlanningReduceTask(
     tree,
@@ -53,7 +53,7 @@ export function incompleteReduceOutput(nodeId: string, error: string): PlanningR
   return { nodeId, status: 'incomplete', compactSummary: error, error };
 }
 
-export function requireReduceNode(tree: PlanningReduceTree, nodeId: string) {
+function requireReduceNode(tree: PlanningReduceTree, nodeId: string) {
   const node = tree.nodes.find((candidate) => candidate.nodeId === nodeId);
   if (!node) throw new Error(`missing reduce node:${nodeId}`);
   return node;

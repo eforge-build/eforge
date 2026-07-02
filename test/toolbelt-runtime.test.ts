@@ -359,7 +359,6 @@ describe('toolbelt resolution: eforge_engine is not in projectMcpServerNames', (
     // toolbelt: none → no project MCP servers (eforge_engine is internal, not counted here)
     expect(toolbeltSummary.projectMcpServerNames).toEqual([]);
     expect(toolbeltSummary.projectMcpSelection).toBe('none');
-    // The eforge_engine server would still be registered at run-time when customTools are present
-    // (tested via the debug payload in harness-debug-payload.toolbelt.test.ts)
+    // The eforge_engine server would still be registered at run-time when customTools are present.
   });
 });

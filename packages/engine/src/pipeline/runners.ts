@@ -246,13 +246,13 @@ export async function* runCompilePipeline(
     }
     if (ctx.skipped) break;
     // If the stage at our current position is still the one we just ran, it
-    // ran to completion — advance past it. This handles composers that shrink
+    // ran to completion — advance past it. This handles stages that shrink
     // or grow the list (e.g. ['planner', 'plan-review-cycle'] → ['planner'])
     // without triggering a re-run of the planner stage.
     //
     // If position i now holds a different stage, the current stage was
     // effectively short-circuited (e.g. plannerStage early-returned when the
-    // composer replaced the compile list). Restart from the top of the new list.
+    // planner replaced the compile list). Restart from the top of the new list.
     if (ctx.pipeline.compile[i] === stageName) {
       i++;
     } else {

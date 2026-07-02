@@ -1,7 +1,7 @@
 export type SourceLocalizationNeedKind = 'literal-path' | 'directory' | 'subsystem' | 'interface' | 'symbol' | 'keyword' | 'manifest' | 'entrypoint' | 'docs' | 'test' | 'config' | 'command' | 'route' | 'api' | 'ui' | 'extension' | 'consumer-surface';
 export type SourceLocalizationStatus = 'resolved' | 'partial' | 'unresolved' | 'ignored' | 'budget-exceeded';
 export type SourceLocalizationConfidence = 'high' | 'medium' | 'low';
-export type SourceLocalizationDiagnosticSeverity = 'info' | 'warning' | 'error';
+type SourceLocalizationDiagnosticSeverity = 'info' | 'warning' | 'error';
 
 export interface SourceLocalizationDiagnostic { code: string; message: string; severity: SourceLocalizationDiagnosticSeverity; needId?: string; path?: string }
 export interface SourceLocalizationCandidate { path: string; confidence: SourceLocalizationConfidence; score: number; reason: string; signals: string[] }
@@ -11,7 +11,7 @@ export interface SourceLocalizationBundle { sourceHash?: string; graphId?: strin
 export interface SourceLocalizationHint { kind: SourceLocalizationNeedKind; query: string; paths?: string[]; keywords?: string[]; subsystemHints?: string[]; interfaceKeys?: string[]; criterionIds?: string[]; aspectIds?: string[]; atomIds?: string[] }
 export interface SourceLocalizationInputHints { ignorePrefixes?: string[]; ignoreGlobs?: string[]; projectHints?: SourceLocalizationHint[] }
 export interface SourceLocalizationLimits { maxIndexedFiles: number; maxCandidateFilesPerNeed: number; maxSurfaceCandidatesPerNeed: number; maxDirectoryExpansionFiles: number; maxBytesPerScannedFile: number; maxTotalScannedBytes: number }
-export interface NormalizedSourceLocalizationInputs { hints: SourceLocalizationInputHints; limits: SourceLocalizationLimits; diagnostics: SourceLocalizationDiagnostic[] }
+interface NormalizedSourceLocalizationInputs { hints: SourceLocalizationInputHints; limits: SourceLocalizationLimits; diagnostics: SourceLocalizationDiagnostic[] }
 
 export const DEFAULT_SOURCE_LOCALIZATION_LIMITS: SourceLocalizationLimits = {
   maxIndexedFiles: 10_000,

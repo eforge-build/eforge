@@ -15,7 +15,7 @@ import type { PlanningQualityReviewSubmission } from './schemas.js';
 
 type PlanningQualityReviewFix = PlanningQualityReviewSubmission['fixes'][number];
 
-export interface ApplyPlanningQualityReviewFixesOptions {
+interface ApplyPlanningQualityReviewFixesOptions {
   cwd: string;
   outputDir: string;
   planSetName: string;

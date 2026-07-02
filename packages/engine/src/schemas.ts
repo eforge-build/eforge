@@ -514,10 +514,10 @@ const orchestrationPlanSchema = Type.Object({
   id: Type.String({ minLength: 1, description: 'Plan ID matching a submitted plan' }),
   dependsOn: Type.Array(Type.String(), { description: 'IDs of plans this plan depends on' }),
   build: Type.Optional(Type.Array(pipelineBuildStageSpecSchema, {
-    description: "Per-plan build stage pipeline; if omitted, the composer's defaultBuild is used as a backfill",
+    description: 'Per-plan build stage pipeline; if omitted, the pipeline defaultBuild is used as a backfill',
   })),
   review: Type.Optional(Type.Object(pipelineReviewProfileConfigSchema.properties, {
-    description: "Per-plan review configuration; if omitted, the composer's defaultReview is used as a backfill",
+    description: 'Per-plan review configuration; if omitted, the pipeline defaultReview is used as a backfill',
   })),
   buildRationale: Type.Optional(Type.String({
     description: "Why this plan's build stages differ from the default, or confirmation that the default is appropriate",

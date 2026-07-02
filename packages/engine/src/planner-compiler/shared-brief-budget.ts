@@ -1,7 +1,7 @@
 import type { PlanningAtomGraph } from './atom-graph.js';
 import { compareEvidenceOwnershipValue, type PlanningEvidenceOwnership, type SharedBriefBudgetDiagnostic, type SharedPlanningBriefLimits, type SharedPlanningBriefSection } from './shared-brief-contracts.js';
 
-export interface SectionBudgetSelectionInput {
+interface SectionBudgetSelectionInput {
   graph: PlanningAtomGraph;
   ownership: PlanningEvidenceOwnership[];
   sections: SharedPlanningBriefSection[];

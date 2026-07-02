@@ -4,7 +4,6 @@ import type { PlanningAtomOutput, PlanningAtomTask } from './atom-planning-contr
 import { buildPlanningReduceTask, buildPlanningReduceTree, buildPlanningReduceTreeFromAtomTasks, normalizePlanningReduceBudget, type PlanningReduceBudget, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput, type PlanningReduceTree } from './reduce-contracts.js';
 import { reduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, REDUCE_DIGEST_PROMPT_BUDGETING, type PlanningReduceDigest, type PlanningReduceDigestSourceKind } from './reduce-digest-contracts.js';
 import { formatPlanningReducerPrompt } from './reducer-agent.js';
-import { validateReduceTaskPromptBudget } from './reduce-execution.js';
 import { utf8ByteLength } from './source-analysis.js';
 
 const MIN_REDUCE_FAN_IN = REDUCE_DIGEST_PROMPT_BUDGETING.minReduceFanIn;
@@ -46,12 +45,6 @@ export function planPromptSafeReduceTreeFromTasks(input: PlanPromptSafeReduceTre
     atomOutputs,
     buildTree: (limits) => buildPlanningReduceTreeFromAtomTasks({ graph: input.graph, tasks: input.tasks, limits }),
   });
-}
-
-export function validateLaunchReducePrompt(input: { tree: PlanningReduceTree; nodeId: string; atomOutputs: PlanningAtomOutput[]; reduceOutputs: PlanningReduceOutput[] }): string[] {
-  const node = requireNode(input.tree, input.nodeId);
-  const task = buildPlanningReduceTask(input.tree, node, input.atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), input.reduceOutputs.filter((output) => node.inputNodeIds.includes(output.nodeId)));
-  return validateReduceTaskPromptBudget(task);
 }
 
 function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits: PlanningReduceLimits; acceptedCount: number; atomOutputs: PlanningAtomOutput[]; buildTree: (limits: PlanningReduceBudget) => PlanningReduceTree }): PromptSafeReduceTreePlan {
