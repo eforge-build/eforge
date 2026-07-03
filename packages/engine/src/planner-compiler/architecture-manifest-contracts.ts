@@ -59,8 +59,32 @@ export function renderArchitectureManifestFence(manifest: PlanningArchitectureMa
   return ['```json ' + ARCHITECTURE_MANIFEST_FENCE, JSON.stringify(manifest, null, 2), '```'].join('\n');
 }
 
+function architectureManifestFencePattern(): RegExp {
+  return new RegExp('```json ' + ARCHITECTURE_MANIFEST_FENCE + '\\n([\\s\\S]*?)\\n```');
+}
+
+/**
+ * Preserve the canonical machine-readable manifest fence across an agent-authored
+ * architecture.md replacement. The manifest is synthesized deterministically from
+ * compiler results; reviewer fixes may edit prose but must never hand-author the
+ * fence. Swaps any agent-written fence in the replacement for the existing file's
+ * (re-rendered) fence, appending it under the standard heading when the replacement
+ * omitted it. Returns the replacement unchanged when the existing content carries
+ * no schema-valid fence to preserve.
+ */
+export function preserveArchitectureManifestFence(existingContent: string, replacementContent: string): string {
+  const existing = parseArchitectureManifest(existingContent);
+  if (!existing.manifest) return replacementContent;
+  const canonicalFence = renderArchitectureManifestFence(existing.manifest);
+  const fencePattern = architectureManifestFencePattern();
+  // Replacer function: the canonical fence is inserted literally, so `$`-substitution
+  // patterns ($&, $', $`) inside the manifest JSON are never interpreted.
+  if (fencePattern.test(replacementContent)) return replacementContent.replace(fencePattern, () => canonicalFence);
+  return `${replacementContent.replace(/\n*$/, '')}\n\n## Machine-readable manifest\n\n${canonicalFence}\n`;
+}
+
 export function parseArchitectureManifest(markdown: string): { manifest?: PlanningArchitectureManifest; errors: string[] } {
-  const match = markdown.match(new RegExp('```json ' + ARCHITECTURE_MANIFEST_FENCE + '\\n([\\s\\S]*?)\\n```'));
+  const match = markdown.match(architectureManifestFencePattern());
   if (!match) return { errors: [`architecture manifest fence not found (${ARCHITECTURE_MANIFEST_FENCE})`] };
   let value: unknown;
   try {
