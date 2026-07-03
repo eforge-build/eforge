@@ -6,13 +6,7 @@
  * `buildMapReduceSummary` joins the two into the compact summary the Phase 2
  * card renders, and is pure so Storybook can fixture its output directly.
  */
-import type {
-  AgentThread,
-  MapReduceOrchestration,
-  PlanningMapReduceAtomReason,
-  PlanningMapReduceAtomStatus,
-  PlanningMapReduceReduceStatus,
-} from '../types';
+import type { AgentThread, MapReduceOrchestration } from '../types';
 
 export interface MapReduceAtomCounts {
   total: number;
@@ -107,146 +101,151 @@ export function buildMapReduceSummary(
   };
 }
 
-// --- eforge:region board ---
+// --- eforge:region timeline ---
 
-/**
- * Per-node enrichment joined from the matching `agentThreads` entry
- * (`planId === atomId / nodeId`). Null on a node whose agent has not started
- * yet (e.g. queued atoms, or skipped atoms that never spawn an agent).
- */
-export interface MapReduceBoardThread {
-  model: string;
-  totalTokens: number | null;
-  durationMs: number | null;
-  numTurns: number | null;
+/** Lane key hosting all map-atom agent threads on the pipeline timeline. */
+export const MAP_ATOMS_LANE_ID = 'map-atoms';
+
+/** Lane key for one reduce level (0-indexed wire depth). */
+export function reduceLaneId(depth: number): string {
+  return `reduce-level-${depth}`;
 }
 
-/** One node cell on the board: structure + status + the joined agent thread. */
-export interface MapReduceBoardNode {
-  /** atomId or nodeId — equal to the agent thread's `planId`. */
+/**
+ * One synthetic pipeline lane grouping the map/reduce member threads: the
+ * map-atoms lane, or one lane per reduce level. Threads inside a lane keep
+ * their true start/end times; the pipeline's interval packing fans genuinely
+ * concurrent members into stacked sub-rows within the single lane.
+ */
+export interface MapReduceTimelineLane {
   id: string;
-  kind: 'atom' | 'reduce';
-  title: string;
-  status: PlanningMapReduceAtomStatus | PlanningMapReduceReduceStatus;
-  statusReason?: string;
-  /** Atom decomposition reason; present only on `kind: 'atom'`. */
-  reason?: PlanningMapReduceAtomReason;
-  /** Reduce fan-in; present only on `kind: 'reduce'`. */
-  inputAtomIds?: string[];
-  inputNodeIds?: string[];
-  /** Reduce depth from the wire event; present only on `kind: 'reduce'`. */
-  depth?: number;
-  thread: MapReduceBoardThread | null;
+  label: string;
+  /** Status breakdown + skip/fail reasons, shown on the lane label tooltip. */
+  tooltip: string[];
+}
+
+/** Per-agent bar presentation for a map/reduce member thread. */
+export interface MapReduceThreadDisplay {
+  /** Inline bar label (the member id) shown instead of the generic agent role. */
+  barLabel: string;
+  /** Headline tooltip lines: member title, then status/reason when notable. */
+  tooltipLines: string[];
 }
 
 /**
- * A collapsible board section: the map-atoms group, or one reduce level.
- * Stacked top-to-bottom in the board (decision #5 — vertical sections, not columns).
+ * The pipeline-timeline projection of a map/reduce run: which lane each member
+ * (atomId / nodeId == agent `planId`) belongs to, the lane metadata, and the
+ * per-agent bar display joined from `agentThreads`.
  */
-export interface MapReduceBoardSection {
-  /** Stable key: `atoms` or `reduce-level-<depth>`. */
-  key: string;
-  title: string;
-  kind: 'atoms' | 'reduce';
-  /** Reduce depth from the wire event (0-indexed); null for the atoms section. */
-  depth: number | null;
-  nodes: MapReduceBoardNode[];
-  /** True when any node in this section is queued or running — the active level. */
-  active: boolean;
+export interface MapReduceTimelineModel {
+  laneIdByMember: Record<string, string>;
+  /** Grouped lanes in execution order: map atoms first, then reduce levels ascending. */
+  lanes: MapReduceTimelineLane[];
+  laneIds: ReadonlySet<string>;
+  displayByAgentId: Record<string, MapReduceThreadDisplay>;
 }
 
-export interface MapReduceBoard {
-  graphId: string;
-  sections: MapReduceBoardSection[];
+interface StatusTally {
+  counts: Map<string, number>;
+  reasons: string[];
 }
 
-function joinThread(planId: string, byPlanId: Map<string, AgentThread>): MapReduceBoardThread | null {
-  const thread = byPlanId.get(planId);
-  if (!thread) return null;
-  return {
-    model: thread.model,
-    totalTokens: thread.totalTokens,
-    durationMs: thread.durationMs,
-    numTurns: thread.numTurns,
-  };
+function tallyStatus(tally: StatusTally, id: string, status: string, statusReason: string | undefined): void {
+  tally.counts.set(status, (tally.counts.get(status) ?? 0) + 1);
+  if (statusReason && (status === 'skipped' || status === 'failed' || status === 'incomplete')) {
+    tally.reasons.push(`${id} ${status}: ${statusReason}`);
+  }
 }
 
-const ATOM_ACTIVE: ReadonlySet<PlanningMapReduceAtomStatus> = new Set(['queued', 'running']);
-const REDUCE_ACTIVE: ReadonlySet<PlanningMapReduceReduceStatus> = new Set(['queued', 'running']);
+const MAX_TOOLTIP_REASONS = 5;
+
+function tallyTooltip(noun: string, total: number, tally: StatusTally): string[] {
+  const parts: string[] = [];
+  for (const status of ['running', 'completed', 'skipped', 'failed', 'incomplete', 'queued']) {
+    const count = tally.counts.get(status) ?? 0;
+    if (count > 0) parts.push(`${count} ${status === 'completed' ? 'done' : status}`);
+  }
+  const lines = [`${total} ${noun}${total === 1 ? '' : 's'}${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`];
+  lines.push(...tally.reasons.slice(0, MAX_TOOLTIP_REASONS));
+  if (tally.reasons.length > MAX_TOOLTIP_REASONS) {
+    lines.push(`…and ${tally.reasons.length - MAX_TOOLTIP_REASONS} more`);
+  }
+  return lines;
+}
 
 /**
- * Builds the stage board: a `Map atoms` section followed by one `Reduce level N`
- * section per reduce depth (ascending), with each node enriched by its agent
- * thread. Pure, so Storybook fixtures the output directly. Per-node cost/tokens
- * come from `agentThreads`; structure and status come from `mapReduce`.
+ * Builds the timeline grouping for a map/reduce run: atoms collapse into one
+ * `Map atoms` lane and reduce nodes into one lane per level, so the generic
+ * pipeline renders the whole orchestration without a row per atom (the wall).
+ * Pure; structure/status come from `mapReduce`, bar labels join `agentThreads`
+ * by `planId`.
  */
-export function buildMapReduceBoard(
+export function buildMapReduceTimeline(
   mapReduce: MapReduceOrchestration,
   agentThreads: AgentThread[],
-): MapReduceBoard {
-  const byPlanId = new Map<string, AgentThread>();
-  for (const thread of agentThreads) {
-    if (thread.planId !== undefined && !byPlanId.has(thread.planId)) {
-      byPlanId.set(thread.planId, thread);
-    }
-  }
+): MapReduceTimelineModel {
+  const laneIdByMember: Record<string, string> = {};
+  const lanes: MapReduceTimelineLane[] = [];
 
-  const atomNodes: MapReduceBoardNode[] = [];
-  let atomsActive = false;
+  const atomTally: StatusTally = { counts: new Map(), reasons: [] };
+  const titleByMember = new Map<string, { title: string; status: string; statusReason?: string }>();
   for (const atomId of mapReduce.atomOrder) {
     const atom = mapReduce.atoms[atomId];
     if (!atom) continue;
-    if (ATOM_ACTIVE.has(atom.status)) atomsActive = true;
-    atomNodes.push({
-      id: atom.atomId,
-      kind: 'atom',
-      title: atom.title,
-      status: atom.status,
-      ...(atom.statusReason !== undefined ? { statusReason: atom.statusReason } : {}),
-      reason: atom.reason,
-      thread: joinThread(atom.atomId, byPlanId),
+    laneIdByMember[atomId] = MAP_ATOMS_LANE_ID;
+    titleByMember.set(atomId, { title: atom.title, status: atom.status, statusReason: atom.statusReason });
+    tallyStatus(atomTally, atomId, atom.status, atom.statusReason);
+  }
+  const atomTotal = Object.keys(laneIdByMember).length;
+  if (atomTotal > 0) {
+    lanes.push({
+      id: MAP_ATOMS_LANE_ID,
+      label: `Map atoms (${atomTotal})`,
+      tooltip: tallyTooltip('map atom', atomTotal, atomTally),
     });
   }
 
-  const sections: MapReduceBoardSection[] = [
-    { key: 'atoms', title: `Map atoms (${atomNodes.length})`, kind: 'atoms', depth: null, nodes: atomNodes, active: atomsActive },
-  ];
-
-  // Group reduce nodes by wire depth (ascending) into one section per display level.
-  const byDepth = new Map<number, MapReduceBoardNode[]>();
-  const activeByDepth = new Map<number, boolean>();
+  // One lane per reduce level, ascending. Wire depth is 0-indexed; display is
+  // 1-indexed ("Reduce L1" reads as the first level).
+  const depthTallies = new Map<number, { tally: StatusTally; total: number }>();
   for (const nodeId of mapReduce.reduceOrder) {
     const node = mapReduce.reduceNodes[nodeId];
     if (!node) continue;
-    const bucket = byDepth.get(node.depth) ?? [];
-    bucket.push({
-      id: node.nodeId,
-      kind: 'reduce',
-      title: node.nodeId,
-      status: node.status,
-      ...(node.statusReason !== undefined ? { statusReason: node.statusReason } : {}),
-      inputAtomIds: node.inputAtomIds,
-      inputNodeIds: node.inputNodeIds,
-      depth: node.depth,
-      thread: joinThread(node.nodeId, byPlanId),
-    });
-    byDepth.set(node.depth, bucket);
-    if (REDUCE_ACTIVE.has(node.status)) activeByDepth.set(node.depth, true);
+    laneIdByMember[nodeId] = reduceLaneId(node.depth);
+    titleByMember.set(nodeId, { title: nodeId, status: node.status, statusReason: node.statusReason });
+    const entry = depthTallies.get(node.depth) ?? { tally: { counts: new Map(), reasons: [] }, total: 0 };
+    entry.total += 1;
+    tallyStatus(entry.tally, nodeId, node.status, node.statusReason);
+    depthTallies.set(node.depth, entry);
   }
-
-  for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
-    sections.push({
-      key: `reduce-level-${depth}`,
-      // 1-indexed display ("level 1" reads as the first level, not "0").
-      title: `Reduce level ${depth + 1}`,
-      kind: 'reduce',
-      depth,
-      nodes: byDepth.get(depth)!,
-      active: activeByDepth.get(depth) === true,
+  const depths = [...depthTallies.keys()].sort((a, b) => a - b);
+  for (const depth of depths) {
+    const { tally, total } = depthTallies.get(depth)!;
+    lanes.push({
+      id: reduceLaneId(depth),
+      label: depths.length === 1 ? `Reduce (${total})` : `Reduce L${depth + 1} (${total})`,
+      tooltip: tallyTooltip('reduce node', total, tally),
     });
   }
 
-  return { graphId: mapReduce.graphId, sections };
+  const displayByAgentId: Record<string, MapReduceThreadDisplay> = {};
+  for (const thread of agentThreads) {
+    if (thread.planId === undefined) continue;
+    const member = titleByMember.get(thread.planId);
+    if (!member) continue;
+    const tooltipLines = [member.title === thread.planId ? member.title : `${thread.planId} — ${member.title}`];
+    if (member.status !== 'completed' && member.status !== 'running') {
+      tooltipLines.push(member.statusReason ? `${member.status}: ${member.statusReason}` : member.status);
+    }
+    displayByAgentId[thread.agentId] = { barLabel: thread.planId, tooltipLines };
+  }
+
+  return {
+    laneIdByMember,
+    lanes,
+    laneIds: new Set(lanes.map((lane) => lane.id)),
+    displayByAgentId,
+  };
 }
 
-// --- eforge:endregion board ---
+// --- eforge:endregion timeline ---

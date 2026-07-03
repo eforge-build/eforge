@@ -59,15 +59,14 @@ export type {
   PlanningLane,
 } from './selectors/plan-progress';
 export { selectStackLayersForRun } from './selectors/stack-layers';
-export { buildMapReduceSummary, buildMapReduceBoard } from './selectors/map-reduce';
+export { buildMapReduceSummary, buildMapReduceTimeline, MAP_ATOMS_LANE_ID, reduceLaneId } from './selectors/map-reduce';
 export type {
   MapReduceSummary,
   MapReduceAtomCounts,
   MapReduceReduceCounts,
-  MapReduceBoard,
-  MapReduceBoardSection,
-  MapReduceBoardNode,
-  MapReduceBoardThread,
+  MapReduceTimelineModel,
+  MapReduceTimelineLane,
+  MapReduceThreadDisplay,
 } from './selectors/map-reduce';
 
 // Lane registry

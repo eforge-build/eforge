@@ -6,7 +6,7 @@ import {
   handleMapReduceReduceStatus,
 } from '../handlers/handle-map-reduce';
 import { eforgeReducer, initialRunState, isMapReduceRun } from '../reducer';
-import { buildMapReduceSummary, buildMapReduceBoard } from '../selectors/map-reduce';
+import { buildMapReduceSummary, buildMapReduceTimeline } from '../selectors/map-reduce';
 import type { AgentThread, EforgeEvent, RunState } from '../types';
 
 function makeEvent<T extends EforgeEvent['type']>(type: T, extra: object): Extract<EforgeEvent, { type: T }> {
@@ -188,68 +188,86 @@ describe('buildMapReduceSummary', () => {
   });
 });
 
-describe('buildMapReduceBoard', () => {
+describe('buildMapReduceTimeline', () => {
   function baseState(): RunState {
     const events: Array<{ event: EforgeEvent; eventId: string }> = [
       { event: ATOMS_EVENT, eventId: 'e1' },
       { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-a', status: 'completed' }), eventId: 'e2' },
       { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-b', status: 'running' }), eventId: 'e3' },
-      { event: TREE_EVENT, eventId: 'e4' },
-      { event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'running' }), eventId: 'e5' },
+      { event: makeEvent('planning:map-reduce:atom:status', { atomId: 'atom-c', status: 'skipped', reason: 'covered elsewhere' }), eventId: 'e4' },
+      { event: TREE_EVENT, eventId: 'e5' },
+      { event: makeEvent('planning:map-reduce:reduce:status', { nodeId: 'reduce-000', status: 'running' }), eventId: 'e6' },
     ];
     return eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events });
   }
 
-  function thread(planId: string): AgentThread {
+  function thread(planId: string, agentId = planId): AgentThread {
     return {
-      agentId: planId, agent: 'planner', planId, startedAt: '', endedAt: null, durationMs: 12_000,
+      agentId, agent: 'planner', planId, startedAt: '', endedAt: null, durationMs: 12_000,
       inputTokens: 100, outputTokens: 20, totalTokens: 120, cacheRead: null,
       cacheCreation: null, costUsd: 0.5, numTurns: 2, model: 'claude',
     };
   }
 
-  it('produces a Map atoms section followed by one section per reduce depth, ascending', () => {
-    const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    expect(board.sections.map((s) => s.key)).toEqual(['atoms', 'reduce-level-0', 'reduce-level-1']);
-    expect(board.sections[0].kind).toBe('atoms');
-    expect(board.sections[1].depth).toBe(0);
-    expect(board.sections[2].depth).toBe(1);
-    // Level labels are 1-indexed for display.
-    expect(board.sections[1].title).toBe('Reduce level 1');
-    expect(board.sections[2].title).toBe('Reduce level 2');
+  it('maps every atom to the map-atoms lane and reduce nodes to one lane per depth', () => {
+    const model = buildMapReduceTimeline(baseState().mapReduce!, []);
+    expect(model.laneIdByMember).toEqual({
+      'atom-a': 'map-atoms',
+      'atom-b': 'map-atoms',
+      'atom-c': 'map-atoms',
+      'reduce-000': 'reduce-level-0',
+      'reduce-001': 'reduce-level-1',
+    });
+    expect(model.lanes.map((l) => l.id)).toEqual(['map-atoms', 'reduce-level-0', 'reduce-level-1']);
+    expect([...model.laneIds].sort()).toEqual(['map-atoms', 'reduce-level-0', 'reduce-level-1']);
   });
 
-  it('marks a section active when it has a queued or running node', () => {
-    const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    // atom-b running -> atoms active; reduce-000 running -> level 1 active; level 2 only queued -> active.
-    expect(board.sections[0].active).toBe(true);
-    expect(board.sections[1].active).toBe(true);
-    expect(board.sections[2].active).toBe(true);
+  it('labels lanes with member counts and 1-indexed reduce levels when multi-level', () => {
+    const model = buildMapReduceTimeline(baseState().mapReduce!, []);
+    expect(model.lanes[0].label).toBe('Map atoms (3)');
+    expect(model.lanes[1].label).toBe('Reduce L1 (1)');
+    expect(model.lanes[2].label).toBe('Reduce L2 (1)');
   });
 
-  it('joins each node to its agent thread by planId, leaving threadless nodes null', () => {
-    const board = buildMapReduceBoard(baseState().mapReduce!, [thread('atom-a'), thread('reduce-000')]);
-    const atoms = board.sections[0].nodes;
-    const completed = atoms.find((n) => n.id === 'atom-a')!;
-    expect(completed.thread).toEqual({ model: 'claude', totalTokens: 120, durationMs: 12_000, numTurns: 2 });
-    // atom-b has no thread.
-    expect(atoms.find((n) => n.id === 'atom-b')!.thread).toBeNull();
-    // reduce node enriched too.
-    expect(board.sections[1].nodes[0].thread?.model).toBe('claude');
+  it('labels a single-level reduce lane without a level suffix', () => {
+    const singleTree = makeEvent('planning:map-reduce:reduce-tree', {
+      graphId: 'g1',
+      rootNodeId: 'reduce-000',
+      maxDepth: 0,
+      nodeCount: 1,
+      nodes: [{ nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-a'], inputNodeIds: [] }],
+    });
+    const state = eforgeReducer(initialRunState, {
+      type: 'BATCH_LOAD',
+      events: [{ event: ATOMS_EVENT, eventId: 'e1' }, { event: singleTree, eventId: 'e2' }],
+    });
+    const model = buildMapReduceTimeline(state.mapReduce!, []);
+    expect(model.lanes[1].label).toBe('Reduce (1)');
   });
 
-  it('carries reduce fan-in (inputAtomIds / inputNodeIds) on reduce nodes', () => {
-    const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    const root = board.sections[2].nodes[0];
-    expect(root.kind).toBe('reduce');
-    expect(root.inputAtomIds).toEqual(['atom-c']);
-    expect(root.inputNodeIds).toEqual(['reduce-000']);
+  it('summarizes status counts and skip reasons in the lane tooltip', () => {
+    const model = buildMapReduceTimeline(baseState().mapReduce!, []);
+    expect(model.lanes[0].tooltip[0]).toBe('3 map atoms: 1 running, 1 done, 1 skipped');
+    expect(model.lanes[0].tooltip[1]).toBe('atom-c skipped: covered elsewhere');
+    expect(model.lanes[1].tooltip[0]).toBe('1 reduce node: 1 running');
   });
 
-  it('carries the atom decomposition reason on atom nodes', () => {
-    const board = buildMapReduceBoard(baseState().mapReduce!, []);
-    const atomB = board.sections[0].nodes.find((n) => n.id === 'atom-b')!;
-    expect(atomB.kind).toBe('atom');
-    expect(atomB.reason).toBe('general');
+  it('builds per-agent bar display for member threads only, titled from the atom', () => {
+    const model = buildMapReduceTimeline(baseState().mapReduce!, [
+      thread('atom-a', 'agent-1'),
+      thread('reduce-000', 'agent-2'),
+      thread('planning', 'agent-3'), // not a member — no display entry
+    ]);
+    expect(model.displayByAgentId['agent-1']).toEqual({ barLabel: 'atom-a', tooltipLines: ['atom-a — A'] });
+    expect(model.displayByAgentId['agent-2']).toEqual({ barLabel: 'reduce-000', tooltipLines: ['reduce-000'] });
+    expect(model.displayByAgentId['agent-3']).toBeUndefined();
+  });
+
+  it('appends a status line to the bar tooltip for non-running, non-completed members', () => {
+    const model = buildMapReduceTimeline(baseState().mapReduce!, [thread('atom-c', 'agent-c')]);
+    expect(model.displayByAgentId['agent-c'].tooltipLines).toEqual([
+      'atom-c — C',
+      'skipped: covered elsewhere',
+    ]);
   });
 });

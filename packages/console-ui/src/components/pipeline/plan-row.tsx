@@ -3,7 +3,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/run-state/format';
-import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/run-state';
+import type { AgentThread, StoredEvent, DecisionPoint, Decision, MapReduceTimelineLane, MapReduceThreadDisplay } from '@/lib/run-state';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { DecisionTimeline } from './decision-timeline';
 import {
@@ -50,6 +50,10 @@ interface PlanRowProps {
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
   decisions?: DecisionPoint[];
+  /** Map/reduce group-lane label + status tooltip (overrides the plain planId pill). */
+  laneDisplay?: MapReduceTimelineLane;
+  /** Per-agent bar label/tooltip overrides for map/reduce member threads, keyed by agentId. */
+  threadDisplay?: Record<string, MapReduceThreadDisplay>;
   onDecisionSelect?: (decision: Decision) => void;
   onAgentSelect?: (agentId: string) => void;
   onStageSelect?: (stage: string) => void;
@@ -87,7 +91,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, laneDisplay, threadDisplay, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   // Pack agent threads into the minimum number of lanes so sequential agents
@@ -176,6 +180,27 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
         </div>
       );
     }
+    if (laneDisplay) {
+      return (
+        <div className="flex items-stretch gap-1.5 min-w-0">
+          <DepthBars depth={depth ?? 0} />
+          <div className="flex-1 min-w-0 mt-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`${planPillClassFor(depth ?? 0)} cursor-default max-w-full`}>
+                  <span className="truncate min-w-0">{laneDisplay.label}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {laneDisplay.tooltip.map((line, i) => (
+                  <div key={i} className={i === 0 ? undefined : 'opacity-70'}>{line}</div>
+                ))}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      );
+    }
     // Fallback: pill label
     return (
       <div className="flex items-stretch gap-1.5 min-w-0">
@@ -240,6 +265,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
               : isRunning
                 ? 'running...'
                 : formatDuration(threadEnd - threadStart);
+            const display = threadDisplay?.[thread.agentId];
             const rawStage = AGENT_TO_STAGE[thread.agent as AgentRole];
             const stripStage = rawStage ? resolveBuildStage(rawStage, buildStages) : undefined;
             const isStripHighlighted = hoveredStage !== null && hoveredStage === stripStage;
@@ -267,13 +293,22 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                       />
                       {showLabel && (
                         <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
-                          {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
+                          {display?.barLabel ?? thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
                         </span>
                       )}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    <div className="font-medium">{thread.agent}</div>
+                    {display ? (
+                      <>
+                        {display.tooltipLines.map((line, i) => (
+                          <div key={i} className={i === 0 ? 'font-medium' : 'opacity-70'}>{line}</div>
+                        ))}
+                        <div className="opacity-50 text-10px">{thread.agent}</div>
+                      </>
+                    ) : (
+                      <div className="font-medium">{thread.agent}</div>
+                    )}
                     {(thread.harness || thread.model) && (
                       <div className="opacity-50 text-10px">
                         {[thread.harness, thread.model].filter(Boolean).join(' · ')}

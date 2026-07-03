@@ -63,29 +63,60 @@ function renderPipeline(props: Partial<ComponentProps<typeof ThreadPipeline>> = 
   );
 }
 
-describe('ThreadPipeline map/reduce lane suppression', () => {
-  const atomThreadA = makeThread({ planId: 'atom-a', agent: 'planner', startedAt: '2025-01-01T00:01:00.000Z' });
-  const atomThreadB = makeThread({ planId: 'atom-b', agent: 'planner', startedAt: '2025-01-01T00:02:00.000Z' });
-  const reduceThread = makeThread({ planId: 'reduce-000', agent: 'planner', startedAt: '2025-01-01T00:03:00.000Z' });
+describe('ThreadPipeline map/reduce lane grouping', () => {
+  const atomThreadA = makeThread({ agentId: 'agent-atom-a', planId: 'atom-a', agent: 'planner', startedAt: '2025-01-01T00:01:00.000Z' });
+  const atomThreadB = makeThread({ agentId: 'agent-atom-b', planId: 'atom-b', agent: 'planner', startedAt: '2025-01-01T00:02:00.000Z' });
+  const reduceThread = makeThread({ agentId: 'agent-reduce', planId: 'reduce-000', agent: 'planner', startedAt: '2025-01-01T00:03:00.000Z' });
 
-  it('renders one lane per atom/reduce thread when no suppression set is provided', () => {
+  const mapReduceModel = {
+    laneIdByMember: { 'atom-a': 'map-atoms', 'atom-b': 'map-atoms', 'reduce-000': 'reduce-level-0' },
+    lanes: [
+      { id: 'map-atoms', label: 'Map atoms (2)', tooltip: ['2 map atoms: 1 running, 1 done'] },
+      { id: 'reduce-level-0', label: 'Reduce (1)', tooltip: ['1 reduce node: 1 running'] },
+    ],
+    laneIds: new Set(['map-atoms', 'reduce-level-0']),
+    displayByAgentId: {
+      'agent-atom-a': { barLabel: 'atom-a', tooltipLines: ['atom-a — A'] },
+      'agent-atom-b': { barLabel: 'atom-b', tooltipLines: ['atom-b — B'] },
+      'agent-reduce': { barLabel: 'reduce-000', tooltipLines: ['reduce-000'] },
+    },
+  };
+
+  it('renders one lane per atom/reduce thread when no map/reduce model is provided', () => {
     renderPipeline({ agentThreads: [atomThreadA, atomThreadB, reduceThread] });
     expect(screen.getByText('atom-a')).toBeTruthy();
     expect(screen.getByText('atom-b')).toBeTruthy();
     expect(screen.getByText('reduce-000')).toBeTruthy();
   });
 
-  it('omits suppressed atom/reduce lanes (the map/reduce wall) while keeping other lanes', () => {
-    const planThread = makeThread({ planId: 'planning', agent: 'planner', startedAt: '2025-01-01T00:00:30.000Z' });
+  it('collapses member threads into the grouped lanes with member-id bar labels', () => {
+    const planThread = makeThread({ planId: 'planning', agent: 'plan-reviewer', startedAt: '2025-01-01T00:04:00.000Z' });
     renderPipeline({
       agentThreads: [atomThreadA, atomThreadB, reduceThread, planThread],
-      suppressedLaneIds: new Set(['atom-a', 'atom-b', 'reduce-000']),
+      mapReduce: mapReduceModel,
     });
-    expect(screen.queryByText('atom-a')).toBeNull();
-    expect(screen.queryByText('atom-b')).toBeNull();
-    expect(screen.queryByText('reduce-000')).toBeNull();
-    // The non-suppressed planning lane still renders.
+    // Grouped lane labels render instead of one row per member.
+    expect(screen.getByText('Map atoms (2)')).toBeTruthy();
+    expect(screen.getByText('Reduce (1)')).toBeTruthy();
+    // Bars are labeled by member id (the planner role label is replaced).
+    expect(screen.getByText('atom-a')).toBeTruthy();
+    expect(screen.getByText('atom-b')).toBeTruthy();
+    expect(screen.getByText('reduce-000')).toBeTruthy();
+    // Other lanes are unaffected.
     expect(screen.getByText('Planning')).toBeTruthy();
+  });
+
+  it('keeps the grouped lanes when plan artifacts exist (post-compile context)', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'implement' },
+      agentThreads: [atomThreadA, atomThreadB, reduceThread],
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      mapReduce: mapReduceModel,
+    });
+    expect(screen.getByText('Map atoms (2)')).toBeTruthy();
+    expect(screen.getByText('Reduce (1)')).toBeTruthy();
+    expect(screen.getByText('Plan 01')).toBeTruthy();
   });
 });
 

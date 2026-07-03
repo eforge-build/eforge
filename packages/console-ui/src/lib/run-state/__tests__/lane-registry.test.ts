@@ -21,6 +21,11 @@ describe('laneLabel', () => {
     expect(laneLabel('final-validation')).toBe('Final Validation');
   });
 
+  it('returns readable labels for the compile phase lanes', () => {
+    expect(laneLabel('satisfaction-gate')).toBe('Satisfaction Gate');
+    expect(laneLabel('repository-exploration')).toBe('Repo Exploration');
+  });
+
   it('returns "Plan NN" for plan-NN-* ids', () => {
     expect(laneLabel('plan-01')).toBe('Plan 01');
     expect(laneLabel('plan-01-some-feature')).toBe('Plan 01');
@@ -33,8 +38,10 @@ describe('laneLabel', () => {
 });
 
 describe('laneOrder', () => {
-  it('returns 0 for planning', () => {
+  it('returns 0 for the planning-tier lanes', () => {
     expect(laneOrder('planning')).toBe(0);
+    expect(laneOrder('satisfaction-gate')).toBe(0);
+    expect(laneOrder('repository-exploration')).toBe(0);
   });
 
   it('returns 1 for plan-NN ids (plan tier)', () => {
@@ -75,7 +82,7 @@ describe('isRegisteredPhaseLane', () => {
 describe('LANE_REGISTRY', () => {
   it('contains all known phase lanes in order', () => {
     const ids = LANE_REGISTRY.map((e) => e.id);
-    expect(ids).toEqual(['planning', 'validation', 'gap-close', 'final-validation']);
+    expect(ids).toEqual(['planning', 'satisfaction-gate', 'repository-exploration', 'validation', 'gap-close', 'final-validation']);
   });
 
   it('all entries have kind "phase"', () => {
@@ -84,9 +91,9 @@ describe('LANE_REGISTRY', () => {
     }
   });
 
-  it('orders are strictly increasing', () => {
+  it('orders are non-decreasing (compile-tier lanes share order 0)', () => {
     for (let i = 1; i < LANE_REGISTRY.length; i++) {
-      expect(LANE_REGISTRY[i].order).toBeGreaterThan(LANE_REGISTRY[i - 1].order);
+      expect(LANE_REGISTRY[i].order).toBeGreaterThanOrEqual(LANE_REGISTRY[i - 1].order);
     }
   });
 });
