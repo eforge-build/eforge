@@ -60,6 +60,7 @@ import { ModelTracker, composeCommitMessage } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
+import { applyValidationProviderGuard } from './validation-provider-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
 import { inferStackParentFromDependencies } from './queue/stack-parent-inference.js';
 import { applyStackedDispatchValidation } from './queue/dispatch-validation.js';
@@ -745,6 +746,20 @@ export class EforgeEngine {
             type: 'plan:build:progress',
             planId,
             message: `Runtime guard: injected ${item} into sharded plan (shards do not self-verify; review-cycle is the integration gate)`,
+          };
+        }
+
+        // Runtime guard: loaded extension validation providers gate the build before
+        // review. The compiler derivation is pure and cannot see runtime extension
+        // config, so the extension-gated validate stage is injected here.
+        const validationGuard = applyValidationProviderGuard(planBuild, extensionValidationProviders);
+        planBuild = validationGuard.planBuild;
+        if (validationGuard.injected) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'plan:build:progress',
+            planId,
+            message: 'Runtime guard: injected validate stage (extension validation providers are loaded and gate the build before review)',
           };
         }
 
@@ -2462,6 +2477,20 @@ export class EforgeEngine {
             type: 'plan:build:progress',
             planId,
             message: `Runtime guard: injected ${item} into sharded plan (shards do not self-verify; review-cycle is the integration gate)`,
+          };
+        }
+
+        // Runtime guard: loaded extension validation providers gate the build before
+        // review. The compiler derivation is pure and cannot see runtime extension
+        // config, so the extension-gated validate stage is injected here.
+        const validationGuard = applyValidationProviderGuard(planBuild, extensionValidationProviders);
+        planBuild = validationGuard.planBuild;
+        if (validationGuard.injected) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'plan:build:progress',
+            planId,
+            message: 'Runtime guard: injected validate stage (extension validation providers are loaded and gate the build before review)',
           };
         }
 
