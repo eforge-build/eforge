@@ -22,8 +22,16 @@ export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduce
   const limits = normalizePlanningReduceBudget({ ...input.limits, maxInputsPerReduce: minFanIn });
   const pseudoMap = { outputs: input.graph.atoms.map((atom) => atomPlaceholderOutput(atom.atomId, atom.criterionIds)), coverage: emptyCoverage() };
   const tree = buildPlanningReduceTree({ graph: input.graph, mapResult: pseudoMap, limits });
-  const slots = tree.nodes.filter((node) => node.depth === 0).map((node) => maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }));
-  return slots.length > 0 ? Math.max(1, Math.min(...slots)) : limits.maxReduceDigestPromptBytes;
+  const levelZeroNodes = tree.nodes.filter((node) => node.depth === 0);
+  if (levelZeroNodes.length === 0) return limits.maxReduceDigestPromptBytes;
+  // Only the minimum slot across nodes matters, so thread it through as the
+  // search cap: structurally similar nodes confirm the cap with a single probe
+  // instead of re-running the full binary search per node.
+  let cap = Math.max(1, tree.limits.maxReducePromptBytes);
+  for (const node of levelZeroNodes) {
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }, cap);
+  }
+  return Math.max(1, cap);
 }
 
 export function planPromptSafeReduceTree(input: PlanPromptSafeReduceTreeInput): PromptSafeReduceTreePlan {
@@ -89,27 +97,35 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
 
 function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[]): number {
   if (tree.nodes.length === 0) return tree.limits.maxReduceDigestPromptBytes;
-  const nodeSlots = tree.nodes.map((node) => {
+  // Only the minimum slot across nodes matters, so thread it through as the
+  // search cap: structurally similar nodes confirm the cap with a single probe
+  // instead of re-running the full binary search per node.
+  let cap = Math.max(1, Math.min(tree.limits.maxReducePromptBytes, tree.limits.maxReduceDigestPromptBytes));
+  for (const node of tree.nodes) {
     const childOutputs = node.inputNodeIds.map((nodeId) => syntheticReduceOutput(requireNode(tree, nodeId), tree.limits.maxReduceDigestPromptBytes));
-    return maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs });
-  });
-  return Math.max(1, Math.min(...nodeSlots, tree.limits.maxReduceDigestPromptBytes));
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs }, cap);
+  }
+  return Math.max(1, cap);
 }
 
-function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }): number {
+function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }, maxBudget: number): number {
+  const fits = (digestBudget: number): boolean => {
+    const task = buildPlanningReduceTask(
+      withReduceBudget(tree, { ...tree.limits, maxReduceDigestPromptBytes: digestBudget }),
+      node,
+      inputs.atomOutputs.map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', digestBudget, node.criterionIds, node.aspectIds) }),
+      inputs.childOutputs.map((output) => ({ ...output, reduceDigest: syntheticDigest(output.nodeId, 'reduce', digestBudget, node.criterionIds, node.aspectIds) })),
+    );
+    return utf8ByteLength(formatPlanningReducerPrompt(task)) <= task.budget.maxReducePromptBytes;
+  };
+  const upper = Math.max(1, maxBudget);
+  if (fits(upper)) return upper;
   let low = 1;
-  let high = Math.max(1, tree.limits.maxReducePromptBytes);
+  let high = upper - 1;
   let best = 1;
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
-    const task = buildPlanningReduceTask(
-      withReduceBudget(tree, { ...tree.limits, maxReduceDigestPromptBytes: mid }),
-      node,
-      inputs.atomOutputs.map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', mid, node.criterionIds, node.aspectIds) }),
-      inputs.childOutputs.map((output) => ({ ...output, reduceDigest: syntheticDigest(output.nodeId, 'reduce', mid, node.criterionIds, node.aspectIds) })),
-    );
-    const promptBytes = utf8ByteLength(formatPlanningReducerPrompt(task));
-    if (promptBytes <= task.budget.maxReducePromptBytes) { best = mid; low = mid + 1; }
+    if (fits(mid)) { best = mid; low = mid + 1; }
     else high = mid - 1;
   }
   return best;
