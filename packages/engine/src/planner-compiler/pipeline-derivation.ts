@@ -22,7 +22,8 @@ export const MULTI_SUBSYSTEM_COUNT = 3;
 export const MODERATE_REVIEW_MIN_SCORE = 1;
 export const HEAVY_REVIEW_MIN_SCORE = 3;
 
-const DERIVED_BUILD: readonly BuildStageSpec[] = Object.freeze(['implement']);
+const BASELINE_BUILD: readonly BuildStageSpec[] = Object.freeze(['implement', 'review-cycle']);
+const HEAVY_BUILD: readonly BuildStageSpec[] = Object.freeze(['implement', 'test-cycle', 'review-cycle']);
 const LIGHT_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'single' as const, perspectives: Object.freeze(['code']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 1, evaluatorStrictness: 'standard' as const });
 const MODERATE_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'auto' as const, perspectives: Object.freeze(['code', 'test']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 1, evaluatorStrictness: 'standard' as const });
 const HEAVY_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'parallel' as const, perspectives: Object.freeze(['code', 'security', 'test', 'verify']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 2, evaluatorStrictness: 'strict' as const });
@@ -41,7 +42,7 @@ export function derivePlanPipelineSettings(input: PlanPipelineRiskInputs): PlanP
   const highestScore = plans.reduce((max, plan) => Math.max(max, plan.risk.score), 0);
   return {
     plans,
-    defaultBuild: [...DERIVED_BUILD],
+    defaultBuild: [...buildForScore(highestScore)],
     defaultReview: cloneReview(reviewForScore(highestScore)),
     rationale: derivationRationale(plans, highestScore),
   };
@@ -51,12 +52,13 @@ function settingsForModule(module: PlanPipelineModuleSignals, input: PlanPipelin
   const factors = riskFactorsForModule(module, input, dependedOn);
   const score = factors.reduce((total, factor) => total + FACTOR_WEIGHTS[factor], 0);
   const review = reviewForScore(score);
+  const build = buildForScore(score);
   return {
     moduleId: module.moduleId,
-    build: [...DERIVED_BUILD],
+    build: [...build],
     review: cloneReview(review),
     risk: { moduleId: module.moduleId, score, factors },
-    rationale: moduleRationale(score, factors, review),
+    rationale: moduleRationale(score, factors, build, review),
   };
 }
 
@@ -113,13 +115,21 @@ function reviewForScore(score: number): ReviewProfileConfig {
   return LIGHT_REVIEW;
 }
 
+function buildForScore(score: number): readonly BuildStageSpec[] {
+  return score >= HEAVY_REVIEW_MIN_SCORE ? HEAVY_BUILD : BASELINE_BUILD;
+}
+
+function formatBuild(build: readonly BuildStageSpec[]): string {
+  return build.map((spec) => (Array.isArray(spec) ? `[${spec.join(', ')}]` : spec)).join(' -> ');
+}
+
 function cloneReview(review: ReviewProfileConfig): ReviewProfileConfig {
   return { strategy: review.strategy, perspectives: [...review.perspectives], maxRounds: review.maxRounds, evaluatorStrictness: review.evaluatorStrictness };
 }
 
-function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], review: ReviewProfileConfig): string {
+function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], build: readonly BuildStageSpec[], review: ReviewProfileConfig): string {
   const basis = factors.length > 0 ? `risk score ${score} (${factors.join(', ')})` : 'no risk factors';
-  return `${basis}; derived ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
+  return `${basis}; derived build ${formatBuild(build)} and ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
 }
 
 function derivationRationale(plans: DerivedPlanPipelineSettings[], highestScore: number): string {

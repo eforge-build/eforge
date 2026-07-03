@@ -25,10 +25,10 @@ describe('planning artifact synthesis', () => {
     expect(result.orchestration.modules).toEqual([{
       id: 'module-reduce-000-001',
       dependsOn: [],
-      build: ['implement'],
+      build: ['implement', 'review-cycle'],
       review: { strategy: expect.any(String), perspectives: expect.any(Array), maxRounds: expect.any(Number), evaluatorStrictness: expect.any(String) },
     }]);
-    expect(result.pipelineDefaults.defaultBuild).toEqual(['implement']);
+    expect(result.pipelineDefaults.defaultBuild).toEqual(['implement', 'review-cycle']);
     expect(result.pipelineDefaults.rationale).toContain('module-reduce-000-001');
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
   });
