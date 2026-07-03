@@ -518,14 +518,17 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           }
 
           let noCommittedChangesWaiverApplied = false;
+          // Per-plan waiver: compiler residue plans may find their represented work already satisfied by a dependency.
+          const planAllowsNoOpMerge = config.plans.find((entry) => entry.id === planId)?.allowNoOpMerge === true;
+          const noCommittedChangesReason = planAllowsNoOpMerge ? 'compiler residue plan: represented work may already be satisfied by completed dependencies' : ctx.validationPolicy?.noCommittedChangesReason;
 
           const commitSha = await ctx.worktreeManager.mergePlan(planId, plan, {
             mergeResolver: ctx.mergeResolver,
             recentlyMergedIds: ctx.recentlyMergedIds,
             planMap,
             modelTracker: perPlanTrackers.get(planId),
-            allowNoCommittedChanges: ctx.validationPolicy?.allowNoCommittedChanges,
-            noCommittedChangesReason: ctx.validationPolicy?.noCommittedChangesReason,
+            allowNoCommittedChanges: planAllowsNoOpMerge || ctx.validationPolicy?.allowNoCommittedChanges,
+            noCommittedChangesReason,
             onNoCommittedChangesWaiver: () => { noCommittedChangesWaiverApplied = true; },
           });
 
@@ -539,7 +542,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
             yield {
               timestamp: new Date().toISOString(),
               type: 'planning:progress',
-              message: `No committed changes waiver (allowNoCommittedChanges): ${ctx.validationPolicy?.noCommittedChangesReason ?? '(no reason provided)'}`,
+              message: `No committed changes waiver (${planAllowsNoOpMerge ? 'allowNoOpMerge' : 'allowNoCommittedChanges'}): ${noCommittedChangesReason ?? '(no reason provided)'}`,
             } as EforgeEvent;
           }
         } catch (err) {

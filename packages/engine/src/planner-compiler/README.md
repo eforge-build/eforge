@@ -58,9 +58,9 @@ Repair attempts must be low-budget and capped. Diagnostics should record the con
 
 ### Residue
 
-`residue-synthesis.ts`, `residue-contracts.ts`, and `plan-artifact-synthesis.ts` turn unresolved coverage into residue only when it is safe to make executable. Source/localization-derived residue is repair-only until it has concrete localized owner paths, product-scoped expected outputs, and validation tied to original PRD criteria.
+`residue-synthesis.ts` and `residue-contracts.ts` turn unresolved coverage into residue only when it is safe to make executable. Source/localization-derived residue is repair-only until it has concrete localized owner paths, product-scoped expected outputs, and validation tied to original PRD criteria. These invariants are enforced structurally during residue synthesis on the candidate's `sourceLocalizationDerived` flag (`validatePlanningResidueCandidates` in `residue-contracts.ts`) — never by inspecting plan prose, which cannot distinguish a negated mention from a positive classification.
 
-Unresolved source/localization gaps must not become executable `candidate-reduce-gap` plans. They should surface as machine-readable compiler diagnostics, including coverage status for affected criteria, aspects, and source needs.
+Unresolved source/localization gaps must not become executable `candidate-reduce-gap` plans. Reduce gaps that are not source/localization-derived and are not `representationRequired` are informational advice: they produce no residue candidate and surface only as machine-readable compiler diagnostics (`resolution: informational`), including coverage status for affected criteria, aspects, and source needs.
 
 ## Repository-agnostic defaults and hints
 

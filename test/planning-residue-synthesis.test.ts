@@ -78,6 +78,40 @@ describe('planning residue synthesis', () => {
     expect(result.candidates.find((candidate) => candidate.reason === 'reduce-conflict')).toMatchObject({ kind: 'follow-up', aspectIds: [aspectId] });
   });
 
+  it('demotes generic non-representation-required reduce gaps to diagnostics instead of plans', () => {
+    // Regression for the issue-search-route-order merge failure: sequencing advice
+    // already owned by the implementing module must not become a buildable plan,
+    // even when the gap names owner paths in its metadata or prose.
+    const { graph, coverage } = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const aspectId = coverage.aspects[0].aspectId;
+    const reduceOutputs: PlanningReduceOutput[] = [{
+      nodeId: 'reduce-root',
+      status: 'completed',
+      compactSummary: aspectId,
+      gaps: [{ gapId: 'issue-search-route-order', title: 'Search route must precede parameter route', criterionIds: ['ac-001'], aspectIds: [aspectId], description: "When editing src/routes/notes.ts, register GET /search before GET /:id so Express does not treat 'search' as an id parameter.", representationRequired: false, issueKind: 'generic', ownerPaths: ['src/routes/notes.ts'] }],
+    }];
+
+    const result = synthesizePlanningResidue({ graph, coverage, reduceOutputs });
+
+    expect(result.candidates.some((candidate) => candidate.reason === 'reduce-gap')).toBe(false);
+    expect(result.validationErrors).toEqual([]);
+  });
+
+  it('keeps buildable source/localization reduce residue even when representation is not required', () => {
+    const { graph, coverage } = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const aspectId = coverage.aspects[0].aspectId;
+    const reduceOutputs: PlanningReduceOutput[] = [{
+      nodeId: 'reduce-root',
+      status: 'incomplete',
+      compactSummary: aspectId,
+      gaps: [{ gapId: 'gap-owner', title: 'Localized source budget', criterionIds: ['ac-001'], aspectIds: [aspectId], description: 'Materialized source budget exceeded for localized owner path packages/engine/src/a.ts.', representationRequired: false, issueKind: 'missing-materialized-source', sourceLocalizationSignal: true, ownerPaths: ['packages/engine/src/a.ts'], productScopedOutputRefs: ['localized-owner:packages/engine/src/a.ts'], productScopedValidationRefs: ['ac-001'] }],
+    }];
+
+    const result = synthesizePlanningResidue({ graph, coverage, reduceOutputs });
+
+    expect(result.candidates.find((candidate) => candidate.reason === 'reduce-gap')).toMatchObject({ kind: 'follow-up', buildability: 'buildable', sourceLocalizationDerived: true });
+  });
+
   it('keeps unresolved source/localization reduce gaps repair-only', () => {
     const { graph, coverage } = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const aspectId = coverage.aspects[0].aspectId;

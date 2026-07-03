@@ -43,6 +43,33 @@ describe('planning compiler artifact writer', () => {
     expect(orchestration.plans[1].review).toEqual(lightReview());
   });
 
+  it('marks residue modules with the no-op merge waiver and round-trips it through orchestration.yaml', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-plan-writer-'));
+    const artifacts: PlanningArtifactSynthesisResult = {
+      architectureMarkdown: '# Architecture',
+      architectureManifest: emptyManifest(),
+      planMarkdown: '# Plan',
+      acceptanceCoverageMarkdown: '## Coverage',
+      modulePlans: [
+        { moduleId: 'module-core', title: 'Core', criterionIds: ['ac-001'], aspectIds: ['a'], markdown: '# Core', dependsOnModuleIds: [], validationExpectation: 'Core passes.', residue: false, build: ['implement'], review: lightReview(), pipelineRationale: 'no risk factors' },
+        { moduleId: 'candidate-residue', title: 'Residue follow-up', criterionIds: ['ac-002'], aspectIds: ['b'], markdown: '# Residue', dependsOnModuleIds: ['module-core'], validationExpectation: 'Residue passes.', residue: true, build: ['implement'], review: heavyReview(), pipelineRationale: 'risk score 2 (residue-derived)' },
+      ],
+      orchestration: { modules: [] },
+      pipelineDefaults: { defaultBuild: ['implement'], defaultReview: heavyReview(), rationale: 'derived defaults' },
+      validationErrors: [],
+    };
+
+    await writePlanningCompilerArtifacts({ cwd, outputDir: 'plans', planSetName: 'bounded', baseBranch: 'main', pipeline, artifacts });
+    const raw = await readFile(path.join(cwd, 'plans/bounded/orchestration.yaml'), 'utf8');
+    const parsed = parseYaml(raw) as { plans: Array<{ id: string; allow_no_op_merge?: boolean }> };
+    const orchestration = await parseOrchestrationConfig(path.join(cwd, 'plans/bounded/orchestration.yaml'));
+
+    expect(parsed.plans.find((plan) => plan.id === 'module-core')?.allow_no_op_merge).toBeUndefined();
+    expect(parsed.plans.find((plan) => plan.id === 'candidate-residue')?.allow_no_op_merge).toBe(true);
+    expect(orchestration.plans.find((plan) => plan.id === 'module-core')?.allowNoOpMerge).toBeUndefined();
+    expect(orchestration.plans.find((plan) => plan.id === 'candidate-residue')?.allowNoOpMerge).toBe(true);
+  });
+
   it('sanitizes unsafe module IDs while preserving dependencies', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-plan-writer-'));
     const artifacts: PlanningArtifactSynthesisResult = {

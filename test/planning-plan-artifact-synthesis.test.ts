@@ -103,35 +103,35 @@ describe('planning artifact synthesis', () => {
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
   });
 
-  it('validates source/localization reduce-gap residue gates during artifact synthesis', () => {
+  it('accepts generic reduce-gap residue whose prose mentions source/localization only negatively', () => {
+    // Regression for the gap-supertest-availability compile failure: a generic
+    // follow-up whose scope disclaims "not a source/localization defect" must not
+    // be re-classified as source/localization residue from its markdown prose.
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const candidateId = 'candidate-reduce-gap-supertest-availability';
     const residue: PlanningResidueSynthesis = {
       graphId: data.graph.graphId,
       sourceHash: data.graph.sourceHash,
       candidates: [{
-        candidateId: 'candidate-reduce-gap-source-localization',
-        kind: 'residue',
+        candidateId,
+        kind: 'follow-up',
         reason: 'reduce-gap',
-        title: 'Invalid source localization residue',
+        title: 'supertest devDependency not confirmed for HTTP-level route tests',
         criterionIds: ['ac-001'],
         aspectIds: data.tasks[0].aspectIds,
-        scope: 'Represent source/localization owner path gap without concrete localized owner metadata.',
-        expectedOutputs: ['Handle the source localization gap.'],
-        validationExpectations: ['Run relevant checks.'],
-        rationale: 'Reducer reported a source/localization gap.',
+        scope: 'Represent reduce gap gap-supertest-availability: this is a test-tooling availability concern, not a source/localization defect: ownerPaths and productScoped refs are not determinable from the digest.',
+        expectedOutputs: ['A bounded module resolves or explicitly represents the reduce gap.'],
+        validationExpectations: ['Validation confirms the gap is addressed in the final plan set or represented follow-up work.'],
+        rationale: 'Reduce node reduce-root reported gap gap-supertest-availability.',
       }],
-      coverageUpdates: [{ aspectId: data.tasks[0].aspectIds[0], status: 'represented', representation: { kind: 'residue', moduleId: 'candidate-reduce-gap-source-localization', reason: 'invalid source localization residue', validationExpectation: 'Run relevant checks.' } }],
+      coverageUpdates: data.tasks[0].aspectIds.map((aspectId) => ({ aspectId, status: 'represented' as const, representation: { kind: 'follow-up' as const, moduleId: candidateId, reason: 'informational gap follow-up', validationExpectation: 'Validation confirms the represented follow-up work.' } })),
       validationErrors: [],
       limits: { maxCandidates: 80, maxScopeBytes: 1_200, maxRationaleBytes: 1_200, maxExpectedOutputBytes: 800, maxValidationExpectationBytes: 800 },
     };
 
     const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [], [], residue) });
 
-    expect(result.validationErrors).toEqual(expect.arrayContaining([
-      'source/localization residue requires concrete localized owner:candidate-reduce-gap-source-localization',
-      'source/localization residue requires original PRD validation:candidate-reduce-gap-source-localization',
-      'source/localization residue requires product-scoped outputs:candidate-reduce-gap-source-localization',
-    ]));
+    expect(result.validationErrors).toEqual([]);
   });
 
   it('reports duplicate module IDs and invalid module dependencies', () => {

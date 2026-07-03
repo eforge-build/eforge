@@ -549,6 +549,65 @@ describe('executePlans - build:failed handling', () => {
     )).toBe(true);
   });
 
+  it('clean no-op merge with per-plan allowNoOpMerge waiver succeeds without a global validation policy', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Residue Plan', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW, allowNoOpMerge: true },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+
+    const planRunner: PlanRunner = async function* () {};
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async (_planId: string, _plan: unknown, opts: {
+        allowNoCommittedChanges?: boolean;
+        noCommittedChangesReason?: string;
+        onNoCommittedChangesWaiver?: () => void;
+      }) => {
+        expect(opts.allowNoCommittedChanges).toBe(true);
+        expect(opts.noCommittedChangesReason).toContain('compiler residue plan');
+        opts.onNoCommittedChangesWaiver?.();
+        return 'abc123';
+      },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      landingSucceeded: false,
+      landingAction: 'merge' as const,
+      modelTracker: new ModelTracker(),
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) events.push(event);
+
+    expect(state.plans['plan-a'].status).toBe('merged');
+    expect(events.some((e) => e.type === 'plan:merge:complete' && e.planId === 'plan-a')).toBe(true);
+
+    expect(events.some((e) =>
+      e.type === 'planning:progress' &&
+      (e as Extract<EforgeEvent, { type: 'planning:progress' }>).message.includes('allowNoOpMerge') &&
+      (e as Extract<EforgeEvent, { type: 'planning:progress' }>).message.includes('compiler residue plan'),
+    )).toBe(true);
+  });
+
   it('dirty builtOnMerge merge failure emits plan:build:failed and does not emit validation:start', async () => {
     const config = makeConfig({
       plans: [

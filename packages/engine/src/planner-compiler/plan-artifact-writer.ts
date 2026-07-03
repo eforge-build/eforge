@@ -65,6 +65,7 @@ function planSetPayload(input: WritePlanningCompilerArtifactsInput, planIds: Map
         build: [...module.build],
         review: { ...module.review, perspectives: [...module.review.perspectives] },
         reviewRationale: module.pipelineRationale,
+        ...(module.residue ? { allowNoOpMerge: true } : {}),
       })),
     },
   };

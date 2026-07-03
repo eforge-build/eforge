@@ -248,6 +248,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
           build: buildResult.data,
           review: reviewResult.data,
           ...(typeof p.max_continuations === 'number' ? { maxContinuations: p.max_continuations } : {}),
+          ...(p.allow_no_op_merge === true ? { allowNoOpMerge: true } : {}),
           ...(agents && { agents }),
         };
       })
@@ -698,6 +699,7 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
         branch: `${planSetName}/${p.id}`,
         ...(p.build ? { build: p.build } : {}),
         ...(p.review ? { review: p.review } : {}),
+        ...(p.allowNoOpMerge === true ? { allow_no_op_merge: true } : {}),
         ...(planData?.frontmatter.agents ? { agents: planData.frontmatter.agents } : {}),
       };
     }),
@@ -753,20 +755,20 @@ export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions)
           if (p.build !== undefined) planEntry.build = p.build;
           if (p.review !== undefined) planEntry.review = p.review;
           if (p.agents !== undefined) planEntry.agents = p.agents;
-          // Preserve build/review/agents/max_continuations from existing plan entry if not supplied
-          if (p.build === undefined || p.review === undefined || p.agents === undefined) {
-            const existingPlans = Array.isArray(existing.plans)
-              ? (existing.plans as Array<Record<string, unknown>>)
-              : [];
-            const existingPlan = existingPlans.find(ep => ep.id === p.id);
-            if (existingPlan) {
-              if (p.build === undefined && existingPlan.build !== undefined) planEntry.build = existingPlan.build;
-              if (p.review === undefined && existingPlan.review !== undefined) planEntry.review = existingPlan.review;
-              // Issue #1: preserve agents when not supplied
-              if (p.agents === undefined && existingPlan.agents !== undefined) planEntry.agents = existingPlan.agents;
-              // Issue #2: preserve max_continuations when present
-              if (existingPlan.max_continuations !== undefined) planEntry.max_continuations = existingPlan.max_continuations;
-            }
+          // Preserve build/review/agents/max_continuations/allow_no_op_merge from existing plan entry if not supplied
+          const existingPlans = Array.isArray(existing.plans)
+            ? (existing.plans as Array<Record<string, unknown>>)
+            : [];
+          const existingPlan = existingPlans.find(ep => ep.id === p.id);
+          if (existingPlan) {
+            if (p.build === undefined && existingPlan.build !== undefined) planEntry.build = existingPlan.build;
+            if (p.review === undefined && existingPlan.review !== undefined) planEntry.review = existingPlan.review;
+            // Issue #1: preserve agents when not supplied
+            if (p.agents === undefined && existingPlan.agents !== undefined) planEntry.agents = existingPlan.agents;
+            // Issue #2: preserve max_continuations when present
+            if (existingPlan.max_continuations !== undefined) planEntry.max_continuations = existingPlan.max_continuations;
+            // Compiler-owned waiver: evaluator fixes never supply this field, so always carry it over
+            if (existingPlan.allow_no_op_merge !== undefined) planEntry.allow_no_op_merge = existingPlan.allow_no_op_merge;
           }
           return planEntry;
         });
