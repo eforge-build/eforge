@@ -5,10 +5,11 @@ import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { derivePlanningAspectCoverage } from './coverage-accounting.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
 import { derivePlanPipelineSettings, type DerivedPlanPipelineSettings } from './pipeline-derivation.js';
+import type { PlanningModuleDocsWork, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 
 export interface SynthesizePlanningArtifactsInput { compilerResult: BoundedPlannerCompilerResult }
-export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
+export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; docsWork: PlanningModuleDocsWork; testWork: PlanningModuleTestWork; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
 export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[]; build: BuildStageSpec[]; review: ReviewProfileConfig }> }
 export interface PlanningArtifactPipelineDefaults { defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
 export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; acceptanceCoverageMarkdown: string; validationErrors: string[] }
@@ -20,7 +21,7 @@ export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsIn
   const fragments = selectPlanFragments(result);
   const baseModules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
   const derivation = derivePlanPipelineSettings({
-    modules: baseModules.map((module) => ({ moduleId: module.moduleId, criterionIds: module.criterionIds, aspectIds: module.aspectIds, dependsOnModuleIds: module.dependsOnModuleIds, residue: module.residue })),
+    modules: baseModules.map((module) => ({ moduleId: module.moduleId, criterionIds: module.criterionIds, aspectIds: module.aspectIds, dependsOnModuleIds: module.dependsOnModuleIds, residue: module.residue, docsWork: module.docsWork, testWork: module.testWork })),
     atoms: result.atomGraph.atoms,
     localizationRecords: result.sourceLocalizationBundle.records,
     residueCandidates: result.residue.candidates,
@@ -77,6 +78,8 @@ function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments:
     dependsOnModuleIds: uniq(module.dependsOnModuleIds ?? []),
     validationExpectation: module.validationExpectation,
     residue: false,
+    docsWork: module.docsWork ?? 'none',
+    testWork: module.testWork ?? 'none',
   };
 }
 
@@ -90,6 +93,12 @@ function residueModules(candidates: PlanningResidueCandidate[]): PlanningSynthes
     dependsOnModuleIds: [...(candidate.dependsOnCandidateIds ?? [])],
     validationExpectation: candidate.validationExpectations.join('\n'),
     residue: true,
+    // Residue candidates intentionally carry no docsWork/testWork declarations: they have
+    // no structured doc/test intent fields, so extra build stages for residue modules come
+    // solely from score-derived risk factors in derivePlanPipelineSettings (residue-derived,
+    // repair-only-residue). Do not infer declarations from residue text.
+    docsWork: 'none' as const,
+    testWork: 'none' as const,
   }));
 }
 

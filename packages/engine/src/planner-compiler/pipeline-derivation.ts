@@ -1,9 +1,10 @@
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { PlanningAtom } from './atom-graph.js';
+import type { PlanningModuleDocsWork, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 import type { SourceLocalizationRecord } from './source-localization-contracts.js';
 
-export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean }
+export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork }
 export interface PlanPipelineRiskInputs {
   modules: PlanPipelineModuleSignals[];
   atoms: Array<Pick<PlanningAtom, 'atomId' | 'criterionIds' | 'subsystemHints' | 'estimate'>>;
@@ -22,8 +23,6 @@ export const MULTI_SUBSYSTEM_COUNT = 3;
 export const MODERATE_REVIEW_MIN_SCORE = 1;
 export const HEAVY_REVIEW_MIN_SCORE = 3;
 
-const BASELINE_BUILD: readonly BuildStageSpec[] = Object.freeze(['implement', 'review-cycle']);
-const HEAVY_BUILD: readonly BuildStageSpec[] = Object.freeze(['implement', 'test-cycle', 'review-cycle']);
 const LIGHT_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'single' as const, perspectives: Object.freeze(['code']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 1, evaluatorStrictness: 'standard' as const });
 const MODERATE_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'auto' as const, perspectives: Object.freeze(['code', 'test']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 1, evaluatorStrictness: 'standard' as const });
 const HEAVY_REVIEW: ReviewProfileConfig = Object.freeze({ strategy: 'parallel' as const, perspectives: Object.freeze(['code', 'security', 'test', 'verify']) as unknown as ReviewProfileConfig['perspectives'], maxRounds: 2, evaluatorStrictness: 'strict' as const });
@@ -52,13 +51,15 @@ function settingsForModule(module: PlanPipelineModuleSignals, input: PlanPipelin
   const factors = riskFactorsForModule(module, input, dependedOn);
   const score = factors.reduce((total, factor) => total + FACTOR_WEIGHTS[factor], 0);
   const review = reviewForScore(score);
-  const build = buildForScore(score);
+  const docsWork = module.docsWork ?? 'none';
+  const testWork = module.testWork ?? 'none';
+  const build = buildForModule(score, docsWork, testWork);
   return {
     moduleId: module.moduleId,
-    build: [...build],
+    build,
     review: cloneReview(review),
     risk: { moduleId: module.moduleId, score, factors },
-    rationale: moduleRationale(score, factors, build, review),
+    rationale: moduleRationale(score, factors, docsWork, testWork, build, review),
   };
 }
 
@@ -115,8 +116,17 @@ function reviewForScore(score: number): ReviewProfileConfig {
   return LIGHT_REVIEW;
 }
 
-function buildForScore(score: number): readonly BuildStageSpec[] {
-  return score >= HEAVY_REVIEW_MIN_SCORE ? HEAVY_BUILD : BASELINE_BUILD;
+function buildForScore(score: number): BuildStageSpec[] {
+  return buildForModule(score, 'none', 'none');
+}
+
+function buildForModule(score: number, docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork): BuildStageSpec[] {
+  const build: BuildStageSpec[] = [docsWork === 'author-new' ? ['implement', 'doc-author'] : 'implement'];
+  if (docsWork !== 'none') build.push('doc-sync');
+  if (testWork === 'author-new') build.push('test-write');
+  if (testWork !== 'none' || score >= HEAVY_REVIEW_MIN_SCORE) build.push('test-cycle');
+  build.push('review-cycle');
+  return build;
 }
 
 function formatBuild(build: readonly BuildStageSpec[]): string {
@@ -127,9 +137,9 @@ function cloneReview(review: ReviewProfileConfig): ReviewProfileConfig {
   return { strategy: review.strategy, perspectives: [...review.perspectives], maxRounds: review.maxRounds, evaluatorStrictness: review.evaluatorStrictness };
 }
 
-function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], build: readonly BuildStageSpec[], review: ReviewProfileConfig): string {
+function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork, build: readonly BuildStageSpec[], review: ReviewProfileConfig): string {
   const basis = factors.length > 0 ? `risk score ${score} (${factors.join(', ')})` : 'no risk factors';
-  return `${basis}; derived build ${formatBuild(build)} and ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
+  return `${basis}; declared docs work ${docsWork}, test work ${testWork}; derived build ${formatBuild(build)} and ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
 }
 
 function derivationRationale(plans: DerivedPlanPipelineSettings[], highestScore: number): string {

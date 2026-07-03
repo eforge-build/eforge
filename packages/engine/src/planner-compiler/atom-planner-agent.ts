@@ -4,7 +4,7 @@ import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput } from './atom-planning-contracts.js';
 import { DEFAULT_PLANNING_REDUCE_LIMITS } from './reduce-contracts.js';
-import { deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
+import { deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
 import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
@@ -117,7 +117,10 @@ Call ${submitToolName} with an object matching its schema.
 - represented aspect updates require exactly this representation shape: { "kind": "residue" | "follow-up", "moduleId": "one moduleCandidates[].moduleId", "reason": "why representation is needed", "validationExpectation": "how the represented work is validated" }.
 - Do not use moduleIds, moduleCandidateIds, fragmentIds, or prerequisiteAtomIds inside representation.
 - Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
+- ${PLANNING_MODULE_DOCS_WORK_PROMPT_RULE}
+- ${PLANNING_MODULE_TEST_WORK_PROMPT_RULE}
 - Include reduceDigest. It is the canonical bounded digest for reducer agents; do not copy full markdown into it.
+- ${PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE}
 - reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
 - reduceDigest's formatted prompt JSON must fit within ${atomReduceDigestPromptByteLimit(task)} bytes (assigned by the map/reduce budget planner); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.

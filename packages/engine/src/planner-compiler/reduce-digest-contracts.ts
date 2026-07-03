@@ -3,6 +3,29 @@ import { utf8ByteLength } from './source-analysis.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
 
+export const PLANNING_MODULE_DOCS_WORK_VALUES = ['none', 'sync-existing', 'author-new'] as const;
+export const PLANNING_MODULE_TEST_WORK_VALUES = ['none', 'exercise-existing', 'author-new'] as const;
+export type PlanningModuleDocsWork = (typeof PLANNING_MODULE_DOCS_WORK_VALUES)[number];
+export type PlanningModuleTestWork = (typeof PLANNING_MODULE_TEST_WORK_VALUES)[number];
+export const PlanningModuleDocsWorkSchema = Type.Union(PLANNING_MODULE_DOCS_WORK_VALUES.map((value) => Type.Literal(value)));
+export const PlanningModuleTestWorkSchema = Type.Union(PLANNING_MODULE_TEST_WORK_VALUES.map((value) => Type.Literal(value)));
+
+// Shared structured-submission prompt rules for the docsWork/testWork declarations.
+// Interpolated by both the atom planner and reducer prompts so the two cannot drift.
+export const PLANNING_MODULE_DOCS_WORK_PROMPT_RULE = 'Set docsWork on each module candidate: "author-new" when the module\'s criteria call for new documentation artifacts (derives doc-author and doc-sync build stages), "sync-existing" when existing docs reference behavior or interfaces the module changes (derives doc-sync), "none" or omitted when there is no documentation impact.';
+export const PLANNING_MODULE_TEST_WORK_PROMPT_RULE = 'Set testWork on each module candidate: "author-new" when the module\'s criteria require writing new tests (derives test-write and test-cycle build stages), "exercise-existing" when existing tests must be kept green without new authoring (derives test-cycle), "none" or omitted when there is no explicit test requirement.';
+export const PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE = 'Mirror each module candidate\'s docsWork/testWork declarations onto the reduceDigest.modules entry with the same moduleId so downstream reducers retain them.';
+
+/**
+ * Pick the strongest of two work declarations. Strength follows the order of the
+ * declared value arrays (later entries are stronger, e.g. author-new > sync-existing > none).
+ */
+export function strongestWorkDeclaration<T extends string>(allowed: readonly T[], a: T | undefined, b: T | undefined): T | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return allowed.indexOf(b) > allowed.indexOf(a) ? b : a;
+}
+
 export const REDUCE_DIGEST_LIMITS = {
   summaryBytes: 1_200,
   fragmentIntentBytes: 700,
@@ -42,6 +65,8 @@ export const PlanningReduceDigestModuleSchema = Type.Object({
   criterionIds: Type.Array(boundedString(80), { maxItems: 32 }),
   aspectIds: Type.Array(boundedString(240), { maxItems: 64 }),
   validationExpectation: Type.Optional(boundedString(1_000)),
+  docsWork: Type.Optional(PlanningModuleDocsWorkSchema),
+  testWork: Type.Optional(PlanningModuleTestWorkSchema),
   dependsOnModuleIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 16 })),
 }, { additionalProperties: false });
 
@@ -71,7 +96,7 @@ export const PlanningReduceDigestSchema = Type.Object({
 export type PlanningReduceDigestSourceKind = 'atom' | 'reduce';
 export type PlanningReduceDigestStatus = 'completed' | 'skipped' | 'failed' | 'incomplete';
 export interface PlanningReduceDigestFragment { fragmentId: string; title: string; intent: string; criterionIds: string[]; aspectIds: string[]; dependsOnFragmentIds?: string[] }
-export interface PlanningReduceDigestModule { moduleId: string; title: string; purpose: string; criterionIds: string[]; aspectIds: string[]; validationExpectation?: string; dependsOnModuleIds?: string[] }
+export interface PlanningReduceDigestModule { moduleId: string; title: string; purpose: string; criterionIds: string[]; aspectIds: string[]; validationExpectation?: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; dependsOnModuleIds?: string[] }
 export interface PlanningReduceDigestIssue { issueId: string; kind: 'conflict' | 'gap'; title: string; summary: string; criterionIds: string[]; aspectIds: string[]; sourceIds?: string[]; representationRequired?: boolean }
 export interface PlanningReduceDigest { sourceId: string; sourceKind: PlanningReduceDigestSourceKind; status: PlanningReduceDigestStatus; summary: string; criterionIds: string[]; aspectIds: string[]; fragments?: PlanningReduceDigestFragment[]; modules?: PlanningReduceDigestModule[]; issues?: PlanningReduceDigestIssue[] }
 
@@ -156,7 +181,9 @@ function coerceDigestFragment(value: unknown): PlanningReduceDigestFragment {
 
 function coerceDigestModule(value: unknown): PlanningReduceDigestModule {
   const record = objectValue(value, 'reduce digest module');
-  return { moduleId: requiredString(record.moduleId, 'reduce digest module id'), title: stringValue(record.title) ?? '', purpose: requiredString(record.purpose, 'reduce digest module purpose'), criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), ...(stringValue(record.validationExpectation) !== undefined ? { validationExpectation: stringValue(record.validationExpectation) } : {}), ...(stringArrayValue(record.dependsOnModuleIds).length > 0 ? { dependsOnModuleIds: stringArrayValue(record.dependsOnModuleIds) } : {}) };
+  const docsWork = optionalLiteralValue(record.docsWork, PLANNING_MODULE_DOCS_WORK_VALUES, 'reduce digest module docsWork');
+  const testWork = optionalLiteralValue(record.testWork, PLANNING_MODULE_TEST_WORK_VALUES, 'reduce digest module testWork');
+  return { moduleId: requiredString(record.moduleId, 'reduce digest module id'), title: stringValue(record.title) ?? '', purpose: requiredString(record.purpose, 'reduce digest module purpose'), criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), ...(stringValue(record.validationExpectation) !== undefined ? { validationExpectation: stringValue(record.validationExpectation) } : {}), ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}), ...(stringArrayValue(record.dependsOnModuleIds).length > 0 ? { dependsOnModuleIds: stringArrayValue(record.dependsOnModuleIds) } : {}) };
 }
 
 function coerceDigestIssue(value: unknown): PlanningReduceDigestIssue {
@@ -182,6 +209,13 @@ function objectValue(value: unknown, label: string): Record<string, unknown> {
 }
 
 function arrayValue(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
+// Fail closed on present-but-invalid values: silently dropping a declaration would
+// degrade toward fewer derived verification stages with no diagnostic.
+function optionalLiteralValue<T extends string>(value: unknown, allowed: readonly T[], label: string): T | undefined {
+  if (value === undefined) return undefined;
+  if (allowed.includes(value as T)) return value as T;
+  throw new Error(`${label} contains invalid value`);
+}
 function stringValue(value: unknown): string | undefined { return typeof value === 'string' ? value : undefined; }
 function stringArrayValue(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []; }
 function requiredString(value: unknown, label: string): string {

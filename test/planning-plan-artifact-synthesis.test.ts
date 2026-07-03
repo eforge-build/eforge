@@ -33,6 +33,19 @@ describe('planning artifact synthesis', () => {
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
   });
 
+  it('derives docs and test build stages from module candidate declarations', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'author-new' as const }));
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
+
+    expect(result.orchestration.modules[0]?.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'test-write', 'test-cycle', 'review-cycle']);
+    expect(result.modulePlans[0]?.docsWork).toBe('author-new');
+    expect(result.modulePlans[0]?.pipelineRationale).toContain('declared docs work author-new');
+  });
+
   it('derives heavier review settings for residue modules than for trivial modules', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
@@ -65,6 +78,8 @@ describe('planning artifact synthesis', () => {
     expect(residueModule?.review).not.toEqual(trivialModule?.review);
     expect(residueModule?.review.evaluatorStrictness).toBe('strict');
     expect(residueModule?.pipelineRationale).toContain('residue-derived');
+    expect(residueModule?.docsWork).toBe('none');
+    expect(residueModule?.build).toEqual(['implement', 'test-cycle', 'review-cycle']);
   });
 
   it('uses the final reduce output instead of intermediate reduce artifacts', () => {

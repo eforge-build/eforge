@@ -109,6 +109,46 @@ describe('per-plan pipeline derivation', () => {
     expect(trivial?.build).toEqual(['implement', 'review-cycle']);
   });
 
+  it('derives docs build stages from declared docs work', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'module-author', docsWork: 'author-new' }),
+        module({ moduleId: 'module-sync', criterionIds: ['ac-002'], docsWork: 'sync-existing' }),
+        module({ moduleId: 'module-none', criterionIds: ['ac-003'], docsWork: 'none' }),
+      ],
+    }));
+
+    const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
+    expect(byId.get('module-author')?.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'review-cycle']);
+    expect(byId.get('module-sync')?.build).toEqual(['implement', 'doc-sync', 'review-cycle']);
+    expect(byId.get('module-none')?.build).toEqual(['implement', 'review-cycle']);
+    expect(byId.get('module-author')?.rationale).toContain('declared docs work author-new');
+  });
+
+  it('derives test build stages from declared test work', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'module-author', testWork: 'author-new' }),
+        module({ moduleId: 'module-exercise', criterionIds: ['ac-002'], testWork: 'exercise-existing' }),
+      ],
+    }));
+
+    const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
+    expect(byId.get('module-author')?.build).toEqual(['implement', 'test-write', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-exercise')?.build).toEqual(['implement', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-author')?.rationale).toContain('test work author-new');
+  });
+
+  it('combines docs and test declarations with heavy risk without duplicating test-cycle', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [module({ moduleId: 'candidate-residue', residue: true, docsWork: 'author-new', testWork: 'author-new' })],
+      residueCandidates: [{ candidateId: 'candidate-residue', buildability: 'repair-only', criterionIds: ['ac-001'] }],
+    }));
+
+    expect(derivation.plans[0].risk.score).toBeGreaterThanOrEqual(HEAVY_REVIEW_MIN_SCORE);
+    expect(derivation.plans[0].build).toEqual([['implement', 'doc-author'], 'doc-sync', 'test-write', 'test-cycle', 'review-cycle']);
+  });
+
   it('derives set-level defaults from the highest plan risk score', () => {
     const derivation = derivePlanPipelineSettings(inputs({
       modules: [
