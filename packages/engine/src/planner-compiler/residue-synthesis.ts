@@ -51,6 +51,9 @@ function reduceOutputCandidates(coverage: PlanningAspectCoverageSummary, outputs
 function reduceGapCandidate(output: PlanningReduceOutput, gap: PlanningReduceGap): PlanningResidueCandidate[] {
   const classified = classifyPlanningReduceGap(gap);
   if (classified && !buildableSourceLocalizationGap(gap)) return [];
+  // Informational advice stays a compiler diagnostic; only representation-required
+  // gaps (or buildable source/localization gaps) may become plans.
+  if (!classified && !gap.representationRequired) return [];
   const extra = classified ? { buildability: 'buildable' as const, sourceLocalizationDerived: true, localizedOwnerPaths: gap.ownerPaths, productScopedOutputRefs: gap.productScopedOutputRefs, productScopedValidationRefs: gap.productScopedValidationRefs } : undefined;
   const validationExpectations = classified ? gap.productScopedValidationRefs! : ['Validation confirms the gap is addressed in the final plan set or represented follow-up work.'];
   const expectedOutputs = classified ? gap.productScopedOutputRefs! : ['A bounded module resolves or explicitly represents the reduce gap.'];

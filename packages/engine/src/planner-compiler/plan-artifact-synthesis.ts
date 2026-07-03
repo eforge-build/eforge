@@ -111,20 +111,10 @@ function validateModules(modules: PlanningSynthesizedModulePlan[], errors: strin
     if (module.criterionIds.length === 0) errors.push(`module requires criteria:${module.moduleId}`);
     if (module.aspectIds.length === 0) errors.push(`module requires aspects:${module.moduleId}`);
     if (!nonEmpty(module.validationExpectation)) errors.push(`module requires validation expectation:${module.moduleId}`);
-    if (module.residue) validateResidueModule(module, errors);
     for (const dependencyId of module.dependsOnModuleIds) {
       if (dependencyId === module.moduleId) errors.push(`module dependency self-reference:${module.moduleId}`);
       else if (!moduleIds.has(dependencyId)) errors.push(`module dependency missing:${module.moduleId}:${dependencyId}`);
     }
-  }
-}
-
-function validateResidueModule(module: PlanningSynthesizedModulePlan, errors: string[]): void {
-  if (/candidate-reduce-gap/.test(module.moduleId) && /source\/localization|localized owner|owner path|materialized source/i.test(module.markdown)) {
-    const validationText = module.validationExpectation;
-    if (!module.criterionIds.some((criterionId) => validationText.includes(criterionId))) errors.push(`source/localization residue requires original PRD validation:${module.moduleId}`);
-    if (!/localized-owner:[^\s)\],;]+/i.test(module.markdown)) errors.push(`source/localization residue requires concrete localized owner:${module.moduleId}`);
-    if (!/product-scoped|Product-scoped/i.test(module.markdown)) errors.push(`source/localization residue requires product-scoped outputs:${module.moduleId}`);
   }
 }
 

@@ -17155,6 +17155,9 @@
                       "maxContinuations": {
                         "type": "number"
                       },
+                      "allowNoOpMerge": {
+                        "type": "boolean"
+                      },
                       "agents": {
                         "type": "object",
                         "patternProperties": {
@@ -34733,6 +34736,9 @@
                                     },
                                     "maxContinuations": {
                                       "type": "number"
+                                    },
+                                    "allowNoOpMerge": {
+                                      "type": "boolean"
                                     },
                                     "agents": {
                                       "type": "object",

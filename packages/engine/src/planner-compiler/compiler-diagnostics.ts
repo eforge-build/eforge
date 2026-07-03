@@ -146,7 +146,7 @@ function gapEntry(gap: PlanningReduceGap, nodeId: string, representedBy: Map<str
     productScopedOutputRefs: boundedIds(gap.productScopedOutputRefs ?? [], 300, 32),
     productScopedValidationRefs: boundedIds(gap.productScopedValidationRefs ?? [], 300, 32),
     description: boundedDescription(gap.description, omitted),
-    resolution: representedByCandidateId ? 'residue-represented' : 'unrepresented',
+    resolution: representedByCandidateId ? 'residue-represented' : gap.representationRequired ? 'unrepresented' : 'informational',
     ...(representedByCandidateId ? { representedByCandidateId: bounded(representedByCandidateId, 160) } : {}),
   };
 }

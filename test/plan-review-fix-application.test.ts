@@ -40,6 +40,7 @@ async function createPlanSet(
     orchDescription?: string;
     orchBaseBranch?: string;
     withPipeline?: boolean;
+    planAllowNoOpMerge?: boolean;
   } = {},
 ): Promise<{ planDir: string; planId: string }> {
   const planId = options.planId ?? 'plan-01-auth';
@@ -93,6 +94,10 @@ async function createPlanSet(
       maxRounds: 1,
       evaluatorStrictness: 'standard',
     };
+  }
+
+  if (options.planAllowNoOpMerge) {
+    (orchConfig.plans as Array<Record<string, unknown>>)[0].allow_no_op_merge = true;
   }
 
   await writeFile(join(planDir, 'orchestration.yaml'), stringifyYaml(orchConfig), 'utf-8');
@@ -208,6 +213,44 @@ describe('applyPlanReviewFixes: replace_orchestration', () => {
     const pipeline = data.pipeline as Record<string, unknown>;
     expect(pipeline.scope).toBe('excursion');
     expect(pipeline.rationale).toBe('Default pipeline');
+  });
+
+  it('preserves the compiler-set allow_no_op_merge waiver when the fix payload omits it', async () => {
+    const tempDir = await makeTempDir();
+    const { planId } = await createPlanSet(tempDir, 'test-set', { withPipeline: true, planAllowNoOpMerge: true });
+
+    await applyPlanReviewFixes({
+      cwd: tempDir,
+      outputDir: 'eforge/plans',
+      planSetName: 'test-set',
+      fixes: [{
+        kind: 'replace_orchestration',
+        description: 'Evaluator rewrote the plan entries',
+        baseBranch: 'main',
+        validate: [],
+        plans: [{
+          id: planId,
+          name: 'Auth Plan',
+          dependsOn: [],
+          branch: 'auth/main',
+          build: ['implement'],
+          review: {
+            strategy: 'single',
+            perspectives: ['code'],
+            maxRounds: 1,
+            evaluatorStrictness: 'standard',
+          },
+        }],
+      }],
+    });
+
+    const orchPath = join(tempDir, 'eforge/plans/test-set/orchestration.yaml');
+    const raw = await readFile(orchPath, 'utf-8');
+    const data = parseYaml(raw) as Record<string, unknown>;
+    expect((data.plans as Array<Record<string, unknown>>)[0].allow_no_op_merge).toBe(true);
+
+    const config = await parseOrchestrationConfig(orchPath);
+    expect(config.plans[0].allowNoOpMerge).toBe(true);
   });
 
   it('translates baseBranch to base_branch and dependsOn to depends_on on disk', async () => {

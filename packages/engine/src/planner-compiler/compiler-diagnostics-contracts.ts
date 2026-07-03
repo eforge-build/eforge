@@ -13,7 +13,7 @@ const count = () => Type.Integer({ minimum: 0 });
 const CompilerStatusSchema = Type.Union([Type.Literal('complete'), Type.Literal('complete-with-residue'), Type.Literal('incomplete'), Type.Literal('failed')]);
 const RepairStatusSchema = Type.Union([Type.Literal('not-needed'), Type.Literal('repaired'), Type.Literal('unresolved'), Type.Literal('exhausted')]);
 const RepairCoverageStatusSchema = Type.Union([Type.Literal('covered'), Type.Literal('missing'), Type.Literal('unknown')]);
-const GapResolutionSchema = Type.Union([Type.Literal('residue-represented'), Type.Literal('unrepresented')]);
+const GapResolutionSchema = Type.Union([Type.Literal('residue-represented'), Type.Literal('informational'), Type.Literal('unrepresented')]);
 const LocalizationOwnerStatusSchema = Type.Union([Type.Literal('resolved'), Type.Literal('partial'), Type.Literal('unresolved'), Type.Literal('ignored'), Type.Literal('budget-exceeded'), Type.Literal('none')]);
 const EvidenceStatusSchema = Type.Union([Type.Literal('materialized'), Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded'), Type.Literal('none')]);
 const EvidenceFailureStatusSchema = Type.Union([Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded')]);

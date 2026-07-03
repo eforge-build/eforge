@@ -59,7 +59,8 @@ describe('planning compiler diagnostics', () => {
     const atomOutput = completedOutput(data.tasks[0]);
     const gap: PlanningReduceGap = { gapId: 'gap-owner', title: 'Missing owner path', criterionIds: ['ac-001'], aspectIds: data.tasks[0].aspectIds, description: 'No owner path localized for the engine update.', representationRequired: true, issueKind: 'missing-owner-path', sourceLocalizationSignal: true };
     const orphanGap: PlanningReduceGap = { gapId: 'gap-orphan', title: 'Unrepresented gap', criterionIds: ['ac-001'], aspectIds: data.tasks[0].aspectIds, description: 'Nothing represents this gap.', representationRequired: true };
-    const reduceOutput: PlanningReduceOutput = { ...completedReduceOutput(atomOutput), gaps: [gap, orphanGap], conflicts: [{ conflictId: 'conflict-a', title: 'Two owners', criterionIds: ['ac-001'], aspectIds: data.tasks[0].aspectIds, description: 'Both plans touch the same file.' }] };
+    const adviceGap: PlanningReduceGap = { gapId: 'gap-advice', title: 'Route ordering advice', criterionIds: ['ac-001'], aspectIds: data.tasks[0].aspectIds, description: 'Register the search route before the parameter route.', representationRequired: false, issueKind: 'generic' };
+    const reduceOutput: PlanningReduceOutput = { ...completedReduceOutput(atomOutput), gaps: [gap, orphanGap, adviceGap], conflicts: [{ conflictId: 'conflict-a', title: 'Two owners', criterionIds: ['ac-001'], aspectIds: data.tasks[0].aspectIds, description: 'Both plans touch the same file.' }] };
     const residue = residueFixture(data, [
       { candidateId: 'candidate-reduce-gap-owner', reason: 'reduce-gap', sourceRefs: ['gap-owner'] },
       { candidateId: 'candidate-reduce-conflict-a', reason: 'reduce-conflict', sourceRefs: ['conflict-a'] },
@@ -70,6 +71,7 @@ describe('planning compiler diagnostics', () => {
 
     expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
     expect(diagnostics.reduce.gaps).toEqual([
+      expect.objectContaining({ gapId: 'gap-advice', issueKind: 'generic', resolution: 'informational' }),
       expect.objectContaining({ gapId: 'gap-orphan', issueKind: 'generic', resolution: 'unrepresented' }),
       expect.objectContaining({ gapId: 'gap-owner', issueKind: 'missing-owner-path', resolution: 'residue-represented', representedByCandidateId: 'candidate-reduce-gap-owner' }),
     ]);

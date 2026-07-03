@@ -357,7 +357,7 @@ export const PlanFileSchema = Type.Object({
   filePath: Type.String(),
   warnings: Type.Optional(Type.Array(Type.String())),
 });
-export const OrchestrationPlanConfigSchema = Type.Object({ id: Type.String(), name: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.String(), build: Type.Array(BuildStageSpecSchema), review: ReviewProfileConfigSchema, maxContinuations: Type.Optional(Type.Number()), agents: Type.Optional(Type.Record(Type.String(), Type.Object({ effort: Type.Optional(Type.String()), thinking: Type.Optional(Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())])), rationale: Type.Optional(Type.String()), tier: Type.Optional(Type.String()) }))) });
+export const OrchestrationPlanConfigSchema = Type.Object({ id: Type.String(), name: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.String(), build: Type.Array(BuildStageSpecSchema), review: ReviewProfileConfigSchema, maxContinuations: Type.Optional(Type.Number()), allowNoOpMerge: Type.Optional(Type.Boolean()), agents: Type.Optional(Type.Record(Type.String(), Type.Object({ effort: Type.Optional(Type.String()), thinking: Type.Optional(Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())])), rationale: Type.Optional(Type.String()), tier: Type.Optional(Type.String()) }))) });
 export const OrchestrationConfigSchema = Type.Object({
   name: Type.String(),
   description: Type.String(),

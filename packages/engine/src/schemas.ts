@@ -525,6 +525,9 @@ const orchestrationPlanSchema = Type.Object({
   reviewRationale: Type.Optional(Type.String({
     description: "Why this plan's review profile differs from the default, or confirmation that the default is appropriate",
   })),
+  allowNoOpMerge: Type.Optional(Type.Boolean({
+    description: 'Compiler-set for residue plans: allow the plan to merge with no committed changes when the represented work turns out to be already satisfied',
+  })),
 });
 
 export const planSetSubmissionSchema = Type.Object({
