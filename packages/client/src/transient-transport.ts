@@ -43,11 +43,22 @@ const CLAUDE_SDK_SOCKET_CLOSE_RE = /api error:.*socket connection was closed une
  */
 const BACKEND_CODEX_SSE_HEADERS_TIMEOUT_RE = /backend error:\s*codex sse response headers timed out after \d+ms\b/i;
 
+/**
+ * Matches upstream idle timeouts emitted by the backend transport (observed from
+ * OpenRouter-routed providers during planner-compiler agent turns):
+ *   Backend error: Upstream idle timeout exceeded
+ *
+ * Requires the `backend error:` prefix so generic shell command or daemon request
+ * timeout text is not classified as transient.
+ */
+const BACKEND_UPSTREAM_IDLE_TIMEOUT_RE = /backend error:\s*upstream idle timeout\b/i;
+
 /** True when an error message matches a known transient backend transport close. */
 export function isTransientTransportError(message: string): boolean {
   if (BACKEND_WS_CLOSE_RE.test(message)) return true;
   if (CLAUDE_SDK_SOCKET_CLOSE_RE.test(message)) return true;
   if (BACKEND_CODEX_SSE_HEADERS_TIMEOUT_RE.test(message)) return true;
+  if (BACKEND_UPSTREAM_IDLE_TIMEOUT_RE.test(message)) return true;
   const normalized = message.toLowerCase();
   return normalized.includes('backend error: websocket error');
 }
