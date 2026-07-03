@@ -28,11 +28,14 @@ export interface LaneEntry {
  * and handled by the `plan-NN` fallback in `laneLabel` / `laneOrder`.
  */
 export const LANE_REGISTRY: readonly LaneEntry[] = [
-  { id: 'planning',          label: 'Planning',          order: 0, kind: 'phase' },
-  // plan lanes occupy order 1 (dynamic, not listed here)
-  { id: 'validation',        label: 'Validation',        order: 2, kind: 'phase' },
-  { id: 'gap-close',         label: 'Gap Close',         order: 3, kind: 'phase' },
-  { id: 'final-validation',  label: 'Final Validation',  order: 4, kind: 'phase' },
+  { id: 'planning',               label: 'Planning',               order: 0, kind: 'phase' },
+  { id: 'satisfaction-gate',      label: 'Satisfaction Gate',      order: 0, kind: 'phase' },
+  { id: 'repository-exploration', label: 'Repo Exploration',       order: 0, kind: 'phase' },
+  // map/reduce group lanes (map-atoms, reduce-level-N) also sort at order 0,
+  // assigned dynamically in thread-pipeline; plan lanes occupy order 1.
+  { id: 'validation',             label: 'Validation',             order: 2, kind: 'phase' },
+  { id: 'gap-close',              label: 'Gap Close',              order: 3, kind: 'phase' },
+  { id: 'final-validation',       label: 'Final Validation',       order: 4, kind: 'phase' },
 ] as const;
 
 const registryById = new Map<string, LaneEntry>(

@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SheetPanel } from '@/components/ui/sheet-panel';
-import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/run-state';
+import type { AgentThread, StoredEvent, DecisionPoint, Decision, MapReduceTimelineModel } from '@/lib/run-state';
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
@@ -56,14 +56,14 @@ interface ThreadPipelineProps {
   reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
   decisions?: Record<string, DecisionPoint[]>;
   /**
-   * Lane keys to omit from the generic pipeline (e.g. map/reduce atom/reduce
-   * ids, which are rendered by the dedicated orchestration view instead). These
-   * agent threads still exist; they are simply not given their own top-level row.
+   * Map/reduce timeline grouping (from `buildMapReduceTimeline`). Member agent
+   * threads (planId == atomId / nodeId) collapse into the model's grouped lanes
+   * (`Map atoms`, one lane per reduce level) instead of one row per member.
    */
-  suppressedLaneIds?: ReadonlySet<string>;
+  mapReduce?: MapReduceTimelineModel | null;
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions, suppressedLaneIds }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions, mapReduce }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
@@ -114,7 +114,9 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
   const threadsByPlan = useMemo(() => {
     const map = new Map<string, AgentThread[]>();
     for (const thread of agentThreads) {
-      const key = thread.planId ?? '__global__';
+      const rawKey = thread.planId ?? '__global__';
+      // Map/reduce member threads collapse into their grouped lane.
+      const key = (thread.planId !== undefined && mapReduce?.laneIdByMember[thread.planId]) || rawKey;
       const arr = map.get(key);
       if (arr) {
         arr.push(thread);
@@ -123,7 +125,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
       }
     }
     return map;
-  }, [agentThreads]);
+  }, [agentThreads, mapReduce]);
 
   const buildStagesByPlan = useMemo(() => {
     const map = new Map<string, BuildStageSpec[]>();
@@ -151,8 +153,9 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     const hasArtifactContext = (orchestration !== null && orchestration !== undefined) || (planArtifacts?.length ?? 0) > 0;
     const validationCommandIds = validationCommandLaneIds(validationCommands, events);
     const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id);
+    const isMapReduceLane = (id: string) => mapReduce?.laneIds.has(id) === true;
     const addPlanStatusLane = (id: string) => {
-      if (!hasArtifactContext || realPlanIds.has(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
+      if (!hasArtifactContext || realPlanIds.has(id) || isMapReduceLane(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
         add(id);
       }
     };
@@ -167,25 +170,25 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     for (const id of threadsByPlan.keys()) addPlanStatusLane(id);
     for (const id of validationCommandIds) addPlanStatusLane(id);
 
-    // Drop lanes rendered by the dedicated map/reduce orchestration view so the
-    // generic pipeline does not also render a row per atom/reducer (the wall).
-    if (suppressedLaneIds && suppressedLaneIds.size > 0) {
-      for (let i = ids.length - 1; i >= 0; i--) {
-        if (suppressedLaneIds.has(ids[i])) ids.splice(i, 1);
-      }
-    }
-
-    // Sort the full set by lane registry order. Within the same order tier,
-    // preserve the insertion order (orchestration-declared plans first).
+    // Sort the full set by lane registry order; map/reduce group lanes join the
+    // planning tier (order 0) so the compile phase reads chronologically. Within
+    // the same order tier, preserve the insertion order (orchestration-declared
+    // plans first, then first-thread-start order).
     const orderByIndex = new Map(ids.map((id, i) => [id, i]));
+    const orderFor = (id: string) => (isMapReduceLane(id) ? 0 : laneOrder(id));
     ids.sort((a, b) => {
-      const orderDiff = laneOrder(a) - laneOrder(b);
+      const orderDiff = orderFor(a) - orderFor(b);
       if (orderDiff !== 0) return orderDiff;
       return (orderByIndex.get(a) ?? 0) - (orderByIndex.get(b) ?? 0);
     });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, suppressedLaneIds]);
+  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, mapReduce]);
+
+  const mapReduceLaneById = useMemo(
+    () => new Map((mapReduce?.lanes ?? []).map((lane) => [lane.id, lane])),
+    [mapReduce],
+  );
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
@@ -343,6 +346,8 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 decisions={decisions?.[planId]}
                 validationCommands={validationCommandsForLane(planId, validationCommands, events)}
                 prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
+                laneDisplay={mapReduceLaneById.get(planId)}
+                threadDisplay={mapReduce?.displayByAgentId}
                 disablePreview={planId === 'planning'}
                 onDecisionSelect={handleDecisionSelect}
                 onAgentSelect={handleAgentSelect}
