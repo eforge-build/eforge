@@ -12,6 +12,7 @@ export * from './collapsible';
 export * from './command';
 export * from './dialog';
 export * from './dropdown-menu';
+export * from './input';
 export * from './scroll-area';
 export * from './select';
 export * from './switch';

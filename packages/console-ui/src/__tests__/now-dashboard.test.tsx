@@ -11,6 +11,7 @@ import {
   emptyActiveSessions,
   connectedState,
 } from '@/test-support/factories';
+import { openQueueRowMenu as openRowMenu } from '@/test-support/radix';
 import { applyQueueCascade, previewQueueCascade, updateQueuePriority } from '@eforge-build/client/browser';
 
 // Mock only the queue-control browser helpers; everything else in the browser
@@ -246,10 +247,13 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.change(screen.getByLabelText('Priority for Pending Build'), {
+      openRowMenu('Pending Build');
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Set priority…' }));
+      const priorityDialog = await screen.findByRole('dialog');
+      fireEvent.change(within(priorityDialog).getByLabelText('Priority for Pending Build'), {
         target: { value: '3' },
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Set priority' }));
+      fireEvent.click(within(priorityDialog).getByRole('button', { name: 'Set priority' }));
 
       await waitFor(() => expect(priorityMock).toHaveBeenCalledWith('q-pending', { priority: 3 }));
       // The mutation has not resolved yet, so no refresh should have happened.
@@ -294,8 +298,9 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-      const dialog = screen.getByRole('alertdialog');
+      openRowMenu('Pending Build');
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove…' }));
+      const dialog = await screen.findByRole('alertdialog');
       await waitFor(() => expect(previewCascadeMock).toHaveBeenCalledWith('q-pending', { operation: 'remove' }));
       fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
@@ -329,11 +334,15 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.change(screen.getByLabelText('Priority for Pending Build'), {
+      openRowMenu('Pending Build');
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Set priority…' }));
+      const priorityDialog = await screen.findByRole('dialog');
+      fireEvent.change(within(priorityDialog).getByLabelText('Priority for Pending Build'), {
         target: { value: '2' },
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Set priority' }));
+      fireEvent.click(within(priorityDialog).getByRole('button', { name: 'Set priority' }));
 
+      // The error renders inside the still-open dialog.
       await screen.findByText(/Queue priority request failed/);
       expect(refreshQueue).not.toHaveBeenCalled();
     });
@@ -360,8 +369,9 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
-      const dialog = screen.getByRole('alertdialog');
+      openRowMenu('Pending Build');
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove…' }));
+      const dialog = await screen.findByRole('alertdialog');
       await waitFor(() => expect(previewCascadeMock).toHaveBeenCalled());
       fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
@@ -404,8 +414,9 @@ describe('NowDashboard', () => {
           />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: 'Override dependency' }));
-        const dialog = screen.getByRole('alertdialog');
+        openRowMenu('Blocked Build');
+        fireEvent.click(await screen.findByRole('menuitem', { name: 'Override dependency…' }));
+        const dialog = await screen.findByRole('alertdialog');
         fireEvent.change(within(dialog).getByLabelText('Dependency to override for Blocked Build'), {
           target: { value: 'dep-b' },
         });
@@ -466,8 +477,9 @@ describe('NowDashboard', () => {
           />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: 'Override dependency' }));
-        const dialog = screen.getByRole('alertdialog');
+        openRowMenu('Blocked Build');
+        fireEvent.click(await screen.findByRole('menuitem', { name: 'Override dependency…' }));
+        const dialog = await screen.findByRole('alertdialog');
         fireEvent.change(within(dialog).getByLabelText('Dependency to override for Blocked Build'), {
           target: { value: 'dep-a' },
         });

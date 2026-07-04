@@ -26,6 +26,7 @@ import { QueueStacks } from './queue-stack-card';
 import { QueueIntakeLane } from './queue-intake-lane';
 import { QueueRowActions } from './queue-row-actions';
 import type { QueueRowActionCallbacks } from './queue-row-actions';
+import type { PrioritySibling } from './queue-priority-dialog';
 
 interface QueueCardProps extends QueueRowActionCallbacks {
   stacks?: NowQueueStack[];
@@ -59,13 +60,14 @@ function isForwardItem(item: NowQueueItem): boolean {
 
 function LooseQueueRow({
   item,
+  prioritySiblings,
   onSetPriority,
   onOverrideDependency,
   onHold,
   onUnhold,
   onPreviewCascade,
   onApplyCascade,
-}: { item: NowQueueItem } & QueueRowActionCallbacks) {
+}: { item: NowQueueItem; prioritySiblings: PrioritySibling[] } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   // Only forward queue work (pending/waiting) is mutable from Console; running
   // rows keep their status-only presentation.
@@ -76,23 +78,14 @@ function LooseQueueRow({
         {item.status}
       </Badge>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-foreground truncate">{item.title}</p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {item.priority != null && (
-            <span className="inline-block text-xs text-muted-foreground">priority {item.priority}</span>
-          )}
-          {item.hold?.held === true && <Badge variant="outline" className="text-xs">Held</Badge>}
-        </div>
-        {item.dependsOn && item.dependsOn.length > 0 && (
-          <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
-        )}
-        {item.hold?.reason && <p className="text-xs text-muted-foreground">hold: {item.hold.reason}</p>}
-        {showActions && (
-          <>
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 truncate text-xs text-foreground">{item.title}</p>
+          {showActions && (
             <QueueRowActions
               itemId={item.id}
               itemTitle={item.title}
               initialPriority={item.priority}
+              prioritySiblings={prioritySiblings}
               onSetPriority={onSetPriority}
               dependencyIds={item.dependsOn ?? []}
               onOverrideDependency={onOverrideDependency}
@@ -103,8 +96,20 @@ function LooseQueueRow({
               hold={item.hold}
               capabilities={item.capabilities}
             />
-          </>
+          )}
+        </div>
+        {(item.priority != null || item.hold?.held === true) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {item.priority != null && (
+              <Badge variant="outline" className="text-xs tabular-nums">P: {item.priority}</Badge>
+            )}
+            {item.hold?.held === true && <Badge variant="outline" className="text-xs">Held</Badge>}
+          </div>
         )}
+        {item.dependsOn && item.dependsOn.length > 0 && (
+          <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
+        )}
+        {item.hold?.reason && <p className="text-xs text-muted-foreground">hold: {item.hold.reason}</p>}
       </div>
     </li>
   );
@@ -122,6 +127,20 @@ export function QueueCard({
   onApplyCascade,
 }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
+
+  // Sibling projection for the priority dialog: every forward item (stacked
+  // and loose) participates in queue ordering, so all of them inform the
+  // Front/Back presets and the landing preview.
+  const prioritySiblings = React.useMemo<PrioritySibling[]>(
+    () =>
+      (summary.allItems ?? summary.topItems).map(({ id, title, priority, created }) => ({
+        id,
+        title,
+        priority,
+        created,
+      })),
+    [summary.allItems, summary.topItems],
+  );
 
   // Items already shown in the stacked view; never repeat them in the flat list.
   const stackedIds = React.useMemo(
@@ -171,6 +190,7 @@ export function QueueCard({
           <div className={hasIntake ? 'border-t pt-3' : undefined}>
             <QueueStacks
               stacks={stacks}
+              prioritySiblings={prioritySiblings}
               onSetPriority={onSetPriority}
               onOverrideDependency={onOverrideDependency}
               onHold={onHold}
@@ -198,6 +218,7 @@ export function QueueCard({
                 <LooseQueueRow
                   key={item.id}
                   item={item}
+                  prioritySiblings={prioritySiblings}
                   onSetPriority={onSetPriority}
                   onOverrideDependency={onOverrideDependency}
                   onHold={onHold}

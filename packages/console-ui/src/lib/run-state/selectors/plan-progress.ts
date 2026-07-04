@@ -7,6 +7,8 @@
 import type { RunState, PipelineStage, BuildStageSpec } from '../types';
 import { isRegisteredPhaseLane, laneLabel, laneOrder } from '../lane-registry';
 
+// --- eforge:region plan-status-and-gantt ---
+
 /** Status counts across all plans in the run. */
 export interface PlanStatusCounts {
   pending: number;
@@ -124,9 +126,12 @@ export function selectMiniGanttRows(state: RunState): MiniGanttRow[] {
   return Array.from(allIds).sort().map((id) => makeRow(id, id));
 }
 
+// --- eforge:endregion plan-status-and-gantt ---
+
 // ---------------------------------------------------------------------------
 // Plan-lane selectors (mini swimlane for the Now dashboard active-build cards)
 // ---------------------------------------------------------------------------
+// --- eforge:region plan-lanes ---
 
 /** A single agent participating in a lane, with its accumulated token total. */
 export interface PlanLaneAgent {
@@ -196,22 +201,72 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
 // Lane labels and ordering are now sourced from the single lane registry
 // (lib/run-state/lane-registry.ts). See laneLabel() / laneOrder().
 
-function validationLaneForStart(startedAt: string, events: RunState['events']): 'validation' | 'final-validation' {
-  const startMs = new Date(startedAt).getTime();
-  let gapCloseCompleted = false;
-
+/**
+ * Earliest `gap_close:complete` timestamp in the run (ms since epoch), or null
+ * when gap close has not completed. Computed once per selection so span
+ * classification is O(spans + events) instead of O(spans x events).
+ */
+function earliestGapCloseCompleteMs(events: RunState['events']): number | null {
+  let earliest: number | null = null;
   for (const { event } of events) {
+    if (event.type !== 'gap_close:complete') continue;
     const eventMs = new Date(event.timestamp).getTime();
-    if (Number.isNaN(eventMs) || eventMs > startMs) continue;
-    if (event.type === 'gap_close:complete') gapCloseCompleted = true;
+    if (Number.isNaN(eventMs)) continue;
+    if (earliest === null || eventMs < earliest) earliest = eventMs;
   }
-
-  return gapCloseCompleted ? 'final-validation' : 'validation';
+  return earliest;
 }
 
-function validationCommandLaneIds(state: RunState): Set<string> {
-  if (state.validationCommands.length === 0) return new Set();
-  return new Set(state.validationCommands.map((span) => validationLaneForStart(span.startedAt, state.events)));
+function validationLaneForStart(startedAt: string, gapCloseCompleteMs: number | null): 'validation' | 'final-validation' {
+  if (gapCloseCompleteMs === null) return 'validation';
+  const startMs = new Date(startedAt).getTime();
+  // A NaN start compares false here, matching the previous per-event scan
+  // where an unparseable span start let any gap_close:complete event qualify.
+  return gapCloseCompleteMs > startMs ? 'validation' : 'final-validation';
+}
+
+function validationCommandSpansByLane(state: RunState): Map<string, RunState['validationCommands']> {
+  const byLane = new Map<string, RunState['validationCommands']>();
+  const gapCloseCompleteMs = earliestGapCloseCompleteMs(state.events);
+  for (const span of state.validationCommands) {
+    const laneId = validationLaneForStart(span.startedAt, gapCloseCompleteMs);
+    const spans = byLane.get(laneId);
+    if (spans) {
+      spans.push(span);
+    } else {
+      byLane.set(laneId, [span]);
+    }
+  }
+  return byLane;
+}
+
+/**
+ * True when the chronologically last item worked in a phase lane is a
+ * validation command that failed or timed out. A run that aborts on a failed
+ * final-validation command leaves every span ended, which would otherwise
+ * derive completion and render "done" on a terminally failed phase. Agent
+ * threads carry no pass/fail outcome, so a thread as the latest item keeps
+ * the ended-means-done behavior (a later fixer round supersedes the failure).
+ */
+function lastLaneOutcomeFailed(
+  threads: RunState['agentThreads'],
+  spans: RunState['validationCommands'],
+): boolean {
+  let latestStart = '';
+  let failed = false;
+  for (const thread of threads) {
+    if (thread.startedAt >= latestStart) {
+      latestStart = thread.startedAt;
+      failed = false;
+    }
+  }
+  for (const span of spans) {
+    if (span.startedAt >= latestStart) {
+      latestStart = span.startedAt;
+      failed = span.status === 'failed' || span.status === 'timeout';
+    }
+  }
+  return failed;
 }
 
 /**
@@ -247,6 +302,25 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     }
   }
 
+  const validationSpansByLane = validationCommandSpansByLane(state);
+
+  // Phase lanes (validation, gap-close, final-validation) never receive
+  // plan:status:change events, so without a derived signal a finished phase
+  // would render as "waiting" forever. When no explicit status exists, treat a
+  // phase lane as complete once it has content and nothing is still running —
+  // a new fixer round re-activates it by starting a fresh thread. Explicit
+  // planStatuses entries always win. A lane whose last outcome is a
+  // failed/timed-out validation command never derives completion: everything
+  // has ended, but the phase terminally failed rather than finished.
+  const derivedPhaseComplete = (planId: string, stage: PipelineStage | undefined): boolean => {
+    if (stage !== undefined || !isRegisteredPhaseLane(planId)) return false;
+    const threads = threadsByPlan.get(planId) ?? [];
+    const spans = validationSpansByLane.get(planId) ?? [];
+    if (threads.length === 0 && spans.length === 0) return false;
+    if (lastLaneOutcomeFailed(threads, spans)) return false;
+    return threads.every((t) => t.endedAt !== null) && spans.every((s) => s.endedAt !== null);
+  };
+
   const makeLane = (planId: string, planName: string): PlanLane => {
     const stage = state.planStatuses[planId];
     return {
@@ -254,7 +328,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
       planName,
       stage,
       buildStages: buildByPlan.get(planId) ?? [],
-      isComplete: stage === 'complete',
+      isComplete: stage === 'complete' || derivedPhaseComplete(planId, stage),
       isFailed: stage === 'failed',
       agents: aggregateLaneAgents(threadsByPlan.get(planId) ?? []),
     };
@@ -272,8 +346,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
   // selectPlanningLane. Order by the lane registry instead of alphabetically.
   const known = new Set(sourcePlans.map((plan) => plan.id));
   const extras = new Set<string>();
-  const validationCommandIds = validationCommandLaneIds(state);
-  const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.has(id);
+  const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationSpansByLane.has(id);
   for (const id of Object.keys(state.planStatuses)) {
     if (known.has(id)) continue;
     if (isRegisteredPhaseLane(id) && phaseLaneHasContent(id)) extras.add(id);
@@ -281,10 +354,15 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
   for (const id of threadsByPlan.keys()) {
     if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);
   }
-  for (const id of validationCommandIds) {
+  for (const id of validationSpansByLane.keys()) {
     if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);
   }
-  extras.delete('planning');
+  // Order-0 phases fold into the dedicated planning row: 'planning' itself via
+  // selectPlanningLane, and the pre-planning compiler phases (satisfaction
+  // gate, repository exploration) whose threads roll into that same lane.
+  for (const id of Array.from(extras)) {
+    if (laneOrder(id) === 0) extras.delete(id);
+  }
   for (const id of Array.from(extras).sort((a, b) => laneOrder(a) - laneOrder(b) || a.localeCompare(b))) {
     lanes.push(makeLane(id, laneLabel(id)));
   }
@@ -292,15 +370,41 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
   return lanes;
 }
 
+// --- eforge:endregion plan-lanes ---
+
+// --- eforge:region planning-lane ---
+
 /**
- * Returns the planning-phase lane summary built from agents with
- * `planId === 'planning'`, aggregating tokens per agent role.
+ * Pre-planning compiler phases that fold into the planning lane. Their agent
+ * threads are relabelled by phase so they stay distinguishable from the
+ * planner agents proper in the expanded lane.
  *
- * Re-scoped from `!t.planId` to `t.planId === 'planning'` so that
- * validation-fixer / prd-validator threads (planId 'validation' /
- * 'final-validation') are excluded and rendered in their own phase lanes.
+ * Must stay in sync with the order-0 phase lanes in the lane registry
+ * (lib/run-state/lane-registry.ts) minus 'planning' itself; exported so the
+ * selector tests can enforce that invariant.
+ */
+export const PRE_PLANNING_AGENT_LABELS: Record<string, string> = {
+  'satisfaction-gate': 'satisfaction-gate',
+  'repository-exploration': 'repo-exploration',
+};
+
+/**
+ * Returns the planning-phase lane summary built from planning agents plus the
+ * pre-planning compiler phases (PRD-satisfaction gate and repository
+ * exploration), aggregating tokens per agent role.
+ *
+ * The pre-planning phases run before the planner and are conceptually part of
+ * planning, so their threads roll into this lane instead of rendering as
+ * separate swimlane rows. Validation-fixer / prd-validator threads (planId
+ * 'validation' / 'final-validation') remain excluded and render in their own
+ * phase lanes.
  */
 export function selectPlanningLane(state: RunState): PlanningLane {
-  const agents = aggregateLaneAgents(state.agentThreads.filter((t) => t.planId === 'planning'));
+  const threads = state.agentThreads
+    .filter((t) => t.planId === 'planning' || (t.planId != null && Object.hasOwn(PRE_PLANNING_AGENT_LABELS, t.planId)))
+    .map((t) => (t.planId === 'planning' ? t : { ...t, agent: PRE_PLANNING_AGENT_LABELS[t.planId!] }));
+  const agents = aggregateLaneAgents(threads);
   return { agents, running: agents.some((a) => a.running) };
 }
+
+// --- eforge:endregion planning-lane ---

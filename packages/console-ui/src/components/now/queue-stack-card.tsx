@@ -8,9 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import type { NowQueueStack, NowQueueStackItem } from '@/lib/selectors/now';
 import { QueueRowActions } from './queue-row-actions';
 import type { QueueRowActionCallbacks } from './queue-row-actions';
+import type { PrioritySibling } from './queue-priority-dialog';
 
 interface QueueStacksProps extends QueueRowActionCallbacks {
   stacks: NowQueueStack[];
+  /** Forward queue items for the priority dialog's presets and landing preview. */
+  prioritySiblings?: PrioritySibling[];
 }
 
 function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -59,7 +62,7 @@ function RunningStackRow({ item, isLast, onPreviewCascade, onApplyCascade }: { i
         className="absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border border-primary bg-primary"
         aria-hidden="true"
       />
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1 text-xs text-muted-foreground">
         <span>Layer {item.layer} / {item.totalLayers}</span>
         <span className="min-w-0 truncate font-medium text-foreground/80" title={item.title}>
           {item.title}
@@ -67,15 +70,17 @@ function RunningStackRow({ item, isLast, onPreviewCascade, onApplyCascade }: { i
         <span className="text-foreground/70">running ↑</span>
         <span aria-hidden="true">·</span>
         <span>see above{unlocks ? ` · ${unlocks}` : ''}</span>
-        <QueueRowActions
-          itemId={item.id}
-          itemTitle={item.title}
-          showCancel
-          hold={item.hold}
-          capabilities={item.capabilities}
-          onPreviewCascade={onPreviewCascade}
-          onApplyCascade={onApplyCascade}
-        />
+        <span className="ml-auto">
+          <QueueRowActions
+            itemId={item.id}
+            itemTitle={item.title}
+            showCancel
+            hold={item.hold}
+            capabilities={item.capabilities}
+            onPreviewCascade={onPreviewCascade}
+            onApplyCascade={onApplyCascade}
+          />
+        </span>
       </div>
     </li>
   );
@@ -84,13 +89,14 @@ function RunningStackRow({ item, isLast, onPreviewCascade, onApplyCascade }: { i
 function QueueStackItemRow({
   item,
   isLast,
+  prioritySiblings,
   onSetPriority,
   onOverrideDependency,
   onHold,
   onUnhold,
   onPreviewCascade,
   onApplyCascade,
-}: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
+}: { item: NowQueueStackItem; isLast: boolean; prioritySiblings?: PrioritySibling[] } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   if (status === 'running') {
     return <RunningStackRow item={item} isLast={isLast} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />;
@@ -114,29 +120,33 @@ function QueueStackItemRow({
           <Badge variant={statusVariant(item.status)} className="capitalize text-xs">
             {item.status}
           </Badge>
+          {item.priority != null && (
+            <Badge variant="outline" className="text-xs tabular-nums">P: {item.priority}</Badge>
+          )}
           {item.hold?.held === true && <Badge variant="outline" className="text-xs">Held</Badge>}
+          {showActions && (
+            <span className="ml-auto">
+              <QueueRowActions
+                itemId={item.id}
+                itemTitle={item.title}
+                initialPriority={item.priority}
+                prioritySiblings={prioritySiblings}
+                onSetPriority={onSetPriority}
+                dependencyIds={item.dependsOn}
+                onOverrideDependency={onOverrideDependency}
+                onHold={onHold}
+                onUnhold={onUnhold}
+                onPreviewCascade={onPreviewCascade}
+                onApplyCascade={onApplyCascade}
+                hold={item.hold}
+                capabilities={item.capabilities}
+              />
+            </span>
+          )}
         </div>
         <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
         {item.hold?.reason && <p className="text-xs text-muted-foreground">hold: {item.hold.reason}</p>}
-        {showActions && (
-          <>
-            <QueueRowActions
-              itemId={item.id}
-              itemTitle={item.title}
-              initialPriority={item.priority}
-              onSetPriority={onSetPriority}
-              dependencyIds={item.dependsOn}
-              onOverrideDependency={onOverrideDependency}
-              onHold={onHold}
-              onUnhold={onUnhold}
-              onPreviewCascade={onPreviewCascade}
-              onApplyCascade={onApplyCascade}
-              hold={item.hold}
-              capabilities={item.capabilities}
-            />
-          </>
-        )}
       </div>
     </li>
   );
@@ -144,6 +154,7 @@ function QueueStackItemRow({
 
 export function QueueStacks({
   stacks,
+  prioritySiblings,
   onSetPriority,
   onOverrideDependency,
   onHold,
@@ -186,6 +197,7 @@ export function QueueStacks({
                   key={item.id}
                   item={item}
                   isLast={itemIndex === stack.items.length - 1}
+                  prioritySiblings={prioritySiblings}
                   onSetPriority={onSetPriority}
                   onOverrideDependency={onOverrideDependency}
                   onHold={onHold}

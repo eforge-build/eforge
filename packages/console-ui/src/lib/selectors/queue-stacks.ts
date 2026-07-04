@@ -38,13 +38,27 @@ export function queueItemLabelById(byId: Map<string, QueueItem>, id: string): st
   return item ? selectPrdDisplayLabel(item.title, item.id) : selectPrdDisplayLabel(undefined, id);
 }
 
-export function compareQueueItems(a: QueueItem, b: QueueItem): number {
-  const orderDiff = queueStatusOrder(a.status) - queueStatusOrder(b.status);
-  if (orderDiff !== 0) return orderDiff;
+/**
+ * Minimal ordering key for the within-wave comparator — satisfied by both the
+ * `QueueItem` wire shape and the priority dialog's `PrioritySibling` projection.
+ */
+export interface QueueOrderKey {
+  id: string;
+  priority?: number | null;
+  created?: string | null;
+}
 
-  // Lower numeric priority dispatches first; absent priority sorts last. This
-  // mirrors the engine's queue-order semantics (priority ascending, nulls last)
-  // so the Console visual order matches the order items will actually build in.
+/**
+ * Within-wave queue ordering: lower numeric priority dispatches first with
+ * absent priority sorting last, then creation time ascending, then id as a
+ * stable tiebreak. This mirrors the engine's queue-order semantics
+ * (`resolveQueueOrder` in packages/engine/src/prd-queue.ts — priority
+ * ascending, nulls last, then created ascending; the id tiebreak is a
+ * Console-side addition for stable rendering) so the Console visual order
+ * matches the order items will actually build in. Status and dependency waves
+ * are deliberately out of scope — callers layer those on top.
+ */
+export function compareQueueOrder(a: QueueOrderKey, b: QueueOrderKey): number {
   const aHasPriority = a.priority != null;
   const bHasPriority = b.priority != null;
   if (aHasPriority !== bHasPriority) return aHasPriority ? -1 : 1;
@@ -57,6 +71,12 @@ export function compareQueueItems(a: QueueItem, b: QueueItem): number {
   if (aCreated !== bCreated) return aCreated < bCreated ? -1 : 1;
 
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+export function compareQueueItems(a: QueueItem, b: QueueItem): number {
+  const orderDiff = queueStatusOrder(a.status) - queueStatusOrder(b.status);
+  if (orderDiff !== 0) return orderDiff;
+  return compareQueueOrder(a, b);
 }
 
 export function sortQueueItemsTopologically(items: QueueItem[]): QueueItem[] {

@@ -61,6 +61,12 @@ describe('selectEfficiencyAnalyticsViewModel', () => {
       speedSampleCount: 2,
     });
     expect(model.models[0].p50OutputTokensPerSecond).toEqual({ value: 4, availability: 'available', sampleCount: 2 });
+    // Aggregate totals flow through from the wire rollup for the expanded tiles.
+    expect(model.models[0]).toMatchObject({
+      cachePercentage: 25,
+      totalCostUsd: 1.5,
+      outputTokens: 50,
+    });
   });
 
   it('maps blank profiles to an unattributed label and run sample count', () => {

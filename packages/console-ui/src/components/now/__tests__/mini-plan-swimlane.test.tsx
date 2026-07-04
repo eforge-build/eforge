@@ -110,6 +110,43 @@ describe('MiniPlanSwimlane', () => {
     expect(screen.getByText('planner')).toBeDefined(); // active → expanded
   });
 
+  it('shows a done marker for a phase lane with derived completion and no stage', () => {
+    // Phase lanes (e.g. validation) never receive plan:status:change; the
+    // selector derives isComplete once all their threads end. The lane must
+    // render as done, not "waiting".
+    const lane = makeLane({
+      planId: 'validation',
+      planName: 'Validation',
+      stage: undefined,
+      buildStages: [],
+      isComplete: true,
+      agents: [{ agent: 'validation-fixer', tokens: 250_000, running: false }],
+    });
+    render(<MiniPlanSwimlane lanes={[lane]} planning={emptyPlanning} hasPlanningRow={false} />);
+    expect(screen.getByText('✓ done')).toBeDefined();
+    expect(screen.queryByText('waiting')).toBeNull();
+  });
+
+  it('renders pre-planning phase agents inside the PRD planning row', () => {
+    // Satisfaction gate and repo exploration fold into the planning lane; they
+    // never appear as separate lanes.
+    const planning: PlanningLane = {
+      running: true,
+      agents: [
+        { agent: 'satisfaction-gate', tokens: 899_000, running: false },
+        { agent: 'repo-exploration', tokens: 404_200, running: false },
+        { agent: 'planner', tokens: 1_200_000, running: true },
+      ],
+    };
+    render(<MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} />);
+    expect(screen.getByText('satisfaction-gate')).toBeDefined();
+    expect(screen.getByText('repo-exploration')).toBeDefined();
+    expect(screen.getByText('planner')).toBeDefined();
+    // The guarantee that pre-planning phases never render as separate lanes
+    // lives in the selector test "never emits separate lanes for pre-planning
+    // phases" (run-state/__tests__/selectors.test.ts).
+  });
+
   it('expands active plan lanes by default and collapses completed ones', () => {
     const active = makeLane({ planId: 'plan-01', planName: 'Active' });
     const done = makeLane({

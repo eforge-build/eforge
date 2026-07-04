@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
 import { QueueStacks } from '../queue-stack-card';
 import type { NowQueueStack } from '@/lib/selectors/now';
 import { makeQueueCapabilities } from '@/test-support/factories';
+import { openQueueRowMenu as openRowMenu } from '@/test-support/radix';
 
 function makeStack(): NowQueueStack {
   return {
@@ -79,20 +80,29 @@ describe('QueueStacks', () => {
 });
 
 describe('QueueStacks - row actions', () => {
-  it('renders Set priority and Remove controls for waiting rows but not running rows', () => {
+  it('offers Set priority and Remove in the menu for waiting rows; running rows only get Cancel PRD', async () => {
     render(<QueueStacks stacks={[makeStack()]} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
 
-    // The two waiting layers expose controls.
-    expect(screen.getByLabelText('Priority for API Build')).toBeDefined();
-    expect(screen.getByLabelText('Priority for Handoff Build')).toBeDefined();
-    expect(screen.getAllByRole('button', { name: 'Set priority' })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Remove…' })).toHaveLength(2);
+    // Every row gets a kebab: two waiting layers plus the running reference row.
+    expect(screen.getByRole('button', { name: 'Queue actions for API Build' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Queue actions for Handoff Build' })).toBeDefined();
 
-    // The running base layer keeps its status-only presentation.
-    expect(screen.queryByLabelText('Priority for Base Build')).toBeNull();
+    openRowMenu('API Build');
+    expect(await screen.findByRole('menuitem', { name: 'Set priority…' })).toBeDefined();
+    expect(screen.getByRole('menuitem', { name: 'Remove…' })).toBeDefined();
+
+    // Close the first menu before opening another — Radix aria-hides the rest
+    // of the page while a menu is open, so the other trigger is unqueryable.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+
+    // The running base layer exposes only the cascade cancel action.
+    openRowMenu('Base Build');
+    expect(await screen.findByRole('menuitem', { name: 'Cancel PRD…' })).toBeDefined();
+    expect(screen.queryByRole('menuitem', { name: 'Set priority…' })).toBeNull();
   });
 
-  it('renders controls for pending stack rows', () => {
+  it('offers Set priority in the menu for pending stack rows', async () => {
     const base = makeStack();
     const stack: NowQueueStack = {
       ...base,
@@ -102,22 +112,22 @@ describe('QueueStacks - row actions', () => {
     };
     render(<QueueStacks stacks={[stack]} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
 
-    expect(screen.getByLabelText('Priority for Base Build')).toBeDefined();
-    expect(screen.getAllByRole('button', { name: 'Set priority' })).toHaveLength(3);
+    openRowMenu('Base Build');
+    expect(await screen.findByRole('menuitem', { name: 'Set priority…' })).toBeDefined();
   });
 
-  it('renders no controls when no callbacks are provided', () => {
+  it('renders no menus when no callbacks are provided', () => {
     render(<QueueStacks stacks={[makeStack()]} />);
-    expect(screen.queryByRole('button', { name: 'Set priority' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Queue actions for/ })).toBeNull();
   });
 
-  it('renders Override dependency for waiting stack rows with dependencies', () => {
+  it('offers Override dependency in the menu for waiting stack rows with dependencies', async () => {
     render(<QueueStacks stacks={[makeStack()]} onOverrideDependency={vi.fn()} />);
-    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+    openRowMenu('API Build');
+    expect(await screen.findByRole('menuitem', { name: 'Override dependency…' })).toBeDefined();
   });
 
-  it('renders Override dependency for pending stack rows with dependencies', () => {
+  it('offers Override dependency in the menu for pending stack rows with dependencies', async () => {
     const base = makeStack();
     const stack: NowQueueStack = {
       ...base,
@@ -126,10 +136,11 @@ describe('QueueStacks - row actions', () => {
       ),
     };
     render(<QueueStacks stacks={[stack]} onOverrideDependency={vi.fn()} />);
-    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+    openRowMenu('API Build');
+    expect(await screen.findByRole('menuitem', { name: 'Override dependency…' })).toBeDefined();
   });
 
-  it('does not render Override dependency for running stack rows even with dependencies', () => {
+  it('does not offer any actions for running stack rows even with dependencies (no cascade callbacks)', () => {
     const base = makeStack();
     const stack: NowQueueStack = {
       ...base,
@@ -139,22 +150,38 @@ describe('QueueStacks - row actions', () => {
     };
     render(<QueueStacks stacks={[stack]} onOverrideDependency={vi.fn()} />);
 
-    expect(screen.queryByLabelText('Dependency to override for Base Build')).toBeNull();
-    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+    // Running rows only ever expose the cascade cancel action; without cascade
+    // callbacks the running row has no kebab at all.
+    expect(screen.queryByRole('button', { name: 'Queue actions for Base Build' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Queue actions for API Build' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Queue actions for Handoff Build' })).toBeDefined();
   });
 
-  it('confirms Override dependency for the selected stack row dependency', () => {
+  it('confirms Override dependency for the selected stack row dependency', async () => {
     const onOverrideDependency = vi.fn();
     render(<QueueStacks stacks={[makeStack()]} onOverrideDependency={onOverrideDependency} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Override dependency' })[1]);
-    const dialog = screen.getByRole('alertdialog');
+    openRowMenu('Handoff Build');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Override dependency…' }));
+    const dialog = await screen.findByRole('alertdialog');
     fireEvent.change(within(dialog).getByLabelText('Reason for overriding Handoff Build'), {
       target: { value: 'handoff approved' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Override dependency' }));
 
-    expect(onOverrideDependency).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onOverrideDependency).toHaveBeenCalledTimes(1));
     expect(onOverrideDependency).toHaveBeenCalledWith('handoff', 'api', 'handoff approved');
+  });
+
+  it('shows a P: badge for prioritized stack rows', () => {
+    const base = makeStack();
+    const stack: NowQueueStack = {
+      ...base,
+      items: base.items.map((item) =>
+        item.id === 'api' ? { ...item, priority: 3 } : item,
+      ),
+    };
+    render(<QueueStacks stacks={[stack]} />);
+    expect(screen.getByText('P: 3')).toBeDefined();
   });
 });

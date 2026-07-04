@@ -12,7 +12,9 @@ import {
   selectMiniGanttRows,
   selectPlanLanes,
   selectPlanningLane,
+  PRE_PLANNING_AGENT_LABELS,
 } from '../selectors/plan-progress';
+import { LANE_REGISTRY } from '../lane-registry';
 import { selectStackLayersForRun } from '../selectors/stack-layers';
 import { createInitialRunState, initialRunState, reduce } from '../reducer';
 import type { RunState, EforgeEvent } from '../types';
@@ -443,6 +445,36 @@ describe('selectPlanningLane', () => {
     expect(lane.running).toBe(false);
   });
 
+  it('folds pre-planning phase threads (satisfaction gate, repo exploration) into the planning lane with phase labels', () => {
+    const state = makeRunState({
+      agentThreads: [
+        { planId: 'satisfaction-gate', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:02:00.000Z', totalTokens: 899_000 },
+        { planId: 'repository-exploration', agent: 'planner', startedAt: '2026-05-24T09:02:00.000Z', endedAt: '2026-05-24T09:05:00.000Z', totalTokens: 404_200 },
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T09:05:00.000Z', endedAt: null, totalTokens: 100_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lane = selectPlanningLane(state);
+    // Phase threads are relabelled so they do not merge with the planner role,
+    // and ordering follows first start: gate → exploration → planner.
+    expect(lane.agents).toEqual([
+      { agent: 'satisfaction-gate', tokens: 899_000, running: false },
+      { agent: 'repo-exploration', tokens: 404_200, running: false },
+      { agent: 'planner', tokens: 100_000, running: true },
+    ]);
+    expect(lane.running).toBe(true);
+  });
+
+  it('reports running while only pre-planning phase agents are live', () => {
+    const state = makeRunState({
+      agentThreads: [
+        { planId: 'satisfaction-gate', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: null, totalTokens: 10_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lane = selectPlanningLane(state);
+    expect(lane.agents).toEqual([{ agent: 'satisfaction-gate', tokens: 10_000, running: true }]);
+    expect(lane.running).toBe(true);
+  });
+
   it('excludes plan-less threads (no planId) from the planning lane', () => {
     const state = makeRunState({
       agentThreads: [
@@ -455,6 +487,20 @@ describe('selectPlanningLane', () => {
     expect(lane.agents).toEqual([
       { agent: 'plan-reviewer', tokens: 100_000, running: true },
     ]);
+  });
+
+  it('keeps PRE_PLANNING_AGENT_LABELS in sync with the order-0 phase lanes in the lane registry', () => {
+    // Every order-0 phase lane folds into the planning row: 'planning' itself
+    // directly, and each other order-0 lane via PRE_PLANNING_AGENT_LABELS. If a
+    // new order-0 lane is registered without a label entry, its threads would
+    // silently vanish from the swimlane (excluded as a separate lane by
+    // selectPlanLanes but never folded in by selectPlanningLane).
+    const orderZeroPhaseIds = LANE_REGISTRY
+      .filter((entry) => entry.kind === 'phase' && entry.order === 0)
+      .map((entry) => entry.id)
+      .filter((id) => id !== 'planning')
+      .sort();
+    expect(Object.keys(PRE_PLANNING_AGENT_LABELS).sort()).toEqual(orderZeroPhaseIds);
   });
 });
 
@@ -631,6 +677,174 @@ describe('selectPlanLanes - lane registry', () => {
     });
 
     expect(selectPlanLanes(state).map((lane) => lane.planId)).toEqual(['plan-01', 'validation', 'final-validation']);
+  });
+
+  it('never emits separate lanes for pre-planning phases (they fold into the planning row)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'implement' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'satisfaction-gate', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:02:00.000Z', totalTokens: 899_000 },
+        { planId: 'repository-exploration', agent: 'planner', startedAt: '2026-05-24T09:02:00.000Z', endedAt: '2026-05-24T09:05:00.000Z', totalTokens: 404_200 },
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: null, totalTokens: 100_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
+      ] as RunState['agentThreads'],
+    });
+    expect(selectPlanLanes(state).map((lane) => lane.planId)).toEqual(['plan-01', 'validation']);
+  });
+
+  it('derives completion for phase lanes whose threads have all ended (no plan:status:change ever arrives)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 50_000 },
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:06:00.000Z', endedAt: null, totalTokens: 60_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    const validation = lanes.find((l) => l.planId === 'validation');
+    const gapClose = lanes.find((l) => l.planId === 'gap-close');
+    expect(validation?.isComplete).toBe(true); // all threads ended
+    expect(validation?.isFailed).toBe(false);
+    expect(validation?.stage).toBeUndefined(); // derivation does not fabricate a stage
+    expect(gapClose?.isComplete).toBe(false); // still running
+  });
+
+  it('derives completion from ended validation command spans (command-only lanes)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      validationCommands: [
+        { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
+      ],
+    });
+    const validation = selectPlanLanes(state).find((l) => l.planId === 'validation');
+    expect(validation?.isComplete).toBe(true);
+  });
+
+  it('does not derive completion when the last final-validation command failed (run aborted on the failure)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
+      validationCommands: [
+        // Pre-gap-close validation passed → validation lane still derives done.
+        { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
+        // Final validation failed and the run aborted: everything has ended,
+        // but the phase must not render as complete.
+        { command: 'pnpm test', startedAt: '2026-05-24T11:10:00.000Z', endedAt: '2026-05-24T11:11:00.000Z', status: 'failed', exitCode: 1 },
+      ],
+    });
+    const lanes = selectPlanLanes(state);
+    const validation = lanes.find((l) => l.planId === 'validation');
+    const finalValidation = lanes.find((l) => l.planId === 'final-validation');
+    expect(validation?.isComplete).toBe(true); // passed phase still derives done
+    expect(finalValidation?.isComplete).toBe(false); // last outcome failed
+  });
+
+  it('does not derive completion when the last validation command timed out', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      validationCommands: [
+        { command: 'pnpm test', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:20:00.000Z', status: 'timeout', exitCode: null },
+      ],
+    });
+    const validation = selectPlanLanes(state).find((l) => l.planId === 'validation');
+    expect(validation?.isComplete).toBe(false);
+  });
+
+  it('derives completion again when a later command run supersedes an earlier failure', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      validationCommands: [
+        { command: 'pnpm test', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'failed', exitCode: 1 },
+        { command: 'pnpm test', startedAt: '2026-05-24T11:05:00.000Z', endedAt: '2026-05-24T11:06:00.000Z', status: 'passed', exitCode: 0 },
+      ],
+    });
+    const validation = selectPlanLanes(state).find((l) => l.planId === 'validation');
+    expect(validation?.isComplete).toBe(true);
+  });
+
+  it('does not derive completion when a new running thread re-activates a phase lane', () => {
+    // One fixer round ended, a fresh round just started: the lane is live
+    // again, not complete.
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 50_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:06:00.000Z', endedAt: null, totalTokens: 1_000 },
+      ] as RunState['agentThreads'],
+    });
+    const validation = selectPlanLanes(state).find((l) => l.planId === 'validation');
+    expect(validation?.isComplete).toBe(false);
+  });
+
+  it('does not derive completion when an explicit stage exists or for real plans without status', () => {
+    const state = makeRunState({
+      planStatuses: { 'gap-close': 'implement' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        // Real plan with ended threads but no status entry: stays not-complete.
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
+        // Phase lane with an explicit non-terminal stage: explicit status wins.
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 60_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes.find((l) => l.planId === 'plan-01')?.isComplete).toBe(false);
+    expect(lanes.find((l) => l.planId === 'gap-close')?.isComplete).toBe(false);
   });
 
   it('does not fall back to stale statuses when selecting lanes with empty orchestration context', () => {
