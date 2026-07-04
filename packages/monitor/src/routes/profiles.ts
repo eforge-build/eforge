@@ -49,7 +49,12 @@ export function createProfileRoutes(context: MonitorContext): RouteDefinition[] 
   ];
 }
 
+function isProfileListScope(value: unknown): value is NonNullable<ProfileListRequest['scope']> {
+  return value === 'all' || isProfileScope(value);
+}
+
 export async function projectProfileListResponse(context: MonitorContext, request: ProfileListRequest = {}): Promise<ProfileListResponse> {
+  if (request.scope !== undefined && !isProfileListScope(request.scope)) throw new Error('scope must be "local", "project", "user", or "all" when present');
   const discoveredConfigDir = await getConfigDir(context.cwd);
   const configDir = discoveredConfigDir ?? getConventionalConfigDir(context.cwd);
   let profiles = await listProfiles(configDir, context.cwd);
@@ -69,7 +74,11 @@ export async function projectProfileListResponse(context: MonitorContext, reques
 async function handleProfileList(context: MonitorContext, res: Parameters<typeof sendJson>[0], query: URLSearchParams): Promise<void> {
   try {
     const scope = query.get('scope');
-    const request: ProfileListRequest = scope === 'all' || isProfileScope(scope) ? { scope } : {};
+    if (scope !== null && !isProfileListScope(scope)) {
+      sendJsonError(res, 400, 'scope must be "local", "project", "user", or "all" when present');
+      return;
+    }
+    const request: ProfileListRequest = scope === null ? {} : { scope };
     sendJson(res, await projectProfileListResponse(context, request));
   } catch (err) {
     sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list agent runtime profiles');

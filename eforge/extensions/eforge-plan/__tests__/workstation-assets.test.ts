@@ -27,6 +27,8 @@ const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
+const METADATA_EDITOR = `${SRC}/views/plans/metadata-editor.tsx`;
+const TYPES = `${SRC}/types.ts`;
 const PLANS_VIEW = `${SRC}/views/plans-view.tsx`;
 const PLAN_REVISION_PANEL = `${SRC}/views/plans/plan-revision-panel.tsx`;
 const PLAN_REVISION_HOOK = `${SRC}/views/plans/use-plan-revision-session.ts`;
@@ -329,6 +331,33 @@ describe('eforge-plan planning workstation assets', () => {
     expect(workstationDocs).toContain('wrong-lane');
     expect(workstationDocs).toMatch(/does not .*run local `git` commands/i);
     expect(workstationDocs).toMatch(/does not .*call `gh`/i);
+  });
+
+  it('keeps profile-data workstation code behind the action bridge boundary', async () => {
+    const [detail, metadataEditor, types, bridge] = await Promise.all([
+      readFile(PLAN_DETAIL, 'utf-8'),
+      readFile(METADATA_EDITOR, 'utf-8'),
+      readFile(TYPES, 'utf-8'),
+      readFile(BRIDGE, 'utf-8'),
+    ]);
+    const combined = `${detail}\n${metadataEditor}\n${types}\n${bridge}`;
+
+    expect(detail).toContain('bridge.invokeAction<AgentRuntimeProfileOptionsResponse>');
+    expect(detail).toContain("'list-agent-runtime-profiles'");
+    expect(metadataEditor).toContain('AgentRuntimeProfileOption');
+    expect(types).toContain("@eforge-build/client/browser");
+    expect(bridge).toContain("case 'list-agent-runtime-profiles'");
+    expect(combined).not.toMatch(/\bfetch\s*\(/);
+    expect(combined).not.toContain('window.fetch');
+    expect(combined).not.toContain('globalThis.fetch');
+    expect(combined).not.toContain('XMLHttpRequest');
+    expect(combined).not.toContain('/api/profile/list');
+    expect(combined).not.toContain('buildProfileListPath');
+    expect(combined).not.toContain('API_ROUTES.profileList');
+    expect(combined).not.toContain('packages/console-ui');
+    expect(combined).not.toContain('@eforge-build/console-ui');
+    expect(combined).not.toContain('@eforge-build/engine/config');
+    expect(combined).not.toContain('listProfiles');
   });
 
   it('turns readiness diagnostics into actionable section and dimension mutations', async () => {

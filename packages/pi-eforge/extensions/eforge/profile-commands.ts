@@ -113,7 +113,8 @@ export async function handleProfileCommand(
     return;
   }
 
-  const { profiles, active } = listData;
+  const { active } = listData;
+  const profiles = listData.profiles.filter((profile) => !profile.shadowedBy);
 
   if (profiles.length === 0) {
     await showInfoOverlay(

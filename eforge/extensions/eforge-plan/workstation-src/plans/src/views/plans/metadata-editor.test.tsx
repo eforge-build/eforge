@@ -69,6 +69,23 @@ describe('MetadataEditor agent runtime profile selection', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ profile: 'excursion', agentProfile: 'local-fast', openQuestions: ['Keep the question?'] }));
   });
 
+  it('hides shadowed duplicate profile entries because agent_profile stores only the profile name', () => {
+    renderEditor({
+      plan: plan({ agent_profile: 'team-runtime' }),
+      profileOptions: {
+        status: 'success',
+        active: 'team-runtime',
+        profiles: [
+          { name: 'team-runtime', harness: 'pi', path: 'eforge/profiles/team-runtime.yaml', scope: 'project' },
+          { name: 'team-runtime', harness: 'claude-sdk', path: '.eforge/profiles/team-runtime.yaml', scope: 'local', shadowedBy: 'project' },
+        ],
+      },
+    });
+
+    expect(screen.getByRole('option', { name: 'team-runtime · project · active' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /shadowed by project/ })).toBeNull();
+  });
+
   it('renders a missing current profile that can be preserved, changed, or cleared', async () => {
     const { onSave } = renderEditor({ plan: plan({ agent_profile: 'deleted-profile' }) });
 

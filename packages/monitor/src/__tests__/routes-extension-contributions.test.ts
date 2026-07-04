@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -137,10 +138,14 @@ describe('extension contribution routes', () => {
 
   it('invokes profile-list context through the daemon contribution route wiring', async () => {
     const harness = await startContentRouteHarness({ routes: (context) => [...createExtensionContentRoutes(context), ...createProfileRoutes(context)] });
+    const previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    const xdgConfigHome = await mkdtemp(join(tmpdir(), 'eforge-profile-contribution-user-config-'));
+    process.env.XDG_CONFIG_HOME = xdgConfigHome;
     try {
       await seedExtension(harness.cwd, extensionSource);
       await mkdir(join(harness.cwd, '.eforge', 'profiles'), { recursive: true });
       await mkdir(join(harness.cwd, 'eforge', 'profiles'), { recursive: true });
+      await mkdir(join(xdgConfigHome, 'eforge', 'profiles'), { recursive: true });
       await writeFile(join(harness.cwd, '.eforge', '.active-profile'), 'team\n');
       await writeFile(join(harness.cwd, '.eforge', 'profiles', 'team.yaml'), [
         'description: Local team profile',
@@ -165,14 +170,30 @@ describe('extension contribution routes', () => {
         '    evaluation: { harness: pi, model: pi-model, effort: medium }',
         '',
       ].join('\n'));
+      await writeFile(join(xdgConfigHome, 'eforge', 'profiles', 'user.yaml'), [
+        'description: User profile',
+        'tags: [user]',
+        'agents:',
+        '  tiers:',
+        '    planning: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    implementation: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    review: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    evaluation: { harness: claude-sdk, model: user-model, effort: medium }',
+        '',
+      ].join('\n'));
 
-      const { res, body } = await invoke(harness, await actionIdFor(harness, 'read-profiles'), { scope: 'all' });
-      const routeRes = await harness.get(buildProfileListPath({ scope: 'all' }));
-      const routeBody = await routeRes.json();
-      expect(res.status).toBe(200);
-      expect(routeRes.status).toBe(200);
+      const actionId = await actionIdFor(harness, 'read-profiles');
+      for (const scope of ['all', 'local', 'project', 'user'] as const) {
+        const { res, body } = await invoke(harness, actionId, { scope });
+        const routeRes = await harness.get(buildProfileListPath({ scope }));
+        const routeBody = await routeRes.json();
+        expect(res.status).toBe(200);
+        expect(routeRes.status).toBe(200);
+        expect(body.output).toEqual(routeBody);
+      }
+
+      const { body } = await invoke(harness, actionId, { scope: 'all' });
       expect(body).toMatchObject({ ok: true, output: { active: 'team', source: 'local' } });
-      expect(body.output).toEqual(routeBody);
       expect(body.output.profiles).toEqual(expect.arrayContaining([
         expect.objectContaining({
           name: 'team',
@@ -187,9 +208,20 @@ describe('extension contribution routes', () => {
           shadowedBy: 'local',
           metadata: { description: 'Project team profile', tags: ['project'] },
         }),
+        expect.objectContaining({
+          name: 'user',
+          scope: 'user',
+          harness: 'claude-sdk',
+          metadata: { description: 'User profile', tags: ['user'] },
+        }),
       ]));
       expect(body.output.profiles.every((profile: { path?: unknown }) => typeof profile.path === 'string')).toBe(true);
-    } finally { await harness.close(); }
+    } finally {
+      if (previousXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+      await rm(xdgConfigHome, { recursive: true, force: true });
+      await harness.close();
+    }
   });
 
   it('forwards generic build queue enqueue fields from extension actions to the worker', async () => {

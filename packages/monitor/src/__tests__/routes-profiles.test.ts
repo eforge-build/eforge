@@ -89,6 +89,7 @@ describe('profile routes', () => {
     const local = await fetch(`${url}${API_ROUTES.profileList}?scope=local`).then((res) => res.json()) as { profiles: Array<{ scope: string }> };
     expect(local.profiles).toHaveLength(1);
     expect(local.profiles[0].scope).toBe('local');
+    expect((await fetch(`${url}${API_ROUTES.profileList}?scope=usr`)).status).toBe(400);
     const shown = await fetch(`${url}${API_ROUTES.profileShow}`).then((res) => res.json()) as { resolved: { profile: unknown; metadata: unknown } };
     expect(JSON.stringify(shown.resolved.profile)).toContain('[redacted]');
     expect(shown.resolved.metadata).toEqual({ description: 'Team profile', tags: ['team'] });

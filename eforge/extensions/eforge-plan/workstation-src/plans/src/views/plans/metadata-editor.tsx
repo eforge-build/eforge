@@ -80,7 +80,8 @@ function MetadataForm({ plan, profileOptions, onSave, onClose }: { plan: PlanDat
     }
   };
 
-  const knownProfileNames = profileOptions.profiles.map((option) => option.name);
+  const selectableProfiles = profileOptions.profiles.filter((option) => !option.shadowedBy);
+  const knownProfileNames = selectableProfiles.map((option) => option.name);
   const hasCurrentKnownProfile = knownProfileNames.includes(agentProfile);
   const showCurrentProfileOption = agentProfile.trim().length > 0 && !hasCurrentKnownProfile;
 
@@ -97,7 +98,7 @@ function MetadataForm({ plan, profileOptions, onSave, onClose }: { plan: PlanDat
       <Select id="session-plan-agent-profile" value={agentProfile} aria-describedby="session-plan-agent-profile-help" onChange={(event) => setAgentProfile(event.target.value)}>
         <option value="">Default/active eforge profile (leave agent_profile unset)</option>
         {showCurrentProfileOption && <option value={agentProfile}>{agentProfile} (current value missing/deleted)</option>}
-        {profileOptions.profiles.map((option) => <option key={`${option.scope}:${option.name}`} value={option.name}>{formatAgentProfileOption(option, profileOptions.active)}</option>)}
+        {selectableProfiles.map((option) => <option key={`${option.scope}:${option.name}`} value={option.name}>{formatAgentProfileOption(option, profileOptions.active)}</option>)}
       </Select>
       <p id="session-plan-agent-profile-help" className="text-xs text-muted-foreground">
         Agent runtime profile sets the build agent runtime stored as agent_profile. {agentProfileStatusText(profileOptions)}
