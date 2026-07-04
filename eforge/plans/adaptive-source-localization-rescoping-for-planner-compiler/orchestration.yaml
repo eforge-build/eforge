@@ -1,0 +1,133 @@
+name: adaptive-source-localization-rescoping-for-planner-compiler
+description: Bounded planner compiler artifacts for
+  adaptive-source-localization-rescoping-for-planner-compiler
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test -- test/planning-exploration-agent.test.ts
+    test/planning-source-localization.test.ts test/planning-atom-graph.test.ts
+    test/planning-compiler-stage-integration.test.ts
+    test/planning-compiler-diagnostics.test.ts
+  - pnpm maintainability:check
+plans:
+  - id: exploration-outcome-resilience
+    name: Structured exploration budget-exhaustion outcomes
+    depends_on: []
+    branch: adaptive-source-localization-rescoping-for-planner-compiler/exploration-outcome-resilience
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: deterministic-rescope-splitting
+    name: Deterministic degraded-scope atom splitting
+    depends_on:
+      - exploration-outcome-resilience
+    branch: adaptive-source-localization-rescoping-for-planner-compiler/deterministic-rescope-splitting
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: adaptive-rerun-preservation
+    name: Affected-scope localization reruns and preservation
+    depends_on:
+      - deterministic-rescope-splitting
+      - exploration-outcome-resilience
+    branch: adaptive-source-localization-rescoping-for-planner-compiler/adaptive-rerun-preservation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: planner-compiler-rescope-tests
+    name: Planner compiler rescoping regression tests
+    depends_on:
+      - adaptive-rerun-preservation
+      - deterministic-rescope-splitting
+      - exploration-outcome-resilience
+    branch: adaptive-source-localization-rescoping-for-planner-compiler/planner-compiler-rescope-tests
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings derived deterministically from compiler risk
+    signals.
+
+    Set-level defaults follow the highest plan risk score (3).
+
+    - adaptive-rerun-preservation: risk score 3 (large-plan,
+    low-confidence-localization, dependency-root); declared docs work none, test
+    work exercise-existing; derived build implement -> test-cycle ->
+    review-cycle and parallel review with perspectives code, security, test,
+    verify, 2 round(s), strict evaluation
+
+    - deterministic-rescope-splitting: risk score 3 (large-plan,
+    low-confidence-localization, dependency-root); declared docs work none, test
+    work exercise-existing; derived build implement -> test-cycle ->
+    review-cycle and parallel review with perspectives code, security, test,
+    verify, 2 round(s), strict evaluation
+
+    - exploration-outcome-resilience: risk score 2 (large-plan,
+    dependency-root); declared docs work sync-existing, test work
+    exercise-existing; derived build implement -> doc-sync -> test-cycle ->
+    review-cycle and auto review with perspectives code, test, 1 round(s),
+    standard evaluation
+
+    - planner-compiler-rescope-tests: no risk factors; declared docs work none,
+    test work author-new; derived build implement -> test-write -> test-cycle ->
+    review-cycle and single review with perspectives code, 1 round(s), standard
+    evaluation
+diff_base_ref: a3643226e833c5e9028e3482b1267325d06b2fcc
