@@ -730,6 +730,7 @@ export function selectNowActiveBuildCards(
       planning = selectPlanningLane(rs);
       hasPlanningRow =
         rs.earlyOrchestration != null ||
+        planning.agents.length > 0 ||
         rs.events.some((e) => e.event.type.startsWith('planning:'));
     }
 

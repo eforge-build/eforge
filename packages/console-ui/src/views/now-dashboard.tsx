@@ -178,7 +178,9 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
           />
         </div>
 
-        {/* RAIL — glanceable reference widgets. Build history (one row per
+        {/* RAIL — glanceable reference widgets, ordered by glance value: Spend
+            and Build health must sit above the fold; Efficiency analytics is a
+            reference deep-dive that reads on demand. Build history (one row per
             session, rolled up from its phase runs) replaces the former Git stack
             history card (a redundant landing log: a failed land is already a
             failed build, so it added no signal the Queue/Build health didn't).
@@ -187,12 +189,12 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
           <SpendCard model={spendModel} />
+          <MetricsPanel model={model.metrics} />
           <EfficiencyAnalyticsCard
             model={analyticsModel}
             selectedWindow={analyticsWindow}
             onWindowChange={setAnalyticsWindow}
           />
-          <MetricsPanel model={model.metrics} />
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>
       </div>

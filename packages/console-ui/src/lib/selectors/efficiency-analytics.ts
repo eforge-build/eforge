@@ -31,6 +31,12 @@ export interface EfficiencyAnalyticsRow {
   speedSampleCount: number;
   runSampleCount: number;
   partialLabel: string | null;
+  /** Cache-read share of input tokens over the window, when attributable. */
+  cachePercentage: number | null;
+  /** Total reported cost over the window, when attributable. */
+  totalCostUsd: number | null;
+  /** Total output tokens over the window, when attributable. */
+  outputTokens: number | null;
 }
 
 export interface EfficiencyAnalyticsViewModel {
@@ -111,6 +117,9 @@ function toRow(
     speedSampleCount: rollup.outputRateSampleCount,
     runSampleCount: rollup.runCount,
     partialLabel: partialLabel(rollup),
+    cachePercentage: rollup.cachePercentage,
+    totalCostUsd: rollup.totalCostUsd,
+    outputTokens: rollup.outputTokens,
   };
 }
 
