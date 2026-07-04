@@ -35,7 +35,7 @@ import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/
 import { parseRecoverySidecarPayload, projectRecoverySidecar } from './recovery/sidecar-read.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { emitBuildDecisionForPlan } from './decisions.js';
-import { runIntake } from './agents/intake.js';
+import { runIntakeWithTransientRetry } from './agents/intake.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
 import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './extensions/index.js';
@@ -513,7 +513,7 @@ export class EforgeEngine {
     // criteria inventory in one structured submission.
     try {
       const intakeConfig = resolveAgentConfig('formatter', this.config);
-      const intakeGen = runIntake({
+      const intakeGen = runIntakeWithTransientRetry({
         ...intakeConfig,
         cwd,
         sourceContent,

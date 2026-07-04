@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runIntake, IntakeSubmissionError, MAX_INVALID_INTAKE_SUBMISSIONS, type IntakeResult } from '@eforge-build/engine/agents/intake';
+import { runIntake, runIntakeWithTransientRetry, IntakeSubmissionError, INTAKE_AGENT_MAX_ATTEMPTS, MAX_INVALID_INTAKE_SUBMISSIONS, type IntakeResult } from '@eforge-build/engine/agents/intake';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness, type StubScriptedEvent } from './stub-harness.js';
 import { intakeSubmissionCall, intakeResponse, type IntakeCriterionInput } from './intake-test-helpers.js';
@@ -180,5 +180,52 @@ describe('runIntake wiring', () => {
     const { result } = await collect(allowed, { allowNoAcceptanceCriteria: true });
     expect(result.inventory.criteria).toEqual([]);
     expect(result.inventory.warnings).toEqual(['No acceptance criteria found']);
+  });
+});
+
+describe('runIntakeWithTransientRetry', () => {
+  async function collectWithRetry(harness: StubHarness): Promise<{ events: EforgeEvent[]; result: IntakeResult }> {
+    const events: EforgeEvent[] = [];
+    const gen = runIntakeWithTransientRetry({ harness, cwd: process.cwd(), sourceContent: 'raw input', verbose: true });
+    let iteration = await gen.next();
+    while (!iteration.done) {
+      events.push(iteration.value);
+      iteration = await gen.next();
+    }
+    return { events, result: iteration.value };
+  }
+
+  it('retries once after a transient backend transport failure (observed eval enqueue failure)', async () => {
+    const harness = new StubHarness([
+      { error: new Error('Backend error: WebSocket idle timeout after 300000ms') },
+      intakeResponse(FORMATTED_BODY, VALID_CRITERIA),
+    ]);
+
+    const { events, result } = await collectWithRetry(harness);
+
+    const retry = events.find((event): event is Extract<EforgeEvent, { type: 'agent:retry' }> => event.type === 'agent:retry');
+    expect(retry).toMatchObject({ agent: 'formatter', attempt: 1, maxAttempts: INTAKE_AGENT_MAX_ATTEMPTS, subtype: 'error_transient_transport', label: 'intake-infrastructure-retry' });
+    expect(result.body).toBe(FORMATTED_BODY);
+    expect(harness.calls).toHaveLength(2);
+  });
+
+  it('does not retry non-transient failures', async () => {
+    const harness = new StubHarness([
+      { error: new Error('Backend error: invalid API key') },
+      intakeResponse(FORMATTED_BODY, VALID_CRITERIA),
+    ]);
+
+    await expect(collectWithRetry(harness)).rejects.toThrow('invalid API key');
+    expect(harness.calls).toHaveLength(1);
+  });
+
+  it('rethrows when the transient failure repeats past the attempt budget', async () => {
+    const harness = new StubHarness([
+      { error: new Error('Backend error: WebSocket idle timeout after 300000ms') },
+      { error: new Error('Backend error: WebSocket idle timeout after 300000ms') },
+    ]);
+
+    await expect(collectWithRetry(harness)).rejects.toThrow('WebSocket idle timeout');
+    expect(harness.calls).toHaveLength(INTAKE_AGENT_MAX_ATTEMPTS);
   });
 });
