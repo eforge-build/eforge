@@ -1,5 +1,6 @@
 import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
-import { pickSdkOptions } from '../harness.js';
+import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
+import { isRetryableInfrastructureSubtype } from '../retry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
@@ -212,4 +213,35 @@ export async function* runIntake(
     throw new IntakeSubmissionError(`Intake agent finished without a valid submission after ${invalidCount} invalid attempt(s).${detail}`);
   }
   return captured;
+}
+
+export const INTAKE_AGENT_MAX_ATTEMPTS = 2;
+
+/**
+ * Run intake with retry on transient infrastructure failures (backend transport
+ * drops such as WebSocket idle timeouts). Intake has no side effects before its
+ * structured submission is returned, so rerunning the whole agent turn is safe.
+ * Submission-quality failures (IntakeSubmissionError) are not retried here; the
+ * submission tool's in-loop feedback already covers those.
+ */
+export async function* runIntakeWithTransientRetry(
+  options: IntakeOptions,
+): AsyncGenerator<EforgeEvent, IntakeResult> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return yield* runIntake(options);
+    } catch (err) {
+      const subtype = classifyAgentTerminalSubtype(err);
+      if (!subtype || !isRetryableInfrastructureSubtype(subtype) || attempt >= INTAKE_AGENT_MAX_ATTEMPTS) throw err;
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:retry',
+        agent: 'formatter',
+        attempt,
+        maxAttempts: INTAKE_AGENT_MAX_ATTEMPTS,
+        subtype,
+        label: 'intake-infrastructure-retry',
+      };
+    }
+  }
 }

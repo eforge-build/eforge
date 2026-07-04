@@ -128,6 +128,48 @@ describe('planning reduce runner', () => {
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(task.budget.maxReducePromptBytes);
   });
 
+  it('carries module docsWork/testWork declarations into reducer digests', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
+      ...output,
+      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const })),
+    }));
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+
+    const prompt = formatPlanningReducerPrompt(task);
+
+    expect(prompt).toContain('"docsWork": "author-new"');
+    expect(prompt).toContain('"testWork": "exercise-existing"');
+  });
+
+  it('stamps candidate docsWork/testWork declarations onto producer-authored reducer digests', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
+      ...output,
+      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const })),
+      reduceDigest: {
+        sourceId: output.atomId,
+        sourceKind: 'atom' as const,
+        status: output.status,
+        summary: `Digest for ${output.atomId}.`,
+        criterionIds: [...new Set((output.moduleCandidates ?? []).flatMap((module) => module.criterionIds))].sort(),
+        aspectIds: output.aspectUpdates.map((update) => update.aspectId).sort(),
+        modules: (output.moduleCandidates ?? []).map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: `Purpose for ${module.moduleId}.`, criterionIds: module.criterionIds, aspectIds: module.aspectIds, validationExpectation: 'Run focused validation.', docsWork: 'sync-existing' as const })),
+      },
+    }));
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+
+    const prompt = formatPlanningReducerPrompt(task);
+
+    // The authored digest omitted testWork and declared weaker docsWork; the validated
+    // module candidates' declarations must still reach the reducer (strongest wins).
+    expect(prompt).toContain('"docsWork": "author-new"');
+    expect(prompt).toContain('"testWork": "exercise-existing"');
+    expect(prompt).not.toContain('"docsWork": "sync-existing"');
+  });
+
   it('reduces fan-in when configured reducer inputs exceed prompt budget', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.']);
     data.mapResult.outputs = data.mapResult.outputs.map((output) => ({ ...output, reduceDigest: largeReduceDigest(output) }));

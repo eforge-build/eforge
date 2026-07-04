@@ -145,6 +145,15 @@ describe('sharded plan runtime guard', () => {
     expect(planBuild.filter(s => s === 'review-cycle')).toHaveLength(1);
   });
 
+  it('recognizes review-cycle inside builds with parallel stage groups', () => {
+    const build: BuildStageSpec[] = [['implement', 'doc-author'], 'doc-sync', 'review-cycle'];
+    const shards = [{ id: 'shard-a', roots: ['packages/'] }];
+
+    const { planBuild, injected } = applyShardedPlanGuard(build, defaultReview, shards);
+    expect(injected).not.toContain('review-cycle');
+    expect(planBuild.flat().filter(s => s === 'review-cycle')).toHaveLength(1);
+  });
+
   it('injects verify into a sharded plan that omits it from perspectives', () => {
     const build: BuildStageSpec[] = ['implement', 'review-cycle'];
     const shards = [{ id: 'shard-a', roots: ['packages/'] }];

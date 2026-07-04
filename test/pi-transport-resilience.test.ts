@@ -129,6 +129,21 @@ describe('Pi transport transient classifier', () => {
     expect(isTransientTransportError('closed 1000')).toBe(false);
   });
 
+  it('classifies backend upstream idle timeouts as transient transport (observed atom-planner failure)', () => {
+    expect(isTransientTransportError('Backend error: Upstream idle timeout exceeded')).toBe(true);
+    // The retry loop classifies errors wrapped by outer planner-compiler context too.
+    expect(isTransientTransportError('atom planner failed:atom-root: Backend error: Upstream idle timeout exceeded')).toBe(true);
+  });
+
+  it('classifies backend WebSocket idle timeouts as transient transport (observed intake failure)', () => {
+    expect(isTransientTransportError('Backend error: WebSocket idle timeout after 300000ms')).toBe(true);
+  });
+
+  it('does not classify idle-timeout text without the backend-error prefix', () => {
+    expect(isTransientTransportError('Upstream idle timeout exceeded')).toBe(false);
+    expect(isTransientTransportError('daemon request timed out (idle timeout)')).toBe(false);
+  });
+
   it('classifies the raw Claude Code SDK socket-close message as transient transport', () => {
     expect(isTransientTransportError(CLAUDE_SDK_SOCKET_CLOSE_RAW)).toBe(true);
   });

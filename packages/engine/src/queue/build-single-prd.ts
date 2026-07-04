@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
-import { runIntake } from '../agents/intake.js';
+import { runIntakeWithTransientRetry } from '../agents/intake.js';
 import { runStalenessAssessor } from '../agents/staleness-assessor.js';
 import { resolveTrunkBranch } from '../branch-policy.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
@@ -253,7 +253,7 @@ async function* extractRevisionInventory(
   const visibleRevision = stripAcceptanceCriteriaInventoryBlock(revision).trimEnd();
   try {
     const intakeConfig = resolveAgentConfig('formatter', ctx.config);
-    const intakeGen = runIntake({
+    const intakeGen = runIntakeWithTransientRetry({
       ...intakeConfig,
       cwd: ctx.cwd,
       sourceContent: visibleRevision,

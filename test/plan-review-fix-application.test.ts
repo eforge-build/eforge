@@ -14,6 +14,7 @@ import {
   architectureReviewSubmissionSchema,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
+import { ARCHITECTURE_MANIFEST_VERSION, parseArchitectureManifest, renderArchitectureManifestFence, type PlanningArchitectureManifest } from '@eforge-build/engine/planner-compiler';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -460,6 +461,18 @@ describe('planReviewSubmissionSchema', () => {
 // applyArchitectureReviewFixes: replace_architecture
 // ---------------------------------------------------------------------------
 
+const canonicalManifest: PlanningArchitectureManifest = {
+  version: ARCHITECTURE_MANIFEST_VERSION,
+  plans: [{ planId: 'plan-auth', title: 'Auth module', residue: false, criterionIds: ['ac-001'], aspectIds: ['ac-001:general:general'], dependsOnPlanIds: [] }],
+  fileOwnership: [],
+  contracts: [{ contractId: 'interface:plan-auth->plan-api:token', kind: 'interface', fromPlanId: 'plan-auth', toPlanId: 'plan-api', interfaceKey: 'token' }],
+  conflicts: [],
+};
+
+function architectureWithFence(prose: string): string {
+  return `${prose}\n\n## Machine-readable manifest\n\n${renderArchitectureManifestFence(canonicalManifest)}\n`;
+}
+
 describe('applyArchitectureReviewFixes: replace_architecture', () => {
   it('writes agent-supplied markdown to <planSet>/architecture.md verbatim', async () => {
     const tempDir = await makeTempDir();
@@ -483,6 +496,79 @@ describe('applyArchitectureReviewFixes: replace_architecture', () => {
 
     const written = await readFile(join(planDir, 'architecture.md'), 'utf-8');
     expect(written).toBe(newArchContent);
+  });
+
+  it('replaces an agent-corrupted manifest fence with the canonical fence from the existing file', async () => {
+    const tempDir = await makeTempDir();
+    const planDir = join(tempDir, 'eforge/plans/test-expedition');
+    await mkdir(planDir, { recursive: true });
+    await writeFile(join(planDir, 'architecture.md'), architectureWithFence('# Original Architecture'), 'utf-8');
+
+    // Agent replacement hand-authors the fence with a kind outside the schema union
+    // (the exact failure class from the eval: /contracts/1/kind Expected union value).
+    const corruptedFence = renderArchitectureManifestFence(canonicalManifest).replace('"kind": "interface"', '"kind": "api-contract"');
+    const replacement = `# Revised Architecture\n\nUpdated prose.\n\n## Machine-readable manifest\n\n${corruptedFence}\n`;
+
+    await applyArchitectureReviewFixes({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-expedition', fixes: [{ kind: 'replace_architecture', content: replacement }] });
+
+    const written = await readFile(join(planDir, 'architecture.md'), 'utf-8');
+    expect(written).toContain('# Revised Architecture');
+    expect(written).toContain('Updated prose.');
+    expect(written).not.toContain('api-contract');
+    const parsed = parseArchitectureManifest(written);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.manifest).toEqual(canonicalManifest);
+  });
+
+  it('appends the canonical fence when the agent replacement omits the manifest entirely', async () => {
+    const tempDir = await makeTempDir();
+    const planDir = join(tempDir, 'eforge/plans/test-expedition');
+    await mkdir(planDir, { recursive: true });
+    await writeFile(join(planDir, 'architecture.md'), architectureWithFence('# Original Architecture'), 'utf-8');
+
+    await applyArchitectureReviewFixes({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-expedition', fixes: [{ kind: 'replace_architecture', content: '# Prose-only rewrite' }] });
+
+    const written = await readFile(join(planDir, 'architecture.md'), 'utf-8');
+    expect(written).toContain('# Prose-only rewrite');
+    expect(written).toContain('## Machine-readable manifest');
+    const parsed = parseArchitectureManifest(written);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.manifest).toEqual(canonicalManifest);
+  });
+
+  it('preserves a canonical fence containing $-substitution patterns without corruption', async () => {
+    const tempDir = await makeTempDir();
+    const planDir = join(tempDir, 'eforge/plans/test-expedition');
+    await mkdir(planDir, { recursive: true });
+
+    // Free-text manifest fields can contain String.replace substitution patterns
+    // ($&, $', $`); the preserved fence must carry them through literally.
+    const manifestWithDollars: PlanningArchitectureManifest = {
+      ...canonicalManifest,
+      contracts: [{ ...canonicalManifest.contracts[0], summary: 'token exchange rewrites $& and $` markers for $$ costs' }],
+    };
+    const existing = `# Original\n\n## Machine-readable manifest\n\n${renderArchitectureManifestFence(manifestWithDollars)}\n`;
+    await writeFile(join(planDir, 'architecture.md'), existing, 'utf-8');
+
+    const replacement = `# Revised\n\n## Machine-readable manifest\n\n${renderArchitectureManifestFence(canonicalManifest)}\n`;
+    await applyArchitectureReviewFixes({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-expedition', fixes: [{ kind: 'replace_architecture', content: replacement }] });
+
+    const written = await readFile(join(planDir, 'architecture.md'), 'utf-8');
+    const parsed = parseArchitectureManifest(written);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.manifest).toEqual(manifestWithDollars);
+  });
+
+  it('writes the replacement verbatim when the existing file has no schema-valid fence to preserve', async () => {
+    const tempDir = await makeTempDir();
+    const planDir = join(tempDir, 'eforge/plans/test-expedition');
+    await mkdir(planDir, { recursive: true });
+    await writeFile(join(planDir, 'architecture.md'), '# Original without fence', 'utf-8');
+
+    const replacement = '# Replacement without fence';
+    await applyArchitectureReviewFixes({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-expedition', fixes: [{ kind: 'replace_architecture', content: replacement }] });
+
+    expect(await readFile(join(planDir, 'architecture.md'), 'utf-8')).toBe(replacement);
   });
 });
 

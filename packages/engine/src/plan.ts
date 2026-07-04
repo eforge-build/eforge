@@ -16,6 +16,7 @@ import {
   type PipelineComposition,
 } from './schemas.js';
 import { safeParseWithSchema, formatSchemaError } from '@eforge-build/client';
+import { preserveArchitectureManifestFence } from './planner-compiler/architecture-manifest-contracts.js';
 
 const execAsync = promisify(execFile);
 
@@ -829,8 +830,9 @@ export interface ApplyArchitectureReviewFixesOptions {
 
 /**
  * Apply architecture fixes emitted by the planning-quality reviewer to the architecture document.
- * Writes architecture.md verbatim.
- * Does NOT run git add — fixes remain unstaged.
+ * The machine-readable manifest fence is never taken from the agent's replacement: the canonical
+ * fence from the existing (deterministically synthesized) architecture.md is preserved, so
+ * reviewer fixes can only change prose. Does NOT run git add — fixes remain unstaged.
  */
 export async function applyArchitectureReviewFixes(options: ApplyArchitectureReviewFixesOptions): Promise<void> {
   const { cwd, outputDir, planSetName, fixes } = options;
@@ -840,7 +842,9 @@ export async function applyArchitectureReviewFixes(options: ApplyArchitectureRev
 
   for (const fix of fixes) {
     if (fix.kind === 'replace_architecture') {
-      await writeFile(resolve(planDir, 'architecture.md'), fix.content, 'utf-8');
+      const architecturePath = resolve(planDir, 'architecture.md');
+      const existingContent = await readFile(architecturePath, 'utf-8').catch(() => '');
+      await writeFile(architecturePath, preserveArchitectureManifestFence(existingContent, fix.content), 'utf-8');
     }
   }
 }
