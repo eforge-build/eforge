@@ -118,6 +118,10 @@ function createMockBridge(): EforgeBridge {
           const page = artifacts.slice(offset, offset + limit);
           return { artifacts: page, plans: page.filter((artifact) => artifact.kind === 'plan'), planSets: page.filter((artifact) => artifact.kind === 'plan-set'), total: artifacts.length, limit, offset, ...(input.includeBoard === true ? { board: mockBoard } : {}) } as TOutput;
         }
+        case 'list-agent-runtime-profiles': return { active: 'team-runtime', source: 'project', profiles: [
+          { name: 'team-runtime', harness: 'pi', path: 'mock://profile/team-runtime.yaml', scope: 'project', metadata: { description: 'Team default build agent profile' } },
+          { name: 'local-fast', harness: 'claude-sdk', path: 'mock://profile/local-fast.yaml', scope: 'local', metadata: { description: 'Fast local iteration profile' } },
+        ] } as TOutput;
         case 'list-board': return mockBoard as TOutput;
         case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;

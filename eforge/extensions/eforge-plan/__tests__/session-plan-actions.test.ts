@@ -274,14 +274,57 @@ describe('eforge-plan session-plan extension actions', () => {
 
   it('persists readiness after dimension selection and metadata updates', async () => {
     await withTempProject(async (cwd) => {
-      await writeSessionPlanRaw(cwd, 'metadata-plan', readyBody());
+      const dir = join(cwd, '.eforge', 'session-plans');
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, 'metadata-plan.md'), `---
+session: metadata-plan
+topic: metadata-plan
+status: planning
+planning_type: feature
+planning_depth: quick
+required_dimensions:
+  - problem-statement
+  - scope
+  - acceptance-criteria
+  - assumptions-and-validation
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: errand
+custom_flag: keep-me
+eforge_plan:
+  source_item_ids: [item-one]
+  source_recommendation_ref: lane:42
+  planning_dimension_metadata:
+    scope:
+      owner: team-a
+---
+${readyBody()}`, 'utf-8');
 
       const selected = await dispatch(cwd, 'select-session-plan-dimensions', { session: 'metadata-plan', planningType: 'feature', planningDepth: 'focused', overwrite: true });
       expectStoredReadiness(cwd, 'metadata-plan', selected.readiness);
 
       const updated = await dispatch(cwd, 'update-session-plan-metadata', { session: 'metadata-plan', agentProfile: 'planner', openQuestions: ['Confirm rollout.'] });
+      const rawAfterSet = await readFile(join(cwd, '.eforge', 'session-plans', 'metadata-plan.md'), 'utf-8');
       expect(updated.plan).toMatchObject({ agent_profile: 'planner', open_questions: ['Confirm rollout.'] });
+      expect(rawAfterSet).toContain('agent_profile: planner');
+      expect(rawAfterSet).toContain('custom_flag: keep-me');
+      expect(rawAfterSet).toContain('source_item_ids:');
+      expect(rawAfterSet).toContain('source_recommendation_ref: lane:42');
+      expect(rawAfterSet).toContain('planning_dimension_metadata:');
       expectStoredReadiness(cwd, 'metadata-plan', updated.readiness);
+
+      const cleared = await dispatch(cwd, 'update-session-plan-metadata', { session: 'metadata-plan', agentProfile: null });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'metadata-plan.md'), 'utf-8');
+      expect(cleared.plan).toMatchObject({ open_questions: ['Confirm rollout.'] });
+      expect((cleared.plan as { agent_profile?: unknown }).agent_profile).toBeUndefined();
+      expect(raw).not.toContain('agent_profile:');
+      expect(raw).toContain('custom_flag: keep-me');
+      expect(raw).toContain('source_item_ids:');
+      expect(raw).toContain('source_recommendation_ref: lane:42');
+      expect(raw).toContain('planning_dimension_metadata:');
+      expect(raw).toContain('owner: team-a');
+      expectStoredReadiness(cwd, 'metadata-plan', cleared.readiness);
     });
   });
 

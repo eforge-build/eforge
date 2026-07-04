@@ -8,6 +8,7 @@ const EFORGE_PLAN_DIR = join(REPO_ROOT, 'eforge', 'extensions', 'eforge-plan');
 const PI_EFORGE_DIR = join(REPO_ROOT, 'packages', 'pi-eforge', 'extensions', 'eforge');
 
 const SOURCE_EXTENSIONS = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
+const TEST_SOURCE_EXTENSIONS = /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
 const IGNORED_PARTS = new Set(['node_modules', 'dist', '.next', 'coverage', '__tests__', 'workstation-assets', '.storybook', 'stories', 'fixtures']);
 
 function listSourceFiles(root: string): string[] {
@@ -18,7 +19,7 @@ function listSourceFiles(root: string): string[] {
       const path = join(dir, entry);
       const stat = statSync(path);
       if (stat.isDirectory()) visit(path);
-      else if (SOURCE_EXTENSIONS.test(entry)) files.push(path);
+      else if (SOURCE_EXTENSIONS.test(entry) && !TEST_SOURCE_EXTENSIONS.test(entry)) files.push(path);
     }
   }
   visit(root);

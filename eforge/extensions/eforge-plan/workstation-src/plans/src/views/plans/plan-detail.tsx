@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { useToast } from '@/components/toast';
-import type { Artifact, PlanData, PlanDetail, PlanRevisionAnnotationTarget, Readiness } from '@/types';
+import type { AgentRuntimeProfileOptionsResponse, Artifact, PlanData, PlanDetail, PlanRevisionAnnotationTarget, Readiness } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { planLifecycleTimestamps } from '@/lib/plan-timestamps';
 import { ReadinessChecklist } from './readiness-checklist';
-import { MetadataEditor, type MetadataInput } from './metadata-editor';
+import { MetadataEditor, type AgentProfileOptionsState, type MetadataInput } from './metadata-editor';
 import { OpenQuestionsPanel } from './open-questions-panel';
 import { titleCase } from './dimensions';
 import { PlanBuildTracePanel } from './lifecycle-evidence-panel';
@@ -45,6 +45,7 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [agentProfileOptions, setAgentProfileOptions] = React.useState<AgentProfileOptionsState>({ status: 'loading', profiles: [] });
   // While an AI revision turn is running it auto-applies on completion, so the
   // rest of the plan is locked to avoid concurrent edits and competing turns.
   // Run a mutating action, surface a toast, apply the returned plan/readiness to
@@ -73,7 +74,7 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
     mutate('select-session-plan-dimensions', { planningType, planningDepth }, 'Applied dimension selection.').then(() => undefined);
 
   const saveMetadata = (input: MetadataInput) =>
-    mutate('update-session-plan-metadata', { profile: input.profile, agentProfile: input.agentProfile, openQuestions: input.openQuestions }, 'Updated metadata.').then(() => undefined);
+    mutate('update-session-plan-metadata', { profile: input.profile, agentProfile: input.agentProfile, openQuestions: input.openQuestions }, 'Updated metadata.').then((result) => result !== null);
 
   const setReady = () => void mutate('set-session-plan-ready', {}, 'Marked ready.');
   const readinessPasses = readiness.ready === true;
@@ -85,6 +86,21 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
   React.useEffect(() => {
     if (!canHandoff) setConfirmingHandoff(false);
   }, [canHandoff]);
+
+  React.useEffect(() => {
+    let active = true;
+    setAgentProfileOptions((current) => ({ status: 'loading', profiles: current.profiles, active: current.active }));
+    bridge.invokeAction<AgentRuntimeProfileOptionsResponse>('list-agent-runtime-profiles', { scope: 'all' })
+      .then((response) => {
+        if (!active) return;
+        setAgentProfileOptions({ status: response.profiles.length > 0 ? 'success' : 'empty', profiles: response.profiles, active: response.active });
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setAgentProfileOptions({ status: 'error', profiles: [], error: caught instanceof Error ? caught.message : String(caught) });
+      });
+    return () => { active = false; };
+  }, [plan.session]);
 
   const handoff = async () => {
     if (!canHandoff) return;
@@ -183,7 +199,7 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Build activity & metadata">
           <div className="grid gap-3">
             <PlanBuildTracePanel plan={plan} detail={detail} />
-            <MetadataEditor plan={plan} disabled={locked} onSave={saveMetadata} />
+            <MetadataEditor plan={plan} disabled={locked} profileOptions={agentProfileOptions} onSave={saveMetadata} />
           </div>
         </CollapsiblePanel>
       </CardContent>

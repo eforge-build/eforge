@@ -1,7 +1,9 @@
-import type { EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionAgentTaskActivityEntry as PlanningTaskActivityEntry, ExtensionJsonObject } from '@eforge-build/client/browser';
+import type { AgentRuntimeProfileInfo, EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionAgentTaskActivityEntry as PlanningTaskActivityEntry, ExtensionJsonObject, ProfileListResponse } from '@eforge-build/client/browser';
 import type { BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, BacklogCurationRecommendationsSkipped, RecommendationReferenceValidationResult } from './backlog-curation-types';
 export type { PlanningTaskActivityEntry };
 export type JsonObject = ExtensionJsonObject;
+export type AgentRuntimeProfileOption = AgentRuntimeProfileInfo;
+export type AgentRuntimeProfileOptionsResponse = ProfileListResponse;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
 export interface EforgeBridge {

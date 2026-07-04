@@ -29,6 +29,11 @@ export {
   AgentRuntimeProfileSourceSchema,
   ProfileListResponseSchema,
 } from './profile-schemas.js';
+export type {
+  AgentRuntimeProfileInfo,
+  ProfileListRequest,
+  ProfileListResponse,
+} from './types.js';
 export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
