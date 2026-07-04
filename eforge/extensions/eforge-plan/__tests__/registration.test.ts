@@ -16,7 +16,7 @@ import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
 const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'skip-dimension', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation', 'fork-recommendation-to-draft-unit', 'create-draft-unit', 'update-draft-unit', 'delete-draft-unit', 'promote-draft-unit', 'merge-draft-units', 'split-draft-unit', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'search-planning-records', 'get-store-status', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session', 'list-draft-units', 'get-draft-unit', 'advise-merge-draft-units', 'advise-split-draft-unit']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'search-planning-records', 'get-store-status', 'render-board-markdown', 'list-agent-runtime-profiles', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session', 'list-draft-units', 'get-draft-unit', 'advise-merge-draft-units', 'advise-split-draft-unit']);
 const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
@@ -122,6 +122,7 @@ describe('eforge-plan extension registration', () => {
       'get-roadmap-state',
       'get-store-status',
       'handoff-session-plan',
+      'list-agent-runtime-profiles',
       'list-board',
       'list-board-compact',
       'list-draft-units',
@@ -179,7 +180,10 @@ describe('eforge-plan extension registration', () => {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
         expect(action.sideEffects).not.toContain('build-queue');
+        expect(action.sideEffects).not.toContain('daemon-state');
+        expect(action.sideEffects).not.toContain('network');
       }
+      if (action.id === 'list-agent-runtime-profiles') expect(action.sideEffects).toEqual(['local-read']);
     }
     expect(Object.fromEntries(actions.map((action) => [action.id, action.outputProfile]).filter(([, profile]) => profile !== undefined))).toMatchObject({
       'list-board': 'debug-rich',
@@ -195,6 +199,7 @@ describe('eforge-plan extension registration', () => {
       'rebuild-search-index': 'agent-compact',
       'optimize-search-index': 'agent-compact',
       'vacuum-planning-store': 'agent-compact',
+      'list-agent-runtime-profiles': 'ui-rich',
       'list-board-compact': 'agent-paginated',
       'list-draft-units': 'agent-paginated',
       'list-planning-artifacts': 'agent-paginated',
@@ -219,6 +224,13 @@ describe('eforge-plan extension registration', () => {
     expect(getItemAction?.description).toMatch(/lock|token|update-item/i);
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
+    const listAgentRuntimeProfiles = actions.find((action) => action.id === 'list-agent-runtime-profiles');
+    const listAgentRuntimeProfilesInput = listAgentRuntimeProfiles?.inputSchema as Record<string, unknown>;
+    expect(JSON.stringify(listAgentRuntimeProfilesInput)).toMatch(/local|project|user|all/);
+    expect(Object.keys((listAgentRuntimeProfilesInput.properties as Record<string, unknown>) ?? {})).toEqual(['scope']);
+    const listAgentRuntimeProfilesOutput = listAgentRuntimeProfiles?.outputSchema as Record<string, unknown>;
+    expect(Object.keys(listAgentRuntimeProfilesOutput.properties as Record<string, unknown>).sort()).toEqual(['active', 'profiles', 'source']);
+    expect(JSON.stringify(listAgentRuntimeProfilesOutput.properties)).toMatch(/name|scope|harness|path|shadowedBy|metadata|description|whenToUse|tags/);
     const listPlanningArtifactsInput = actions.find((action) => action.id === 'list-planning-artifacts')?.inputSchema as Record<string, unknown>;
     expect(Object.keys(listPlanningArtifactsInput.properties as Record<string, unknown>).sort()).toEqual(['epic', 'includeArchive', 'includeBoard', 'includeSubmitted', 'limit', 'offset']);
     const listPlanningArtifactsOutput = actions.find((action) => action.id === 'list-planning-artifacts')?.outputSchema as Record<string, unknown>;
@@ -474,6 +486,7 @@ describe('eforge-plan extension registration', () => {
         'rebuild-search-index',
         'optimize-search-index',
         'vacuum-planning-store',
+        'list-agent-runtime-profiles',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',

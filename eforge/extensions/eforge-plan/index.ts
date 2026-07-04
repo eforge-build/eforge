@@ -336,6 +336,7 @@ export default defineEforgeExtension((eforge) => {
       'rebuild-search-index',
       'optimize-search-index',
       'vacuum-planning-store',
+      'list-agent-runtime-profiles',
       'update-item',
       'render-board-markdown',
       'get-recommendations',

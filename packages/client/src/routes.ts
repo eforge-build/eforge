@@ -4,7 +4,7 @@
  * Keep this module as the public `./routes.js` import surface while grouped route
  * contracts live in focused files under `routes/`.
  */
-export { API_ROUTES, buildPath } from './routes/route-map.js';
+export { API_ROUTES, buildPath, buildProfileListPath } from './routes/route-map.js';
 export type { ApiRoute } from './routes/route-map.js';
 
 export type {

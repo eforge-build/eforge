@@ -23,6 +23,8 @@ import type {
   ExtensionJsonValue,
   EnqueueRequest,
   EnqueueResponse,
+  ProfileListRequest,
+  ProfileListResponse,
 } from '@eforge-build/client';
 
 /**
@@ -143,6 +145,10 @@ export interface ExtensionBuildQueueApiShape {
 }
 // --- eforge:endregion extension-build-queue-context ---
 
+export interface ExtensionProfilesApiShape {
+  list(request?: ProfileListRequest): Promise<ProfileListResponse>;
+}
+
 export type ExtensionActionOutputProfile = ClientExtensionActionOutputProfile;
 
 export interface ExtensionActionContextShape {
@@ -166,6 +172,7 @@ export interface ExtensionActionContextShape {
   // --- eforge:region extension-build-queue-context ---
   buildQueue: ExtensionBuildQueueApiShape;
   // --- eforge:endregion extension-build-queue-context ---
+  profiles: ExtensionProfilesApiShape;
 }
 export interface ExtensionActionSpec {
   id: string;

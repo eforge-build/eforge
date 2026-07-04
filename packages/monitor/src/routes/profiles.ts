@@ -2,6 +2,7 @@ import type {
   ProfileCreateRequest,
   ProfileCreateResponse,
   ProfileDeleteResponse,
+  ProfileListRequest,
   ProfileListResponse,
   ProfileShowResponse,
   ProfileUseRequest,
@@ -48,24 +49,37 @@ export function createProfileRoutes(context: MonitorContext): RouteDefinition[] 
   ];
 }
 
+function isProfileListScope(value: unknown): value is NonNullable<ProfileListRequest['scope']> {
+  return value === 'all' || isProfileScope(value);
+}
+
+export async function projectProfileListResponse(context: MonitorContext, request: ProfileListRequest = {}): Promise<ProfileListResponse> {
+  if (request.scope !== undefined && !isProfileListScope(request.scope)) throw new Error('scope must be "local", "project", "user", or "all" when present');
+  const discoveredConfigDir = await getConfigDir(context.cwd);
+  const configDir = discoveredConfigDir ?? getConventionalConfigDir(context.cwd);
+  let profiles = await listProfiles(configDir, context.cwd);
+  if (isProfileScope(request.scope)) profiles = profiles.filter((profile) => profile.scope === request.scope);
+  const projectConfig = discoveredConfigDir ? await loadProjectPartialConfig(configDir) : {};
+  const userConfig = await loadUserConfig();
+  const { name, source, warnings } = await resolveActiveProfileName(
+    configDir,
+    projectConfig as Parameters<typeof resolveActiveProfileName>[1],
+    userConfig as Parameters<typeof resolveActiveProfileName>[2],
+    context.cwd,
+  );
+  writeWarnings(warnings);
+  return { profiles, active: name, source: source as ProfileListResponse['source'] };
+}
+
 async function handleProfileList(context: MonitorContext, res: Parameters<typeof sendJson>[0], query: URLSearchParams): Promise<void> {
   try {
-    const scopeParam = query.get('scope');
-    const discoveredConfigDir = await getConfigDir(context.cwd);
-    const configDir = discoveredConfigDir ?? getConventionalConfigDir(context.cwd);
-    let profiles = await listProfiles(configDir, context.cwd);
-    if (isProfileScope(scopeParam)) profiles = profiles.filter((profile) => profile.scope === scopeParam);
-    const projectConfig = discoveredConfigDir ? await loadProjectPartialConfig(configDir) : {};
-    const userConfig = await loadUserConfig();
-    const { name, source, warnings } = await resolveActiveProfileName(
-      configDir,
-      projectConfig as Parameters<typeof resolveActiveProfileName>[1],
-      userConfig as Parameters<typeof resolveActiveProfileName>[2],
-      context.cwd,
-    );
-    writeWarnings(warnings);
-    const response: ProfileListResponse = { profiles, active: name, source: source as ProfileListResponse['source'] };
-    sendJson(res, response);
+    const scope = query.get('scope');
+    if (scope !== null && !isProfileListScope(scope)) {
+      sendJsonError(res, 400, 'scope must be "local", "project", "user", or "all" when present');
+      return;
+    }
+    const request: ProfileListRequest = scope === null ? {} : { scope };
+    sendJson(res, await projectProfileListResponse(context, request));
   } catch (err) {
     sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list agent runtime profiles');
   }

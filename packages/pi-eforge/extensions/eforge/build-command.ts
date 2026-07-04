@@ -155,7 +155,7 @@ async function selectProfileArgs(ctx: UIContext, args: string): Promise<string |
         ? `Run on active profile: ${profileListResult.data.active}`
         : "Run on the daemon's currently bound profile",
     },
-    ...profileListResult.data.profiles.map(formatProfileItem),
+    ...profileListResult.data.profiles.filter((profile) => !profile.shadowedBy).map(formatProfileItem),
   ];
 
   const selected = await showSearchableSelectPanel(ctx, "eforge build - select profile", items);

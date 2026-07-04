@@ -60,7 +60,7 @@ Rules:
 
 All HTTP route constants, route path builders, and daemon wire shapes (run info, queue items, queue recovery requests/responses, failed-enqueue projections, session metadata, auto-build status) are owned by `@eforge-build/client` (`packages/client/`):
 
-- Import `API_ROUTES` and `buildPath()` for route constants; do **not** inline `/api/...` strings.
+- Import `API_ROUTES`, `buildPath()`, and route-specific builders such as `buildProfileListPath()` for route constants; do **not** inline `/api/...` strings.
 - Import named per-route helpers (`apiEnqueue`, `apiCancel`, `apiHealth`, etc.) instead of calling `fetch` with inlined paths.
 - For browser bundles (for example, `packages/console-ui/src`), import from `@eforge-build/client/browser`.
 - Do **not** re-declare wire-shape interfaces in monitor packages — use the exported types from `@eforge-build/client`.

@@ -1,11 +1,15 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   API_ROUTES,
+  buildProfileListPath,
   safeParseExtensionActionInvokeResponse,
   safeParseExtensionContributionManifest,
 } from '@eforge-build/client';
+import { createExtensionContentRoutes } from '../routes/extension-content.js';
+import { createProfileRoutes } from '../routes/profiles.js';
 import { startContentRouteHarness, type RouteHarness } from './route-test-harness.js';
 
 async function seedExtension(cwd: string, body: string, timeoutMs = 1000): Promise<void> {
@@ -41,6 +45,7 @@ export default function extension(eforge) {
   eforge.registerAction({ id: 'schema-output', title: 'Schema output', inputSchema: empty, outputSchema: Type.Object({ ok: Type.Boolean() }), handler() { return { ok: 'no' }; } });
   eforge.registerAction({ id: 'slow', title: 'Slow', inputSchema: empty, async handler() { await new Promise((resolve) => setTimeout(resolve, 50)); return { ok: true }; } });
   eforge.registerAction({ id: 'enqueue-build', title: 'Enqueue build', inputSchema: empty, async handler(_input, ctx) { return await ctx.buildQueue.enqueue({ source: 'prd.md', postMerge: ['pnpm build'], landingAction: 'leave' }); } });
+  eforge.registerAction({ id: 'read-profiles', title: 'Read profiles', inputSchema: Type.Object({ scope: Type.Optional(Type.Union([Type.Literal('local'), Type.Literal('project'), Type.Literal('user'), Type.Literal('all')])) }), async handler(input, ctx) { return await ctx.profiles.list({ scope: input.scope ?? 'all' }); } });
   eforge.registerConsoleContribution({ id: 'panel', title: 'Panel', blocks: [{ rendererId: 'text', content: 'Hello' }] });
   eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', srcDoc: '<h1>Board</h1>', allowedActions: ['echo'] });
   eforge.registerIntegrationCommand({ id: 'cmd', label: 'Echo command', action: { actionId: 'echo' } });
@@ -129,6 +134,94 @@ describe('extension contribution routes', () => {
         error: { code: 'invalid-input', message: 'Select exactly one backlog source.', details: [{ selectorCount: 2 }] },
       });
     } finally { await harness.close(); }
+  });
+
+  it('invokes profile-list context through the daemon contribution route wiring', async () => {
+    const harness = await startContentRouteHarness({ routes: (context) => [...createExtensionContentRoutes(context), ...createProfileRoutes(context)] });
+    const previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    const xdgConfigHome = await mkdtemp(join(tmpdir(), 'eforge-profile-contribution-user-config-'));
+    process.env.XDG_CONFIG_HOME = xdgConfigHome;
+    try {
+      await seedExtension(harness.cwd, extensionSource);
+      await mkdir(join(harness.cwd, '.eforge', 'profiles'), { recursive: true });
+      await mkdir(join(harness.cwd, 'eforge', 'profiles'), { recursive: true });
+      await mkdir(join(xdgConfigHome, 'eforge', 'profiles'), { recursive: true });
+      await writeFile(join(harness.cwd, '.eforge', '.active-profile'), 'team\n');
+      await writeFile(join(harness.cwd, '.eforge', 'profiles', 'team.yaml'), [
+        'description: Local team profile',
+        'whenToUse: [local work]',
+        'tags: [local, team]',
+        'agents:',
+        '  tiers:',
+        '    planning: { harness: claude-sdk, model: claude-model, effort: medium }',
+        '    implementation: { harness: claude-sdk, model: claude-model, effort: medium }',
+        '    review: { harness: claude-sdk, model: claude-model, effort: medium }',
+        '    evaluation: { harness: claude-sdk, model: claude-model, effort: medium }',
+        '',
+      ].join('\n'));
+      await writeFile(join(harness.cwd, 'eforge', 'profiles', 'team.yaml'), [
+        'description: Project team profile',
+        'tags: [project]',
+        'agents:',
+        '  tiers:',
+        '    planning: { harness: pi, model: pi-model, effort: medium }',
+        '    implementation: { harness: pi, model: pi-model, effort: medium }',
+        '    review: { harness: pi, model: pi-model, effort: medium }',
+        '    evaluation: { harness: pi, model: pi-model, effort: medium }',
+        '',
+      ].join('\n'));
+      await writeFile(join(xdgConfigHome, 'eforge', 'profiles', 'user.yaml'), [
+        'description: User profile',
+        'tags: [user]',
+        'agents:',
+        '  tiers:',
+        '    planning: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    implementation: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    review: { harness: claude-sdk, model: user-model, effort: medium }',
+        '    evaluation: { harness: claude-sdk, model: user-model, effort: medium }',
+        '',
+      ].join('\n'));
+
+      const actionId = await actionIdFor(harness, 'read-profiles');
+      for (const scope of ['all', 'local', 'project', 'user'] as const) {
+        const { res, body } = await invoke(harness, actionId, { scope });
+        const routeRes = await harness.get(buildProfileListPath({ scope }));
+        const routeBody = await routeRes.json();
+        expect(res.status).toBe(200);
+        expect(routeRes.status).toBe(200);
+        expect(body.output).toEqual(routeBody);
+      }
+
+      const { body } = await invoke(harness, actionId, { scope: 'all' });
+      expect(body).toMatchObject({ ok: true, output: { active: 'team', source: 'local' } });
+      expect(body.output.profiles).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          name: 'team',
+          scope: 'local',
+          harness: 'claude-sdk',
+          metadata: { description: 'Local team profile', whenToUse: ['local work'], tags: ['local', 'team'] },
+        }),
+        expect.objectContaining({
+          name: 'team',
+          scope: 'project',
+          harness: 'pi',
+          shadowedBy: 'local',
+          metadata: { description: 'Project team profile', tags: ['project'] },
+        }),
+        expect.objectContaining({
+          name: 'user',
+          scope: 'user',
+          harness: 'claude-sdk',
+          metadata: { description: 'User profile', tags: ['user'] },
+        }),
+      ]));
+      expect(body.output.profiles.every((profile: { path?: unknown }) => typeof profile.path === 'string')).toBe(true);
+    } finally {
+      if (previousXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+      await rm(xdgConfigHome, { recursive: true, force: true });
+      await harness.close();
+    }
   });
 
   it('forwards generic build queue enqueue fields from extension actions to the worker', async () => {
@@ -231,7 +324,10 @@ describe('extension contribution routes', () => {
 });
 
 async function actionIdFor(harness: RouteHarness, localId: string): Promise<string> {
-  const manifest = await (await harness.get(API_ROUTES.extensionContributionManifest)).json();
+  const manifestResponse = await harness.get(API_ROUTES.extensionContributionManifest);
+  const manifest = await manifestResponse.json();
+  expect(manifestResponse.status, JSON.stringify(manifest)).toBe(200);
+  expect(manifest.actions, JSON.stringify(manifest)).toEqual(expect.any(Array));
   const action = manifest.actions.find((candidate: { localId: string }) => candidate.localId === localId);
   expect(action, `action ${localId}`).toBeDefined();
   return action.id;

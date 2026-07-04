@@ -1,3 +1,4 @@
+import { ProfileListResponseSchema } from '@eforge-build/client';
 import { createContributionPaginationInputFields, Type, type Static } from '@eforge-build/extension-sdk';
 import {
   ItemLifecycleProjectionSchema,
@@ -197,6 +198,10 @@ export const UpdateSessionPlanMetadataInputSchema = Type.Object({
   openQuestions: Type.Optional(Type.Array(Type.String())),
 });
 export const UpdateSessionPlanMetadataOutputSchema = SessionPlanDetailOutputSchema;
+export const ListAgentRuntimeProfilesInputSchema = Type.Object({
+  scope: Type.Optional(Type.Union([Type.Literal('local'), Type.Literal('project'), Type.Literal('user'), Type.Literal('all')])),
+});
+export const ListAgentRuntimeProfilesOutputSchema = ProfileListResponseSchema;
 export const HandoffSessionPlanInputSchema = Type.Object({ session: Type.String() });
 export const HandoffSessionPlanOutputSchema = Type.Union([
   Type.Object({
@@ -219,6 +224,7 @@ export const HandoffSessionPlanOutputSchema = Type.Union([
 
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
+export type ListAgentRuntimeProfilesInput = Static<typeof ListAgentRuntimeProfilesInputSchema>;
 export type ListPlanningArtifactsInput = Static<typeof ListPlanningArtifactsInputSchema>;
 export type ShowSessionPlanInput = Static<typeof ShowSessionPlanInputSchema>;
 export type ShowSessionPlanSetInput = Static<typeof ShowSessionPlanSetInputSchema>;

@@ -129,7 +129,9 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
     handler: (input, ctx) => {
       const _requestedBy: sdk.ExtensionActionRequestedBy = ctx.requestedBy;
       const _host: sdk.ExtensionActionRequestedByHost = _requestedBy.host;
+      const _profiles: sdk.ExtensionProfilesApi = ctx.profiles;
       void _host;
+      void _profiles;
       return { greeting: `Hello ${input.name}` };
     },
   });

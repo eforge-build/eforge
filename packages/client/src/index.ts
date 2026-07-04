@@ -4,6 +4,7 @@ export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js
 export {
   API_ROUTES,
   buildPath,
+  buildProfileListPath,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
   RecoverySidecarContinueRepairOptionSchema,
@@ -123,6 +124,7 @@ export {
   apiGetSessionMetadataIfRunning,
 } from './api/queue.js';
 
+export { ProfileMetadataSchema, AgentRuntimeProfileInfoSchema, AgentRuntimeProfileSourceSchema, ProfileListResponseSchema } from './profile-schemas.js';
 export {
   apiListProfiles,
   apiListProfilesIfRunning,
@@ -135,6 +137,11 @@ export {
   apiDeleteProfile,
   apiDeleteProfileIfRunning,
 } from './api/profile.js';
+export type {
+  AgentRuntimeProfileInfo,
+  ProfileListRequest,
+  ProfileListResponse,
+} from './types.js';
 
 export {
   apiHealth,

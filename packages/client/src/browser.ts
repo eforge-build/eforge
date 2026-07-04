@@ -15,6 +15,7 @@
 export {
   API_ROUTES,
   buildPath,
+  buildProfileListPath,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
   RecoverySidecarContinueRepairOptionSchema,
@@ -22,6 +23,17 @@ export {
   RecoverySidecarCompileScopeContextOptionSchema,
   RecoverySidecarRecoveryOptionSchema,
 } from './routes.js';
+export {
+  ProfileMetadataSchema,
+  AgentRuntimeProfileInfoSchema,
+  AgentRuntimeProfileSourceSchema,
+  ProfileListResponseSchema,
+} from './profile-schemas.js';
+export type {
+  AgentRuntimeProfileInfo,
+  ProfileListRequest,
+  ProfileListResponse,
+} from './types.js';
 export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,

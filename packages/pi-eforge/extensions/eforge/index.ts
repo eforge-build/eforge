@@ -66,6 +66,7 @@ import {
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
   buildPath,
+  buildProfileListPath,
   apiStackSyncIfRunning,
 } from '@eforge-build/client';
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
@@ -80,6 +81,7 @@ import type {
   VersionResponse,
   EforgeExtensionActionHelpers,
   ContinueRepairRequest,
+  ProfileListResponse,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
@@ -787,10 +789,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         params;
 
       if (action === "list") {
-        const params = new URLSearchParams();
-        if (scope) params.set("scope", scope);
-        const qs = params.toString();
-        const { data } = await requireDaemon(ctx.cwd, "GET", `${API_ROUTES.profileList}${qs ? `?${qs}` : ""}`);
+        const { data } = await requireDaemon(
+          ctx.cwd,
+          "GET",
+          buildProfileListPath({ scope: scope ?? "all" }),
+        );
         return jsonResult(data);
       }
 
@@ -877,9 +880,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const lines: string[] = [];
 
         if (Array.isArray((data as { profiles?: unknown }).profiles)) {
-          const profiles = (data as { profiles: Array<{ name: string }> }).profiles;
-          const active = (data as { active?: string | null }).active ?? null;
-          const source = (data as { source?: string }).source ?? "none";
+          const profileList = data as unknown as ProfileListResponse;
+          const profiles = profileList.profiles;
+          const active = profileList.active;
+          const source = profileList.source;
           lines.push(
             theme.fg("accent", `${profiles.length} profile(s)`) +
               theme.fg("dim", `  source: ${source}`),
