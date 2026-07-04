@@ -165,8 +165,36 @@ describe('bounded planner compiler stage integration', () => {
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 0 localization hints'))).toBe(true);
+    // A malformed submission synthesizes a budget-exhausted outcome; a single-criterion
+    // source has no split signal, so the stage proceeds hint-less with a warning.
+    expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('no split signal'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes(GATE_HANDOFF_MESSAGE))).toBe(true);
+  });
+
+  it('fails the compile closed when adaptive rescoping exhausts with critical needs unresolved', async () => {
+    const cwd = await workspace({});
+    const sourceContent = prd([
+      'engine updates the `packages/engine/src/rescope-api.ts` route schema contract.',
+      'client updates the `packages/client/src/rescope-api-consumer.ts` route schema contract.',
+    ]);
+    const exhausted = { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-exhausted', input: { status: 'budget-exhausted', reasons: ['tool-budget'] }, output: 'ok' }] };
+    const harness = new StubHarness([unsatisfiedGateSubmission(), exhausted, exhausted, exhausted]);
+    const ctx = makePipelineCtx({
+      cwd,
+      sourceContent,
+      planSetName: 'bounded-stage-fail-closed',
+      agentRuntimes: singletonRegistry(harness),
+      compilePreflight: overflowRisk(sourceContent),
+      pipeline: { ...TEST_PIPELINE, compile: ['planner'] },
+      baseBranch: 'main',
+    });
+
+    const events: Array<{ type: string; [key: string]: unknown }> = [];
+    const stage = getCompileStage('planner')(ctx);
+    await expect((async () => { for await (const event of stage) events.push(event as never); })()).rejects.toThrow(/critical source need/);
+    expect(events.some((event) => event.type === 'planning:error' && String(event.reason).includes('Adaptive rescoping exhausted'))).toBe(true);
+    // Fail-closed means no plan artifacts were produced.
+    expect(events.some((event) => event.type === 'planning:pipeline')).toBe(false);
   });
 
   it('skips the compile with planning:skip when the satisfaction gate verifies every criterion', async () => {

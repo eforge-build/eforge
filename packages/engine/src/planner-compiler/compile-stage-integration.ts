@@ -5,18 +5,14 @@ import { validateCompileArtifacts } from '../compile-resilience/artifact-validat
 import { resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits } from '../config.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
-import { derivePlanningAtomGraph } from './atom-graph.js';
+import { AdaptiveRescopeFailClosedError, runAdaptiveExplorationRescope, type AdaptiveExplorationRescopeResult } from './adaptive-rescope.js';
 import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
 import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult } from './compiler-runner.js';
-import { decideExplorationSkip, type RepositoryExplorationOutcome } from './exploration-contracts.js';
-import { runRepositoryExplorationAgent } from './exploration-agent.js';
 import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 import { runPlanningSatisfactionGate } from './satisfaction-gate-agent.js';
 import type { PlanningSatisfactionSkipDecision } from './satisfaction-gate-contracts.js';
-import type { SourceLocalizationInputHints } from './source-localization-contracts.js';
-import { deriveSourceLocalization } from './source-localization.js';
 import { deriveSourceInventory } from './source-inventory.js';
 
 function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
@@ -51,6 +47,8 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
       sourceLocalizationHints: exploration?.hints,
       explorationOutcome: exploration?.outcome,
       explorationUnknownIdDrops: exploration?.unknownIdDrops,
+      rescopeDirectives: exploration?.rescopeDirectives,
+      rescopeDiagnostics: exploration?.diagnostics,
       sharedBriefLimits: resolveSharedPlanningBriefLimits(ctx.config),
       onEvent: emit,
     }));
@@ -148,42 +146,34 @@ async function* resolveSatisfactionSkip(ctx: PipelineContext, input: Exploration
 }
 
 /**
- * Run the bounded repository exploration agent when deterministic
- * localization confidence is too low, returning validated hints for the
- * compiler. The baseline inventory/graph/localization derivation here
- * duplicates the compiler's own deterministic first pass (both bounded);
- * the compiler re-derives from the same source. Every failure mode except
- * an external abort degrades to no hints - exploration never fails the compile.
+ * Run bounded repository exploration behind the adaptive rescope loop. The
+ * loop derives the baseline inventory/graph/localization itself (a deliberate
+ * duplicate of the compiler's deterministic first pass), runs exploration with
+ * a need-count-derived budget, and on a risky degraded outcome splits scopes
+ * and reruns exploration under a cross-run ledger. Failures degrade to no
+ * hints except two cases that propagate: an external abort, and
+ * AdaptiveRescopeFailClosedError - exhausted rescoping with critical needs
+ * unresolved fails the compile instead of producing vague plans.
  */
-async function* resolveExplorationHints(ctx: PipelineContext, input: ExplorationStageInput): AsyncGenerator<EforgeEvent, { hints?: SourceLocalizationInputHints; outcome?: RepositoryExplorationOutcome; unknownIdDrops?: Array<{ field: string; id: string; index?: number }> } | undefined> {
+async function* resolveExplorationHints(ctx: PipelineContext, input: ExplorationStageInput): AsyncGenerator<EforgeEvent, AdaptiveExplorationRescopeResult | undefined> {
   try {
     const inventory = deriveSourceInventory({ content: input.sourceContent, hash: ctx.compilePromptSourceBundle?.sourceHash });
-    const graph = derivePlanningAtomGraph({ content: input.sourceContent, hash: inventory.sourceHash, limits: input.limits, inventory });
-    const baseline = await deriveSourceLocalization({ cwd: ctx.cwd, inventory, graph });
-    const decision = decideExplorationSkip(baseline, inventory.summary.criterionCount);
-    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Repository exploration ${decision.skip ? 'skipped' : 'starting'}: ${decision.reason}` };
-    if (decision.skip) return undefined;
-    const result = yield* streamEvents((emit) => runRepositoryExplorationAgent({
+    return yield* streamEvents((emit) => runAdaptiveExplorationRescope({
       cwd: ctx.cwd,
       harness: input.harness,
       agentOptions: input.agentOptions,
+      sourceContent: input.sourceContent,
       inventory,
-      baselineBundle: baseline,
-      graph,
-      maxToolUses: input.limits.maxLocalExplorationToolUses,
+      limits: input.limits,
       abortSignal: ctx.abortController?.signal,
       onEvent: emit,
     }));
-    const droppedHintCount = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
-    if (droppedHintCount > 0) yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Repository exploration dropped ${droppedHintCount} invalid hint entries.`, source: 'repository-exploration' };
-    if (result.status === 'degraded') {
-      yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Repository exploration degraded to no hints: ${result.diagnostics.map((diagnostic) => diagnostic.message).join('; ') || 'no hints submitted'}`, source: 'repository-exploration' };
-      return { outcome: result.outcome, unknownIdDrops: result.unknownIdDrops };
-    }
-    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Repository exploration produced ${result.hints?.projectHints?.length ?? 0} localization hints in ${result.toolUses} tool uses.` };
-    return { hints: result.hints, outcome: result.outcome, unknownIdDrops: result.unknownIdDrops };
   } catch (err) {
     if (ctx.abortController?.signal.aborted) throw err;
+    if (err instanceof AdaptiveRescopeFailClosedError) {
+      yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: err.message };
+      throw err;
+    }
     const message = err instanceof Error ? err.message : String(err);
     yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Repository exploration failed; continuing without hints: ${message}`, source: 'repository-exploration' };
     return undefined;

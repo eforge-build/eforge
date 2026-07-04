@@ -22,7 +22,7 @@ import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime
 import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA } from './compile-resilience/planning-decomposition-limits.js';
 import type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
-export { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits } from './compile-resilience/planning-decomposition-limits.js';
+export { ADAPTIVE_RESCOPE_LIMITS_MAXIMA, DEFAULT_ADAPTIVE_RESCOPE_LIMITS, DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolveAdaptiveRescopeLimits, resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits, type AdaptiveRescopeLimits } from './compile-resilience/planning-decomposition-limits.js';
 export type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export type { ShardScope } from './schemas.js';
 // Re-export shared types from @eforge-build/client so engine-internal callers

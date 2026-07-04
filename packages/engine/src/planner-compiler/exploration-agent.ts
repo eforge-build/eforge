@@ -20,7 +20,7 @@ export const REPOSITORY_EXPLORATION_PLAN_ID = 'repository-exploration';
 const SUBMIT_EXPLORATION_OUTCOME_TOOL = 'submit_exploration_outcome';
 const MAX_PROMPT_NEEDS = 50;
 const MAX_PROMPT_CRITERION_TEXT = 300;
-const DEFAULT_EXPLORATION_MAX_TURNS = 12;
+export const DEFAULT_EXPLORATION_MAX_TURNS = 12;
 
 export interface RunRepositoryExplorationAgentInput {
   cwd: string;
@@ -30,6 +30,8 @@ export interface RunRepositoryExplorationAgentInput {
   baselineBundle: SourceLocalizationBundle;
   graph?: PlanningAtomGraph;
   maxToolUses: number;
+  /** Restrict the prompt's unresolved-needs list to these need ids for per-scope rescope reruns. */
+  scopeNeedIds?: string[];
   abortSignal?: AbortSignal;
   onEvent?: PlannerCompilerEventSink;
 }
@@ -54,7 +56,7 @@ export interface RepositoryExplorationAgentResult {
 export async function runRepositoryExplorationAgent(input: RunRepositoryExplorationAgentInput): Promise<RepositoryExplorationAgentResult> {
   const submitToolName = input.harness.effectiveCustomToolName(SUBMIT_EXPLORATION_OUTCOME_TOOL);
   const maxTurns = input.agentOptions?.maxTurns ?? DEFAULT_EXPLORATION_MAX_TURNS;
-  const prompt = formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName);
+  const prompt = formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds);
   const events: EforgeEvent[] = [];
   let submission: RepositoryExplorationOutcome | undefined;
   let toolUses = 0;
@@ -98,7 +100,7 @@ export async function runRepositoryExplorationAgent(input: RunRepositoryExplorat
 }
 
 async function runExplorationSubmitGrace(input: RunRepositoryExplorationAgentInput, submitToolName: string, onSubmit: (submission: RepositoryExplorationOutcome) => boolean, events: EforgeEvent[], toolUses: number, maxTurns: number): Promise<string | undefined> {
-  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}.`;
+  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}.`;
   try {
     for await (const event of input.harness.run({
       ...pickSdkOptions(input.agentOptions ?? {}),
@@ -154,7 +156,7 @@ function isSubmitTool(tool: string, submitToolName: string): boolean {
   return tool === submitToolName || tool === SUBMIT_EXPLORATION_OUTCOME_TOOL;
 }
 
-export function formatRepositoryExplorationPrompt(inventory: SourceInventory, baselineBundle: SourceLocalizationBundle, maxToolUses: number, submitToolName = SUBMIT_EXPLORATION_OUTCOME_TOOL): string {
+export function formatRepositoryExplorationPrompt(inventory: SourceInventory, baselineBundle: SourceLocalizationBundle, maxToolUses: number, submitToolName = SUBMIT_EXPLORATION_OUTCOME_TOOL, scopeNeedIds?: string[]): string {
   return `You are a bounded repository exploration agent for eforge's planner compiler.
 
 Locate the repository files, directories, and interfaces that ground the source needs below, then complete this turn by calling ${submitToolName} exactly once with a structured exploration outcome. Do not return JSON in text, do not modify anything, and do not plan the work itself - downstream tool-less planners consume your outcome.
@@ -178,7 +180,7 @@ ${JSON.stringify({
 
 ## Unresolved and low-confidence source needs
 
-${formatNeedsForPrompt(baselineBundle)}
+${formatNeedsForPrompt(baselineBundle, scopeNeedIds)}
 
 ## Structured submission rules
 
@@ -194,8 +196,9 @@ Call ${submitToolName} with an object matching its schema: { "status": "complete
 `;
 }
 
-function formatNeedsForPrompt(bundle: SourceLocalizationBundle): string {
-  const needsAttention = bundle.records.filter((record) => record.status !== 'resolved' || record.confidence !== 'high');
+function formatNeedsForPrompt(bundle: SourceLocalizationBundle, scopeNeedIds?: string[]): string {
+  const scope = scopeNeedIds ? new Set(scopeNeedIds) : undefined;
+  const needsAttention = bundle.records.filter((record) => (record.status !== 'resolved' || record.confidence !== 'high') && (!scope || scope.has(record.needId)));
   const shown = needsAttention.slice(0, MAX_PROMPT_NEEDS);
   if (shown.length === 0) return 'All derived source needs already resolved with high confidence; submit hints only if you find stronger owners.';
   const lines = shown.map((record) => JSON.stringify(promptNeed(record)));

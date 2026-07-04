@@ -135,6 +135,25 @@ const CompilerDiagnosticsExplorationSchema = Type.Object({
   toolUseCount: count(),
 }, { additionalProperties: false });
 
+const CompilerDiagnosticsRescopeSchema = Type.Object({
+  status: Type.Union([Type.Literal('not-needed'), Type.Literal('warning-only'), Type.Literal('rescoped'), Type.Literal('exhausted-proceeded'), Type.Literal('fail-closed')]),
+  attempts: Type.Integer({ minimum: 0, maximum: 100 }),
+  maxAttempts: Type.Integer({ minimum: 0, maximum: 100 }),
+  originalAtomCount: count(),
+  revisedAtomCount: count(),
+  ledger: Type.Object({ totalToolUseBudget: count(), usedToolUses: count() }, { additionalProperties: false }),
+  riskReasons: Type.Array(boundedString(240), { maxItems: 16 }),
+  splitGroups: Type.Array(Type.Object({
+    directiveId: boundedString(160),
+    groupKey: boundedString(160),
+    criterionIds: boundedIds(80, 64),
+    rationale: boundedString(500),
+  }, { additionalProperties: false }), { maxItems: 64 }),
+  rerunScopeKeys: boundedIds(160, 64),
+  preservedScopeKeys: boundedIds(160, 64),
+  unresolvedCriticalNeedIds: boundedIds(160, 100),
+}, { additionalProperties: false });
+
 export const CompilerDiagnosticsSchema = Type.Object({
   version: Type.Literal(COMPILER_DIAGNOSTICS_VERSION),
   planSetName: boundedString(200),
@@ -153,6 +172,7 @@ export const CompilerDiagnosticsSchema = Type.Object({
     conflicts: Type.Array(CompilerDiagnosticsConflictSchema, { maxItems: 128 }),
   }, { additionalProperties: false }),
   exploration: CompilerDiagnosticsExplorationSchema,
+  rescope: Type.Optional(CompilerDiagnosticsRescopeSchema),
   repair: Type.Object({
     status: RepairStatusSchema,
     attempts: Type.Array(CompilerDiagnosticsRepairAttemptSchema, { maxItems: 8 }),
@@ -183,6 +203,7 @@ export type CompilerDiagnosticsGap = Static<typeof CompilerDiagnosticsGapSchema>
 export type CompilerDiagnosticsConflict = Static<typeof CompilerDiagnosticsConflictSchema>;
 export type CompilerDiagnosticsRepairAttempt = Static<typeof CompilerDiagnosticsRepairAttemptSchema>;
 export type CompilerDiagnosticsExploration = Static<typeof CompilerDiagnosticsExplorationSchema>;
+export type CompilerDiagnosticsRescope = Static<typeof CompilerDiagnosticsRescopeSchema>;
 export type CompilerDiagnosticsOmittedCounts = CompilerDiagnostics['omitted'];
 
 export function validateCompilerDiagnostics(value: unknown): { ok: true; errors: [] } | { ok: false; errors: string[] } {

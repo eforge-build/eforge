@@ -176,6 +176,35 @@ describe('planning compiler diagnostics', () => {
     });
   });
 
+  it('projects adaptive rescope diagnostics and remains schema-valid', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const rescope = {
+      status: 'rescoped' as const,
+      attempts: 1,
+      maxAttempts: 1,
+      originalAtomCount: 1,
+      revisedAtomCount: 3,
+      ledger: { totalToolUseBudget: 72, usedToolUses: 31 },
+      riskReasons: ['low-confidence-share (2/9)'],
+      splitGroups: [
+        { directiveId: 'rescope-client', groupKey: 'client', criterionIds: ['ac-002'], rationale: 'degraded exploration: split by client' },
+        { directiveId: 'rescope-engine', groupKey: 'engine', criterionIds: ['ac-001'], rationale: 'degraded exploration: split by engine' },
+      ],
+      rerunScopeKeys: ['engine'],
+      preservedScopeKeys: ['client'],
+      unresolvedCriticalNeedIds: [],
+    };
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], { rescopeDiagnostics: rescope });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
+    expect(diagnostics.rescope).toEqual(rescope);
+    // Absent rescope diagnostics leave the section out entirely.
+    expect(buildCompilerDiagnostics({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), planSetName: 'diag-set' }).rescope).toBeUndefined();
+  });
+
   it('captures non-materialized source evidence as evidence failures', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
@@ -248,6 +277,7 @@ interface CompilerFixtureOverrides {
   evidenceRecords?: BoundedPlannerCompilerResult['sourceEvidenceBundle']['records'];
   explorationOutcome?: BoundedPlannerCompilerResult['explorationOutcome'];
   explorationUnknownIdDrops?: BoundedPlannerCompilerResult['explorationUnknownIdDrops'];
+  rescopeDiagnostics?: BoundedPlannerCompilerResult['rescopeDiagnostics'];
 }
 
 function fixture(criteria: string[]) {
@@ -275,6 +305,7 @@ function compilerFixture(data: ReturnType<typeof fixture>, atomOutputs: Planning
     repairDiagnostics: overrides.repairDiagnostics ?? [],
     ...(overrides.explorationOutcome ? { explorationOutcome: overrides.explorationOutcome } : {}),
     ...(overrides.explorationUnknownIdDrops ? { explorationUnknownIdDrops: overrides.explorationUnknownIdDrops } : {}),
+    ...(overrides.rescopeDiagnostics ? { rescopeDiagnostics: overrides.rescopeDiagnostics } : {}),
     status: overrides.status ?? (residue.candidates.length > 0 ? 'complete-with-residue' : reduce.reduceComplete && map.mapComplete ? 'complete' : 'incomplete'),
     validationErrors: overrides.validationErrors ?? [],
     events: [],
