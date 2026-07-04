@@ -1,3 +1,5 @@
+import type { ProfileListRequest } from '../types.js';
+
 /**
  * Central API route map for the eforge daemon HTTP API.
  *
@@ -6,7 +8,8 @@
  * surfaces as a compile-time error everywhere.
  *
  * Patterns with `:param` placeholders are resolved at call-time with
- * `buildPath(pattern, params)`.
+ * `buildPath(pattern, params)`. Query-bearing routes that need shared
+ * construction expose route-specific builders such as `buildProfileListPath()`.
  */
 export const API_ROUTES = {
   keepAlive: '/api/keep-alive',
@@ -101,6 +104,16 @@ export const API_ROUTES = {
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
+
+/**
+ * Build the profile-list route path with its optional scope query.
+ */
+export function buildProfileListPath(query?: ProfileListRequest): string {
+  const params = new URLSearchParams();
+  if (query?.scope !== undefined) params.set('scope', query.scope);
+  const qs = params.toString();
+  return qs ? `${API_ROUTES.profileList}?${qs}` : API_ROUTES.profileList;
+}
 
 /**
  * Resolve a route pattern with `:param` placeholders into a concrete path.

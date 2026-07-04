@@ -42,9 +42,10 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
   });
 
   it('dispatches eforge_profile actions to the expected daemon endpoints', () => {
-    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
-    // constants (profile* instead of backend*). Verify the constants are referenced.
-    expect(source).toContain('API_ROUTES.profileList');
+    // Profile list URLs with query params are centralized in buildProfileListPath;
+    // the remaining profile operations use shared API_ROUTES constants.
+    expect(source).toContain('buildProfileListPath');
+    expect(source).not.toContain('API_ROUTES.profileList');
     expect(source).toContain('API_ROUTES.profileShow');
     expect(source).toContain('API_ROUTES.profileUse');
     expect(source).toContain('API_ROUTES.profileCreate');
@@ -98,10 +99,10 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
     expect(source).toMatch(/from\s+['"]\.\/profile-commands['"]/);
   });
 
-  it('dispatches eforge_profile to the daemon via daemonRequest', () => {
-    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
-    // constants (profile* instead of backend*).
-    expect(source).toContain('API_ROUTES.profileList');
+  it('dispatches eforge_profile to the daemon via shared client route helpers', () => {
+    // Profile list URLs with query params are centralized in buildProfileListPath;
+    // the remaining profile operations use shared API_ROUTES constants.
+    expect(source).toContain('buildProfileListPath');
     expect(source).toContain('API_ROUTES.profileShow');
     expect(source).toContain('API_ROUTES.profileUse');
     expect(source).toContain('API_ROUTES.profileCreate');

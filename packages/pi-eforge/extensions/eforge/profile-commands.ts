@@ -1,6 +1,6 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { API_ROUTES, buildPath } from "@eforge-build/client";
+import { API_ROUTES, buildPath, buildProfileListPath, type ProfileListResponse } from "@eforge-build/client";
 import { piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 import { buildProfileCreatePayload, type TierSelection, type TierRuntimeChoicesSelection } from "./profile-payload";
@@ -8,25 +8,6 @@ import { buildYamlPreview } from "./profile-yaml-preview";
 import { TOOLBELT_PRESETS, findMissingServers, applyToolbeltPresetToTiers, applyNoMcpAccessToTiers } from "./toolbelt-presets";
 import { readMcpServers, addPlaywrightServer, upsertToolbeltInConfig } from "./toolbelt-config-files";
 
-
-interface ProfileEntry {
-  name: string;
-  harness?: string;
-  path: string;
-  scope: "project" | "user";
-  shadowedBy?: string;
-  metadata?: {
-    description?: string;
-    whenToUse?: string[];
-    tags?: string[];
-  };
-}
-
-interface ProfileListData {
-  profiles: ProfileEntry[];
-  active: string | null;
-  source: string;
-}
 
 async function ensureBrowserUiToolbelt(ctx: UIContext): Promise<boolean> {
   const preset = TOOLBELT_PRESETS.find((p) => p.id === 'browser-ui');
@@ -113,10 +94,10 @@ export async function handleProfileCommand(
     return;
   }
 
-  let listData: ProfileListData;
+  let listData: ProfileListResponse;
   try {
     const result = await withLoader(ctx, "Loading profiles...", () =>
-      piDaemonRequest<ProfileListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
+      piDaemonRequest<ProfileListResponse>(ctx.cwd, "GET", buildProfileListPath({ scope: "all" })),
     );
     if (result === null) {
       await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);

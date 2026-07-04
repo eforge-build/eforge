@@ -17,6 +17,7 @@ import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfil
   apiRemoveQueueItem,
   // --- eforge:endregion host-queue-controls ---
   apiContinueRepair,
+  buildProfileListPath,
   dispatchEforgeExtensionAction,
   projectExtensionManagementResponse,
 } from '@eforge-build/client';
@@ -402,10 +403,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
     handler: async ({ action, name, agents, metadata, overwrite, force, scope }, { cwd: toolCwd }) => {
       if (action === 'list') {
-        const params = new URLSearchParams();
-        if (scope) params.set('scope', scope);
-        const qs = params.toString();
-        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.profileList}${qs ? `?${qs}` : ''}`);
+        const { data } = await daemonRequest(toolCwd, 'GET', buildProfileListPath({ scope }));
         return data;
       }
 

@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { API_ROUTES } from '@eforge-build/client';
+import { API_ROUTES, buildProfileListPath } from '@eforge-build/client';
 import { REPO_ROOT, parseFrontmatter, readRepoFile } from './profile-wiring-helpers';
 
 describe('eforge-plugin/.claude-plugin/plugin.json', () => {
@@ -205,9 +205,10 @@ describe('eforge_profile scope field parity', () => {
     expect(block).toContain('Type.Literal("all")');
   });
 
-  it('MCP proxy threads scope as query param for list action', () => {
-    // The list action should pass scope via URLSearchParams
-    expect(mcpSource).toMatch(/params\.set\(['"]scope['"],\s*scope\)/);
+  it('MCP proxy threads scope through the shared profile-list path builder', () => {
+    expect(buildProfileListPath({ scope: 'all' })).toBe(`${API_ROUTES.profileList}?scope=all`);
+    expect(mcpSource).toContain('buildProfileListPath({ scope })');
+    expect(mcpSource).not.toMatch(/new URLSearchParams\(\)[\s\S]{0,300}API_ROUTES\.profileList/);
   });
 
   it('MCP proxy threads scope in request body for use, create, delete actions', () => {
@@ -224,9 +225,8 @@ describe('eforge_profile scope field parity', () => {
     expect(scopeAssignments!.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('Pi extension threads scope as query param for list action', () => {
-    // The list action should pass scope via URLSearchParams
-    expect(piSource).toMatch(/params\.set\(["']scope["'],\s*scope\)/);
+  it('Pi extension threads scope through the shared profile-list path builder', () => {
+    expect(piSource).toContain('buildProfileListPath({ scope: scope ?? "all" })');
   });
 
   it('Pi extension threads scope in request body for use, create, delete actions', () => {

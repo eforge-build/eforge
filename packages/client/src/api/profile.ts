@@ -3,7 +3,7 @@
  */
 
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
-import { API_ROUTES, buildPath } from '../routes.js';
+import { API_ROUTES, buildPath, buildProfileListPath } from '../routes.js';
 import type {
   ProfileListRequest,
   ProfileListResponse,
@@ -17,9 +17,7 @@ import type {
 } from '../types.js';
 
 export function apiListProfiles(opts: { cwd: string; query?: ProfileListRequest }) {
-  const base = API_ROUTES.profileList;
-  const path = opts.query?.scope !== undefined ? `${base}?scope=${encodeURIComponent(opts.query.scope)}` : base;
-  return daemonRequest<ProfileListResponse>(opts.cwd, 'GET', path);
+  return daemonRequest<ProfileListResponse>(opts.cwd, 'GET', buildProfileListPath(opts.query));
 }
 
 export function apiShowProfile(opts: { cwd: string }) {
@@ -44,9 +42,7 @@ export function apiDeleteProfile(opts: { cwd: string; name: string; body?: Profi
 }
 
 export function apiListProfilesIfRunning(opts: { cwd: string; query?: ProfileListRequest }) {
-  const base = API_ROUTES.profileList;
-  const path = opts.query?.scope !== undefined ? `${base}?scope=${encodeURIComponent(opts.query.scope)}` : base;
-  return daemonRequestIfRunning<ProfileListResponse>(opts.cwd, 'GET', path);
+  return daemonRequestIfRunning<ProfileListResponse>(opts.cwd, 'GET', buildProfileListPath(opts.query));
 }
 
 export function apiShowProfileIfRunning(opts: { cwd: string }) {

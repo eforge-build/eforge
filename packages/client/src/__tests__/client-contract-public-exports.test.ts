@@ -29,6 +29,11 @@ import type {
   QueueItemWithCapabilities,
   EfficiencyAnalyticsSummary,
 } from '../types.js';
+import type {
+  AgentRuntimeProfileInfo,
+  ProfileListRequest,
+  ProfileListResponse,
+} from '../index.js';
 
 const capabilities: QueueItemCapabilities = {
   priority: { allowed: true },
@@ -152,8 +157,21 @@ describe('client contract public exports', () => {
       models: [],
       profiles: [],
     };
+    const profileInfo: AgentRuntimeProfileInfo = {
+      name: 'default',
+      harness: 'pi',
+      path: '/project/eforge/profiles/default.yaml',
+      scope: 'project',
+      metadata: { description: 'Default profile', tags: ['default'] },
+    };
+    const profileListRequest: ProfileListRequest = { scope: 'all' };
+    const profileListResponse: ProfileListResponse = {
+      profiles: [profileInfo],
+      active: 'default',
+      source: 'project',
+    };
 
-    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse, efficiencySummary }).toMatchObject({
+    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse, efficiencySummary, profileListRequest, profileListResponse }).toMatchObject({
       recoveryResponse: { plans: [{ status: 'already-current' }] },
       holdResponse: { item: { capabilities } },
       applyResponse: { target: { status: 'removed' } },
@@ -161,7 +179,14 @@ describe('client contract public exports', () => {
       dismissResponse: { dismissed: true },
       resumeResponse: pauseResponse,
       efficiencySummary: { windowDays: 7 },
+      profileListRequest: { scope: 'all' },
+      profileListResponse: { active: 'default', profiles: [{ harness: 'pi' }] },
     });
+  });
+
+  it('exports the profile-list path helper from the Node client surface', () => {
+    expect(client.buildProfileListPath()).toBe(client.API_ROUTES.profileList);
+    expect(client.buildProfileListPath({ scope: 'all' })).toBe(`${client.API_ROUTES.profileList}?scope=all`);
   });
 
   it('exports reusable schema symbols through the browser-safe events barrel', () => {

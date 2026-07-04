@@ -15,6 +15,7 @@
 export {
   API_ROUTES,
   buildPath,
+  buildProfileListPath,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS,
   RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_REASON_MAX_BYTES,
   RecoverySidecarContinueRepairOptionSchema,

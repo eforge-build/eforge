@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { API_ROUTES, buildPath } from '@eforge-build/client';
+import { API_ROUTES, buildPath, buildProfileListPath } from '@eforge-build/client';
 import { createMonitorContext } from '../context.js';
 import { openDatabase } from '../db.js';
 import type { MonitorStreamHub } from '../types.js';
@@ -83,6 +83,9 @@ describe('profile routes', () => {
     const all = await fetch(`${url}${API_ROUTES.profileList}`).then((res) => res.json()) as { active: string; source: string; profiles: Array<{ scope: string }> };
     expect(all).toMatchObject({ active: 'team', source: 'project' });
     expect(all.profiles.map((profile) => profile.scope).sort()).toEqual(['local', 'project']);
+    const allViaSharedPath = await fetch(`${url}${buildProfileListPath({ scope: 'all' })}`).then((res) => res.json()) as { active: string; source: string; profiles: Array<{ scope: string }> };
+    expect(allViaSharedPath).toMatchObject({ active: 'team', source: 'project' });
+    expect(allViaSharedPath.profiles.map((profile) => profile.scope).sort()).toEqual(['local', 'project']);
     const local = await fetch(`${url}${API_ROUTES.profileList}?scope=local`).then((res) => res.json()) as { profiles: Array<{ scope: string }> };
     expect(local.profiles).toHaveLength(1);
     expect(local.profiles[0].scope).toBe('local');
