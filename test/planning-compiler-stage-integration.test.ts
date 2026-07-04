@@ -133,7 +133,7 @@ describe('bounded planner compiler stage integration', () => {
     const explorationStarts = events.filter((event) => event.type === 'agent:start' && event.planId === 'repository-exploration');
     expect(explorationStarts).toHaveLength(1);
     const explorationCall = harness.calls[1];
-    expect(explorationCall.prompt).toContain('submit_exploration_hints');
+    expect(explorationCall.prompt).toContain('submit_exploration_outcome');
     expect(explorationCall.tools).toBe('read-only');
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 1 localization hints'))).toBe(true);
     // The hinted owner path flows through localization into the atom planner's grounded evidence.
@@ -149,7 +149,7 @@ describe('bounded planner compiler stage integration', () => {
     const mapOutput = completedOutput(task);
     const harness = new StubHarness([
       unsatisfiedGateSubmission(),
-      { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-bad', input: { projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
+      { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-bad', input: { status: 'completed', projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
       atomSubmission(mapOutput),
       reduceSubmission(completedReduceOutput(mapOutput)),
     ]);
@@ -165,7 +165,7 @@ describe('bounded planner compiler stage integration', () => {
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    expect(events.some((event) => event.type === 'planning:warning' && event.source === 'repository-exploration' && event.message.includes('degraded to no hints'))).toBe(true);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration produced 0 localization hints'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes(GATE_HANDOFF_MESSAGE))).toBe(true);
   });
 

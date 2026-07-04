@@ -9,6 +9,7 @@ import { materializePlanningSourceEvidence } from './source-evidence-materializa
 import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits } from './source-evidence-contracts.js';
 import { deriveSourceInventory, type SourceInventory } from './source-inventory.js';
 import { deriveSourceLocalization } from './source-localization.js';
+import type { RepositoryExplorationOutcome } from './exploration-contracts.js';
 import type { SourceLocalizationBundle, SourceLocalizationInputHints, SourceLocalizationLimits } from './source-localization-contracts.js';
 import type { PlanningReduceResult } from './reduce-runner.js';
 import { runPlanningMapReducePipeline } from './map-reduce-pipeline-runner.js';
@@ -31,6 +32,8 @@ export interface RunBoundedPlannerCompilerInput {
   agentOptions?: SdkPassthroughConfig & { maxTurns?: number };
   sharedBriefLimits?: Partial<SharedPlanningBriefLimits>;
   sourceLocalizationHints?: SourceLocalizationInputHints;
+  explorationOutcome?: RepositoryExplorationOutcome;
+  explorationUnknownIdDrops?: Array<{ field: string; id: string; index?: number }>;
   sourceLocalizationLimits?: Partial<SourceLocalizationLimits>;
   sourceEvidenceLimits?: Partial<PlanningSourceEvidenceLimits>;
   reduceLimits?: Partial<PlanningReduceLimits>;
@@ -51,6 +54,8 @@ export interface BoundedPlannerCompilerResult {
   reduce: PlanningReduceResult;
   residue: PlanningResidueSynthesis;
   repairDiagnostics: SourceLocalizationRepairDiagnostic[];
+  explorationOutcome?: RepositoryExplorationOutcome;
+  explorationUnknownIdDrops?: Array<{ field: string; id: string; index?: number }>;
   status: BoundedPlannerCompilerStatus;
   validationErrors: string[];
   events: EforgeEvent[];
@@ -72,7 +77,7 @@ export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompiler
   const residue = synthesizePlanningResidue({ graph: atomGraph, coverage: repair.map.coverage, atomOutputs: repair.map.outputs, sourceEvidenceBundle: repair.sourceEvidenceBundle, reduceOutputs: repair.reduce.outputs, limits: input.residueLimits });
   const validationErrors = compilerValidationErrors(repair.sourceLocalizationBundle, repair.sourceEvidenceBundle, repair.map, repair.reduce, residue, repair.diagnostics);
   const events = repair.status === 'not-needed' ? firstPass.events : [...repair.map.events, ...repair.reduce.events];
-  return { sourceInventory, atomGraph, sourceLocalizationBundle: repair.sourceLocalizationBundle, sharedBrief: repair.sharedBrief, sourceEvidenceBundle: repair.sourceEvidenceBundle, map: repair.map, reduce: repair.reduce, residue, repairDiagnostics: repair.diagnostics, status: compilerStatus(repair.map, repair.reduce, residue, validationErrors), validationErrors, events };
+  return { sourceInventory, atomGraph, sourceLocalizationBundle: repair.sourceLocalizationBundle, sharedBrief: repair.sharedBrief, sourceEvidenceBundle: repair.sourceEvidenceBundle, map: repair.map, reduce: repair.reduce, residue, repairDiagnostics: repair.diagnostics, ...(input.explorationOutcome ? { explorationOutcome: input.explorationOutcome } : {}), ...(input.explorationUnknownIdDrops ? { explorationUnknownIdDrops: input.explorationUnknownIdDrops } : {}), status: compilerStatus(repair.map, repair.reduce, residue, validationErrors), validationErrors, events };
 }
 
 function compilerValidationErrors(sourceLocalizationBundle: SourceLocalizationBundle, sourceEvidenceBundle: PlanningSourceEvidenceBundle, map: PlanningAtomMapResult, reduce: PlanningReduceResult, residue: PlanningResidueSynthesis, repairDiagnostics: SourceLocalizationRepairDiagnostic[]): string[] {

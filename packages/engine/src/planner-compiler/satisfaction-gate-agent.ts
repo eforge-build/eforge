@@ -48,22 +48,24 @@ export async function runPlanningSatisfactionGate(input: RunPlanningSatisfaction
   const prompt = formatSatisfactionGatePrompt(input.inventory, input.maxToolUses, submitToolName);
   const events: EforgeEvent[] = [];
   const budgetController = new AbortController();
+  const maxTurns = input.agentOptions?.maxTurns ?? DEFAULT_SATISFACTION_GATE_MAX_TURNS;
   let submission: SatisfactionGateSubmission | undefined;
   let toolUses = 0;
   let failureReason: string | undefined;
+  const onSubmit = (value: SatisfactionGateSubmission): boolean => {
+    if (submission) return false;
+    submission = value;
+    return true;
+  };
 
   try {
     for await (const event of input.harness.run({
       ...pickSdkOptions(input.agentOptions ?? {}),
       prompt,
       cwd: input.cwd,
-      maxTurns: input.agentOptions?.maxTurns ?? DEFAULT_SATISFACTION_GATE_MAX_TURNS,
+      maxTurns,
       tools: 'read-only',
-      customTools: [createSatisfactionSubmissionTool(submitToolName, (value) => {
-        if (submission) return false;
-        submission = value;
-        return true;
-      })],
+      customTools: [createSatisfactionSubmissionTool(submitToolName, onSubmit)],
       abortSignal: composeAbortSignal(input.abortSignal, budgetController.signal),
       phase: 'compile',
       stage: 'planner',
@@ -72,7 +74,7 @@ export async function runPlanningSatisfactionGate(input: RunPlanningSatisfaction
       events.push(event);
       if (event.type === 'agent:tool_use' && event.tool !== submitToolName && event.tool !== SUBMIT_SATISFACTION_TOOL) {
         toolUses += 1;
-        if (toolUses > input.maxToolUses && !budgetController.signal.aborted) budgetController.abort();
+        if (toolUses >= input.maxToolUses && !budgetController.signal.aborted && !submission) budgetController.abort();
       }
     }
   } catch (err) {
@@ -80,14 +82,39 @@ export async function runPlanningSatisfactionGate(input: RunPlanningSatisfaction
     if (!budgetController.signal.aborted || !isAbortError(err)) failureReason = err instanceof Error ? err.message : String(err);
   }
 
+  if (!submission && budgetController.signal.aborted && !failureReason) {
+    const graceFailure = await runSatisfactionSubmitGrace(input, submitToolName, onSubmit, events, toolUses, maxTurns);
+    if (!submission) failureReason = `budget exhausted after ${toolUses} read-only tool uses${graceFailure ? `; submit-only grace failed: ${graceFailure}` : ''}`;
+  }
   if (!submission && !failureReason) {
-    failureReason = budgetController.signal.aborted
-      ? `satisfaction gate tool budget exhausted after ${input.maxToolUses} tool uses without a submission`
-      : `satisfaction gate agent did not call ${submitToolName}`;
+    failureReason = `satisfaction gate agent did not call ${submitToolName}`;
   }
   if (!submission) return { decision: { skip: false, reason: `gate unavailable: ${failureReason}` }, toolUses, events };
   const decision = decidePlanningSatisfactionSkip(input.inventory, submission, (path) => existsSync(resolve(input.cwd, path)));
   return { decision, toolUses, events };
+}
+
+async function runSatisfactionSubmitGrace(input: RunPlanningSatisfactionGateInput, submitToolName: string, onSubmit: (submission: SatisfactionGateSubmission) => boolean, events: EforgeEvent[], toolUses: number, maxTurns: number): Promise<string | undefined> {
+  try {
+    for await (const event of input.harness.run({
+      ...pickSdkOptions(input.agentOptions ?? {}),
+      prompt: `${formatSatisfactionGatePrompt(input.inventory, input.maxToolUses, submitToolName)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with alreadySatisfied false unless every criterion has already been fully verified.`,
+      cwd: input.cwd,
+      maxTurns: Math.max(1, Math.min(2, maxTurns)),
+      tools: 'none',
+      customTools: [createSatisfactionSubmissionTool(submitToolName, onSubmit)],
+      abortSignal: input.abortSignal,
+      phase: 'compile',
+      stage: 'planner',
+    }, 'planner', SATISFACTION_GATE_PLAN_ID)) {
+      input.onEvent?.(event);
+      events.push(event);
+    }
+  } catch (err) {
+    if (isAbortError(err) && input.abortSignal?.aborted) throw err;
+    return err instanceof Error ? err.message : String(err);
+  }
+  return undefined;
 }
 
 function createSatisfactionSubmissionTool(submitToolName: string, onSubmit: (submission: SatisfactionGateSubmission) => boolean): CustomTool {

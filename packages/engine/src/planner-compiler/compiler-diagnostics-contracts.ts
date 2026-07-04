@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { PlanningReduceGapIssueKindSchema } from './reduce-contracts.js';
+import { LocalizationIssueKindSchema } from './localization-issue-contracts.js';
 
 export const COMPILER_DIAGNOSTICS_ARTIFACT = 'compiler-diagnostics.json';
 export const COMPILER_DIAGNOSTICS_VERSION = 1;
@@ -17,6 +18,7 @@ const GapResolutionSchema = Type.Union([Type.Literal('residue-represented'), Typ
 const LocalizationOwnerStatusSchema = Type.Union([Type.Literal('resolved'), Type.Literal('partial'), Type.Literal('unresolved'), Type.Literal('ignored'), Type.Literal('budget-exceeded'), Type.Literal('none')]);
 const EvidenceStatusSchema = Type.Union([Type.Literal('materialized'), Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded'), Type.Literal('none')]);
 const EvidenceFailureStatusSchema = Type.Union([Type.Literal('missing'), Type.Literal('non-actionable'), Type.Literal('directory'), Type.Literal('too-large'), Type.Literal('read-error'), Type.Literal('budget-exceeded')]);
+const ExplorationOutcomeStatusSchema = Type.Union([Type.Literal('not-run'), Type.Literal('completed'), Type.Literal('needs-rescope'), Type.Literal('budget-exhausted'), Type.Literal('ambiguous')]);
 
 const CompilerDiagnosticsCoverageCriterionSchema = Type.Object({
   criterionId: boundedString(80),
@@ -121,6 +123,18 @@ const CompilerDiagnosticsSharedBriefBudgetEntrySchema = Type.Object({
   message: boundedString(500),
 }, { additionalProperties: false });
 
+const CompilerDiagnosticsExplorationSchema = Type.Object({
+  outcomeStatus: ExplorationOutcomeStatusSchema,
+  unresolvedNeedIds: boundedIds(160, 100),
+  reasons: Type.Array(LocalizationIssueKindSchema, { maxItems: 32 }),
+  attemptedQueries: Type.Array(Type.Object({ needId: Type.Optional(boundedString(160)), query: boundedString(1_000), tool: Type.Optional(boundedString(120)), result: Type.Optional(boundedString(1_000)) }, { additionalProperties: false }), { maxItems: 100 }),
+  candidatePaths: boundedIds(300, 100),
+  rescopeHints: Type.Array(boundedString(1_000), { maxItems: 32 }),
+  notes: Type.Optional(boundedString(2_000)),
+  unknownIdDrops: Type.Array(Type.Object({ field: boundedString(80), id: boundedString(240), index: Type.Optional(Type.Integer({ minimum: 0 })) }, { additionalProperties: false }), { maxItems: 100 }),
+  toolUseCount: count(),
+}, { additionalProperties: false });
+
 export const CompilerDiagnosticsSchema = Type.Object({
   version: Type.Literal(COMPILER_DIAGNOSTICS_VERSION),
   planSetName: boundedString(200),
@@ -138,6 +152,7 @@ export const CompilerDiagnosticsSchema = Type.Object({
     gaps: Type.Array(CompilerDiagnosticsGapSchema, { maxItems: 128 }),
     conflicts: Type.Array(CompilerDiagnosticsConflictSchema, { maxItems: 128 }),
   }, { additionalProperties: false }),
+  exploration: CompilerDiagnosticsExplorationSchema,
   repair: Type.Object({
     status: RepairStatusSchema,
     attempts: Type.Array(CompilerDiagnosticsRepairAttemptSchema, { maxItems: 8 }),
@@ -167,6 +182,7 @@ export type CompilerDiagnostics = Static<typeof CompilerDiagnosticsSchema>;
 export type CompilerDiagnosticsGap = Static<typeof CompilerDiagnosticsGapSchema>;
 export type CompilerDiagnosticsConflict = Static<typeof CompilerDiagnosticsConflictSchema>;
 export type CompilerDiagnosticsRepairAttempt = Static<typeof CompilerDiagnosticsRepairAttemptSchema>;
+export type CompilerDiagnosticsExploration = Static<typeof CompilerDiagnosticsExplorationSchema>;
 export type CompilerDiagnosticsOmittedCounts = CompilerDiagnostics['omitted'];
 
 export function validateCompilerDiagnostics(value: unknown): { ok: true; errors: [] } | { ok: false; errors: string[] } {

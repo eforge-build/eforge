@@ -104,6 +104,78 @@ describe('planning compiler diagnostics', () => {
     expect(diagnostics.validationErrors).toContain('source localization repair exhausted:gap-owner:no localized owner paths resolved');
   });
 
+  it('projects not-run exploration diagnostics when no outcome is present', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({ outcomeStatus: 'not-run', unresolvedNeedIds: [], reasons: [], attemptedQueries: [], candidatePaths: [], rescopeHints: [], unknownIdDrops: [], toolUseCount: 0 });
+  });
+
+  it('projects completed exploration diagnostics exactly', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], {
+      explorationOutcome: {
+        status: 'completed',
+        unresolvedNeedIds: ['need-2', 'need-1'],
+        reasons: ['localization-ambiguity', 'too-broad', 'too-broad'],
+        attemptedQueries: [{ needId: 'need-1', query: 'engine owner', tool: 'grep', result: 'packages/engine/src/a.ts' }],
+        candidatePaths: ['packages/engine/src/b.ts', 'packages/engine/src/a.ts'],
+        rescopeHints: ['narrow to engine owner'],
+        notes: 'Found likely owner.',
+        toolUseCount: 4,
+      },
+    });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({
+      outcomeStatus: 'completed',
+      unresolvedNeedIds: ['need-1', 'need-2'],
+      reasons: ['localization-ambiguity', 'too-broad'],
+      attemptedQueries: [{ needId: 'need-1', query: 'engine owner', tool: 'grep', result: 'packages/engine/src/a.ts' }],
+      candidatePaths: ['packages/engine/src/a.ts', 'packages/engine/src/b.ts'],
+      rescopeHints: ['narrow to engine owner'],
+      notes: 'Found likely owner.',
+      unknownIdDrops: [],
+      toolUseCount: 4,
+    });
+  });
+
+  it('projects synthesized budget-exhausted exploration diagnostics and unknown-id drops', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], {
+      explorationOutcome: {
+        status: 'budget-exhausted',
+        unresolvedNeedIds: ['need-budget'],
+        reasons: ['tool-budget'],
+        attemptedQueries: [],
+        candidatePaths: [],
+        rescopeHints: [],
+        notes: 'Exploration tool budget exhausted after 3 tool uses without a structured submission.',
+        toolUseCount: 3,
+      },
+      explorationUnknownIdDrops: [{ field: 'needId', id: 'need-missing', index: 0 }, { field: 'attemptedQueries.needId', id: 'need-other' }],
+    });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({
+      outcomeStatus: 'budget-exhausted',
+      unresolvedNeedIds: ['need-budget'],
+      reasons: ['tool-budget'],
+      attemptedQueries: [],
+      candidatePaths: [],
+      rescopeHints: [],
+      notes: 'Exploration tool budget exhausted after 3 tool uses without a structured submission.',
+      unknownIdDrops: [{ field: 'needId', id: 'need-missing', index: 0 }, { field: 'attemptedQueries.needId', id: 'need-other' }],
+      toolUseCount: 3,
+    });
+  });
+
   it('captures non-materialized source evidence as evidence failures', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
@@ -174,6 +246,8 @@ interface CompilerFixtureOverrides {
   status?: BoundedPlannerCompilerResult['status'];
   validationErrors?: string[];
   evidenceRecords?: BoundedPlannerCompilerResult['sourceEvidenceBundle']['records'];
+  explorationOutcome?: BoundedPlannerCompilerResult['explorationOutcome'];
+  explorationUnknownIdDrops?: BoundedPlannerCompilerResult['explorationUnknownIdDrops'];
 }
 
 function fixture(criteria: string[]) {
@@ -199,6 +273,8 @@ function compilerFixture(data: ReturnType<typeof fixture>, atomOutputs: Planning
     reduce,
     residue,
     repairDiagnostics: overrides.repairDiagnostics ?? [],
+    ...(overrides.explorationOutcome ? { explorationOutcome: overrides.explorationOutcome } : {}),
+    ...(overrides.explorationUnknownIdDrops ? { explorationUnknownIdDrops: overrides.explorationUnknownIdDrops } : {}),
     status: overrides.status ?? (residue.candidates.length > 0 ? 'complete-with-residue' : reduce.reduceComplete && map.mapComplete ? 'complete' : 'incomplete'),
     validationErrors: overrides.validationErrors ?? [],
     events: [],

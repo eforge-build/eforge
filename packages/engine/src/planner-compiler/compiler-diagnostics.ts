@@ -41,6 +41,7 @@ export function buildCompilerDiagnostics(input: BuildCompilerDiagnosticsInput): 
       gaps: cap(gapEntries(reduceOutputs, representedBy, omitted), 128, omitted, 'gaps'),
       conflicts: cap(conflictEntries(reduceOutputs, representedBy, omitted), 128, omitted, 'conflicts'),
     },
+    exploration: explorationSection(result),
     repair: repairSection(result.repairDiagnostics, omitted),
     residue: residueSection(result, omitted),
     evidenceFailures: cap(evidenceFailureEntries(result), 128, omitted, 'evidenceFailures'),
@@ -61,7 +62,7 @@ function sharedBriefBudgetEntries(result: BoundedPlannerCompilerResult): Compile
 
 export function serializeCompilerDiagnostics(diagnostics: CompilerDiagnostics): string {
   let current = diagnostics;
-  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, dropCoverageCriteria]) {
+  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, compactExploration, dropCoverageCriteria]) {
     const text = `${JSON.stringify(current, null, 2)}\n`;
     if (utf8ByteLength(text) <= MAX_COMPILER_DIAGNOSTICS_BYTES) return text;
     current = compact(current);
@@ -173,6 +174,26 @@ function conflictEntry(conflict: PlanningReduceConflict, nodeId: string, represe
     description: boundedDescription(conflict.description, omitted),
     resolution: representedByCandidateId ? 'residue-represented' : 'unrepresented',
     ...(representedByCandidateId ? { representedByCandidateId: bounded(representedByCandidateId, 160) } : {}),
+  };
+}
+
+function explorationSection(result: BoundedPlannerCompilerResult): CompilerDiagnostics['exploration'] {
+  const outcome = result.explorationOutcome;
+  return {
+    outcomeStatus: outcome?.status ?? 'not-run',
+    unresolvedNeedIds: boundedIds(outcome?.unresolvedNeedIds ?? [], 160, 100),
+    reasons: [...new Set(outcome?.reasons ?? [])].sort().slice(0, 32),
+    attemptedQueries: (outcome?.attemptedQueries ?? []).slice(0, 100).map((entry) => ({
+      ...(entry.needId ? { needId: bounded(entry.needId, 160) } : {}),
+      query: bounded(entry.query, 1_000),
+      ...(entry.tool ? { tool: bounded(entry.tool, 120) } : {}),
+      ...(entry.result ? { result: bounded(entry.result, 1_000) } : {}),
+    })),
+    candidatePaths: boundedIds(outcome?.candidatePaths ?? [], 300, 100),
+    rescopeHints: (outcome?.rescopeHints ?? []).map((hint) => bounded(hint, 1_000)).slice(0, 32),
+    ...(outcome?.notes ? { notes: bounded(outcome.notes, 2_000) } : {}),
+    unknownIdDrops: (result.explorationUnknownIdDrops ?? []).slice(0, 100).map((drop) => ({ field: bounded(drop.field, 80), id: bounded(drop.id, 240), ...(drop.index === undefined ? {} : { index: drop.index }) })),
+    toolUseCount: outcome?.toolUseCount ?? 0,
   };
 }
 
@@ -302,6 +323,25 @@ function dropCoverageCriteria(diagnostics: CompilerDiagnostics): CompilerDiagnos
     ...diagnostics,
     coverage: { ...diagnostics.coverage, criteria: [] },
     omitted: { ...diagnostics.omitted, coverageCriteria: diagnostics.omitted.coverageCriteria + diagnostics.coverage.criteria.length },
+  };
+}
+
+function compactExploration(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
+  return {
+    ...diagnostics,
+    exploration: {
+      ...diagnostics.exploration,
+      attemptedQueries: diagnostics.exploration.attemptedQueries.slice(0, 16).map((entry) => ({
+        ...(entry.needId ? { needId: entry.needId } : {}),
+        query: bounded(entry.query, 240),
+        ...(entry.tool ? { tool: entry.tool } : {}),
+        ...(entry.result ? { result: bounded(entry.result, 240) } : {}),
+      })),
+      candidatePaths: diagnostics.exploration.candidatePaths.slice(0, 32),
+      rescopeHints: diagnostics.exploration.rescopeHints.slice(0, 8).map((hint) => bounded(hint, 240)),
+      ...(diagnostics.exploration.notes ? { notes: bounded(diagnostics.exploration.notes, 500) } : {}),
+      unknownIdDrops: diagnostics.exploration.unknownIdDrops.slice(0, 32),
+    },
   };
 }
 
