@@ -18,6 +18,8 @@ import type {
   EnqueueRequest,
   EnqueueResponse,
   ExtensionJsonValue,
+  ProfileListRequest,
+  ProfileListResponse,
 } from '@eforge-build/client';
 
 export type { ExtensionActionOutputProfile, ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
@@ -48,6 +50,11 @@ export interface ExtensionBuildQueueApi {
 }
 // --- eforge:endregion extension-build-queue-context ---
 
+export interface ExtensionProfilesApi {
+  /** List kernel-owned agent runtime profiles through the shared client profile-list contract. */
+  list(request?: ProfileListRequest): Promise<ProfileListResponse>;
+}
+
 export interface ExtensionActionContext {
   invocationId: string;
   actionId: string;
@@ -74,6 +81,8 @@ export interface ExtensionActionContext {
   /** Daemon-owned build queue operations available to trusted extension actions. */
   buildQueue: ExtensionBuildQueueApi;
   // --- eforge:endregion extension-build-queue-context ---
+  /** Kernel-owned read-only profile-list service using the shared client response type. */
+  profiles: ExtensionProfilesApi;
 }
 
 export type ExtensionActionOutput<TOutput extends TSchema | undefined = undefined> =

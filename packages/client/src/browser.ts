@@ -24,6 +24,12 @@ export {
   RecoverySidecarRecoveryOptionSchema,
 } from './routes.js';
 export {
+  ProfileMetadataSchema,
+  AgentRuntimeProfileInfoSchema,
+  AgentRuntimeProfileSourceSchema,
+  ProfileListResponseSchema,
+} from './profile-schemas.js';
+export {
   EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
 } from './extension-agent-tasks/constants.js';

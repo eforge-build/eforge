@@ -6,7 +6,7 @@ import type { TSchema } from '@sinclair/typebox';
 
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
 import { buildExtensionLookupContext, isContributionAvailable } from './dependency-resolution.js';
-import type { ActionRegistration, ExtensionAgentTasksApiShape, ExtensionBuildQueueApiShape, NativeExtensionRegistry } from './types.js';
+import type { ActionRegistration, ExtensionAgentTasksApiShape, ExtensionBuildQueueApiShape, ExtensionProfilesApiShape, NativeExtensionRegistry } from './types.js';
 
 type ExtensionActionValidationError = ValueError & Record<string, ExtensionJsonValue>;
 
@@ -24,6 +24,7 @@ export interface DispatchExtensionActionOptions {
   // --- eforge:region extension-build-queue-context ---
   buildQueue?: (extension: { extensionName: string; extensionPath: string }) => ExtensionBuildQueueApiShape;
   // --- eforge:endregion extension-build-queue-context ---
+  profiles?: (extension: { extensionName: string; extensionPath: string }) => ExtensionProfilesApiShape;
 }
 
 export type DispatchExtensionActionResult =
@@ -127,6 +128,7 @@ function buildActionContext(registry: NativeExtensionRegistry, action: ActionReg
     // --- eforge:region extension-build-queue-context ---
     buildQueue: options.buildQueue?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableBuildQueue(),
     // --- eforge:endregion extension-build-queue-context ---
+    profiles: options.profiles?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableProfiles(),
   };
 }
 
@@ -152,6 +154,14 @@ function unavailableBuildQueue(): ExtensionBuildQueueApiShape {
   };
 }
 // --- eforge:endregion extension-build-queue-context ---
+
+function unavailableProfiles(): ExtensionProfilesApiShape {
+  return {
+    list: async (): Promise<never> => {
+      throw new Error('Extension profile listing is unavailable in this runtime');
+    },
+  };
+}
 
 function buildLogger(action: ActionRegistration) {
   const prefix = `[eforge extension ${action.extensionName} action ${action.id}]`;

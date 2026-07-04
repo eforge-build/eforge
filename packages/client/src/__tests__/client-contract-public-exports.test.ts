@@ -72,7 +72,13 @@ describe('client contract public exports', () => {
     expect(browser.resumeScheduler).toEqual(expect.any(Function));
     expect(browser.computeOutputGenerationRate).toEqual(expect.any(Function));
     expect(browser.nearestRankPercentile).toEqual(expect.any(Function));
+    expect(browser.buildProfileListPath).toEqual(expect.any(Function));
+    expect(browser.ProfileMetadataSchema).toEqual(expect.any(Object));
+    expect(browser.AgentRuntimeProfileInfoSchema).toEqual(expect.any(Object));
+    expect(browser.AgentRuntimeProfileSourceSchema).toEqual(expect.any(Object));
+    expect(browser.ProfileListResponseSchema).toEqual(expect.any(Object));
     expect(browser.API_ROUTES.efficiencyAnalytics).toBeDefined();
+    expect(browser.buildProfileListPath({ scope: 'all' })).toBe(`${browser.API_ROUTES.profileList}?scope=all`);
   });
 
   it('exports all new node helpers from the main facade', () => {

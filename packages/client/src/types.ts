@@ -724,7 +724,7 @@ export interface ProfileMetadata {
 /** A single agent runtime profile entry returned by the list endpoint. */
 export interface AgentRuntimeProfileInfo {
   name: string;
-  harness: 'claude-sdk' | 'pi' | undefined;
+  harness?: 'claude-sdk' | 'pi';
   path: string;
   scope: 'local' | 'project' | 'user';
   shadowedBy?: 'local' | 'project';

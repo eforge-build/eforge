@@ -154,6 +154,7 @@ export type {
   // --- eforge:region extension-build-queue-context ---
   ExtensionBuildQueueApi,
   // --- eforge:endregion extension-build-queue-context ---
+  ExtensionProfilesApi,
   ExtensionActionOutput,
   ExtensionActionOutputProfile,
   ExtensionActionUserErrorDetail,

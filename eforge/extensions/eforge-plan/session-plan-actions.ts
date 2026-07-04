@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction } from '@eforge-build/extension-sdk';
+import type { ProfileListResponse } from '@eforge-build/client';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
@@ -24,6 +25,8 @@ import {
   DeleteSessionPlanOutputSchema,
   HandoffSessionPlanInputSchema,
   HandoffSessionPlanOutputSchema,
+  ListAgentRuntimeProfilesInputSchema,
+  ListAgentRuntimeProfilesOutputSchema,
   ListPlanningArtifactsInputSchema,
   ListPlanningArtifactsOutputSchema,
   SelectSessionPlanDimensionsInputSchema,
@@ -45,6 +48,20 @@ import {
 function adapter() {
   return createSessionPlanningWorkflowAdapter();
 }
+
+export const listAgentRuntimeProfiles = defineExtensionAction({
+  id: 'list-agent-runtime-profiles',
+  title: 'List agent runtime profiles',
+  description: 'Read kernel-owned agent runtime profile options for the planning workstation through the shared profile-list context service.',
+  inputSchema: ListAgentRuntimeProfilesInputSchema,
+  outputSchema: ListAgentRuntimeProfilesOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.uiRich,
+  sideEffects: ['local-read'],
+  async handler(input, ctx): Promise<any> {
+    const response = await ctx.profiles.list(input.scope === undefined ? undefined : { scope: input.scope });
+    return toJsonSafeObject(response satisfies ProfileListResponse);
+  },
+});
 
 export const listPlanningArtifacts = defineExtensionAction({
   id: 'list-planning-artifacts',
@@ -326,6 +343,7 @@ export const handoffSessionPlan = defineExtensionAction({
 });
 
 export const sessionPlanActions = [
+  listAgentRuntimeProfiles,
   listPlanningArtifacts,
   showSessionPlan,
   showSessionPlanSet,

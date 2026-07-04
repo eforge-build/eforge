@@ -100,6 +100,12 @@ export async function invokeExtensionAction(
       buildQueue: () => ({
         enqueue: (enqueueRequest: EnqueueRequest) => enqueueFromExtensionAction(context, enqueueRequest),
       }),
+      profiles: () => ({
+        list: async (profileRequest) => {
+          const { projectProfileListResponse } = await import('../profiles.js');
+          return projectProfileListResponse(context, profileRequest);
+        },
+      }),
     } satisfies Parameters<typeof dispatchExtensionAction>[1] & {
       buildQueue: () => { enqueue(enqueueRequest: EnqueueRequest): ReturnType<typeof enqueueFromExtensionAction> };
     };

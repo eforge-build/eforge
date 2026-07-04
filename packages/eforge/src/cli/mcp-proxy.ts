@@ -431,6 +431,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         return data;
       }
 
+      if (scope === 'all') throw new Error('"scope" must be local, project, or user for use, create, and delete');
+
       if (action === 'use') {
         if (!name) throw new Error('"name" is required when action is "use"');
         const useBody: Record<string, unknown> = { name };

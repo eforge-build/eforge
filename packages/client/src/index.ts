@@ -124,6 +124,7 @@ export {
   apiGetSessionMetadataIfRunning,
 } from './api/queue.js';
 
+export { ProfileMetadataSchema, AgentRuntimeProfileInfoSchema, AgentRuntimeProfileSourceSchema, ProfileListResponseSchema } from './profile-schemas.js';
 export {
   apiListProfiles,
   apiListProfilesIfRunning,

@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
-import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
+import type { NativeExtensionRecorderState, NativeExtensionRegistry, ExtensionProfilesApiShape } from '@eforge-build/engine/extensions/types.js';
+import type { ProfileListResponse } from '@eforge-build/client';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { getSessionPlan, openEforgePlanStore } from '../sqlite/index.js';
@@ -22,7 +23,7 @@ function registry(): NativeExtensionRegistry {
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
-async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (request: { source: string; suppressSessionPlanSubmissionMark?: boolean }) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
+async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (request: { source: string; suppressSessionPlanSubmissionMark?: boolean }) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }>; profiles?: ExtensionProfilesApiShape } = {}) {
   const result = await dispatchExtensionAction(registry(), {
     actionId: `eforge-plan:${actionId}`,
     input,
@@ -30,6 +31,7 @@ async function dispatch(cwd: string, actionId: string, input: Record<string, unk
     cwd,
     timeoutMs: 1000,
     ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!({ source: request.source, suppressSessionPlanSubmissionMark: request.suppressSessionPlanSubmissionMark }) }) }),
+    ...(options.profiles && { profiles: () => options.profiles! }),
   });
   expect(result).toMatchObject({ kind: 'success' });
   if (result.kind !== 'success') throw new Error(result.message);
@@ -89,6 +91,48 @@ function readyBody(title = 'Ready Plan') {
 }
 
 describe('eforge-plan session-plan extension actions', () => {
+  it('lists agent runtime profile options through the kernel profile context service', async () => {
+    await withTempProject(async (cwd) => {
+      const calls: unknown[] = [];
+      const response: ProfileListResponse = {
+        active: 'team',
+        source: 'project',
+        profiles: [
+          { name: 'team', harness: 'pi', path: '/repo/eforge/profiles/team.yaml', scope: 'project', metadata: { description: 'Team runtime profile', tags: ['team'] } },
+          { name: 'base', harness: 'claude-sdk', path: '/home/user/.config/eforge/profiles/base.yaml', scope: 'user', shadowedBy: 'project', metadata: { description: 'Base profile', whenToUse: ['fallback'] } },
+        ],
+      };
+      const output = await dispatch(cwd, 'list-agent-runtime-profiles', { scope: 'all' }, {
+        profiles: { async list(request) { calls.push(request); return response; } },
+      });
+
+      expect(calls).toEqual([{ scope: 'all' }]);
+      expect(output).toEqual(response);
+      expect(output.profiles).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'team', scope: 'project', harness: 'pi', metadata: expect.objectContaining({ description: 'Team runtime profile' }) }),
+        expect.objectContaining({ name: 'base', scope: 'user', harness: 'claude-sdk', shadowedBy: 'project' }),
+      ]));
+    });
+  });
+
+  it.each([
+    ['omitted', {}, undefined],
+    ['local', { scope: 'local' }, { scope: 'local' }],
+    ['project', { scope: 'project' }, { scope: 'project' }],
+    ['user', { scope: 'user' }, { scope: 'user' }],
+    ['all', { scope: 'all' }, { scope: 'all' }],
+  ])('forwards %s profile-list scope to the kernel profile context service', async (_label, input, expectedRequest) => {
+    await withTempProject(async (cwd) => {
+      const calls: unknown[] = [];
+      const response: ProfileListResponse = { active: null, source: 'none', profiles: [] };
+      await dispatch(cwd, 'list-agent-runtime-profiles', input, {
+        profiles: { async list(request) { calls.push(request); return response; } },
+      });
+
+      expect(calls).toEqual([expectedRequest]);
+    });
+  });
+
   it('lists flat plans and plan sets as JSON-safe planning artifact keys', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'backlog-one', status: 'planned', body: '# Backlog One\n\n## Claim\n\nPlan it.\n' });
