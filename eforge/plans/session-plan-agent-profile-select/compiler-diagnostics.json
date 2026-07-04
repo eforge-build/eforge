@@ -1,0 +1,1565 @@
+{
+  "version": 1,
+  "planSetName": "session-plan-agent-profile-select",
+  "sourceHash": "76e8e3f94d11a5d8ac660bdcca521e377636186bcd56d8259da7daecbcbc40ab",
+  "graphId": "atom-graph-0ba79b7b2a34e2e7",
+  "compilerStatus": "complete",
+  "validationErrors": [],
+  "coverage": {
+    "completeCriteria": [
+      "ac-001",
+      "ac-002",
+      "ac-003",
+      "ac-004",
+      "ac-005",
+      "ac-006",
+      "ac-007",
+      "ac-008",
+      "ac-009",
+      "ac-010",
+      "ac-011",
+      "ac-012"
+    ],
+    "incompleteCriteria": [],
+    "criteria": [
+      {
+        "criterionId": "ac-001",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-001:evidence:select-dropdown"
+        ],
+        "resolvedAspectIds": [
+          "ac-001:evidence:select-dropdown"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-002",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-002:evidence:scope-harness-description-active"
+        ],
+        "resolvedAspectIds": [
+          "ac-002:evidence:scope-harness-description-active"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-003",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-003:evidence:api",
+          "ac-003:interface:api",
+          "ac-003:interface:config",
+          "ac-003:interface:configuration",
+          "ac-003:interface:route",
+          "ac-003:interface:route-api"
+        ],
+        "resolvedAspectIds": [
+          "ac-003:evidence:api",
+          "ac-003:interface:api",
+          "ac-003:interface:config",
+          "ac-003:interface:configuration",
+          "ac-003:interface:route",
+          "ac-003:interface:route-api"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-004",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-004:interface:configuration",
+          "ac-004:interface:extension",
+          "ac-004:interface:extension-surface",
+          "ac-004:interface:schema-contract",
+          "ac-004:subsystem:extension"
+        ],
+        "resolvedAspectIds": [
+          "ac-004:interface:configuration",
+          "ac-004:interface:extension",
+          "ac-004:interface:extension-surface",
+          "ac-004:interface:schema-contract",
+          "ac-004:subsystem:extension"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-005",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-005:evidence:types-route",
+          "ac-005:interface:route",
+          "ac-005:interface:route-api",
+          "ac-005:interface:schema-contract"
+        ],
+        "resolvedAspectIds": [
+          "ac-005:evidence:types-route",
+          "ac-005:interface:route",
+          "ac-005:interface:route-api",
+          "ac-005:interface:schema-contract"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-006",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-006:evidence:no-selection-default",
+          "ac-006:evidence:omitted-cleared"
+        ],
+        "resolvedAspectIds": [
+          "ac-006:evidence:no-selection-default",
+          "ac-006:evidence:omitted-cleared"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-007",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-007:general:general"
+        ],
+        "resolvedAspectIds": [
+          "ac-007:general:general"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-008",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-008:interface:ui",
+          "ac-008:interface:ui-surface",
+          "ac-008:subsystem:ui"
+        ],
+        "resolvedAspectIds": [
+          "ac-008:interface:ui",
+          "ac-008:interface:ui-surface",
+          "ac-008:subsystem:ui"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-009",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-009:general:general"
+        ],
+        "resolvedAspectIds": [
+          "ac-009:general:general"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-010",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-010:evidence:missing-deleted"
+        ],
+        "resolvedAspectIds": [
+          "ac-010:evidence:missing-deleted"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-011",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-011:general:general"
+        ],
+        "resolvedAspectIds": [
+          "ac-011:general:general"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-012",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-012:evidence:copy-label",
+          "ac-012:evidence:kernel-extension",
+          "ac-012:evidence:registration-allowed-action",
+          "ac-012:interface:extension",
+          "ac-012:interface:extension-surface",
+          "ac-012:interface:test"
+        ],
+        "resolvedAspectIds": [
+          "ac-012:evidence:copy-label",
+          "ac-012:evidence:kernel-extension",
+          "ac-012:evidence:registration-allowed-action",
+          "ac-012:interface:extension",
+          "ac-012:interface:extension-surface",
+          "ac-012:interface:test"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      }
+    ],
+    "aspects": [
+      {
+        "aspectId": "ac-001:evidence:select-dropdown",
+        "criterionId": "ac-001",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-002:evidence:scope-harness-description-active",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:evidence:api",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:interface:api",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:interface:config",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:interface:configuration",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:interface:route",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-003:interface:route-api",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-004:interface:configuration",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-004:interface:extension",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-004:interface:extension-surface",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-004:interface:schema-contract",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-004:subsystem:extension",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-005:evidence:types-route",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-005:interface:route",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-005:interface:route-api",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-005:interface:schema-contract",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-006:evidence:no-selection-default",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-006:evidence:omitted-cleared",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-007:general:general",
+        "criterionId": "ac-007",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-008:interface:ui",
+        "criterionId": "ac-008",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-008:interface:ui-surface",
+        "criterionId": "ac-008",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-008:subsystem:ui",
+        "criterionId": "ac-008",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-009:general:general",
+        "criterionId": "ac-009",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-010:evidence:missing-deleted",
+        "criterionId": "ac-010",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-011:general:general",
+        "criterionId": "ac-011",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:evidence:copy-label",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:evidence:kernel-extension",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:evidence:registration-allowed-action",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:interface:extension",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:interface:extension-surface",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      },
+      {
+        "aspectId": "ac-012:interface:test",
+        "criterionId": "ac-012",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-root"
+        ]
+      }
+    ]
+  },
+  "reduce": {
+    "gaps": [],
+    "conflicts": []
+  },
+  "repair": {
+    "status": "not-needed",
+    "attempts": []
+  },
+  "residue": {
+    "synthesisBlocked": false,
+    "blockedReasons": [],
+    "candidates": []
+  },
+  "evidenceFailures": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".claude/skills/eforge-daemon-restart/SKILL.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".claude/skills/eval-analysis/SKILL.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".pi/extensions/eforge-dev/event-tail.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".pi/extensions/eforge-dev/index.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": ".pi/extensions/eforge-dev/README.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "api/",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "copy/label",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/config-migration.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/config.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/extensions-api.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/extensions.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/hooks.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/llm-friendly-code.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/releasing.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/roadmap.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/stacking.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "docs/webux-workspaces.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/.claude-plugin/plugin.json",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/config/config.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/extend/extend.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/init/init.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/profile-new/profile-new.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/profile/profile.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/recover/recover.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/stack/stack.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/workflow/workflow.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/config.yaml",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-capture-guardrails.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-accepted-baseline.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-analyze-all-regression.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-apply.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-evidence-classification.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-evidence-prefixes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-git-delta.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-item-audit-cache.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-packets.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-prompt-contract.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-recommendation-overlay.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-source-first-audit.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-epic-reference-validation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-storage-migration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/draft-plan-unit-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/live-coverage-planning-state-regression.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/package-foundation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/plan-revision-annotations.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/plan-revision-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-agent-task-creation-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-agent-task-creation-drafts.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-orchestration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/promotion-selection.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/prompt-assets.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/queue-removal-coverage-cleanup.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/readme-contract.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/readme-mature-workflows.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-apply-validation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-invalidation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-status.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendations-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/registration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/roadmap-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/roadmap-context.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/roadmap-integration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/session-plan-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/shipped-evidence.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-backlog-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-lifecycle-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-planning-tasks.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-session-plan-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-maintenance-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-maintenance-search-vacuum.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projection-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projection-fixtures.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projections-lifecycle.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-repositories.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-search-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-search-fixtures.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/trace-lifecycle-freshness.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/update-item-body-safe.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/workstation-assets.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/agent-task-actions.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-agent-tasks.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-item-audit-cache.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-packets.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-schemas.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source-first-audit.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-query-actions.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/maintenance/types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/projections/types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/promotion-selection.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/README.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/search/types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/session-plan-metadata.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/session-plan-schemas.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/shipped-evidence-types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/sqlite/types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/tsup.config.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/postcss.config.js",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/backlog-curation-types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/components/ui/select.tsx",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/draft-unit-types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/hooks/use-backlog-selection.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/hooks/use-backlog-selection.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans/plan-detail.tsx",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/views/selection-rail.tsx",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/src/workstation-view-model-types.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/vite.config.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/workstation-src/plans/vitest.config.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/__tests__/action-contracts.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/__tests__/registration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/__tests__/run-playbook-action.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/action-errors.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/run-playbook-action.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-playbooks/tsup.config.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/prds/add-daemon-owned-extension-agent-tasks-for-eforge-plan-ai-planning.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/prds/extract-standalone-eforge-playbooks-extension.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/prds/move-eforge-plan-prompts-to-extension-owned-tasks.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "eforge/prds/strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "examples/extensions/action-contribution.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "kernel/extension",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    },
+    {
+      "path": "missing/deleted",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-root"
+      ]
+    }
+  ],
+  "sharedBriefBudget": [],
+  "omitted": {
+    "gaps": 0,
+    "conflicts": 0,
+    "repairAttempts": 0,
+    "evidenceFailures": 131,
+    "coverageAspects": 0,
+    "coverageCriteria": 0,
+    "residueCandidates": 0,
+    "validationErrors": 0,
+    "descriptionBytes": 0,
+    "sharedBriefBudget": 0
+  }
+}
