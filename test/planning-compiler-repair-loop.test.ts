@@ -46,6 +46,29 @@ describe('planning compiler source-localization repair loop', () => {
     expect(harness.calls.every((call) => call.tools === 'none')).toBe(true);
   });
 
+  it('caps repair hints before rerunning localization so repair cannot violate the projectHints limit', async () => {
+    const ownerPath = 'packages/api/src/routes/user.ts';
+    const cwd = await workspace({ [ownerPath]: 'export function userRoute() { return "ok"; }\n' });
+    const content = prd(['Account management workflows remain source-grounded with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const atom = completedOutput(task, 'initial');
+    const repairedAtom = completedOutput(task, 'repaired');
+    const existingHints = Array.from({ length: 100 }, (_, index) => ({ kind: 'keyword' as const, query: `preexisting hint ${index}` }));
+    const harness = new StubHarness([
+      atomSubmission(atom),
+      reduceSubmission(sourceGapOutput(task, 'gap-owner', { ownerPaths: [ownerPath], affectedAtomIds: [] })),
+      atomSubmission(repairedAtom),
+      reduceSubmission(completedReduceOutput(repairedAtom)),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1, sourceLocalizationHints: { projectHints: existingHints } });
+
+    expect(result.status).toBe('complete');
+    expect(result.validationErrors.some((error) => error.includes('projectHints is capped'))).toBe(false);
+    expect(result.sourceLocalizationBundle.diagnostics.some((diagnostic) => diagnostic.message.includes('projectHints is capped'))).toBe(false);
+    expect(result.sourceEvidenceBundle.records).toContainEqual(expect.objectContaining({ path: ownerPath, status: 'materialized' }));
+  });
+
   it('reports exhausted diagnostics and blocks candidate-reduce-gap artifacts when no owner localizes', async () => {
     const cwd = await workspace({});
     const content = prd(['unknown subsystem updates a missing owner path with localized repository evidence.']);
@@ -171,6 +194,47 @@ describe('planning compiler source-localization repair loop', () => {
     expect(result.repairDiagnostics[0]).toMatchObject({ attempt: 0, maxAttempts: 0, status: 'exhausted', gapIds: ['gap-ambiguous', 'gap-dir', 'gap-materialized'], unresolvedReason: 'repair attempts disabled', residueSynthesisBlocked: true });
     expect(result.repairDiagnostics[0]?.gapClassifications.map((item) => item.issueKind).sort()).toEqual(['directory-only-evidence', 'localization-ambiguity', 'missing-materialized-source']);
     expect(result.residue.candidates.some((candidate) => candidate.reason === 'reduce-gap')).toBe(false);
+  });
+
+  it('ignores informational source-localization gaps for repair exhaustion', async () => {
+    const cwd = await workspace({});
+    const content = prd(['Event contract diagnostics remain informational when no representation is required.']);
+    const [task] = expectedTasks(content);
+    const atom = completedOutput(task, 'initial');
+    const harness = new StubHarness([
+      atomSubmission(atom),
+      reduceSubmission({
+        nodeId: 'reduce-000-001',
+        status: 'completed',
+        compactSummary: 'Informational source diagnostic only.',
+        reduceDigest: { sourceId: 'reduce-000-001', sourceKind: 'reduce', status: 'completed', summary: 'Informational source diagnostic only.', criterionIds: task.criterionIds, aspectIds: task.aspectIds },
+        gaps: [{ gapId: 'gap-info-source', title: 'Contract evidence advisory', criterionIds: task.criterionIds, aspectIds: task.aspectIds, description: 'Exact event schema evidence was not present in the excerpt.', representationRequired: false, issueKind: 'missing-contract-evidence', sourceLocalizationSignal: true }],
+        planFragments: atom.planFragments,
+        moduleCandidates: atom.moduleCandidates,
+      }),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1 });
+
+    expect(result.status).toBe('complete');
+    expect(result.repairDiagnostics).toEqual([]);
+    expect(result.validationErrors.some((error) => error.includes('source localization repair exhausted'))).toBe(false);
+    expect(harness.calls).toHaveLength(2);
+  });
+
+  it('rejects prose slash fragments while extracting concrete owner paths from reduce gaps', () => {
+    const classified = classifyPlanningReduceGap({
+      gapId: 'gap-prose-paths',
+      title: 'Missing owner paths',
+      criterionIds: ['ac-001'],
+      aspectIds: ['aspect-1'],
+      description: 'Ignore Apply/resume, Abandon/approval, Config/reference, dirty/conflicting, and blocker/verdict; keep packages/engine/src/a.ts and docs/config.md.',
+      representationRequired: true,
+      issueKind: 'missing-owner-path',
+      sourceLocalizationSignal: true,
+    });
+
+    expect(classified?.ownerPaths).toEqual(['docs/config.md', 'packages/engine/src/a.ts']);
   });
 
   it('treats exploration-only issue kinds as non-repair-triggering unless the reducer sets an explicit signal', () => {

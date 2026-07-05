@@ -47,16 +47,23 @@ function selectRunForEventHistory(db: DatabaseSync, setName: string, runId?: str
      ORDER BY r.started_at DESC, r.id DESC
      LIMIT 1`,
   );
-  const failedBuildRunStmt = db.prepare(
-    `SELECT id, command, started_at AS startedAt FROM runs WHERE plan_set = ? AND command = 'build' AND status = 'failed' ORDER BY started_at DESC LIMIT 1`,
+  const failedRunStmt = db.prepare(
+    `SELECT id, command, started_at AS startedAt
+     FROM runs
+     WHERE plan_set = ?
+       AND command IN ('build', 'resume', 'continue-repair', 'compile')
+       AND status = 'failed'
+     ORDER BY started_at DESC, id DESC
+     LIMIT 1`,
   );
   const newestRunStmt = db.prepare(
     `SELECT id, command, started_at AS startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
   );
 
-  return (failedEvidenceRunStmt.get(setName)
-    ?? failedBuildRunStmt.get(setName)
-    ?? newestRunStmt.get(setName)) as SelectedRunRow | undefined;
+  const failedEvidenceRun = failedEvidenceRunStmt.get(setName) as SelectedRunRow | undefined;
+  const failedRun = failedRunStmt.get(setName) as SelectedRunRow | undefined;
+  if (failedRun && (!failedEvidenceRun || failedRun.startedAt >= failedEvidenceRun.startedAt)) return failedRun;
+  return (failedEvidenceRun ?? newestRunStmt.get(setName)) as SelectedRunRow | undefined;
 }
 
 function parseEventData(data: string): Record<string, unknown> {

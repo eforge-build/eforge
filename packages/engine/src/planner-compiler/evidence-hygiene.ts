@@ -39,7 +39,8 @@ export function classifyEvidenceCandidate(raw: string): PlanningEvidenceCandidat
   if (isGeneratedPlanningArtifactPath(value)) return candidate(raw, value, 'generated-artifact', false, 5, 'generated-planning-artifact');
   if (isBroadDirectory(value)) return candidate(raw, value, 'broad-directory', false, 10, 'broad-directory');
   if (looksLikeFile(value)) return candidate(raw, value, 'file', true, fileRank(value), 'actionable-file');
-  if (value.includes('/')) return candidate(raw, value, 'directory', true, directoryRank(value), 'actionable-directory');
+  if (value.includes('/') && looksLikeRepositoryDirectory(value)) return candidate(raw, value, 'directory', true, directoryRank(value), 'actionable-directory');
+  if (value.includes('/')) return candidate(raw, value, 'text', false, 1, 'prose-slash-fragment');
   return candidate(raw, value, 'text', false, 1, 'not-a-path');
 }
 
@@ -67,6 +68,15 @@ function isBroadDirectory(value: string): boolean {
 
 function looksLikeFile(value: string): boolean {
   return /\.[A-Za-z0-9]+$/.test(value) && !value.endsWith('/');
+}
+
+function looksLikeRepositoryDirectory(value: string): boolean {
+  const segments = value.replace(/^\.\//, '').replace(/\/$/, '').split('/').filter(Boolean);
+  // Two-word slash phrases (for example "apply/wake" or "dirty/conflicting")
+  // are common in prose and too ambiguous to treat as repository evidence
+  // without a filename extension. Deeper directories and hidden-tooling roots
+  // (for example .github/workflows) remain plausible cross-repository paths.
+  return segments.length >= 3 || (segments[0]?.startsWith('.') === true && segments.length >= 2);
 }
 
 function fileRank(value: string): number {

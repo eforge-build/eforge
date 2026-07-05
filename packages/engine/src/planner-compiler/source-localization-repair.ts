@@ -7,6 +7,7 @@ import { deriveSharedPlanningBrief } from './shared-brief.js';
 import type { SharedPlanningBrief, SharedPlanningBriefLimits } from './shared-brief-contracts.js';
 import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits, PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
 import { materializePlanningSourceEvidence } from './source-evidence-materialization.js';
+import { classifyEvidenceCandidate, normalizeEvidenceValue } from './evidence-hygiene.js';
 import type { SourceInventory } from './source-inventory.js';
 import { deriveSourceLocalization } from './source-localization.js';
 import type { SourceLocalizationBundle, SourceLocalizationHint, SourceLocalizationInputHints, SourceLocalizationLimits, SourceLocalizationStatus } from './source-localization-contracts.js';
@@ -83,6 +84,8 @@ interface RunSourceLocalizationRepairLoopInput {
 }
 
 const SOURCE_GAP_KINDS = new Set<PlanningReduceGapIssueKind>(['missing-owner-path', 'missing-contract-evidence', 'missing-entrypoint-evidence', 'missing-config-evidence', 'missing-consumer-surface-evidence', 'directory-only-evidence', 'missing-materialized-source', 'localization-ambiguity']);
+const MAX_REPAIR_PROJECT_HINTS = 100;
+const MAX_FALLBACK_SOURCE_NEEDS_PER_GAP = 16;
 
 // Exploration-only vocabulary kinds: they describe why exploration could not localize, not a repairable
 // reduce gap, so they must never be re-inferred into a source-gap kind from gap text. They trigger repair
@@ -121,7 +124,10 @@ export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizati
 }
 
 export function classifyPlanningReduceGaps(outputs: PlanningReduceResult['outputs'], localization: SourceLocalizationBundle, evidence: PlanningSourceEvidenceBundle, graph: PlanningAtomGraph): ClassifiedPlanningReduceGap[] {
-  return outputs.flatMap((output) => (output.gaps ?? []).map((gap) => classifyPlanningReduceGap(gap, localization, evidence, graph)).filter((gap): gap is ClassifiedPlanningReduceGap => Boolean(gap?.sourceLocalizationSignal)));
+  return outputs.flatMap((output) => (output.gaps ?? [])
+    .filter((gap) => gap.representationRequired)
+    .map((gap) => classifyPlanningReduceGap(gap, localization, evidence, graph))
+    .filter((gap): gap is ClassifiedPlanningReduceGap => Boolean(gap?.sourceLocalizationSignal)));
 }
 
 export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?: SourceLocalizationBundle, evidence?: PlanningSourceEvidenceBundle, graph?: PlanningAtomGraph): ClassifiedPlanningReduceGap | undefined {
@@ -198,7 +204,14 @@ function atomIdsForGap(gap: PlanningReduceGap, sourceNeedIds: string[], ownerPat
 }
 
 function sourceNeedIdsForGap(gap: PlanningReduceGap, ownerPaths: string[], localization?: SourceLocalizationBundle): string[] {
-  return localization?.records.filter((record) => overlaps(record.linkedCriterionIds, gap.criterionIds) || overlaps(record.linkedAspectIds, gap.aspectIds) || ownerPaths.includes(record.query) || record.candidateFiles.some((candidate) => ownerPaths.includes(candidate.path))).map((record) => record.needId) ?? [];
+  if (!localization) return [];
+  const explicit = localization.records.filter((record) => ownerPaths.includes(record.query) || record.candidateFiles.some((candidate) => ownerPaths.includes(candidate.path))).map((record) => record.needId);
+  if (gap.sourceNeedIds?.length || explicit.length > 0) return uniq([...(gap.sourceNeedIds ?? []), ...explicit]);
+  return localization.records
+    .filter((record) => overlaps(record.linkedCriterionIds, gap.criterionIds) || overlaps(record.linkedAspectIds, gap.aspectIds))
+    .sort(compareSourceNeedRepairValue)
+    .slice(0, MAX_FALLBACK_SOURCE_NEEDS_PER_GAP)
+    .map((record) => record.needId);
 }
 
 function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], localization: SourceLocalizationBundle): SourceLocalizationHint[] {
@@ -211,7 +224,10 @@ function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], lo
 }
 
 function mergeRepairHints(existing: SourceLocalizationInputHints | undefined, projectHints: SourceLocalizationHint[]): SourceLocalizationInputHints {
-  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: [...(existing?.projectHints ?? []), ...projectHints] };
+  const repairHints = dedupeHints(projectHints);
+  const repairKeys = new Set(repairHints.map(hintKey));
+  const existingHints = dedupeHints(existing?.projectHints ?? []).filter((hint) => !repairKeys.has(hintKey(hint)));
+  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: [...repairHints, ...existingHints].slice(0, MAX_REPAIR_PROJECT_HINTS) };
 }
 
 function hintKindFor(kind: PlanningReduceGapIssueKind): SourceLocalizationHint['kind'] {
@@ -225,7 +241,9 @@ function hintKindFor(kind: PlanningReduceGapIssueKind): SourceLocalizationHint['
 function localizedPathsFor(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
   const needIds = new Set(gaps.flatMap((gap) => gap.sourceNeedIds));
   const explicit = gaps.flatMap((gap) => gap.ownerPaths);
-  const localized = localization.records.filter((record) => needIds.has(record.needId) || overlaps(record.linkedCriterionIds, gaps.flatMap((gap) => gap.criterionIds)) || overlaps(record.linkedAspectIds, gaps.flatMap((gap) => gap.aspectIds))).flatMap((record) => record.candidateFiles.map((candidate) => candidate.path));
+  const localized = localization.records
+    .filter((record) => needIds.has(record.needId) || explicit.includes(record.query) || record.candidateFiles.some((candidate) => explicit.includes(candidate.path)))
+    .flatMap((record) => record.candidateFiles.map((candidate) => candidate.path));
   return uniq([...explicit, ...localized]);
 }
 
@@ -247,7 +265,67 @@ function unresolvedReason(gaps: ClassifiedPlanningReduceGap[], atomIds: string[]
 }
 
 function extractPathSignals(text: string): string[] {
-  return uniq([...text.matchAll(/(?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@/-]+/g)].map((match) => match[0].replace(/[),.;:]+$/, '')).filter((path) => !/^https?:\//.test(path) && !path.includes('..')));
+  return uniq([...text.matchAll(/(?:[A-Za-z0-9_.@-]+\/)+[A-Za-z0-9_.@/-]+/g)]
+    .map((match) => normalizeEvidenceValue(match[0]))
+    .filter((path) => !/^https?:\//.test(path) && !path.includes('..'))
+    .filter((path) => classifyEvidenceCandidate(path).actionable));
+}
+
+function compareSourceNeedRepairValue(a: SourceLocalizationBundle['records'][number], b: SourceLocalizationBundle['records'][number]): number {
+  return sourceNeedRepairScore(b) - sourceNeedRepairScore(a) || a.needId.localeCompare(b.needId);
+}
+
+function sourceNeedRepairScore(record: SourceLocalizationBundle['records'][number]): number {
+  let score = 0;
+  if (record.status !== 'resolved') score += 8;
+  if (record.confidence === 'low') score += 4;
+  else if (record.confidence === 'medium') score += 2;
+  if (record.kind === 'literal-path' || record.kind === 'entrypoint') score += 4;
+  if (record.candidateFiles.length > 0) score += 2;
+  if (record.source === 'project-hint') score += 1;
+  return score;
+}
+
+function dedupeHints(hints: SourceLocalizationHint[]): SourceLocalizationHint[] {
+  const byKey = new Map<string, SourceLocalizationHint>();
+  for (const hint of hints) {
+    const key = hintKey(hint);
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? mergeHint(existing, hint) : hint);
+  }
+  return [...byKey.values()].sort(compareHintRepairValue);
+}
+
+function hintKey(hint: SourceLocalizationHint): string {
+  return `${hint.kind}\0${hint.query}\0${(hint.paths ?? []).join('\0')}\0${(hint.criterionIds ?? []).join('\0')}\0${(hint.aspectIds ?? []).join('\0')}`;
+}
+
+function mergeHint(a: SourceLocalizationHint, b: SourceLocalizationHint): SourceLocalizationHint {
+  return {
+    kind: a.kind,
+    query: a.query,
+    paths: uniq([...(a.paths ?? []), ...(b.paths ?? [])]),
+    keywords: uniq([...(a.keywords ?? []), ...(b.keywords ?? [])]),
+    subsystemHints: uniq([...(a.subsystemHints ?? []), ...(b.subsystemHints ?? [])]),
+    interfaceKeys: uniq([...(a.interfaceKeys ?? []), ...(b.interfaceKeys ?? [])]),
+    criterionIds: uniq([...(a.criterionIds ?? []), ...(b.criterionIds ?? [])]),
+    aspectIds: uniq([...(a.aspectIds ?? []), ...(b.aspectIds ?? [])]),
+    atomIds: uniq([...(a.atomIds ?? []), ...(b.atomIds ?? [])]),
+  };
+}
+
+function compareHintRepairValue(a: SourceLocalizationHint, b: SourceLocalizationHint): number {
+  return hintRepairScore(b) - hintRepairScore(a) || a.kind.localeCompare(b.kind) || a.query.localeCompare(b.query);
+}
+
+function hintRepairScore(hint: SourceLocalizationHint): number {
+  let score = 0;
+  if ((hint.paths ?? []).some((path) => classifyEvidenceCandidate(path).actionable)) score += 16;
+  if (hint.kind === 'literal-path' || hint.kind === 'entrypoint') score += 8;
+  else if (hint.kind === 'config' || hint.kind === 'interface' || hint.kind === 'consumer-surface') score += 4;
+  if ((hint.atomIds ?? []).length > 0) score += 2;
+  if ((hint.criterionIds ?? []).length > 0) score += 1;
+  return score;
 }
 
 function overlaps(a: string[], b: string[]): boolean { return a.some((value) => b.includes(value)); }
