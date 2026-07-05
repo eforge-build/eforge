@@ -100,7 +100,7 @@ export async function runRepositoryExplorationAgent(input: RunRepositoryExplorat
 }
 
 async function runExplorationSubmitGrace(input: RunRepositoryExplorationAgentInput, submitToolName: string, onSubmit: (submission: RepositoryExplorationOutcome) => boolean, events: EforgeEvent[], toolUses: number, maxTurns: number): Promise<string | undefined> {
-  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}.`;
+  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}.\n\n## Prior read-only observations\n\n${summarizeExplorationObservations(events)}`;
   try {
     for await (const event of input.harness.run({
       ...pickSdkOptions(input.agentOptions ?? {}),
@@ -121,6 +121,19 @@ async function runExplorationSubmitGrace(input: RunRepositoryExplorationAgentInp
     return err instanceof Error ? err.message : String(err);
   }
   return undefined;
+}
+
+function summarizeExplorationObservations(events: EforgeEvent[]): string {
+  const snippets: string[] = [];
+  const toolInputs = new Map<string, unknown>();
+  for (const event of events) {
+    if (event.type === 'agent:tool_use' && !event.tool.includes('submit')) toolInputs.set(event.toolUseId, event.input);
+    if (event.type === 'agent:tool_result' && toolInputs.has(event.toolUseId)) {
+      snippets.push(JSON.stringify({ tool: event.tool, input: toolInputs.get(event.toolUseId), output: truncate(String(event.output), 500) }));
+    }
+  }
+  const text = snippets.slice(-12).join('\n');
+  return text.length > 0 ? truncate(text, 6_000) : 'No read-only tool results were captured before budget exhaustion.';
 }
 
 function outcomeResult(input: RunRepositoryExplorationAgentInput, submission: RepositoryExplorationOutcome, events: EforgeEvent[], toolUses: number, degradedReason?: string): RepositoryExplorationAgentResult {

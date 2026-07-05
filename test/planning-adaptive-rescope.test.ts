@@ -115,13 +115,13 @@ describe('rescope risk classification and directives', () => {
     expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry', 'need-iface']);
   });
 
-  it('excludes critical needs with no linked criteria from the rescopable fail-closed set', () => {
+  it('treats generic interface wording as a rescope signal but not a fail-closed blocker', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([
-      { needId: 'need-linked', kind: 'interface', status: 'unresolved', confidence: 'low', linkedCriterionIds: ['ac-001'] },
+      { needId: 'need-generic-linked', kind: 'interface', status: 'unresolved', confidence: 'low', linkedCriterionIds: ['ac-001'] },
       { needId: 'need-unlinked', kind: 'interface', status: 'unresolved', confidence: 'low' },
     ]);
-    expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: ['need-linked'], unrescopable: ['need-unlinked'] });
+    expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: [], unrescopable: ['need-unlinked'] });
   });
 
   it('derives deterministic split directives keyed by subsystem and returns none for a single group', () => {
@@ -164,7 +164,6 @@ describe('adaptive rescope loop', () => {
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
     const harness = new StubHarness([
-      submit('submit-initial', outcome('needs-rescope', { reasons: ['too-broad'], notes: 'cross-cutting' })),
       submit('submit-engine', outcome('completed', { projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/client/src/rescope-consumer.ts'], criterionIds: ['ac-001'] }] })),
     ]);
     const events: EforgeEvent[] = [];
@@ -173,15 +172,15 @@ describe('adaptive rescope loop', () => {
 
     expect(result.diagnostics.status).toBe('rescoped');
     expect(result.diagnostics.attempts).toBe(1);
-    expect(result.rescopeDirectives?.map((directive) => directive.groupKey)).toEqual(['client', 'engine']);
+    expect(result.rescopeDirectives?.map((directive) => directive.groupKey)).toEqual(['engine', 'client']);
     expect(result.diagnostics.rerunScopeKeys).toEqual(['engine']);
     expect(result.diagnostics.preservedScopeKeys).toEqual(['client']);
-    expect(harness.calls).toHaveLength(2);
+    expect(harness.calls).toHaveLength(1);
     // The scoped rerun prompt lists only the engine scope's unresolved needs
     // (the inventory summary still shows all criteria; the compact needs JSON
     // is what gets scope-filtered).
-    expect(harness.prompts[1]).toContain('"query":"packages/engine/src/rescope-owner.ts"');
-    expect(harness.prompts[1]).not.toContain('"query":"packages/client/src/rescope-consumer.ts"');
+    expect(harness.prompts[0]).toContain('"query":"packages/engine/src/rescope-owner.ts"');
+    expect(harness.prompts[0]).not.toContain('"query":"packages/client/src/rescope-consumer.ts"');
     expect(result.hints?.projectHints).toHaveLength(1);
     expect(result.diagnostics.revisedAtomCount).toBeGreaterThan(result.diagnostics.originalAtomCount);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope attempt 1/'))).toBe(true);
@@ -203,6 +202,29 @@ describe('adaptive rescope loop', () => {
     const attempt = runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
     await expect(attempt).rejects.toThrow(AdaptiveRescopeFailClosedError);
     await expect(attempt).rejects.toThrow(/critical source need/);
+  });
+
+  it('does not let a later budget-skipped scope mask critical needs that remained after a rerun', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-rerun-critical-'));
+    const content = prd([
+      'engine updates the `packages/engine/src/rescope-api.ts` route schema contract.',
+      'client updates the `packages/client/src/rescope-api-consumer.ts` route schema contract.',
+    ]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const harness = new StubHarness([{ toolCalls: [
+      { tool: 'read', toolUseId: 'read-critical-1', input: { path: 'packages/engine/src/rescope-api.ts' }, output: 'missing' },
+      { tool: 'grep', toolUseId: 'grep-critical-1', input: { pattern: 'rescope-api' }, output: 'no matches' },
+      { tool: 'submit_exploration_outcome', toolUseId: 'submit-critical-rerun', input: outcome('budget-exhausted', { reasons: ['tool-budget'] }), output: 'ok' },
+    ] }]);
+    const events: EforgeEvent[] = [];
+
+    await expect(runAdaptiveExplorationRescope({
+      cwd, harness, sourceContent: content, inventory, limits,
+      rescopeLimits: { maxRescopeAttempts: 1, explorationTotalBudgetMultiplier: 1, explorationBudgetBaseToolUses: 1, explorationBudgetToolUsesPerNeed: 0 },
+      onEvent: (event) => events.push(event),
+    })).rejects.toThrow(AdaptiveRescopeFailClosedError);
+
+    expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('not masking them behind'))).toBe(true);
   });
 
   it('proceeds with a warning instead of rescoping when the degraded source has no split signal', async () => {
@@ -227,13 +249,11 @@ describe('adaptive rescope loop', () => {
       'client updates `packages/client/src/ledger-consumer.ts` for grounded flag handling.',
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
-    // The initial run spends the entire ledger (1 read-only tool use with a
-    // budget of base=1, perNeed=0, multiplier=1), so no scoped rerun can start.
+    // Pre-split budgeting reserves a shallow slot for each scope even when
+    // the configured per-need budget is tiny.
     const harness = new StubHarness([
-      { toolCalls: [
-        { tool: 'inspect_repository', toolUseId: 'inspect-1', input: {}, output: 'listing' },
-        { tool: 'submit_exploration_outcome', toolUseId: 'submit-initial', input: outcome('needs-rescope', { reasons: ['too-broad'] }), output: 'ok' },
-      ] },
+      submit('submit-engine', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
+      submit('submit-client', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
     ]);
     const events: EforgeEvent[] = [];
 
@@ -243,14 +263,12 @@ describe('adaptive rescope loop', () => {
       onEvent: (event) => events.push(event),
     });
 
-    expect(result.diagnostics.ledger.totalToolUseBudget).toBe(1);
-    expect(result.diagnostics.ledger.usedToolUses).toBe(1);
-    expect(result.diagnostics.rerunScopeKeys).toEqual([]);
-    // Nothing was rerun, so the loop must not claim it rescoped anything: it
-    // exhausted the budget with only non-critical needs unresolved and proceeds.
-    expect(result.diagnostics.status).toBe('exhausted-proceeded');
-    expect(harness.calls).toHaveLength(1);
-    expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('cross-run tool budget exhausted'))).toBe(true);
+    expect(result.diagnostics.ledger.totalToolUseBudget).toBe(2);
+    expect(result.diagnostics.ledger.usedToolUses).toBe(2);
+    expect(result.diagnostics.rerunScopeKeys.sort()).toEqual(['client', 'engine']);
+    expect(result.diagnostics.status).toBe('rescoped');
+    expect(harness.calls).toHaveLength(2);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(true);
   });
 
   it('merges scoped rerun outcomes so a completed scope does not mask a budget-exhausted sibling', async () => {
@@ -260,10 +278,10 @@ describe('adaptive rescope loop', () => {
       'client updates `packages/client/src/merge-consumer.ts` for grounded flag handling.',
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
-    // Directive order is sorted by group key: the client scope reruns first
-    // (budget-exhausted), then the engine scope (completed with a hint).
+    // Directive order is sorted by group key when priority is tied: the client
+    // scope reruns first (budget-exhausted), then the engine scope (completed
+    // with a hint).
     const harness = new StubHarness([
-      submit('submit-initial', outcome('needs-rescope', { reasons: ['too-broad'] })),
       submit('submit-client', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
       submit('submit-engine', outcome('completed', { projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/merge-owner.ts'], criterionIds: ['ac-001'] }] })),
     ]);
