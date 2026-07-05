@@ -20,6 +20,9 @@ import {
 
 export interface BuildCompilerDiagnosticsInput { compilerResult: BoundedPlannerCompilerResult; planSetName: string }
 export interface WriteCompilerDiagnosticsArtifactInput { cwd: string; outputDir: string; planSetName: string; diagnostics: CompilerDiagnostics; fileName?: string }
+export interface WriteRescopeFailClosedArtifactInput { cwd: string; outputDir: string; planSetName: string; reason: string; rescope: NonNullable<BoundedPlannerCompilerResult['rescopeDiagnostics']> }
+
+export const RESCOPE_FAIL_CLOSED_ARTIFACT = 'rescope-fail-closed.json';
 
 const COMPACT_DESCRIPTION_LENGTH = 500;
 
@@ -79,6 +82,20 @@ export async function writeCompilerDiagnosticsArtifact(input: WriteCompilerDiagn
   const artifactPath = resolve(dir, fileName);
   if (!isInsideDirectory(artifactPath, dir)) throw new Error(`Compiler diagnostics artifact path escapes output directory: ${fileName}`);
   await writeFile(artifactPath, serializeCompilerDiagnostics(input.diagnostics), 'utf8');
+  return artifactPath;
+}
+
+/**
+ * Persist adaptive-rescope state when the compile fails closed before the
+ * compiler runs. The main diagnostics artifact is never written on that path,
+ * and the rescope ledger/split history is exactly what a debugger needs.
+ */
+export async function writeRescopeFailClosedArtifact(input: WriteRescopeFailClosedArtifactInput): Promise<string> {
+  const planSetName = safeRelativePathComponent(input.planSetName, 'planSetName');
+  const dir = resolve(input.cwd, input.outputDir, planSetName);
+  await mkdir(dir, { recursive: true });
+  const artifactPath = resolve(dir, RESCOPE_FAIL_CLOSED_ARTIFACT);
+  await writeFile(artifactPath, `${JSON.stringify({ reason: bounded(input.reason, 2_000), rescope: rescopeSection(input.rescope) }, null, 2)}\n`, 'utf8');
   return artifactPath;
 }
 // --- eforge:endregion compiler-diagnostics-entrypoints ---

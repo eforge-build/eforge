@@ -6,7 +6,7 @@ import { resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits } 
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
 import { AdaptiveRescopeFailClosedError, runAdaptiveExplorationRescope, type AdaptiveExplorationRescopeResult } from './adaptive-rescope.js';
-import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact } from './compiler-diagnostics.js';
+import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact, writeRescopeFailClosedArtifact } from './compiler-diagnostics.js';
 import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults } from './plan-artifact-synthesis.js';
@@ -171,12 +171,28 @@ async function* resolveExplorationHints(ctx: PipelineContext, input: Exploration
   } catch (err) {
     if (ctx.abortController?.signal.aborted) throw err;
     if (err instanceof AdaptiveRescopeFailClosedError) {
+      yield* writeRescopeFailClosedBestEffort(ctx, err);
       yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: err.message };
       throw err;
     }
     const message = err instanceof Error ? err.message : String(err);
     yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Repository exploration failed; continuing without hints: ${message}`, source: 'repository-exploration' };
     return undefined;
+  }
+}
+
+/**
+ * The main compiler diagnostics artifact is only written after the compiler
+ * runs; a fail-closed rescope aborts before that, so persist the rescope
+ * ledger/split history to its own artifact for post-mortem debugging.
+ */
+async function* writeRescopeFailClosedBestEffort(ctx: PipelineContext, err: AdaptiveRescopeFailClosedError): AsyncGenerator<EforgeEvent> {
+  try {
+    const artifactPath = await writeRescopeFailClosedArtifact({ cwd: ctx.cwd, outputDir: ctx.config.plan.outputDir, planSetName: ctx.planSetName, reason: err.message, rescope: err.diagnostics });
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Adaptive rescope fail-closed diagnostics written to ${artifactPath}`, source: 'repository-exploration' };
+  } catch (writeErr) {
+    const message = writeErr instanceof Error ? writeErr.message : String(writeErr);
+    yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: `Failed to write rescope fail-closed diagnostics (${message}); diagnostics: ${JSON.stringify(err.diagnostics)}`, source: 'repository-exploration' };
   }
 }
 

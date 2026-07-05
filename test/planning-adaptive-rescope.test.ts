@@ -14,6 +14,7 @@ import {
   deriveRescopeDirectives,
   deriveSourceInventory,
   deriveSourceLocalization,
+  partitionCriticalUnresolvedNeeds,
   runAdaptiveExplorationRescope,
   type SourceLocalizationBundle,
   type SourceLocalizationRecord,
@@ -114,6 +115,15 @@ describe('rescope risk classification and directives', () => {
     expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry', 'need-iface']);
   });
 
+  it('excludes critical needs with no linked criteria from the rescopable fail-closed set', () => {
+    const { inventory } = crossCutting();
+    const bundle = bundleWith([
+      { needId: 'need-linked', kind: 'interface', status: 'unresolved', confidence: 'low', linkedCriterionIds: ['ac-001'] },
+      { needId: 'need-unlinked', kind: 'interface', status: 'unresolved', confidence: 'low' },
+    ]);
+    expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: ['need-linked'], unrescopable: ['need-unlinked'] });
+  });
+
   it('derives deterministic split directives keyed by subsystem and returns none for a single group', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([]);
@@ -125,6 +135,16 @@ describe('rescope risk classification and directives', () => {
     const single = prd(['engine updates `packages/engine/src/one.ts` for grounded flag handling.']);
     const singleInventory = deriveSourceInventory({ content: single, hash: hash(single) });
     expect(deriveRescopeDirectives(singleInventory, bundle)).toEqual([]);
+  });
+
+  it('disambiguates directive and atom ids when distinct group keys slug identically', () => {
+    const { inventory } = crossCutting();
+    // 'api/v1' and 'api.v1' both slug to 'api-v1'.
+    const patched = { ...inventory, criteria: inventory.criteria.map((criterion, index) => ({ ...criterion, subsystemHints: [index === 0 ? 'api/v1' : 'api.v1'], interfaceKeys: [] })) };
+    const directives = deriveRescopeDirectives(patched, bundleWith([]));
+    expect(directives.map((directive) => directive.directiveId).sort()).toEqual(['rescope-api-v1', 'rescope-api-v1-2']);
+    const graph = derivePlanningAtomGraph({ content: prd(['a', 'b']), hash: hash('ab'), limits, inventory: patched, rescopeDirectives: directives });
+    expect(new Set(graph.atoms.map((atom) => atom.atomId)).size).toBe(graph.atoms.length);
   });
 });
 
@@ -226,7 +246,34 @@ describe('adaptive rescope loop', () => {
     expect(result.diagnostics.ledger.totalToolUseBudget).toBe(1);
     expect(result.diagnostics.ledger.usedToolUses).toBe(1);
     expect(result.diagnostics.rerunScopeKeys).toEqual([]);
+    // Nothing was rerun, so the loop must not claim it rescoped anything: it
+    // exhausted the budget with only non-critical needs unresolved and proceeds.
+    expect(result.diagnostics.status).toBe('exhausted-proceeded');
     expect(harness.calls).toHaveLength(1);
     expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('cross-run tool budget exhausted'))).toBe(true);
+  });
+
+  it('merges scoped rerun outcomes so a completed scope does not mask a budget-exhausted sibling', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-merge-'));
+    const content = prd([
+      'engine updates `packages/engine/src/merge-owner.ts` for grounded flag handling.',
+      'client updates `packages/client/src/merge-consumer.ts` for grounded flag handling.',
+    ]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    // Directive order is sorted by group key: the client scope reruns first
+    // (budget-exhausted), then the engine scope (completed with a hint).
+    const harness = new StubHarness([
+      submit('submit-initial', outcome('needs-rescope', { reasons: ['too-broad'] })),
+      submit('submit-client', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
+      submit('submit-engine', outcome('completed', { projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/merge-owner.ts'], criterionIds: ['ac-001'] }] })),
+    ]);
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
+
+    expect(result.diagnostics.status).toBe('rescoped');
+    expect(result.diagnostics.rerunScopeKeys).toEqual(['client', 'engine']);
+    expect(result.outcome?.status).toBe('budget-exhausted');
+    expect(result.outcome?.reasons).toContain('tool-budget');
+    expect(result.hints?.projectHints).toHaveLength(1);
   });
 });

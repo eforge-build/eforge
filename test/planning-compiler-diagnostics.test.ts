@@ -14,6 +14,8 @@ import {
   serializeCompilerDiagnostics,
   validateCompilerDiagnostics,
   writeCompilerDiagnosticsArtifact,
+  writeRescopeFailClosedArtifact,
+  type AdaptiveRescopeDiagnostics,
   type BoundedPlannerCompilerResult,
   type PlanningAtomMapResult,
   type PlanningAtomOutput,
@@ -266,6 +268,28 @@ describe('planning compiler diagnostics', () => {
 
     await expect(writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: '../escape', diagnostics })).rejects.toThrow(/safe relative path component/);
     await expect(writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', diagnostics, fileName: '../evil.json' })).rejects.toThrow(/safe relative path component/);
+  });
+
+  it('writes the rescope fail-closed artifact with the ledger and split history', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-rescope-failclosed-artifact-'));
+    const rescope: AdaptiveRescopeDiagnostics = {
+      status: 'fail-closed', attempts: 2, maxAttempts: 2, originalAtomCount: 1, revisedAtomCount: 3,
+      ledger: { totalToolUseBudget: 24, usedToolUses: 24 },
+      riskReasons: ['unresolved-interface-needs (1)'],
+      splitGroups: [{ directiveId: 'rescope-engine', groupKey: 'engine', criterionIds: ['ac-001'], rationale: 'split by engine' }],
+      rerunScopeKeys: ['engine'], preservedScopeKeys: [], unresolvedCriticalNeedIds: ['need-1'],
+    };
+
+    const artifactPath = await writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', reason: 'rescoping exhausted', rescope });
+
+    expect(artifactPath).toBe(resolve(cwd, 'eforge/plans/diag-set/rescope-fail-closed.json'));
+    const parsed = JSON.parse(await readFile(artifactPath, 'utf8')) as { reason: string; rescope: AdaptiveRescopeDiagnostics };
+    expect(parsed.reason).toBe('rescoping exhausted');
+    expect(parsed.rescope.status).toBe('fail-closed');
+    expect(parsed.rescope.ledger).toEqual({ totalToolUseBudget: 24, usedToolUses: 24 });
+    expect(parsed.rescope.unresolvedCriticalNeedIds).toEqual(['need-1']);
+
+    await expect(writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: '../escape', reason: 'x', rescope })).rejects.toThrow(/safe relative path component/);
   });
 });
 

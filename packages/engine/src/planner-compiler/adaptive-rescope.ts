@@ -6,6 +6,7 @@ import type { PlannerCompilerEventSink } from './event-sink.js';
 import { evidenceSlug } from './evidence-hygiene.js';
 import { DEFAULT_EXPLORATION_MAX_TURNS, runRepositoryExplorationAgent } from './exploration-agent.js';
 import { decideExplorationSkip, EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE, type RepositoryExplorationOutcome } from './exploration-contracts.js';
+import { deriveRepositoryIndex } from './repository-index.js';
 import { stableSlug } from './source-analysis.js';
 import { deriveSourceLocalization } from './source-localization.js';
 import type { SourceLocalizationBundle, SourceLocalizationHint, SourceLocalizationInputHints, SourceLocalizationRecord } from './source-localization-contracts.js';
@@ -88,6 +89,24 @@ export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, inve
     .sort();
 }
 
+export interface CriticalNeedPartition { rescopable: string[]; unrescopable: string[] }
+
+/**
+ * Split critical unresolved needs by whether the rescope loop can remedy
+ * them. Scoped reruns select needs through directive criterion ids, so a
+ * need with no linked criteria (e.g. derived from an unkeyed hint) can never
+ * be re-explored - counting it toward fail-closed would abort compiles the
+ * loop structurally cannot save.
+ */
+export function partitionCriticalUnresolvedNeeds(bundle: SourceLocalizationBundle, inventory: SourceInventory): CriticalNeedPartition {
+  const critical = new Set(criticalUnresolvedNeedIds(bundle, inventory));
+  const linked = new Set(bundle.records.filter((record) => record.linkedCriterionIds.length > 0).map((record) => record.needId));
+  return {
+    rescopable: [...critical].filter((needId) => linked.has(needId)).sort(),
+    unrescopable: [...critical].filter((needId) => !linked.has(needId)).sort(),
+  };
+}
+
 export interface RescopeRiskClassification { risky: boolean; reasons: string[] }
 
 /**
@@ -104,7 +123,7 @@ export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; i
   const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount);
   if (skip.share < EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE) reasons.push(`low-confidence-share (${skip.highConfidenceCount}/${skip.literalNeedCount})`);
   const subsystems = new Set(input.inventory.criteria.flatMap((criterion) => criterion.subsystemHints));
-  if (input.graph.atoms.length === 1 && subsystems.size > input.limits.maxSubsystemsPerUnit) reasons.push(`subsystem-diverse-root (${subsystems.size} subsystems)`);
+  if (subsystems.size > input.limits.maxSubsystemsPerUnit) reasons.push(`subsystem-diverse-root (${subsystems.size} subsystems)`);
   const critical = criticalUnresolvedNeedIds(input.bundle, input.inventory);
   if (critical.length > 0) reasons.push(`unresolved-interface-needs (${critical.length})`);
   return { risky: reasons.length > 0, reasons };
@@ -132,14 +151,22 @@ export function deriveRescopeDirectives(inventory: SourceInventory, bundle: Sour
     groups.set(key, [...(groups.get(key) ?? []), criterion.id]);
   }
   if (groups.size < 2) return [];
+  const usedSlugs = new Map<string, number>();
   return [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([groupKey, criterionIds]) => ({
-      directiveId: `rescope-${stableSlug(groupKey)}`,
-      groupKey,
-      criterionIds,
-      rationale: `degraded exploration: split by ${groupKey} (${criterionIds.length} criteria, ${criterionIds.reduce((sum, id) => sum + (unresolvedByCriterion.get(id) ?? 0), 0)} unresolved need links)`,
-    }));
+    .map(([groupKey, criterionIds]) => {
+      // Distinct group keys can slug identically; disambiguate so directive
+      // (and downstream atom) ids stay unique.
+      const slug = stableSlug(groupKey);
+      const collisions = usedSlugs.get(slug) ?? 0;
+      usedSlugs.set(slug, collisions + 1);
+      return {
+        directiveId: collisions === 0 ? `rescope-${slug}` : `rescope-${slug}-${collisions + 1}`,
+        groupKey,
+        criterionIds,
+        rationale: `degraded exploration: split by ${groupKey} (${criterionIds.length} criteria, ${criterionIds.reduce((sum, id) => sum + (unresolvedByCriterion.get(id) ?? 0), 0)} unresolved need links)`,
+      };
+    });
 }
 
 function commonToAllCriteria(inventory: SourceInventory, hintsOf: (criterion: SourceInventory['criteria'][number]) => string[]): Set<string> {
@@ -155,6 +182,9 @@ function commonToAllCriteria(inventory: SourceInventory, hintsOf: (criterion: So
 // --- eforge:endregion adaptive-rescope-derivations ---
 
 // --- eforge:region adaptive-rescope-loop ---
+
+/** Mirrors the diagnostics schema's splitGroups cap and bounds paid agent reruns per attempt. */
+const MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT = 64;
 
 /**
  * Bounded pre-map adaptive rescope loop (stage-integration layer). Runs the
@@ -172,7 +202,10 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     else input.onEvent?.({ timestamp: new Date().toISOString(), type: 'planning:progress', message });
   };
   const graph = derivePlanningAtomGraph({ content: input.sourceContent, hash: input.inventory.sourceHash, limits: input.limits, inventory: input.inventory });
-  const baseline = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph });
+  // Project hints never carry ignore prefixes/globs (the only hint inputs that
+  // shape the index), so one repository index serves every localization pass.
+  const index = await deriveRepositoryIndex({ cwd: input.cwd });
+  const baseline = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph, index });
   const diagnostics: AdaptiveRescopeDiagnostics = {
     status: 'not-needed', attempts: 0, maxAttempts: rescopeLimits.maxRescopeAttempts,
     originalAtomCount: graph.atoms.length, revisedAtomCount: graph.atoms.length,
@@ -192,7 +225,12 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
       inventory: input.inventory, baselineBundle: bundle, graph: scopedGraph,
       maxToolUses: budget, scopeNeedIds, abortSignal: input.abortSignal, onEvent: input.onEvent,
     });
-    diagnostics.ledger.usedToolUses += result.toolUses;
+    // A submission without tool uses still consumed a paid agent invocation;
+    // charging at least 1 keeps the ledger the bound on invocation count.
+    diagnostics.ledger.usedToolUses += Math.max(1, result.toolUses);
+    const droppedHintCount = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
+    if (droppedHintCount > 0) emit(`Repository exploration dropped ${droppedHintCount} invalid hint entries.`, 'warning');
+    if (result.status === 'degraded') emit(`Repository exploration degraded to no hints: ${result.diagnostics.map((diagnostic) => diagnostic.message).join('; ') || 'no hints submitted'}`, 'warning');
     return result;
   };
 
@@ -216,11 +254,15 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   let bundle = baseline;
   let directives: PlanningRescopeDirective[] = [];
   for (let attempt = 1; attempt <= rescopeLimits.maxRescopeAttempts; attempt += 1) {
-    const derived = deriveRescopeDirectives(input.inventory, bundle);
+    let derived = deriveRescopeDirectives(input.inventory, bundle);
     if (derived.length === 0) {
       diagnostics.status = 'warning-only';
       emit(`Adaptive rescope attempt ${attempt}: no split signal (single scope); proceeding degraded with a warning.`, 'warning');
       return { hints, outcome, unknownIdDrops, rescopeDirectives: directives.length > 0 ? directives : undefined, diagnostics };
+    }
+    if (derived.length > MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT) {
+      emit(`Adaptive rescope attempt ${attempt}: capping ${derived.length} split scopes to ${MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT}; ${derived.length - MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT} scope(s) will not be re-explored.`, 'warning');
+      derived = derived.slice(0, MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT);
     }
     directives = derived;
     diagnostics.attempts = attempt;
@@ -228,33 +270,56 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     const rescopedGraph = derivePlanningAtomGraph({ content: input.sourceContent, hash: input.inventory.sourceHash, limits: input.limits, inventory: input.inventory, rescopeDirectives: directives });
     diagnostics.revisedAtomCount = rescopedGraph.atoms.length;
     emit(`Adaptive rescope attempt ${attempt}/${rescopeLimits.maxRescopeAttempts}: split ${diagnostics.originalAtomCount} atom(s) into ${rescopedGraph.atoms.length} across ${derived.length} scopes (${risk.reasons.join('; ')}).`);
-    bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints });
+    bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints, index });
+    let rerunsThisAttempt = 0;
+    let budgetSkipsThisAttempt = 0;
+    const attemptOutcomes: RepositoryExplorationOutcome[] = [];
     for (const directive of directives) {
       const wanted = new Set(directive.criterionIds);
       const scopeNeeds = bundle.records.filter((record) => isUnresolved(record) && record.linkedCriterionIds.some((id) => wanted.has(id)));
       if (scopeNeeds.length === 0) {
-        diagnostics.preservedScopeKeys.push(directive.groupKey);
+        pushUnique(diagnostics.preservedScopeKeys, directive.groupKey);
         continue;
       }
       const remaining = diagnostics.ledger.totalToolUseBudget - diagnostics.ledger.usedToolUses;
       const budget = Math.min(deriveExplorationToolBudget(scopeNeeds.length, rescopeLimits, input.limits.maxLocalExplorationToolUses), remaining);
       if (budget < 1) {
+        budgetSkipsThisAttempt += 1;
         emit(`Adaptive rescope: cross-run tool budget exhausted (${diagnostics.ledger.usedToolUses}/${diagnostics.ledger.totalToolUseBudget}); scope ${directive.groupKey} not rerun.`, 'warning');
         continue;
       }
-      diagnostics.rerunScopeKeys.push(directive.groupKey);
+      pushUnique(diagnostics.rerunScopeKeys, directive.groupKey);
+      rerunsThisAttempt += 1;
       const scoped = await runExploration(bundle, rescopedGraph, budget, scopeNeeds.map((record) => record.needId).sort());
       unknownIdDrops.push(...scoped.unknownIdDrops);
-      outcome = scoped.outcome;
+      attemptOutcomes.push(scoped.outcome);
       if (scoped.hints) hints = mergeHints(hints, scoped.hints);
     }
-    bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints });
-    diagnostics.unresolvedCriticalNeedIds = criticalUnresolvedNeedIds(bundle, input.inventory);
-    if (diagnostics.unresolvedCriticalNeedIds.length === 0) {
-      diagnostics.status = 'rescoped';
-      emit(`Adaptive rescope resolved critical localization after attempt ${attempt}; compiling ${rescopedGraph.atoms.length} rescoped scopes.`);
+    // Merge this attempt's scoped outcomes; a completed scope must not mask a
+    // budget-exhausted or ambiguous sibling in diagnostics.
+    if (attemptOutcomes.length > 0) outcome = attemptOutcomes.reduce(mergeOutcomes);
+    bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints, index });
+    const critical = partitionCriticalUnresolvedNeeds(bundle, input.inventory);
+    diagnostics.unresolvedCriticalNeedIds = critical.rescopable;
+    if (critical.unrescopable.length > 0) {
+      emit(`Adaptive rescope: ${critical.unrescopable.length} critical need(s) have no linked criteria and cannot be re-explored (${critical.unrescopable.slice(0, 5).join(', ')}); excluded from the fail-closed gate.`, 'warning');
+    }
+    if (critical.rescopable.length === 0) {
+      if (rerunsThisAttempt > 0) {
+        diagnostics.status = 'rescoped';
+        emit(`Adaptive rescope attempt ${attempt}: re-explored ${rerunsThisAttempt} scope(s); no critical localization needs remain; compiling ${rescopedGraph.atoms.length} rescoped scopes.`);
+      } else if (budgetSkipsThisAttempt > 0) {
+        diagnostics.status = 'exhausted-proceeded';
+        emit(`Adaptive rescope attempt ${attempt}: tool budget exhausted before any scoped rerun (${diagnostics.ledger.usedToolUses}/${diagnostics.ledger.totalToolUseBudget}); only non-critical needs unresolved, proceeding degraded with ${rescopedGraph.atoms.length} rescoped scopes.`, 'warning');
+      } else {
+        diagnostics.status = 'rescoped';
+        emit(`Adaptive rescope attempt ${attempt}: all ${directives.length} scopes already localized; compiling ${rescopedGraph.atoms.length} rescoped scopes without re-exploration.`);
+      }
       return { hints, outcome, unknownIdDrops, rescopeDirectives: directives, diagnostics };
     }
+    // Critical needs remain and nothing was rerun: further attempts would
+    // replay identical directives against the same exhausted ledger, so stop.
+    if (rerunsThisAttempt === 0) break;
   }
 
   if (diagnostics.attempts === 0) {
@@ -263,14 +328,36 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     emit('Adaptive rescoping disabled (0 attempts); proceeding degraded with a warning.', 'warning');
     return { hints, outcome, unknownIdDrops, diagnostics };
   }
-  if (diagnostics.unresolvedCriticalNeedIds.length > 0) {
-    diagnostics.status = 'fail-closed';
-    const reason = `Adaptive rescoping exhausted after ${diagnostics.attempts}/${rescopeLimits.maxRescopeAttempts} attempt(s) with ${diagnostics.unresolvedCriticalNeedIds.length} critical source need(s) unresolved (${diagnostics.unresolvedCriticalNeedIds.slice(0, 10).join(', ')}); failing compile instead of producing vague plans. Tool ledger: ${diagnostics.ledger.usedToolUses}/${diagnostics.ledger.totalToolUseBudget}.`;
-    throw new AdaptiveRescopeFailClosedError(reason, diagnostics);
-  }
-  diagnostics.status = 'exhausted-proceeded';
-  emit(`Adaptive rescoping exhausted with non-critical needs unresolved; proceeding with ${directives.length} rescoped scopes and merged hints.`, 'warning');
-  return { hints, outcome, unknownIdDrops, rescopeDirectives: directives, diagnostics };
+  // Every attempt ended with rescopable critical needs outstanding (resolved
+  // criticals return inside the loop), so exhaustion here always fails closed.
+  diagnostics.status = 'fail-closed';
+  const reason = `Adaptive rescoping exhausted after ${diagnostics.attempts}/${rescopeLimits.maxRescopeAttempts} attempt(s) with ${diagnostics.unresolvedCriticalNeedIds.length} critical source need(s) unresolved or below high confidence (${diagnostics.unresolvedCriticalNeedIds.slice(0, 10).join(', ')}); failing compile instead of producing vague plans. Tool ledger: ${diagnostics.ledger.usedToolUses}/${diagnostics.ledger.totalToolUseBudget}.`;
+  throw new AdaptiveRescopeFailClosedError(reason, diagnostics);
+}
+
+const OUTCOME_STATUS_SEVERITY: Record<RepositoryExplorationOutcome['status'], number> = { 'completed': 0, 'needs-rescope': 1, 'ambiguous': 2, 'budget-exhausted': 3 };
+
+/** Merge scoped rerun outcomes: most-degraded status wins, id/path lists union, tool counts sum. */
+function mergeOutcomes(base: RepositoryExplorationOutcome, extra: RepositoryExplorationOutcome): RepositoryExplorationOutcome {
+  const notes = [base.notes, extra.notes].filter(Boolean).join('; ');
+  return {
+    status: OUTCOME_STATUS_SEVERITY[extra.status] > OUTCOME_STATUS_SEVERITY[base.status] ? extra.status : base.status,
+    unresolvedNeedIds: mergedList(base.unresolvedNeedIds, extra.unresolvedNeedIds, 100),
+    reasons: mergedList(base.reasons, extra.reasons, 32),
+    attemptedQueries: [...(base.attemptedQueries ?? []), ...(extra.attemptedQueries ?? [])].slice(0, 100),
+    candidatePaths: mergedList(base.candidatePaths, extra.candidatePaths, 100),
+    rescopeHints: mergedList(base.rescopeHints, extra.rescopeHints, 32),
+    ...(notes ? { notes: notes.slice(0, 2_000) } : {}),
+    toolUseCount: (base.toolUseCount ?? 0) + (extra.toolUseCount ?? 0),
+  };
+}
+
+function mergedList<T>(base: T[] | undefined, extra: T[] | undefined, maxItems: number): T[] {
+  return [...new Set([...(base ?? []), ...(extra ?? [])])].slice(0, maxItems);
+}
+
+function pushUnique(list: string[], value: string): void {
+  if (!list.includes(value)) list.push(value);
 }
 
 function mergeHints(base: SourceLocalizationInputHints | undefined, extra: SourceLocalizationInputHints): SourceLocalizationInputHints {

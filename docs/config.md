@@ -221,7 +221,7 @@ All numeric values must be positive integers. `planningUnitMaxObservedTurns` is 
 | `compile.planningUnitMaxObservedInputTokens` | `120000` | Maximum observed input tokens before the unit is considered over budget. |
 | `compile.planningUnitMaxObservedTurns` | unset | Optional maximum observed agent turns for one planning unit. |
 | `compile.planningUnitMaxCompactHandoffBytes` | `12000` | Maximum compact handoff size emitted between planning units. |
-| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | Maximum local exploration tool uses per planning unit. |
+| `compile.planningUnitMaxLocalExplorationToolUses` | `24` | Maximum local exploration tool uses per planning unit. During adaptive rescoping this is the per-scope clamp; total exploration tool uses across rescope reruns are additionally bounded by a cross-run ledger of 3x the initial derived budget. |
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | Maximum subsystem hints assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | Maximum split attempts for one planning unit before exhaustion. |

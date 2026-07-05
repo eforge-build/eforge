@@ -72,7 +72,9 @@ function rescopeAtoms(inventory: SourceInventory, limits: PlanningDecompositionL
     const wanted = new Set(directive.criterionIds);
     const criteria = inventory.criteria.filter((criterion) => wanted.has(criterion.id) && !assigned.has(criterion.id));
     for (const criterion of criteria) assigned.add(criterion.id);
-    if (criteria.length > 0) appendGroup(`atom-rescope-${stableSlug(directive.groupKey)}`, `${directive.groupKey} rescope planning`, criteria);
+    // Key off the directiveId (unique even when distinct group keys slug
+    // identically) so colliding groups cannot produce duplicate atom ids.
+    if (criteria.length > 0) appendGroup(`atom-${directive.directiveId}`, `${directive.groupKey} rescope planning`, criteria);
   }
   const residual = inventory.criteria.filter((criterion) => !assigned.has(criterion.id));
   if (residual.length > 0) appendGroup('atom-rescope-residual', 'Residual rescope planning', residual);
