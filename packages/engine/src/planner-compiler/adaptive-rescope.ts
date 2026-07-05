@@ -14,8 +14,14 @@ import type { SourceInventory } from './source-inventory.js';
 
 // --- eforge:region adaptive-rescope-contracts ---
 
-/** Need kinds whose unresolved state marks a need as critical for fail-closed decisions. */
-const CRITICAL_NEED_KINDS = new Set(['interface', 'entrypoint']);
+/**
+ * Need kinds whose unresolved state can make compile output unsafe. Keep this
+ * intentionally narrow: surface words such as config/route/test/docs are useful
+ * rescope signals, but they are too generic to justify failing compile before
+ * the decomposed planner gets a chance to produce scoped work.
+ */
+const CRITICAL_NEED_KINDS = new Set(['entrypoint']);
+const CONCRETE_INTERFACE_KEYS = new Set(['schema-contract', 'route-api', 'command-surface', 'ui-surface', 'extension-surface']);
 
 export type AdaptiveRescopeStatus = 'not-needed' | 'warning-only' | 'rescoped' | 'exhausted-proceeded' | 'fail-closed';
 
@@ -79,12 +85,14 @@ function isUnresolved(record: SourceLocalizationRecord): boolean {
   return record.status !== 'resolved' || record.confidence !== 'high';
 }
 
-/** Unresolved needs that are critical: contract/entrypoint kinds, or linked to criteria carrying interface keys. */
+/** Unresolved needs that are critical enough to justify fail-closed compile behavior. */
 export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, inventory: SourceInventory): string[] {
-  const interfaceCriterionIds = new Set(inventory.criteria.filter((criterion) => criterion.interfaceKeys.length > 0).map((criterion) => criterion.id));
+  const concreteInterfaceCriterionIds = new Set(inventory.criteria
+    .filter((criterion) => criterion.interfaceKeys.some((key) => CONCRETE_INTERFACE_KEYS.has(key)))
+    .map((criterion) => criterion.id));
   return bundle.records
     .filter(isUnresolved)
-    .filter((record) => CRITICAL_NEED_KINDS.has(record.kind) || record.linkedCriterionIds.some((id) => interfaceCriterionIds.has(id)))
+    .filter((record) => CRITICAL_NEED_KINDS.has(record.kind) || (record.kind === 'interface' && (record.linkedCriterionIds.length === 0 || record.linkedCriterionIds.some((id) => concreteInterfaceCriterionIds.has(id)))))
     .map((record) => record.needId)
     .sort();
 }
@@ -137,10 +145,7 @@ export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; i
  * than two distinct groups exist - a single group cannot narrow anything.
  */
 export function deriveRescopeDirectives(inventory: SourceInventory, bundle: SourceLocalizationBundle): PlanningRescopeDirective[] {
-  const unresolvedByCriterion = new Map<string, number>();
-  for (const record of bundle.records.filter(isUnresolved)) {
-    for (const criterionId of record.linkedCriterionIds) unresolvedByCriterion.set(criterionId, (unresolvedByCriterion.get(criterionId) ?? 0) + 1);
-  }
+  const unresolvedByCriterion = unresolvedCountsByCriterion(bundle.records.filter(isUnresolved));
   const commonHints = commonToAllCriteria(inventory, (criterion) => [...criterion.subsystemHints, ...criterion.interfaceKeys]);
   const groups = new Map<string, string[]>();
   for (const criterion of [...inventory.criteria].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -167,6 +172,36 @@ export function deriveRescopeDirectives(inventory: SourceInventory, bundle: Sour
         rationale: `degraded exploration: split by ${groupKey} (${criterionIds.length} criteria, ${criterionIds.reduce((sum, id) => sum + (unresolvedByCriterion.get(id) ?? 0), 0)} unresolved need links)`,
       };
     });
+}
+
+function unresolvedCountsByCriterion(records: SourceLocalizationRecord[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const record of records) for (const criterionId of record.linkedCriterionIds) counts.set(criterionId, (counts.get(criterionId) ?? 0) + 1);
+  return counts;
+}
+
+function sortedDirectivesByPriority(directives: PlanningRescopeDirective[], bundle: SourceLocalizationBundle, inventory: SourceInventory): PlanningRescopeDirective[] {
+  const unresolvedByCriterion = unresolvedCountsByCriterion(bundle.records.filter(isUnresolved));
+  const criticalNeedIds = new Set(criticalUnresolvedNeedIds(bundle, inventory));
+  const criticalByCriterion = unresolvedCountsByCriterion(bundle.records.filter((record) => criticalNeedIds.has(record.needId)));
+  const score = (directive: PlanningRescopeDirective, counts: Map<string, number>) => directive.criterionIds.reduce((sum, id) => sum + (counts.get(id) ?? 0), 0);
+  return [...directives].sort((a, b) =>
+    score(b, criticalByCriterion) - score(a, criticalByCriterion)
+    || score(b, unresolvedByCriterion) - score(a, unresolvedByCriterion)
+    || b.criterionIds.length - a.criterionIds.length
+    || a.groupKey.localeCompare(b.groupKey));
+}
+
+function scopeNeedCount(bundle: SourceLocalizationBundle, directive: PlanningRescopeDirective): number {
+  const wanted = new Set(directive.criterionIds);
+  return bundle.records.filter((record) => isUnresolved(record) && record.linkedCriterionIds.some((id) => wanted.has(id))).length;
+}
+
+function deriveLedgerBudget(input: { initialBudget: number; directives: PlanningRescopeDirective[]; bundle: SourceLocalizationBundle; rescopeLimits: AdaptiveRescopeLimits; clamp: number; includeBroadPass: boolean }): number {
+  const broadBudget = input.includeBroadPass ? input.initialBudget : 0;
+  const scopedBudget = input.directives.reduce((sum, directive) => sum + deriveExplorationToolBudget(scopeNeedCount(input.bundle, directive), input.rescopeLimits, input.clamp), 0);
+  const legacyBudget = input.initialBudget * input.rescopeLimits.explorationTotalBudgetMultiplier;
+  return Math.max(legacyBudget, broadBudget + scopedBudget);
 }
 
 function commonToAllCriteria(inventory: SourceInventory, hintsOf: (criterion: SourceInventory['criteria'][number]) => string[]): Set<string> {
@@ -217,7 +252,6 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   if (skip.skip) return { diagnostics };
 
   const initialBudget = deriveExplorationToolBudget(baseline.records.filter(isUnresolved).length, rescopeLimits, input.limits.maxLocalExplorationToolUses);
-  diagnostics.ledger.totalToolUseBudget = initialBudget * rescopeLimits.explorationTotalBudgetMultiplier;
   const runExploration = async (bundle: SourceLocalizationBundle, scopedGraph: PlanningAtomGraph, budget: number, scopeNeedIds?: string[]) => {
     const result = await runRepositoryExplorationAgent({
       cwd: input.cwd, harness: input.harness,
@@ -234,27 +268,39 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     return result;
   };
 
-  const initial = await runExploration(baseline, graph, initialBudget);
-  let hints = initial.hints;
-  let outcome = initial.outcome;
-  const unknownIdDrops = [...initial.unknownIdDrops];
-  if (outcome.status === 'completed' && hints) {
-    emit(`Repository exploration produced ${hints.projectHints?.length ?? 0} localization hints in ${initial.toolUses} tool uses.`);
-    return { hints, outcome, unknownIdDrops, diagnostics };
-  }
-
   const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits });
   diagnostics.riskReasons = risk.reasons;
-  if (!risk.risky) {
-    diagnostics.status = 'warning-only';
-    emit(`Repository exploration degraded (${outcome.status}) but deterministic localization confidence is sufficient; proceeding with a warning.`, 'warning');
-    return { hints, outcome, unknownIdDrops, diagnostics };
+  let bundle = baseline;
+  let hints: SourceLocalizationInputHints | undefined;
+  let outcome: RepositoryExplorationOutcome = { status: 'needs-rescope', reasons: ['too-broad'], notes: 'Risky collapsed scope split before broad exploration.' };
+  const unknownIdDrops: Array<{ field: string; id: string; index?: number }> = [];
+  let directives = risk.risky ? sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, baseline), baseline, input.inventory) : [];
+  if (directives.length > MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT) directives = directives.slice(0, MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT);
+
+  if (risk.risky && directives.length >= 2 && rescopeLimits.maxRescopeAttempts > 0) {
+    diagnostics.ledger.totalToolUseBudget = deriveLedgerBudget({ initialBudget, directives, bundle: baseline, rescopeLimits, clamp: input.limits.maxLocalExplorationToolUses, includeBroadPass: false });
+    emit(`Adaptive rescope pre-split: root scope is risky (${risk.reasons.join('; ')}); splitting before broad repository exploration.`);
+  } else {
+    diagnostics.ledger.totalToolUseBudget = initialBudget * rescopeLimits.explorationTotalBudgetMultiplier;
+    const initial = await runExploration(baseline, graph, initialBudget);
+    hints = initial.hints;
+    outcome = initial.outcome;
+    unknownIdDrops.push(...initial.unknownIdDrops);
+    if (outcome.status === 'completed' && hints) {
+      emit(`Repository exploration produced ${hints.projectHints?.length ?? 0} localization hints in ${initial.toolUses} tool uses.`);
+      return { hints, outcome, unknownIdDrops, diagnostics };
+    }
+    if (!risk.risky) {
+      diagnostics.status = 'warning-only';
+      emit(`Repository exploration degraded (${outcome.status}) but deterministic localization confidence is sufficient; proceeding with a warning.`, 'warning');
+      return { hints, outcome, unknownIdDrops, diagnostics };
+    }
+    diagnostics.ledger.totalToolUseBudget = deriveLedgerBudget({ initialBudget, directives, bundle: baseline, rescopeLimits, clamp: input.limits.maxLocalExplorationToolUses, includeBroadPass: true });
   }
 
-  let bundle = baseline;
-  let directives: PlanningRescopeDirective[] = [];
+  const everScopedRerunNeedIds = new Set<string>();
   for (let attempt = 1; attempt <= rescopeLimits.maxRescopeAttempts; attempt += 1) {
-    let derived = deriveRescopeDirectives(input.inventory, bundle);
+    let derived = attempt === 1 && directives.length > 0 ? directives : sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, bundle), bundle, input.inventory);
     if (derived.length === 0) {
       diagnostics.status = 'warning-only';
       emit(`Adaptive rescope attempt ${attempt}: no split signal (single scope); proceeding degraded with a warning.`, 'warning');
@@ -264,17 +310,19 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
       emit(`Adaptive rescope attempt ${attempt}: capping ${derived.length} split scopes to ${MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT}; ${derived.length - MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT} scope(s) will not be re-explored.`, 'warning');
       derived = derived.slice(0, MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT);
     }
-    directives = derived;
+    directives = sortedDirectivesByPriority(derived, bundle, input.inventory);
     diagnostics.attempts = attempt;
-    diagnostics.splitGroups = derived.map(({ directiveId, groupKey, criterionIds, rationale }) => ({ directiveId, groupKey, criterionIds, rationale }));
+    diagnostics.splitGroups = directives.map(({ directiveId, groupKey, criterionIds, rationale }) => ({ directiveId, groupKey, criterionIds, rationale }));
     const rescopedGraph = derivePlanningAtomGraph({ content: input.sourceContent, hash: input.inventory.sourceHash, limits: input.limits, inventory: input.inventory, rescopeDirectives: directives });
     diagnostics.revisedAtomCount = rescopedGraph.atoms.length;
-    emit(`Adaptive rescope attempt ${attempt}/${rescopeLimits.maxRescopeAttempts}: split ${diagnostics.originalAtomCount} atom(s) into ${rescopedGraph.atoms.length} across ${derived.length} scopes (${risk.reasons.join('; ')}).`);
+    emit(`Adaptive rescope attempt ${attempt}/${rescopeLimits.maxRescopeAttempts}: split ${diagnostics.originalAtomCount} atom(s) into ${rescopedGraph.atoms.length} across ${directives.length} scopes (${risk.reasons.join('; ')}).`);
     bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints, index });
     let rerunsThisAttempt = 0;
     let budgetSkipsThisAttempt = 0;
+    const skippedScopeNeedIds = new Set<string>();
+    const scopedRerunNeedIds = new Set<string>();
     const attemptOutcomes: RepositoryExplorationOutcome[] = [];
-    for (const directive of directives) {
+    for (const [directiveIndex, directive] of directives.entries()) {
       const wanted = new Set(directive.criterionIds);
       const scopeNeeds = bundle.records.filter((record) => isUnresolved(record) && record.linkedCriterionIds.some((id) => wanted.has(id)));
       if (scopeNeeds.length === 0) {
@@ -282,14 +330,24 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
         continue;
       }
       const remaining = diagnostics.ledger.totalToolUseBudget - diagnostics.ledger.usedToolUses;
-      const budget = Math.min(deriveExplorationToolBudget(scopeNeeds.length, rescopeLimits, input.limits.maxLocalExplorationToolUses), remaining);
+      const reserveForLater = directives.slice(directiveIndex + 1).reduce((sum, later) => {
+        const laterNeedCount = scopeNeedCount(bundle, later);
+        return laterNeedCount === 0 ? sum : sum + Math.min(deriveExplorationToolBudget(laterNeedCount, rescopeLimits, input.limits.maxLocalExplorationToolUses), rescopeLimits.explorationBudgetBaseToolUses);
+      }, 0);
+      const desiredBudget = deriveExplorationToolBudget(scopeNeeds.length, rescopeLimits, input.limits.maxLocalExplorationToolUses);
+      const budget = Math.min(desiredBudget, Math.max(0, remaining - reserveForLater));
       if (budget < 1) {
         budgetSkipsThisAttempt += 1;
+        for (const record of scopeNeeds) skippedScopeNeedIds.add(record.needId);
         emit(`Adaptive rescope: cross-run tool budget exhausted (${diagnostics.ledger.usedToolUses}/${diagnostics.ledger.totalToolUseBudget}); scope ${directive.groupKey} not rerun.`, 'warning');
         continue;
       }
       pushUnique(diagnostics.rerunScopeKeys, directive.groupKey);
       rerunsThisAttempt += 1;
+      for (const record of scopeNeeds) {
+        scopedRerunNeedIds.add(record.needId);
+        everScopedRerunNeedIds.add(record.needId);
+      }
       const scoped = await runExploration(bundle, rescopedGraph, budget, scopeNeeds.map((record) => record.needId).sort());
       unknownIdDrops.push(...scoped.unknownIdDrops);
       attemptOutcomes.push(scoped.outcome);
@@ -316,6 +374,16 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
         emit(`Adaptive rescope attempt ${attempt}: all ${directives.length} scopes already localized; compiling ${rescopedGraph.atoms.length} rescoped scopes without re-exploration.`);
       }
       return { hints, outcome, unknownIdDrops, rescopeDirectives: directives, diagnostics };
+    }
+    if (budgetSkipsThisAttempt > 0) {
+      const remainingAfterRerun = critical.rescopable.filter((needId) => everScopedRerunNeedIds.has(needId));
+      const remainingOnlyFromSkippedScopes = critical.rescopable.every((needId) => skippedScopeNeedIds.has(needId) && !everScopedRerunNeedIds.has(needId));
+      if (remainingOnlyFromSkippedScopes) {
+        diagnostics.status = 'exhausted-proceeded';
+        emit(`Adaptive rescope attempt ${attempt}: ${critical.rescopable.length} critical need(s) remain only in scope(s) skipped by the exploration budget; compiling ${rescopedGraph.atoms.length} rescoped scopes with low-confidence localization warnings instead of failing closed on budget starvation.`, 'warning');
+        return { hints, outcome, unknownIdDrops, rescopeDirectives: directives, diagnostics };
+      }
+      emit(`Adaptive rescope attempt ${attempt}: ${remainingAfterRerun.length} critical need(s) remain after scoped reruns; not masking them behind ${budgetSkipsThisAttempt} budget-skipped scope(s).`, 'warning');
     }
     // Critical needs remain and nothing was rerun: further attempts would
     // replay identical directives against the same exhausted ledger, so stop.

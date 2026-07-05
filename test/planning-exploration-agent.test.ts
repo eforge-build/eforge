@@ -280,6 +280,8 @@ describe('repository exploration agent', () => {
     expect(harness.calls[0].tools).toBe('read-only');
     expect(harness.calls[1].tools).toBe('none');
     expect(harness.calls[1].maxTurns).toBe(2);
+    expect(harness.prompts[1]).toContain('Prior read-only observations');
+    expect(harness.prompts[1]).toContain('listing');
   });
 
   it('produces localization records with concrete owner paths when hints feed deriveSourceLocalization', async () => {
