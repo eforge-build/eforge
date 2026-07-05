@@ -66,7 +66,7 @@ function resolveNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limit
   const capped = dedupeCandidates(scored).slice(0, cap);
   if (scored.length > capped.length) diagnostics.push({ code: SURFACE_KINDS.has(need.kind) ? 'surface-candidate-budget' : 'candidate-budget', message: `Candidate list capped at ${cap}.`, severity: 'info', needId: need.id });
   const status = recordStatus(need, capped, diagnostics);
-  return { needId: need.id, kind: need.kind, query: need.query, status, candidateFiles: capped, confidence: confidenceFor(capped[0]?.score ?? 0), reason: capped[0]?.reason ?? (diagnostics[0]?.message ?? 'no repository signal'), linkedCriterionIds: [...need.criterionIds], linkedAspectIds: [...need.aspectIds], assignedAtomIds: [...need.assignedAtomIds], diagnostics, budgetNotes: budgetNotes(index, limits, scored.length, cap) };
+  return { needId: need.id, kind: need.kind, query: need.query, status, candidateFiles: capped, confidence: confidenceFor(capped[0]?.score ?? 0), reason: capped[0]?.reason ?? (diagnostics[0]?.message ?? 'no repository signal'), linkedCriterionIds: [...need.criterionIds], linkedAspectIds: [...need.aspectIds], assignedAtomIds: [...need.assignedAtomIds], diagnostics, budgetNotes: budgetNotes(index, limits, scored.length, cap), source: need.source, subsystemHints: [...need.subsystemHints], interfaceKeys: [...need.interfaceKeys] };
 }
 
 /**
