@@ -271,6 +271,33 @@ describe('synthesizeFromEvents — resume run selection', () => {
     expect(seed.seededPending).toContain('plan-07');
   });
 
+  it('selects a newer failed compile run even when an older build has richer plan evidence', () => {
+    const cwd = makeTempDir();
+    const setName = 'compile-failure-selection';
+    const dbPath = join(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+    const buildRunId = `run-${setName}-build`;
+    const compileRunId = `run-${setName}-compile`;
+    const t0 = '2026-01-01T00:00:00.000Z';
+    const t1 = '2026-01-01T01:00:00.000Z';
+
+    db.insertRun({ id: buildRunId, planSet: setName, command: 'build', status: 'failed', startedAt: t0, cwd });
+    insertRecoverySelectionEvent(db, buildRunId, 'plan:status:change', 'stale-plan', t0, { status: 'failed' });
+    insertRecoverySelectionEvent(db, buildRunId, 'plan:build:failed', 'stale-plan', t0, { error: 'stale plan failure' });
+    insertRecoverySelectionEvent(db, buildRunId, 'phase:end', undefined, t0, { runId: buildRunId, result: { status: 'failed', summary: 'old failed build' } });
+
+    db.insertRun({ id: compileRunId, planSet: setName, command: 'compile', status: 'failed', startedAt: t1, cwd });
+    insertRecoverySelectionEvent(db, compileRunId, 'agent:stop', undefined, t1, { agent: 'planner-compiler', error: 'latest compiler failed' });
+    insertRecoverySelectionEvent(db, compileRunId, 'phase:end', undefined, t1, { runId: compileRunId, result: { status: 'failed', summary: 'latest compiler failed' } });
+    db.close();
+
+    const fragment = synthesizeFromEvents({ setName, prdId: setName, dbPath });
+
+    expect(fragment?.failedAt).toBe(t1);
+    expect(fragment?.failingPlan).toMatchObject({ planId: 'compile', errorMessage: 'latest compiler failed' });
+    expect(fragment?.failingPlan?.planId).not.toBe('stale-plan');
+  });
+
   it('ignores a newer running resume run and keeps the failed build fragment', () => {
     const cwd = makeTempDir();
     const setName = 'running-resume-guard';

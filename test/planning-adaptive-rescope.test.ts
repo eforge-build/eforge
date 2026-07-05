@@ -104,24 +104,26 @@ describe('rescope risk classification and directives', () => {
     expect(risk.reasons.join(' ')).toContain('subsystem-diverse-root');
   });
 
-  it('marks unresolved interface/entrypoint needs and interface-key criteria as critical', () => {
+  it('marks unresolved entrypoint needs and explicit project-hint interfaces as critical', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([
-      { needId: 'need-iface', kind: 'interface', status: 'unresolved', confidence: 'low' },
+      { needId: 'need-generic-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'criterion', linkedCriterionIds: ['ac-001'], interfaceKeys: ['schema-contract'] },
+      { needId: 'need-inventory-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'inventory', linkedCriterionIds: ['ac-001'], interfaceKeys: ['route-api'] },
+      { needId: 'need-explicit-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'project-hint', linkedCriterionIds: ['ac-001'], interfaceKeys: ['WidgetContract'] },
       { needId: 'need-entry', kind: 'entrypoint', status: 'partial', confidence: 'medium' },
       { needId: 'need-ok', kind: 'keyword', status: 'resolved', confidence: 'high' },
       { needId: 'need-keyword', kind: 'keyword', status: 'unresolved', confidence: 'low' },
     ]);
-    expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry', 'need-iface']);
+    expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry', 'need-explicit-iface']);
   });
 
   it('treats generic interface wording as a rescope signal but not a fail-closed blocker', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([
-      { needId: 'need-generic-linked', kind: 'interface', status: 'unresolved', confidence: 'low', linkedCriterionIds: ['ac-001'] },
-      { needId: 'need-unlinked', kind: 'interface', status: 'unresolved', confidence: 'low' },
+      { needId: 'need-generic-linked', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'criterion', linkedCriterionIds: ['ac-001'], interfaceKeys: ['schema-contract'] },
+      { needId: 'need-unlinked', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'inventory', interfaceKeys: ['route-api'] },
     ]);
-    expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: [], unrescopable: ['need-unlinked'] });
+    expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: [], unrescopable: [] });
   });
 
   it('derives deterministic split directives keyed by subsystem and returns none for a single group', () => {
@@ -186,11 +188,11 @@ describe('adaptive rescope loop', () => {
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope attempt 1/'))).toBe(true);
   });
 
-  it('fails closed when rescope attempts are exhausted with critical needs unresolved', async () => {
+  it('fails closed when rescope attempts are exhausted with explicit entrypoint ownership unresolved', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-failclosed-'));
     const content = prd([
-      'engine updates the `packages/engine/src/rescope-api.ts` route schema contract.',
-      'client updates the `packages/client/src/rescope-api-consumer.ts` route schema contract.',
+      'engine updates the package entrypoint in `packages/engine/src/rescope-main.ts`.',
+      'client updates the package entrypoint in `packages/client/src/rescope-main.ts`.',
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
     const harness = new StubHarness([
@@ -204,11 +206,30 @@ describe('adaptive rescope loop', () => {
     await expect(attempt).rejects.toThrow(/critical source need/);
   });
 
+  it('proceeds degraded when generic route and schema interface signals remain unresolved after scoped reruns', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-generic-interface-'));
+    const content = prd([
+      'The route API and schema contract tests emit a user-visible stop reason when the attempt budget is exhausted.',
+      'Queue/run/auto-build projections expose policy enabled/disabled state.',
+      'Typed event/schema parity tests cover the new variants.',
+      'Console clearly distinguishes auto-resume decisions from user-confirmed actions.',
+    ]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const harness = new StubHarness(Array.from({ length: 8 }, (_, index) => submit(`submit-generic-${index}`, outcome('budget-exhausted', { reasons: ['tool-budget'] }))));
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
+
+    expect(result.diagnostics.status).toBe('exhausted-proceeded');
+    expect(result.diagnostics.unresolvedCriticalNeedIds).toEqual([]);
+    expect(result.outcome?.status).toBe('budget-exhausted');
+    expect(result.diagnostics.riskReasons.join(' ')).toContain('unresolved-interface-signals');
+  });
+
   it('does not let a later budget-skipped scope mask critical needs that remained after a rerun', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-rerun-critical-'));
     const content = prd([
-      'engine updates the `packages/engine/src/rescope-api.ts` route schema contract.',
-      'client updates the `packages/client/src/rescope-api-consumer.ts` route schema contract.',
+      'engine updates the package entrypoint in `packages/engine/src/rescope-main.ts`.',
+      'client updates the package entrypoint in `packages/client/src/rescope-main.ts`.',
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
     const harness = new StubHarness([{ toolCalls: [
@@ -266,7 +287,7 @@ describe('adaptive rescope loop', () => {
     expect(result.diagnostics.ledger.totalToolUseBudget).toBe(2);
     expect(result.diagnostics.ledger.usedToolUses).toBe(2);
     expect(result.diagnostics.rerunScopeKeys.sort()).toEqual(['client', 'engine']);
-    expect(result.diagnostics.status).toBe('rescoped');
+    expect(result.diagnostics.status).toBe('exhausted-proceeded');
     expect(harness.calls).toHaveLength(2);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(true);
   });
@@ -288,7 +309,7 @@ describe('adaptive rescope loop', () => {
 
     const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
 
-    expect(result.diagnostics.status).toBe('rescoped');
+    expect(result.diagnostics.status).toBe('exhausted-proceeded');
     expect(result.diagnostics.rerunScopeKeys).toEqual(['client', 'engine']);
     expect(result.outcome?.status).toBe('budget-exhausted');
     expect(result.outcome?.reasons).toContain('tool-budget');

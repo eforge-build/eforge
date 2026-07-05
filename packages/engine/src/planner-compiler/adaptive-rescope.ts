@@ -21,7 +21,7 @@ import type { SourceInventory } from './source-inventory.js';
  * the decomposed planner gets a chance to produce scoped work.
  */
 const CRITICAL_NEED_KINDS = new Set(['entrypoint']);
-const CONCRETE_INTERFACE_KEYS = new Set(['schema-contract', 'route-api', 'command-surface', 'ui-surface', 'extension-surface']);
+const GENERIC_INTERFACE_QUERIES = new Set(['api', 'command', 'command-surface', 'config', 'configuration', 'contract', 'docs', 'extension', 'extension-surface', 'plugin', 'route', 'route-api', 'schema', 'schema-contract', 'test', 'ui', 'ui-surface']);
 
 export type AdaptiveRescopeStatus = 'not-needed' | 'warning-only' | 'rescoped' | 'exhausted-proceeded' | 'fail-closed';
 
@@ -86,13 +86,27 @@ function isUnresolved(record: SourceLocalizationRecord): boolean {
 }
 
 /** Unresolved needs that are critical enough to justify fail-closed compile behavior. */
-export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, inventory: SourceInventory): string[] {
-  const concreteInterfaceCriterionIds = new Set(inventory.criteria
-    .filter((criterion) => criterion.interfaceKeys.some((key) => CONCRETE_INTERFACE_KEYS.has(key)))
-    .map((criterion) => criterion.id));
+export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inventory: SourceInventory): string[] {
   return bundle.records
     .filter(isUnresolved)
-    .filter((record) => CRITICAL_NEED_KINDS.has(record.kind) || (record.kind === 'interface' && (record.linkedCriterionIds.length === 0 || record.linkedCriterionIds.some((id) => concreteInterfaceCriterionIds.has(id)))))
+    .filter(isCompileBlockingNeed)
+    .map((record) => record.needId)
+    .sort();
+}
+
+function isCompileBlockingNeed(record: SourceLocalizationRecord): boolean {
+  if (CRITICAL_NEED_KINDS.has(record.kind)) return true;
+  // Interface words inferred from PRD prose or inventory summaries are broad
+  // localization signals, not proof that compile would be unsafe. Only an
+  // explicit project hint naming a non-generic interface remains fail-closed.
+  if (record.kind !== 'interface' || record.source !== 'project-hint') return false;
+  return !GENERIC_INTERFACE_QUERIES.has(stableSlug(record.query));
+}
+
+function unresolvedInterfaceSignalNeedIds(bundle: SourceLocalizationBundle): string[] {
+  return bundle.records
+    .filter(isUnresolved)
+    .filter((record) => record.kind === 'interface')
     .map((record) => record.needId)
     .sort();
 }
@@ -132,8 +146,8 @@ export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; i
   if (skip.share < EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE) reasons.push(`low-confidence-share (${skip.highConfidenceCount}/${skip.literalNeedCount})`);
   const subsystems = new Set(input.inventory.criteria.flatMap((criterion) => criterion.subsystemHints));
   if (subsystems.size > input.limits.maxSubsystemsPerUnit) reasons.push(`subsystem-diverse-root (${subsystems.size} subsystems)`);
-  const critical = criticalUnresolvedNeedIds(input.bundle, input.inventory);
-  if (critical.length > 0) reasons.push(`unresolved-interface-needs (${critical.length})`);
+  const interfaceSignals = unresolvedInterfaceSignalNeedIds(input.bundle);
+  if (interfaceSignals.length > 0) reasons.push(`unresolved-interface-signals (${interfaceSignals.length})`);
   return { risky: reasons.length > 0, reasons };
 }
 
@@ -363,7 +377,10 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
       emit(`Adaptive rescope: ${critical.unrescopable.length} critical need(s) have no linked criteria and cannot be re-explored (${critical.unrescopable.slice(0, 5).join(', ')}); excluded from the fail-closed gate.`, 'warning');
     }
     if (critical.rescopable.length === 0) {
-      if (rerunsThisAttempt > 0) {
+      if (rerunsThisAttempt > 0 && outcome && outcome.status !== 'completed') {
+        diagnostics.status = 'exhausted-proceeded';
+        emit(`Adaptive rescope attempt ${attempt}: re-explored ${rerunsThisAttempt} scope(s); only non-critical localization needs remain after ${outcome.status}; compiling ${rescopedGraph.atoms.length} rescoped scopes with warnings.`, 'warning');
+      } else if (rerunsThisAttempt > 0) {
         diagnostics.status = 'rescoped';
         emit(`Adaptive rescope attempt ${attempt}: re-explored ${rerunsThisAttempt} scope(s); no critical localization needs remain; compiling ${rescopedGraph.atoms.length} rescoped scopes.`);
       } else if (budgetSkipsThisAttempt > 0) {
