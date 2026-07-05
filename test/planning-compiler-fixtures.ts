@@ -68,7 +68,7 @@ export function atomSubmission(output: PlanningAtomOutput) {
 }
 
 export function explorationSubmission(paths: string[], criterionIds: string[]) {
-  return { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-exploration', input: { projectHints: [{ kind: 'literal-path', query: 'grounded flag owner', paths, criterionIds }] }, output: 'ok' }] };
+  return { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-exploration', input: { status: 'completed', projectHints: [{ kind: 'literal-path', query: 'grounded flag owner', paths, criterionIds }] }, output: 'ok' }] };
 }
 
 export function reduceSubmission(output: PlanningReduceOutput) {

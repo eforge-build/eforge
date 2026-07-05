@@ -81,4 +81,29 @@ describe('planning source inventory and atom graph', () => {
     expect(graph.atoms.some((atom) => atom.reason === 'oversized-criterion')).toBe(true);
     expect(graph.atoms.flatMap((atom) => atom.evidencePaths)).toContain('packages/engine/src/large.ts');
   });
+
+  it('splits a collapsible criterion set into deterministic rescope atoms when directives are supplied', () => {
+    const content = prd([
+      'engine updates `packages/engine/src/a.ts` behavior.',
+      'client updates `packages/client/src/b.ts` behavior.',
+      'docs describe the updated behavior.',
+    ]);
+    const roomy = { ...limits, maxPromptSourceBytes: 4_000, maxCriteriaPerUnit: 10 };
+    const directives = [
+      { directiveId: 'rescope-client', groupKey: 'client', criterionIds: ['ac-002'], rationale: 'split by client' },
+      { directiveId: 'rescope-engine', groupKey: 'engine', criterionIds: ['ac-001'], rationale: 'split by engine' },
+    ];
+
+    const collapsed = derivePlanningAtomGraph({ content, hash: hash(content), limits: roomy });
+    expect(collapsed.atoms.map((atom) => atom.atomId)).toEqual(['atom-root']);
+
+    const rescoped = derivePlanningAtomGraph({ content, hash: hash(content), limits: roomy, rescopeDirectives: directives });
+    expect(rescoped.atoms.map((atom) => atom.atomId)).toEqual(['atom-rescope-client', 'atom-rescope-engine', 'atom-rescope-residual']);
+    expect(rescoped.atoms.every((atom) => atom.reason === 'rescope-split')).toBe(true);
+    expect(rescoped.atoms.find((atom) => atom.atomId === 'atom-rescope-residual')?.criterionIds).toEqual(['ac-003']);
+    // Deterministic: identical inputs produce the identical graph.
+    expect(derivePlanningAtomGraph({ content, hash: hash(content), limits: roomy, rescopeDirectives: directives })).toEqual(rescoped);
+    // A single directive cannot narrow anything; the collapse gate is unchanged.
+    expect(derivePlanningAtomGraph({ content, hash: hash(content), limits: roomy, rescopeDirectives: directives.slice(0, 1) }).atoms.map((atom) => atom.atomId)).toEqual(['atom-root']);
+  });
 });

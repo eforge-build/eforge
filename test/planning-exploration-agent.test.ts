@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
+import type { AgentRole, EforgeEvent } from '@eforge-build/engine/events';
 import {
   decideExplorationSkip,
   derivePlanningAtomGraph,
@@ -15,7 +17,7 @@ import {
   type SourceLocalizationBundle,
   type SourceLocalizationRecord,
 } from '@eforge-build/engine/planner-compiler';
-import { StubHarness, type StubScriptedEvent } from './stub-harness.js';
+import { StubHarness } from './stub-harness.js';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 4_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 2, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const hash = (value: string) => `h${value.length}`.padEnd(64, '0');
@@ -90,12 +92,14 @@ describe('exploration skip decision', () => {
 describe('exploration hints from submission', () => {
   it('normalizes valid hints and drops invalid entries individually with diagnostics', () => {
     const result = explorationHintsFromSubmission({
+      status: 'completed',
       projectHints: [
         { kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/a.ts'], criterionIds: ['ac-001'] },
         { kind: 'keyword', query: 'grounded flag', paths: ['/etc/passwd'], keywords: ['grounded'] },
       ],
     });
 
+    expect(result.outcome.status).toBe('completed');
     expect(result.hints?.projectHints).toHaveLength(2);
     expect(result.hints?.projectHints?.[0].paths).toEqual(['packages/engine/src/a.ts']);
     expect(result.hints?.projectHints?.[1].paths).toEqual([]);
@@ -103,12 +107,89 @@ describe('exploration hints from submission', () => {
   });
 
   it('degrades to no hints when every entry is invalid', () => {
-    const result = explorationHintsFromSubmission({ projectHints: [{ kind: 'not-a-kind' as never, query: 'bad' }] });
+    const result = explorationHintsFromSubmission({ status: 'completed', projectHints: [{ kind: 'not-a-kind' as never, query: 'bad' }] });
 
+    expect(result.outcome.status).toBe('completed');
     expect(result.hints).toBeUndefined();
     expect(result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')).toBe(true);
   });
+
+  it('keeps non-completed outcomes diagnostic-only without localization hints', () => {
+    const result = explorationHintsFromSubmission({
+      status: 'needs-rescope',
+      projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/a.ts'] }],
+      reasons: ['too-broad'],
+      notes: 'Source is too broad.',
+    });
+
+    expect(result.outcome.status).toBe('needs-rescope');
+    expect(result.hints).toBeUndefined();
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('drops unknown echoed ids with machine-readable diagnostics', () => {
+    const result = explorationHintsFromSubmission({
+      status: 'completed',
+      projectHints: [
+        { needId: 'need-valid', kind: 'literal-path', query: 'owner', paths: ['packages/engine/src/a.ts'], criterionIds: ['ac-valid', 'ac-missing'], aspectIds: ['aspect-valid', 'aspect-missing'] },
+        { needId: 'need-missing', kind: 'keyword', query: 'unknown echoed need', keywords: ['owner'] },
+      ],
+      unresolvedNeedIds: ['need-valid', 'need-missing'],
+      attemptedQueries: [{ needId: 'need-missing', query: 'bad need' }, { needId: 'need-valid', query: 'good need' }],
+    }, { allowedNeedIds: ['need-valid'], allowedCriterionIds: ['ac-valid'], allowedAspectIds: ['aspect-valid'] });
+
+    expect(result.outcome.projectHints?.[0]).toMatchObject({ needId: 'need-valid', criterionIds: ['ac-valid'], aspectIds: ['aspect-valid'] });
+    expect(result.outcome.projectHints?.[1]).not.toHaveProperty('needId');
+    expect(result.outcome.unresolvedNeedIds).toEqual(['need-valid']);
+    expect(result.outcome.attemptedQueries).toEqual([{ query: 'bad need' }, { needId: 'need-valid', query: 'good need' }]);
+    expect(result.unknownIdDrops).toEqual([
+      { field: 'criterionIds', id: 'ac-missing', index: 0 },
+      { field: 'aspectIds', id: 'aspect-missing', index: 0 },
+      { field: 'needId', id: 'need-missing', index: 1 },
+      { field: 'attemptedQueries.needId', id: 'need-missing', index: 0 },
+      { field: 'unresolvedNeedIds', id: 'need-missing' },
+    ]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(Array(5).fill('exploration-unknown-id-dropped'));
+  });
 });
+
+
+class AbortAwareExplorationHarness implements AgentHarness {
+  readonly calls: AgentRunOptions[] = [];
+  readonly prompts: string[] = [];
+
+  constructor(private readonly readOnlyToolUses: number, private readonly graceSubmission: unknown) {}
+
+  effectiveCustomToolName(name: string): string { return name; }
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    this.calls.push(options);
+    this.prompts.push(options.prompt);
+    const agentId = `abort-aware-${this.calls.length}`;
+    yield { type: 'agent:start', planId, agentId, agent, model: 'stub-model', harness: 'claude-sdk', harnessSource: 'tier', tier: 'stub', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'stub.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
+    if (options.tools === 'read-only') {
+      for (let index = 0; index < this.readOnlyToolUses + 2; index += 1) {
+        if (options.abortSignal?.aborted) throw abortError();
+        yield { type: 'agent:tool_use', planId, agentId, agent, tool: 'inspect_repository', toolUseId: `inspect-${index}`, input: {} };
+        if (options.abortSignal?.aborted) throw abortError();
+        yield { type: 'agent:tool_result', planId, agentId, agent, tool: 'inspect_repository', toolUseId: `inspect-${index}`, output: 'listing' };
+      }
+    } else {
+      const tool = options.customTools?.[0];
+      yield { type: 'agent:tool_use', planId, agentId, agent, tool: 'submit_exploration_outcome', toolUseId: 'submit-grace', input: this.graceSubmission };
+      const output = await tool?.handler(this.graceSubmission);
+      yield { type: 'agent:tool_result', planId, agentId, agent, tool: 'submit_exploration_outcome', toolUseId: 'submit-grace', output: output ?? 'ok' };
+    }
+    yield { type: 'agent:result', planId, agent, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} } };
+    yield { type: 'agent:stop', planId, agentId, agent, timestamp: new Date().toISOString() };
+  }
+}
+
+function abortError(): Error {
+  const err = new Error('aborted');
+  err.name = 'AbortError';
+  return err;
+}
 
 describe('repository exploration agent', () => {
   const explorationFixture = () => {
@@ -121,6 +202,7 @@ describe('repository exploration agent', () => {
   const emptyWorkspace = () => mkdtemp(path.join(os.tmpdir(), 'eforge-exploration-empty-'));
 
   const submission = (paths: string[]) => ({
+    status: 'completed',
     projectHints: [{ kind: 'literal-path', query: 'grounded flag owner', paths, criterionIds: ['ac-001'] }],
   });
 
@@ -129,60 +211,75 @@ describe('repository exploration agent', () => {
     const { inventory, graph } = explorationFixture();
     const baselineBundle = await deriveSourceLocalization({ cwd, inventory, graph });
     const harness = new StubHarness([
-      { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-1', input: submission(['packages/engine/src/vague-owner.ts']), output: 'ok' }] },
+      { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-1', input: submission(['packages/engine/src/vague-owner.ts']), output: 'ok' }] },
     ]);
 
-    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, maxToolUses: 8 });
+    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, graph, maxToolUses: 8 });
 
     expect(result.status).toBe('completed');
     expect(result.hints?.projectHints?.[0].paths).toEqual(['packages/engine/src/vague-owner.ts']);
     expect(harness.calls[0].tools).toBe('read-only');
     expect(harness.calls[0].maxTurns).toBeGreaterThan(1);
     for (const toolName of ['Bash', 'Write(', 'Read tool', 'Grep tool', 'Glob tool']) expect(harness.prompts[0]).not.toContain(toolName);
-    expect(harness.prompts[0]).toContain('submit_exploration_hints');
+    expect(harness.prompts[0]).toContain('submit_exploration_outcome');
     expect(harness.prompts[0]).toContain('ac-001');
     expect(result.events.some((event) => event.type === 'agent:start' && event.planId === REPOSITORY_EXPLORATION_PLAN_ID)).toBe(true);
   });
 
-  it('degrades without throwing when the submission is schema-invalid', async () => {
+  it('synthesizes a structured budget-exhausted outcome when the submission is schema-invalid', async () => {
     const cwd = await emptyWorkspace();
     const { inventory, graph } = explorationFixture();
     const baselineBundle = await deriveSourceLocalization({ cwd, inventory, graph });
     const harness = new StubHarness([
-      { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-1', input: { projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
+      { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-1', input: { status: 'completed', projectHints: [{ kind: 'not-a-kind', query: 'bad' }] }, output: 'ok' }] },
     ]);
 
-    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, maxToolUses: 8 });
+    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, graph, maxToolUses: 8 });
 
-    expect(result.status).toBe('degraded');
+    expect(result.status).toBe('completed');
+    expect(result.outcome.status).toBe('budget-exhausted');
     expect(result.hints).toBeUndefined();
   });
 
-  it('degrades without throwing when the harness errors mid-run', async () => {
+  it('synthesizes a structured budget-exhausted outcome when the harness errors mid-run', async () => {
     const cwd = await emptyWorkspace();
     const { inventory, graph } = explorationFixture();
     const baselineBundle = await deriveSourceLocalization({ cwd, inventory, graph });
     const harness = new StubHarness([{ error: new Error('backend exploded') }]);
 
-    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, maxToolUses: 8 });
+    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, graph, maxToolUses: 8 });
 
-    expect(result.status).toBe('degraded');
+    expect(result.status).toBe('completed');
+    expect(result.outcome.status).toBe('budget-exhausted');
     expect(result.diagnostics.some((diagnostic) => diagnostic.message.includes('backend exploded'))).toBe(true);
   });
 
-  it('counts tool uses and degrades when the budget is exhausted without a submission', async () => {
+  it('counts tool uses and synthesizes a structured outcome when the budget is exhausted without a submission', async () => {
     const cwd = await emptyWorkspace();
     const { inventory, graph } = explorationFixture();
     const baselineBundle = await deriveSourceLocalization({ cwd, inventory, graph });
     const maxToolUses = 3;
-    const events: StubScriptedEvent[] = Array.from({ length: maxToolUses + 2 }, (_, index) => ({ kind: 'tool_call' as const, tool: 'inspect_repository', toolUseId: `inspect-${index}`, input: {}, output: 'listing' }));
-    const harness = new StubHarness([{ events }]);
+    const harness = new AbortAwareExplorationHarness(maxToolUses, {
+      status: 'budget-exhausted',
+      unresolvedNeedIds: baselineBundle.records.map((record) => record.needId),
+      reasons: ['tool-budget'],
+      attemptedQueries: [{ needId: baselineBundle.records[0]?.needId, query: 'inspected repository' }],
+      candidatePaths: [],
+      rescopeHints: [],
+      toolUseCount: 999,
+    });
 
-    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, maxToolUses });
+    const result = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, graph, maxToolUses, agentOptions: { maxTurns: 9 } });
 
-    expect(result.status).toBe('degraded');
-    expect(result.toolUses).toBeGreaterThan(maxToolUses);
-    expect(result.diagnostics.some((diagnostic) => diagnostic.message.includes('budget') || diagnostic.message.includes('did not call'))).toBe(true);
+    expect(result.status).toBe('completed');
+    expect(result.outcome.status).toBe('budget-exhausted');
+    expect(result.toolUses).toBe(maxToolUses);
+    expect(result.outcome.toolUseCount).toBe(maxToolUses);
+    expect(result.outcome.reasons).toContain('tool-budget');
+    expect(harness.calls).toHaveLength(2);
+    expect(harness.calls[0].tools).toBe('read-only');
+    expect(harness.calls[1].tools).toBe('none');
+    expect(harness.calls[1].maxTurns).toBe(2);
   });
 
   it('produces localization records with concrete owner paths when hints feed deriveSourceLocalization', async () => {
@@ -193,10 +290,10 @@ describe('repository exploration agent', () => {
     const baselineBundle = await deriveSourceLocalization({ cwd, inventory, graph });
     expect(decideExplorationSkip(baselineBundle).skip).toBe(false);
     const harness = new StubHarness([
-      { toolCalls: [{ tool: 'submit_exploration_hints', toolUseId: 'submit-1', input: submission(['packages/engine/src/vague-owner.ts']), output: 'ok' }] },
+      { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-1', input: submission(['packages/engine/src/vague-owner.ts']), output: 'ok' }] },
     ]);
 
-    const exploration = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, maxToolUses: 8 });
+    const exploration = await runRepositoryExplorationAgent({ cwd, harness, inventory, baselineBundle, graph, maxToolUses: 8 });
     const hinted = await deriveSourceLocalization({ cwd, inventory, graph, hints: exploration.hints });
 
     const hintedRecord = hinted.records.find((record) => record.candidateFiles.some((candidate) => candidate.path === 'packages/engine/src/vague-owner.ts'));

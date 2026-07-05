@@ -172,6 +172,24 @@ describe('planning compiler source-localization repair loop', () => {
     expect(result.repairDiagnostics[0]?.gapClassifications.map((item) => item.issueKind).sort()).toEqual(['directory-only-evidence', 'localization-ambiguity', 'missing-materialized-source']);
     expect(result.residue.candidates.some((candidate) => candidate.reason === 'reduce-gap')).toBe(false);
   });
+
+  it('treats exploration-only issue kinds as non-repair-triggering unless the reducer sets an explicit signal', () => {
+    const base = { criterionIds: ['ac-001'], aspectIds: ['aspect-1'], representationRequired: true };
+    // Descriptions carry regex bait ("budget", "broad directory") that the legacy inference would
+    // reclassify into source-gap kinds; exploration-only kinds must not be re-inferred from text.
+    const toolBudgetGap = { ...base, gapId: 'gap-budget', title: 'Exploration budget exhausted', description: 'Exploration tool budget exhausted before localization completed.', issueKind: 'tool-budget' as const };
+    const tooBroadGap = { ...base, gapId: 'gap-broad', title: 'Scope too broad', description: 'Scope spans a broad directory of unrelated subsystems.', issueKind: 'too-broad' as const };
+
+    expect(classifyPlanningReduceGap(toolBudgetGap)).toBeUndefined();
+    expect(classifyPlanningReduceGap(tooBroadGap)).toBeUndefined();
+
+    expect(classifyPlanningReduceGap({ ...toolBudgetGap, sourceLocalizationSignal: true })).toMatchObject({ issueKind: 'tool-budget', sourceLocalizationSignal: true });
+    expect(classifyPlanningReduceGap({ ...tooBroadGap, sourceLocalizationSignal: true })).toMatchObject({ issueKind: 'too-broad', sourceLocalizationSignal: true });
+
+    // Legacy gaps without an issueKind keep the existing inference fallback.
+    expect(classifyPlanningReduceGap({ ...base, gapId: 'gap-legacy', title: 'Missing owner', description: 'Missing localized owner for source need need-1.' })).toMatchObject({ issueKind: 'missing-owner-path', sourceLocalizationSignal: true });
+    expect(classifyPlanningReduceGap({ ...base, gapId: 'gap-generic', title: 'Advice', description: 'Consider a follow-up refactor.', issueKind: 'generic' as const })).toBeUndefined();
+  });
 });
 
 function expectedTasks(content: string): PlanningAtomTask[] {

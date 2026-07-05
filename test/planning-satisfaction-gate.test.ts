@@ -2,6 +2,8 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
+import type { AgentRole, EforgeEvent } from '@eforge-build/engine/events';
 import {
   decidePlanningSatisfactionSkip,
   deriveSourceInventory,
@@ -95,6 +97,41 @@ describe('satisfaction skip decision', () => {
   });
 });
 
+class AbortAwareSatisfactionHarness implements AgentHarness {
+  readonly calls: AgentRunOptions[] = [];
+
+  constructor(private readonly readOnlyToolUses: number, private readonly graceSubmission?: unknown) {}
+
+  effectiveCustomToolName(name: string): string { return name; }
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    this.calls.push(options);
+    const agentId = `satisfaction-abort-aware-${this.calls.length}`;
+    yield { type: 'agent:start', planId, agentId, agent, model: 'stub-model', harness: 'claude-sdk', harnessSource: 'tier', tier: 'stub', tierSource: 'tier', runtimeChoice: 'default', runtimeChoiceQualified: 'stub.default', runtimeChoiceSource: 'default', timestamp: new Date().toISOString() };
+    if (options.tools === 'read-only') {
+      for (let index = 0; index < this.readOnlyToolUses + 2; index += 1) {
+        if (options.abortSignal?.aborted) throw abortError();
+        yield { type: 'agent:tool_use', planId, agentId, agent, tool: 'inspect_repository', toolUseId: `inspect-${index}`, input: {} };
+        if (options.abortSignal?.aborted) throw abortError();
+        yield { type: 'agent:tool_result', planId, agentId, agent, tool: 'inspect_repository', toolUseId: `inspect-${index}`, output: 'listing' };
+      }
+    } else if (this.graceSubmission) {
+      const tool = options.customTools?.[0];
+      yield { type: 'agent:tool_use', planId, agentId, agent, tool: 'submit_satisfaction_assessment', toolUseId: 'submit-grace', input: this.graceSubmission };
+      const output = await tool?.handler(this.graceSubmission);
+      yield { type: 'agent:tool_result', planId, agentId, agent, tool: 'submit_satisfaction_assessment', toolUseId: 'submit-grace', output: output ?? 'ok' };
+    }
+    yield { type: 'agent:result', planId, agent, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} } };
+    yield { type: 'agent:stop', planId, agentId, agent, timestamp: new Date().toISOString() };
+  }
+}
+
+function abortError(): Error {
+  const err = new Error('aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
 describe('satisfaction gate agent', () => {
   const workspaceWithEvidence = async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-satisfaction-'));
@@ -156,6 +193,27 @@ describe('satisfaction gate agent', () => {
     const silent = await runPlanningSatisfactionGate({ cwd, harness: silentHarness, inventory: inventoryFixture(), maxToolUses: 8 });
     expect(silent.decision.skip).toBe(false);
     expect(silent.decision.reason).toContain('did not call');
+  });
+
+  it('uses submit-only grace on budget exhaustion and fails open if grace does not submit', async () => {
+    const cwd = await workspaceWithEvidence();
+    const inventory = inventoryFixture();
+    const maxToolUses = 3;
+    const harness = new AbortAwareSatisfactionHarness(maxToolUses, { alreadySatisfied: false, reason: 'criterion still missing', verdicts: [] });
+
+    const result = await runPlanningSatisfactionGate({ cwd, harness, inventory, maxToolUses, agentOptions: { maxTurns: 9 } });
+
+    expect(result.decision).toEqual({ skip: false, reason: 'criterion still missing' });
+    expect(result.toolUses).toBe(maxToolUses);
+    expect(harness.calls).toHaveLength(2);
+    expect(harness.calls[0].tools).toBe('read-only');
+    expect(harness.calls[1].tools).toBe('none');
+    expect(harness.calls[1].maxTurns).toBe(2);
+
+    const noSubmitHarness = new AbortAwareSatisfactionHarness(maxToolUses);
+    const noSubmit = await runPlanningSatisfactionGate({ cwd, harness: noSubmitHarness, inventory, maxToolUses, agentOptions: { maxTurns: 9 } });
+    expect(noSubmit.decision.skip).toBe(false);
+    expect(noSubmit.decision.reason).toContain('budget exhausted');
   });
 
   it('fails open when the tool budget is exhausted without a submission', async () => {

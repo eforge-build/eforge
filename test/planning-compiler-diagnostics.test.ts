@@ -14,6 +14,8 @@ import {
   serializeCompilerDiagnostics,
   validateCompilerDiagnostics,
   writeCompilerDiagnosticsArtifact,
+  writeRescopeFailClosedArtifact,
+  type AdaptiveRescopeDiagnostics,
   type BoundedPlannerCompilerResult,
   type PlanningAtomMapResult,
   type PlanningAtomOutput,
@@ -104,6 +106,107 @@ describe('planning compiler diagnostics', () => {
     expect(diagnostics.validationErrors).toContain('source localization repair exhausted:gap-owner:no localized owner paths resolved');
   });
 
+  it('projects not-run exploration diagnostics when no outcome is present', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({ outcomeStatus: 'not-run', unresolvedNeedIds: [], reasons: [], attemptedQueries: [], candidatePaths: [], rescopeHints: [], unknownIdDrops: [], toolUseCount: 0 });
+  });
+
+  it('projects completed exploration diagnostics exactly', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], {
+      explorationOutcome: {
+        status: 'completed',
+        unresolvedNeedIds: ['need-2', 'need-1'],
+        reasons: ['localization-ambiguity', 'too-broad', 'too-broad'],
+        attemptedQueries: [{ needId: 'need-1', query: 'engine owner', tool: 'grep', result: 'packages/engine/src/a.ts' }],
+        candidatePaths: ['packages/engine/src/b.ts', 'packages/engine/src/a.ts'],
+        rescopeHints: ['narrow to engine owner'],
+        notes: 'Found likely owner.',
+        toolUseCount: 4,
+      },
+    });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({
+      outcomeStatus: 'completed',
+      unresolvedNeedIds: ['need-1', 'need-2'],
+      reasons: ['localization-ambiguity', 'too-broad'],
+      attemptedQueries: [{ needId: 'need-1', query: 'engine owner', tool: 'grep', result: 'packages/engine/src/a.ts' }],
+      candidatePaths: ['packages/engine/src/a.ts', 'packages/engine/src/b.ts'],
+      rescopeHints: ['narrow to engine owner'],
+      notes: 'Found likely owner.',
+      unknownIdDrops: [],
+      toolUseCount: 4,
+    });
+  });
+
+  it('projects synthesized budget-exhausted exploration diagnostics and unknown-id drops', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], {
+      explorationOutcome: {
+        status: 'budget-exhausted',
+        unresolvedNeedIds: ['need-budget'],
+        reasons: ['tool-budget'],
+        attemptedQueries: [],
+        candidatePaths: [],
+        rescopeHints: [],
+        notes: 'Exploration tool budget exhausted after 3 tool uses without a structured submission.',
+        toolUseCount: 3,
+      },
+      explorationUnknownIdDrops: [{ field: 'needId', id: 'need-missing', index: 0 }, { field: 'attemptedQueries.needId', id: 'need-other' }],
+    });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(diagnostics.exploration).toEqual({
+      outcomeStatus: 'budget-exhausted',
+      unresolvedNeedIds: ['need-budget'],
+      reasons: ['tool-budget'],
+      attemptedQueries: [],
+      candidatePaths: [],
+      rescopeHints: [],
+      notes: 'Exploration tool budget exhausted after 3 tool uses without a structured submission.',
+      unknownIdDrops: [{ field: 'needId', id: 'need-missing', index: 0 }, { field: 'attemptedQueries.needId', id: 'need-other' }],
+      toolUseCount: 3,
+    });
+  });
+
+  it('projects adaptive rescope diagnostics and remains schema-valid', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const rescope = {
+      status: 'rescoped' as const,
+      attempts: 1,
+      maxAttempts: 1,
+      originalAtomCount: 1,
+      revisedAtomCount: 3,
+      ledger: { totalToolUseBudget: 72, usedToolUses: 31 },
+      riskReasons: ['low-confidence-share (2/9)'],
+      splitGroups: [
+        { directiveId: 'rescope-client', groupKey: 'client', criterionIds: ['ac-002'], rationale: 'degraded exploration: split by client' },
+        { directiveId: 'rescope-engine', groupKey: 'engine', criterionIds: ['ac-001'], rationale: 'degraded exploration: split by engine' },
+      ],
+      rerunScopeKeys: ['engine'],
+      preservedScopeKeys: ['client'],
+      unresolvedCriticalNeedIds: [],
+    };
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], { rescopeDiagnostics: rescope });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' });
+
+    expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
+    expect(diagnostics.rescope).toEqual(rescope);
+    // Absent rescope diagnostics leave the section out entirely.
+    expect(buildCompilerDiagnostics({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), planSetName: 'diag-set' }).rescope).toBeUndefined();
+  });
+
   it('captures non-materialized source evidence as evidence failures', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
@@ -166,6 +269,28 @@ describe('planning compiler diagnostics', () => {
     await expect(writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: '../escape', diagnostics })).rejects.toThrow(/safe relative path component/);
     await expect(writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', diagnostics, fileName: '../evil.json' })).rejects.toThrow(/safe relative path component/);
   });
+
+  it('writes the rescope fail-closed artifact with the ledger and split history', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-rescope-failclosed-artifact-'));
+    const rescope: AdaptiveRescopeDiagnostics = {
+      status: 'fail-closed', attempts: 2, maxAttempts: 2, originalAtomCount: 1, revisedAtomCount: 3,
+      ledger: { totalToolUseBudget: 24, usedToolUses: 24 },
+      riskReasons: ['unresolved-interface-needs (1)'],
+      splitGroups: [{ directiveId: 'rescope-engine', groupKey: 'engine', criterionIds: ['ac-001'], rationale: 'split by engine' }],
+      rerunScopeKeys: ['engine'], preservedScopeKeys: [], unresolvedCriticalNeedIds: ['need-1'],
+    };
+
+    const artifactPath = await writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', reason: 'rescoping exhausted', rescope });
+
+    expect(artifactPath).toBe(resolve(cwd, 'eforge/plans/diag-set/rescope-fail-closed.json'));
+    const parsed = JSON.parse(await readFile(artifactPath, 'utf8')) as { reason: string; rescope: AdaptiveRescopeDiagnostics };
+    expect(parsed.reason).toBe('rescoping exhausted');
+    expect(parsed.rescope.status).toBe('fail-closed');
+    expect(parsed.rescope.ledger).toEqual({ totalToolUseBudget: 24, usedToolUses: 24 });
+    expect(parsed.rescope.unresolvedCriticalNeedIds).toEqual(['need-1']);
+
+    await expect(writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: '../escape', reason: 'x', rescope })).rejects.toThrow(/safe relative path component/);
+  });
 });
 
 interface CompilerFixtureOverrides {
@@ -174,6 +299,9 @@ interface CompilerFixtureOverrides {
   status?: BoundedPlannerCompilerResult['status'];
   validationErrors?: string[];
   evidenceRecords?: BoundedPlannerCompilerResult['sourceEvidenceBundle']['records'];
+  explorationOutcome?: BoundedPlannerCompilerResult['explorationOutcome'];
+  explorationUnknownIdDrops?: BoundedPlannerCompilerResult['explorationUnknownIdDrops'];
+  rescopeDiagnostics?: BoundedPlannerCompilerResult['rescopeDiagnostics'];
 }
 
 function fixture(criteria: string[]) {
@@ -199,6 +327,9 @@ function compilerFixture(data: ReturnType<typeof fixture>, atomOutputs: Planning
     reduce,
     residue,
     repairDiagnostics: overrides.repairDiagnostics ?? [],
+    ...(overrides.explorationOutcome ? { explorationOutcome: overrides.explorationOutcome } : {}),
+    ...(overrides.explorationUnknownIdDrops ? { explorationUnknownIdDrops: overrides.explorationUnknownIdDrops } : {}),
+    ...(overrides.rescopeDiagnostics ? { rescopeDiagnostics: overrides.rescopeDiagnostics } : {}),
     status: overrides.status ?? (residue.candidates.length > 0 ? 'complete-with-residue' : reduce.reduceComplete && map.mapComplete ? 'complete' : 'incomplete'),
     validationErrors: overrides.validationErrors ?? [],
     events: [],

@@ -4,18 +4,25 @@ import { evidenceSlug } from './evidence-hygiene.js';
 import { deriveSourceInventory, type SourceInventory, type SourceInventoryCriterion, type SourceInventoryInput } from './source-inventory.js';
 import { hashText, stableSlug } from './source-analysis.js';
 
-export type PlanningAtomReason = 'foundation-contract' | 'subsystem' | 'oversized-criterion' | 'general';
+export type PlanningAtomReason = 'foundation-contract' | 'subsystem' | 'oversized-criterion' | 'general' | 'rescope-split';
+
+/**
+ * Deterministic split instruction derived from a degraded exploration outcome.
+ * Directives partition the criterion set by group key; the same directives fed
+ * to the stage layer and the compiler must produce the identical graph.
+ */
+export interface PlanningRescopeDirective { directiveId: string; groupKey: string; criterionIds: string[]; rationale: string }
 export interface PlanningAtomBudgetEstimate { sourceBytes: number; criteriaCount: number; subsystemCount: number; evidencePathCount: number; estimatedPromptBytes: number }
 export interface PlanningAtomSourceSlice { sourceHash: string; sourcePath?: string; headingPath: string[]; startLine: number; endLine: number; byteStart: number; byteEnd: number; criteriaIds: string[]; byteLength: number }
 export interface PlanningAtom { atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; facetIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate }
 export interface PlanningAtomEdge { fromAtomId: string; toAtomId: string; reason: string }
 export interface PlanningAtomGraph { graphId: string; sourceHash: string; inventory: SourceInventory['summary']; atoms: PlanningAtom[]; edges: PlanningAtomEdge[]; limits: PlanningDecompositionLimits }
-export interface DerivePlanningAtomGraphInput extends SourceInventoryInput { limits: PlanningDecompositionLimits; inventory?: SourceInventory }
+export interface DerivePlanningAtomGraphInput extends SourceInventoryInput { limits: PlanningDecompositionLimits; inventory?: SourceInventory; rescopeDirectives?: PlanningRescopeDirective[] }
 type AtomSourceInventoryCriterion = SourceInventoryCriterion & { atomReason?: PlanningAtomReason };
 
 export function derivePlanningAtomGraph(input: DerivePlanningAtomGraphInput): PlanningAtomGraph {
   const inventory = input.inventory ?? deriveSourceInventory(input);
-  const atoms = buildAtoms(inventory, input.limits).sort((a, b) => a.atomId.localeCompare(b.atomId));
+  const atoms = buildAtoms(inventory, input.limits, input.rescopeDirectives).sort((a, b) => a.atomId.localeCompare(b.atomId));
   const edges = buildAtomEdges(atoms);
   return {
     graphId: `atom-graph-${hashText(`${inventory.sourceHash}:${atoms.map((atom) => `${atom.atomId}:${atom.criterionIds.join(',')}`).join('|')}`).slice(0, 16)}`,
@@ -27,8 +34,12 @@ export function derivePlanningAtomGraph(input: DerivePlanningAtomGraphInput): Pl
   };
 }
 
-function buildAtoms(inventory: SourceInventory, limits: PlanningDecompositionLimits): PlanningAtom[] {
+function buildAtoms(inventory: SourceInventory, limits: PlanningDecompositionLimits, rescopeDirectives?: PlanningRescopeDirective[]): PlanningAtom[] {
   if (inventory.criteria.length === 0) return [emptyAtom(inventory, limits)];
+  // Rescope directives override the collapse gate below. They are only ever
+  // derived from a degraded exploration outcome, so a small PRD with clean
+  // localization still collapses to a single atom exactly as before.
+  if (rescopeDirectives && rescopeDirectives.length >= 2) return rescopeAtoms(inventory, limits, rescopeDirectives);
   // Collapse to a single atom whenever the whole criterion set fits one
   // planning unit. Subsystem diversity is deliberately ignored here: the
   // byte budget is the real constraint on a planner's context, and a single
@@ -45,6 +56,28 @@ function buildAtoms(inventory: SourceInventory, limits: PlanningDecompositionLim
     const subsystem = group[0]?.subsystemHints[0] ?? 'general';
     atoms.push(atomForCriteria(`atom-${stableSlug(subsystem)}-${String(atoms.length + 1).padStart(3, '0')}`, `${subsystem} planning`, subsystem === 'general' ? 'general' : 'subsystem', group, inventory, limits));
   }
+  return atoms;
+}
+
+function rescopeAtoms(inventory: SourceInventory, limits: PlanningDecompositionLimits, directives: PlanningRescopeDirective[]): PlanningAtom[] {
+  const sorted = [...directives].sort((a, b) => a.directiveId.localeCompare(b.directiveId));
+  const assigned = new Set<string>();
+  const atoms: PlanningAtom[] = [];
+  const appendGroup = (idBase: string, title: string, criteria: SourceInventoryCriterion[]): void => {
+    for (const [index, group] of chunkCriteria(criteria, limits).entries()) {
+      atoms.push(atomForCriteria(index === 0 ? idBase : `${idBase}-${String(index + 1).padStart(3, '0')}`, title, 'rescope-split', group, inventory, limits));
+    }
+  };
+  for (const directive of sorted) {
+    const wanted = new Set(directive.criterionIds);
+    const criteria = inventory.criteria.filter((criterion) => wanted.has(criterion.id) && !assigned.has(criterion.id));
+    for (const criterion of criteria) assigned.add(criterion.id);
+    // Key off the directiveId (unique even when distinct group keys slug
+    // identically) so colliding groups cannot produce duplicate atom ids.
+    if (criteria.length > 0) appendGroup(`atom-${directive.directiveId}`, `${directive.groupKey} rescope planning`, criteria);
+  }
+  const residual = inventory.criteria.filter((criterion) => !assigned.has(criterion.id));
+  if (residual.length > 0) appendGroup('atom-rescope-residual', 'Residual rescope planning', residual);
   return atoms;
 }
 

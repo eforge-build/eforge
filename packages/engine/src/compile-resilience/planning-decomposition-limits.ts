@@ -72,6 +72,46 @@ export function resolvePlanningDecompositionLimits(config: Pick<EforgeConfig, 'c
   return Object.freeze(limits);
 }
 
+/**
+ * Adaptive rescope limits are engine-internal for now: `config.ts` sits at its
+ * no-growth ceiling, so these gain config.yaml keys only once that file has
+ * headroom. `planningUnitMaxLocalExplorationToolUses` remains the per-scope
+ * clamp on the derived exploration budget.
+ */
+export interface AdaptiveRescopeLimits {
+  maxRescopeAttempts: number;
+  explorationBudgetBaseToolUses: number;
+  explorationBudgetToolUsesPerNeed: number;
+  explorationTotalBudgetMultiplier: number;
+}
+
+export const ADAPTIVE_RESCOPE_LIMITS_MAXIMA: Readonly<AdaptiveRescopeLimits> = Object.freeze({
+  maxRescopeAttempts: 4,
+  explorationBudgetBaseToolUses: 64,
+  explorationBudgetToolUsesPerNeed: 16,
+  explorationTotalBudgetMultiplier: 8,
+});
+
+export const DEFAULT_ADAPTIVE_RESCOPE_LIMITS: Readonly<AdaptiveRescopeLimits> = Object.freeze({
+  maxRescopeAttempts: 1,
+  explorationBudgetBaseToolUses: 8,
+  explorationBudgetToolUsesPerNeed: 2,
+  explorationTotalBudgetMultiplier: 3,
+});
+
+export function resolveAdaptiveRescopeLimits(overrides?: Partial<AdaptiveRescopeLimits>): AdaptiveRescopeLimits {
+  const clamp = (key: keyof AdaptiveRescopeLimits): number => {
+    const value = overrides?.[key] ?? DEFAULT_ADAPTIVE_RESCOPE_LIMITS[key];
+    return Math.max(0, Math.min(value, ADAPTIVE_RESCOPE_LIMITS_MAXIMA[key]));
+  };
+  return Object.freeze({
+    maxRescopeAttempts: clamp('maxRescopeAttempts'),
+    explorationBudgetBaseToolUses: Math.max(1, clamp('explorationBudgetBaseToolUses')),
+    explorationBudgetToolUsesPerNeed: clamp('explorationBudgetToolUsesPerNeed'),
+    explorationTotalBudgetMultiplier: Math.max(1, clamp('explorationTotalBudgetMultiplier')),
+  });
+}
+
 export function resolveSharedPlanningBriefLimits(config: Pick<EforgeConfig, 'compile'>): Partial<SharedPlanningBriefLimits> {
   return Object.freeze({
     maxTotalBriefBytes: config.compile.planningSharedBriefMaxTotalBytes,

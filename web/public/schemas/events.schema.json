@@ -9229,6 +9229,10 @@
                       {
                         "const": "general",
                         "type": "string"
+                      },
+                      {
+                        "const": "rescope-split",
+                        "type": "string"
                       }
                     ]
                   },
@@ -26810,6 +26814,10 @@
                                     },
                                     {
                                       "const": "general",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "rescope-split",
                                       "type": "string"
                                     }
                                   ]

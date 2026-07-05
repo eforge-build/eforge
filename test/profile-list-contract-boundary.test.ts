@@ -9,7 +9,7 @@ const PI_EFORGE_DIR = join(REPO_ROOT, 'packages', 'pi-eforge', 'extensions', 'ef
 
 const SOURCE_EXTENSIONS = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
 const TEST_SOURCE_EXTENSIONS = /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
-const IGNORED_PARTS = new Set(['node_modules', 'dist', '.next', 'coverage', '__tests__', 'workstation-assets', '.storybook', 'stories', 'fixtures']);
+const IGNORED_PARTS = new Set(['node_modules', 'dist', '.next', 'coverage', '__tests__', 'workstation-assets', '.storybook', 'storybook-static', 'stories', 'fixtures']);
 
 function listSourceFiles(root: string): string[] {
   const files: string[] = [];

@@ -20,6 +20,9 @@ import {
 
 export interface BuildCompilerDiagnosticsInput { compilerResult: BoundedPlannerCompilerResult; planSetName: string }
 export interface WriteCompilerDiagnosticsArtifactInput { cwd: string; outputDir: string; planSetName: string; diagnostics: CompilerDiagnostics; fileName?: string }
+export interface WriteRescopeFailClosedArtifactInput { cwd: string; outputDir: string; planSetName: string; reason: string; rescope: NonNullable<BoundedPlannerCompilerResult['rescopeDiagnostics']> }
+
+export const RESCOPE_FAIL_CLOSED_ARTIFACT = 'rescope-fail-closed.json';
 
 const COMPACT_DESCRIPTION_LENGTH = 500;
 
@@ -41,6 +44,8 @@ export function buildCompilerDiagnostics(input: BuildCompilerDiagnosticsInput): 
       gaps: cap(gapEntries(reduceOutputs, representedBy, omitted), 128, omitted, 'gaps'),
       conflicts: cap(conflictEntries(reduceOutputs, representedBy, omitted), 128, omitted, 'conflicts'),
     },
+    exploration: explorationSection(result),
+    ...(result.rescopeDiagnostics ? { rescope: rescopeSection(result.rescopeDiagnostics) } : {}),
     repair: repairSection(result.repairDiagnostics, omitted),
     residue: residueSection(result, omitted),
     evidenceFailures: cap(evidenceFailureEntries(result), 128, omitted, 'evidenceFailures'),
@@ -61,7 +66,7 @@ function sharedBriefBudgetEntries(result: BoundedPlannerCompilerResult): Compile
 
 export function serializeCompilerDiagnostics(diagnostics: CompilerDiagnostics): string {
   let current = diagnostics;
-  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, dropCoverageCriteria]) {
+  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, compactExploration, compactRescope, dropCoverageCriteria]) {
     const text = `${JSON.stringify(current, null, 2)}\n`;
     if (utf8ByteLength(text) <= MAX_COMPILER_DIAGNOSTICS_BYTES) return text;
     current = compact(current);
@@ -77,6 +82,20 @@ export async function writeCompilerDiagnosticsArtifact(input: WriteCompilerDiagn
   const artifactPath = resolve(dir, fileName);
   if (!isInsideDirectory(artifactPath, dir)) throw new Error(`Compiler diagnostics artifact path escapes output directory: ${fileName}`);
   await writeFile(artifactPath, serializeCompilerDiagnostics(input.diagnostics), 'utf8');
+  return artifactPath;
+}
+
+/**
+ * Persist adaptive-rescope state when the compile fails closed before the
+ * compiler runs. The main diagnostics artifact is never written on that path,
+ * and the rescope ledger/split history is exactly what a debugger needs.
+ */
+export async function writeRescopeFailClosedArtifact(input: WriteRescopeFailClosedArtifactInput): Promise<string> {
+  const planSetName = safeRelativePathComponent(input.planSetName, 'planSetName');
+  const dir = resolve(input.cwd, input.outputDir, planSetName);
+  await mkdir(dir, { recursive: true });
+  const artifactPath = resolve(dir, RESCOPE_FAIL_CLOSED_ARTIFACT);
+  await writeFile(artifactPath, `${JSON.stringify({ reason: bounded(input.reason, 2_000), rescope: rescopeSection(input.rescope) }, null, 2)}\n`, 'utf8');
   return artifactPath;
 }
 // --- eforge:endregion compiler-diagnostics-entrypoints ---
@@ -173,6 +192,47 @@ function conflictEntry(conflict: PlanningReduceConflict, nodeId: string, represe
     description: boundedDescription(conflict.description, omitted),
     resolution: representedByCandidateId ? 'residue-represented' : 'unrepresented',
     ...(representedByCandidateId ? { representedByCandidateId: bounded(representedByCandidateId, 160) } : {}),
+  };
+}
+
+function explorationSection(result: BoundedPlannerCompilerResult): CompilerDiagnostics['exploration'] {
+  const outcome = result.explorationOutcome;
+  return {
+    outcomeStatus: outcome?.status ?? 'not-run',
+    unresolvedNeedIds: boundedIds(outcome?.unresolvedNeedIds ?? [], 160, 100),
+    reasons: [...new Set(outcome?.reasons ?? [])].sort().slice(0, 32),
+    attemptedQueries: (outcome?.attemptedQueries ?? []).slice(0, 100).map((entry) => ({
+      ...(entry.needId ? { needId: bounded(entry.needId, 160) } : {}),
+      query: bounded(entry.query, 1_000),
+      ...(entry.tool ? { tool: bounded(entry.tool, 120) } : {}),
+      ...(entry.result ? { result: bounded(entry.result, 1_000) } : {}),
+    })),
+    candidatePaths: boundedIds(outcome?.candidatePaths ?? [], 300, 100),
+    rescopeHints: (outcome?.rescopeHints ?? []).map((hint) => bounded(hint, 1_000)).slice(0, 32),
+    ...(outcome?.notes ? { notes: bounded(outcome.notes, 2_000) } : {}),
+    unknownIdDrops: (result.explorationUnknownIdDrops ?? []).slice(0, 100).map((drop) => ({ field: bounded(drop.field, 80), id: bounded(drop.id, 240), ...(drop.index === undefined ? {} : { index: drop.index }) })),
+    toolUseCount: outcome?.toolUseCount ?? 0,
+  };
+}
+
+function rescopeSection(rescope: NonNullable<BoundedPlannerCompilerResult['rescopeDiagnostics']>): NonNullable<CompilerDiagnostics['rescope']> {
+  return {
+    status: rescope.status,
+    attempts: Math.min(rescope.attempts, 100),
+    maxAttempts: Math.min(rescope.maxAttempts, 100),
+    originalAtomCount: rescope.originalAtomCount,
+    revisedAtomCount: rescope.revisedAtomCount,
+    ledger: { totalToolUseBudget: rescope.ledger.totalToolUseBudget, usedToolUses: rescope.ledger.usedToolUses },
+    riskReasons: rescope.riskReasons.slice(0, 16).map((reason) => bounded(reason, 240)),
+    splitGroups: rescope.splitGroups.slice(0, 64).map((group) => ({
+      directiveId: bounded(group.directiveId, 160),
+      groupKey: bounded(group.groupKey, 160),
+      criterionIds: boundedIds(group.criterionIds, 80, 64),
+      rationale: bounded(group.rationale, 500),
+    })),
+    rerunScopeKeys: boundedIds(rescope.rerunScopeKeys, 160, 64),
+    preservedScopeKeys: boundedIds(rescope.preservedScopeKeys, 160, 64),
+    unresolvedCriticalNeedIds: boundedIds(rescope.unresolvedCriticalNeedIds, 160, 100),
   };
 }
 
@@ -302,6 +362,40 @@ function dropCoverageCriteria(diagnostics: CompilerDiagnostics): CompilerDiagnos
     ...diagnostics,
     coverage: { ...diagnostics.coverage, criteria: [] },
     omitted: { ...diagnostics.omitted, coverageCriteria: diagnostics.omitted.coverageCriteria + diagnostics.coverage.criteria.length },
+  };
+}
+
+function compactExploration(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
+  return {
+    ...diagnostics,
+    exploration: {
+      ...diagnostics.exploration,
+      attemptedQueries: diagnostics.exploration.attemptedQueries.slice(0, 16).map((entry) => ({
+        ...(entry.needId ? { needId: entry.needId } : {}),
+        query: bounded(entry.query, 240),
+        ...(entry.tool ? { tool: entry.tool } : {}),
+        ...(entry.result ? { result: bounded(entry.result, 240) } : {}),
+      })),
+      candidatePaths: diagnostics.exploration.candidatePaths.slice(0, 32),
+      rescopeHints: diagnostics.exploration.rescopeHints.slice(0, 8).map((hint) => bounded(hint, 240)),
+      ...(diagnostics.exploration.notes ? { notes: bounded(diagnostics.exploration.notes, 500) } : {}),
+      unknownIdDrops: diagnostics.exploration.unknownIdDrops.slice(0, 32),
+    },
+  };
+}
+
+/** Compaction for the rescope section: split-group detail goes first so rescope history cannot crowd out coverage/repair data. */
+function compactRescope(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
+  if (!diagnostics.rescope) return diagnostics;
+  return {
+    ...diagnostics,
+    rescope: {
+      ...diagnostics.rescope,
+      splitGroups: diagnostics.rescope.splitGroups.slice(0, 8).map((group) => ({ ...group, criterionIds: group.criterionIds.slice(0, 16), rationale: bounded(group.rationale, 160) })),
+      rerunScopeKeys: diagnostics.rescope.rerunScopeKeys.slice(0, 16),
+      preservedScopeKeys: diagnostics.rescope.preservedScopeKeys.slice(0, 16),
+      unresolvedCriticalNeedIds: diagnostics.rescope.unresolvedCriticalNeedIds.slice(0, 32),
+    },
   };
 }
 

@@ -84,6 +84,11 @@ interface RunSourceLocalizationRepairLoopInput {
 
 const SOURCE_GAP_KINDS = new Set<PlanningReduceGapIssueKind>(['missing-owner-path', 'missing-contract-evidence', 'missing-entrypoint-evidence', 'missing-config-evidence', 'missing-consumer-surface-evidence', 'directory-only-evidence', 'missing-materialized-source', 'localization-ambiguity']);
 
+// Exploration-only vocabulary kinds: they describe why exploration could not localize, not a repairable
+// reduce gap, so they must never be re-inferred into a source-gap kind from gap text. They trigger repair
+// only when the reducer explicitly sets sourceLocalizationSignal.
+const EXPLORATION_ONLY_GAP_KINDS = new Set<PlanningReduceGapIssueKind>(['too-broad', 'tool-budget']);
+
 export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizationRepairLoopInput): Promise<SourceLocalizationRepairResult> {
   const maxAttempts = Math.max(0, input.maxAttempts ?? DEFAULT_SOURCE_LOCALIZATION_REPAIR_ATTEMPTS);
   let state = { sourceLocalizationBundle: input.sourceLocalizationBundle, sharedBrief: input.sharedBrief, sourceEvidenceBundle: input.sourceEvidenceBundle, map: input.map, reduce: input.reduce };
@@ -120,7 +125,9 @@ export function classifyPlanningReduceGaps(outputs: PlanningReduceResult['output
 }
 
 export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?: SourceLocalizationBundle, evidence?: PlanningSourceEvidenceBundle, graph?: PlanningAtomGraph): ClassifiedPlanningReduceGap | undefined {
-  const issueKind = gap.issueKind && SOURCE_GAP_KINDS.has(gap.issueKind) ? gap.issueKind : inferIssueKind(gap, localization, evidence);
+  const explorationOnly = gap.issueKind !== undefined && EXPLORATION_ONLY_GAP_KINDS.has(gap.issueKind);
+  if (explorationOnly && gap.sourceLocalizationSignal !== true) return undefined;
+  const issueKind = explorationOnly ? gap.issueKind! : gap.issueKind && SOURCE_GAP_KINDS.has(gap.issueKind) ? gap.issueKind : inferIssueKind(gap, localization, evidence);
   const sourceLocalizationSignal = gap.sourceLocalizationSignal === true || SOURCE_GAP_KINDS.has(issueKind);
   if (!sourceLocalizationSignal) return undefined;
   const ownerPaths = uniq([...(gap.ownerPaths ?? []), ...extractPathSignals(`${gap.title} ${gap.description}`)]);
