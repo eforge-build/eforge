@@ -1,0 +1,92 @@
+{
+  "reason": "Adaptive rescoping exhausted after 1/1 attempt(s) with 10 critical source need(s) unresolved or below high confidence (criterion-ac-007-interface-route, criterion-ac-007-interface-route-api, criterion-ac-007-interface-schema, criterion-ac-007-interface-schema-contract, criterion-ac-007-interface-test, inventory-interface-route, inventory-interface-route-api, inventory-interface-schema, inventory-interface-schema-contract, inventory-interface-test); failing compile instead of producing vague plans. Tool ledger: 134/134.",
+  "rescope": {
+    "status": "fail-closed",
+    "attempts": 1,
+    "maxAttempts": 1,
+    "originalAtomCount": 1,
+    "revisedAtomCount": 6,
+    "ledger": {
+      "totalToolUseBudget": 134,
+      "usedToolUses": 134
+    },
+    "riskReasons": [
+      "low-confidence-share (11/82)",
+      "subsystem-diverse-root (27 subsystems)",
+      "unresolved-interface-needs (10)"
+    ],
+    "splitGroups": [
+      {
+        "directiveId": "rescope-event",
+        "groupKey": "event",
+        "criterionIds": [
+          "ac-007"
+        ],
+        "rationale": "degraded exploration: split by event (1 criteria, 22 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-config",
+        "groupKey": "config",
+        "criterionIds": [
+          "ac-008"
+        ],
+        "rationale": "degraded exploration: split by config (1 criteria, 27 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-abandon",
+        "groupKey": "abandon",
+        "criterionIds": [
+          "ac-003"
+        ],
+        "rationale": "degraded exploration: split by abandon (1 criteria, 22 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-apply",
+        "groupKey": "apply",
+        "criterionIds": [
+          "ac-002"
+        ],
+        "rationale": "degraded exploration: split by apply (1 criteria, 12 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-auto-build",
+        "groupKey": "auto-build",
+        "criterionIds": [
+          "ac-005"
+        ],
+        "rationale": "degraded exploration: split by auto-build (1 criteria, 12 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-general",
+        "groupKey": "general",
+        "criterionIds": [
+          "ac-001",
+          "ac-004",
+          "ac-006"
+        ],
+        "rationale": "degraded exploration: split by general (3 criteria, 3 unresolved need links)"
+      }
+    ],
+    "rerunScopeKeys": [
+      "abandon",
+      "apply",
+      "auto-build",
+      "config",
+      "event",
+      "general"
+    ],
+    "preservedScopeKeys": [],
+    "unresolvedCriticalNeedIds": [
+      "criterion-ac-007-interface-route",
+      "criterion-ac-007-interface-route-api",
+      "criterion-ac-007-interface-schema",
+      "criterion-ac-007-interface-schema-contract",
+      "criterion-ac-007-interface-test",
+      "inventory-interface-route",
+      "inventory-interface-route-api",
+      "inventory-interface-schema",
+      "inventory-interface-schema-contract",
+      "inventory-interface-test"
+    ]
+  }
+}
