@@ -16,7 +16,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   getCompiledResumeFrontmatter,
@@ -991,7 +991,9 @@ export class QueueScheduler {
     try {
       const rootPrdPath = resolve(this.cwd, this.queueDir, `${prdId}.md`);
       await access(rootPrdPath, constants.F_OK);
-      return await readRawAppliedAction(resolve(this.cwd, this.queueDir, 'failed', `${prdId}.recovery.json`)) === 'continue-repair';
+      const sidecarPath = resolve(this.cwd, this.queueDir, 'failed', `${prdId}.recovery.json`);
+      if (await readRawAppliedAction(sidecarPath) === 'continue-repair') return true;
+      return await hasAutoResumeAttempt(sidecarPath);
     } catch {
       return false;
     }
@@ -1000,5 +1002,14 @@ export class QueueScheduler {
   /** Handles `queue:mutation` injected by HTTP routes. */
   private async onMutation(_event: SchedulerInputEvent): Promise<void> {
     await this.tick();
+  }
+}
+
+async function hasAutoResumeAttempt(sidecarPath: string): Promise<boolean> {
+  try {
+    const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { autoResume?: { attempts?: unknown } };
+    return typeof parsed.autoResume?.attempts === 'number' && Number.isInteger(parsed.autoResume.attempts) && parsed.autoResume.attempts > 0;
+  } catch {
+    return false;
   }
 }

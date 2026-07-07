@@ -677,6 +677,7 @@ async function main(): Promise<void> {
               resolveSessionId: (id) => id, getRunningBuildCount: () => 0,
               getSchedulerLimit: () => activeConfig.maxConcurrentBuilds,
               notifyQueueMutation: (reason) => supervisor.notifyQueueMutation(reason),
+              isActiveController: () => watcherAbort === controller && generation === watcherGeneration && config?.recovery?.autoResume?.enabled === true,
               getDiscoveredConfigDir: async () => null, getConfigDirOrConventional: async () => resolve(cwd, '.eforge'),
             }, event.prdId);
             if (outcome.status !== 'queued') maybePauseOnFailure(event, pauseCtx);

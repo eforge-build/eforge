@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DEFAULT_CONFIG, type EforgeConfig } from '@eforge-build/engine/config';
+import { computeWorktreeBase } from '@eforge-build/engine/worktree-ops';
 import { safeParseEforgeEvent, type EforgeEvent } from '@eforge-build/client';
 import { openDatabase, type MonitorDB } from '../db.js';
 import { evaluateGuardedRecoveryAutoResume } from '../recovery-auto-resume.js';
@@ -176,6 +177,16 @@ function daemonEvents(db: MonitorDB): EforgeEvent[] {
   return db.getDaemonEventsAfter(0).map((row) => JSON.parse(row.data) as EforgeEvent);
 }
 
+async function expectStoppedWithoutMutation(args: { cwd: string; db: MonitorDB; mutationReasons: string[]; wakeReasons: string[]; prdId: string; before: string; reason: string; attempt: number; maxAttempts: number }): Promise<void> {
+  await expect(readFile(join(args.cwd, '.eforge/queue', `${args.prdId}.md`), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await readFile(join(args.cwd, '.eforge/queue/failed', `${args.prdId}.recovery.json`), 'utf-8')).toBe(args.before);
+  expect(args.mutationReasons).toEqual([]);
+  expect(args.wakeReasons).toEqual([]);
+  const stopped = daemonEvents(args.db).at(-1);
+  expect(stopped).toMatchObject({ type: 'recovery:auto-resume:stopped', reason: args.reason, attempt: args.attempt, maxAttempts: args.maxAttempts, prdId: args.prdId });
+  expect(safeParseEforgeEvent(stopped).success).toBe(true);
+}
+
 async function writeCompiledArtifactsOnFeatureBranch(cwd: string, setName: string): Promise<void> {
   execFileSync('git', ['switch', '-c', `eforge/${setName}`], { cwd });
   await mkdir(join(cwd, 'eforge', 'plans', setName), { recursive: true });
@@ -221,6 +232,66 @@ name: Plan 01
   execFileSync('git', ['switch', 'main'], { cwd });
 }
 
+async function writeCompiledArtifactsOnlyInBranchHistory(cwd: string, setName: string): Promise<void> {
+  await writeCompiledArtifactsOnFeatureBranch(cwd, setName);
+  execFileSync('git', ['switch', `eforge/${setName}`], { cwd });
+  await rm(join(cwd, 'eforge', 'plans', setName), { recursive: true, force: true });
+  execFileSync('git', ['add', '-A', 'eforge'], { cwd });
+  execFileSync('git', ['commit', '-m', 'plan: clean compiled artifacts at tip'], { cwd });
+  execFileSync('git', ['switch', 'main'], { cwd });
+}
+
+async function writeCompiledArtifactsOnlyInMergeWorktree(cwd: string, setName: string): Promise<void> {
+  execFileSync('git', ['switch', '-c', `eforge/${setName}`], { cwd });
+  await writeFile(join(cwd, `${setName}-progress.txt`), 'progress\n', 'utf-8');
+  execFileSync('git', ['add', `${setName}-progress.txt`], { cwd });
+  execFileSync('git', ['commit', '-m', 'progress without compiled artifacts'], { cwd });
+  execFileSync('git', ['switch', 'main'], { cwd });
+  const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
+  execFileSync('git', ['worktree', 'add', mergeWorktreePath, `eforge/${setName}`], { cwd });
+  const artifactDir = join(mergeWorktreePath, 'eforge', 'plans', setName);
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(join(artifactDir, 'orchestration.yaml'), `name: ${setName}
+description: Merge worktree auto-resume fixture
+base_branch: main
+mode: excursion
+validate: []
+plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: auto-resume merge worktree test
+`, 'utf-8');
+  await writeFile(join(artifactDir, 'plan-01.md'), `---
+id: plan-01
+name: Plan 01
+---
+
+# Plan 01
+`, 'utf-8');
+  execFileSync('git', ['add', 'eforge'], { cwd: mergeWorktreePath });
+  execFileSync('git', ['commit', '-m', 'merge worktree compiled artifacts'], { cwd: mergeWorktreePath });
+}
+
 describe('evaluateGuardedRecoveryAutoResume', () => {
   it('keeps default-off failures non-mutating and does not emit auto-resume audit events', async () => {
     const { cwd, db, context } = await makeHarness({ config: makeConfig({ enabled: false, maxAttempts: 1 }) });
@@ -236,8 +307,9 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
   });
 
   it('stops without mutation when enabled policy has no remaining budget', async () => {
-    const { cwd, db, context } = await makeHarness({ config: makeConfig({ enabled: true, maxAttempts: 0 }) });
+    const { cwd, db, context, mutationReasons, wakeReasons } = await makeHarness({ config: makeConfig({ enabled: true, maxAttempts: 0 }) });
     await seedFailedRecoveryFixture(cwd, 'audit-only');
+    const before = await readFile(join(cwd, '.eforge/queue/failed/audit-only.recovery.json'), 'utf-8');
 
     const outcome = await evaluateGuardedRecoveryAutoResume(context, 'audit-only');
 
@@ -245,7 +317,18 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
     const events = daemonEvents(db);
     expect(events.map((event) => event.type)).toEqual(['recovery:auto-resume:evaluate', 'recovery:auto-resume:stopped']);
     for (const event of events) expect(safeParseEforgeEvent(event).success).toBe(true);
-    expect(events[1]).toMatchObject({ reason: 'attempt-budget-exhausted', attempt: 0, maxAttempts: 0 });
+    await expectStoppedWithoutMutation({ cwd, db, mutationReasons, wakeReasons, prdId: 'audit-only', before, reason: 'attempt-budget-exhausted', attempt: 0, maxAttempts: 0 });
+  });
+
+  it('stops without mutation when persisted attempts already exhaust a positive budget', async () => {
+    const { cwd, db, context, mutationReasons, wakeReasons } = await makeHarness({ config: makeConfig({ enabled: true, maxAttempts: 1 }) });
+    await seedFailedRecoveryFixture(cwd, 'prior-budget', { autoResume: { attempts: 1, lastProgressMarker: 'p', lastFailureSignature: 'f' } });
+    const before = await readFile(join(cwd, '.eforge/queue/failed/prior-budget.recovery.json'), 'utf-8');
+
+    const outcome = await evaluateGuardedRecoveryAutoResume(context, 'prior-budget');
+
+    expect(outcome).toMatchObject({ status: 'stopped', reason: 'attempt-budget-exhausted', attempt: 1 });
+    await expectStoppedWithoutMutation({ cwd, db, mutationReasons, wakeReasons, prdId: 'prior-budget', before, reason: 'attempt-budget-exhausted', attempt: 1, maxAttempts: 1 });
   });
 
   it('maps manual, retry, and abandon verdicts to a manual-confirmation-required stop', async () => {
@@ -279,6 +362,14 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
     await seedFailedRecoveryFixture(partial.cwd, 'partial-sidecar', { partial: true });
     expect(await evaluateGuardedRecoveryAutoResume(partial.context, 'partial-sidecar')).toMatchObject({ status: 'stopped', reason: 'partial-sidecar' });
 
+    const partialVerdict = await makeHarness();
+    await seedFailedRecoveryFixture(partialVerdict.cwd, 'partial-verdict');
+    const partialVerdictPath = join(partialVerdict.cwd, '.eforge/queue/failed/partial-verdict.recovery.json');
+    const partialVerdictSidecar = JSON.parse(await readFile(partialVerdictPath, 'utf-8')) as { verdict: { partial?: boolean } };
+    partialVerdictSidecar.verdict.partial = true;
+    await writeFile(partialVerdictPath, `${JSON.stringify(partialVerdictSidecar, null, 2)}\n`, 'utf-8');
+    expect(await evaluateGuardedRecoveryAutoResume(partialVerdict.context, 'partial-verdict')).toMatchObject({ status: 'stopped', reason: 'partial-sidecar' });
+
     const ineligible = await makeHarness();
     await seedFailedRecoveryFixture(ineligible.cwd, 'ineligible-artifacts', { eligible: false });
     expect(await evaluateGuardedRecoveryAutoResume(ineligible.context, 'ineligible-artifacts')).toMatchObject({ status: 'stopped', reason: 'ineligible-artifacts' });
@@ -311,6 +402,17 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
     const applied = await makeHarness();
     await seedFailedRecoveryFixture(applied.cwd, 'conflicting-applied', { appliedAction: 'retry' });
     expect(await evaluateGuardedRecoveryAutoResume(applied.context, 'conflicting-applied')).toMatchObject({ status: 'stopped', reason: 'conflicting-applied-marker' });
+  });
+
+  it('stops malformed prior auto-resume markers after an automatic attempt', async () => {
+    const { cwd, db, context, mutationReasons, wakeReasons } = await makeHarness({ config: makeConfig({ enabled: true, maxAttempts: 2 }) });
+    await seedFailedRecoveryFixture(cwd, 'malformed-prior-markers', { autoResume: { attempts: 1, lastProgressMarker: 42 } });
+    const before = await readFile(join(cwd, '.eforge/queue/failed/malformed-prior-markers.recovery.json'), 'utf-8');
+
+    const outcome = await evaluateGuardedRecoveryAutoResume(context, 'malformed-prior-markers');
+
+    expect(outcome).toMatchObject({ status: 'stopped', reason: 'malformed-sidecar', attempt: 1 });
+    await expectStoppedWithoutMutation({ cwd, db, mutationReasons, wakeReasons, prdId: 'malformed-prior-markers', before, reason: 'malformed-sidecar', attempt: 1, maxAttempts: 2 });
   });
 
   it('stops repeated identical failures after an automatic attempt', async () => {
@@ -373,14 +475,58 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
     for (const event of events) expect(safeParseEforgeEvent(event).success).toBe(true);
   });
 
+  it('queues continue-repair when compiled artifacts are recoverable from an existing merge worktree', async () => {
+    const { cwd, db, context, mutationReasons } = await makeHarness();
+    const prdId = 'merge-worktree-auto-resume';
+    const setName = `${prdId}-set`;
+    await seedFailedRecoveryFixture(cwd, prdId, { landedCommitSha: 'merge123', diffStat: ' plan-01.md | 1 +' });
+    await writeCompiledArtifactsOnlyInMergeWorktree(cwd, setName);
+
+    const outcome = await evaluateGuardedRecoveryAutoResume(context, prdId);
+
+    expect(outcome).toMatchObject({ status: 'queued', attempt: 1 });
+    expect(mutationReasons).toEqual(['apply-recovery']);
+    expect(await readFile(join(cwd, '.eforge/queue', `${prdId}.md`), 'utf-8')).toContain('resume_mode: compiled');
+    const sidecar = JSON.parse(await readFile(join(cwd, '.eforge/queue/failed', `${prdId}.recovery.json`), 'utf-8')) as { autoResume?: { attempts?: number }; applied?: { action?: string } };
+    expect(sidecar.autoResume?.attempts).toBe(1);
+    expect(sidecar.applied?.action).toBe('continue-repair');
+    const events = daemonEvents(db);
+    expect(events.map((event) => event.type)).toEqual(['recovery:auto-resume:evaluate', 'recovery:auto-resume:queued']);
+    for (const event of events) expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
+  it('queues continue-repair when compiled artifacts are recoverable from branch history rather than branch tip', async () => {
+    const { cwd, db, context, mutationReasons } = await makeHarness();
+    const prdId = 'branch-history-auto-resume';
+    const setName = `${prdId}-set`;
+    await seedFailedRecoveryFixture(cwd, prdId, { landedCommitSha: 'history123', diffStat: ' plan-01.md | 1 +' });
+    await writeCompiledArtifactsOnlyInBranchHistory(cwd, setName);
+
+    const outcome = await evaluateGuardedRecoveryAutoResume(context, prdId);
+
+    expect(outcome).toMatchObject({ status: 'queued', attempt: 1 });
+    expect(mutationReasons).toEqual(['apply-recovery']);
+    expect(await readFile(join(cwd, '.eforge/queue', `${prdId}.md`), 'utf-8')).toContain('resume_mode: compiled');
+    const sidecar = JSON.parse(await readFile(join(cwd, '.eforge/queue/failed', `${prdId}.recovery.json`), 'utf-8')) as { autoResume?: { attempts?: number }; applied?: { action?: string } };
+    expect(sidecar.autoResume?.attempts).toBe(1);
+    expect(sidecar.applied?.action).toBe('continue-repair');
+    const events = daemonEvents(db);
+    expect(events.map((event) => event.type)).toEqual(['recovery:auto-resume:evaluate', 'recovery:auto-resume:queued']);
+    for (const event of events) expect(safeParseEforgeEvent(event).success).toBe(true);
+  });
+
   it('allows a later automatic attempt when progress changed and budget remains', async () => {
     const { cwd, context } = await makeHarness({ config: makeConfig({ enabled: true, maxAttempts: 2 }) });
     const prdId = 'progress-auto-resume';
     const setName = `${prdId}-set`;
+    const currentFailureSignature = JSON.stringify({
+      failures: [{ planId: 'plan-01', terminalSubtype: 'validation', errorMessage: 'Type error' }],
+      terminalFailure: { stage: 'validation', message: 'Type error' },
+    });
     await seedFailedRecoveryFixture(cwd, prdId, {
       landedCommitSha: 'new-progress',
       diffStat: ' plan-01.md | 2 ++',
-      autoResume: { attempts: 1, lastProgressMarker: JSON.stringify({ commits: '', diffStat: '' }), lastFailureSignature: 'same-old-failure' },
+      autoResume: { attempts: 1, lastProgressMarker: JSON.stringify({ commits: '', diffStat: '' }), lastFailureSignature: currentFailureSignature },
     });
     await writeCompiledArtifactsOnFeatureBranch(cwd, setName);
 
@@ -411,18 +557,12 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
   it('stops high-confidence eligible sidecars whose compiled artifacts are missing without consuming an attempt', async () => {
     const { cwd, db, context, mutationReasons, wakeReasons } = await makeHarness();
     await seedFailedRecoveryFixture(cwd, 'missing-artifacts');
+    const before = await readFile(join(cwd, '.eforge/queue/failed/missing-artifacts.recovery.json'), 'utf-8');
 
     const outcome = await evaluateGuardedRecoveryAutoResume(context, 'missing-artifacts');
 
     expect(outcome).toMatchObject({ status: 'stopped', reason: 'ineligible-artifacts', attempt: 0 });
-    expect(mutationReasons).toEqual([]);
-    expect(wakeReasons).toEqual([]);
-    await expect(readFile(join(cwd, '.eforge/queue/missing-artifacts.md'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
-    const sidecar = JSON.parse(await readFile(join(cwd, '.eforge/queue/failed/missing-artifacts.recovery.json'), 'utf-8')) as { autoResume?: { attempts?: number } };
-    expect(sidecar.autoResume?.attempts ?? 0).toBe(0);
-    const stopped = daemonEvents(db).at(-1);
-    expect(stopped).toMatchObject({ type: 'recovery:auto-resume:stopped', reason: 'ineligible-artifacts', attempt: 0, maxAttempts: 1, prdId: 'missing-artifacts', setName: 'missing-artifacts-set' });
-    expect(safeParseEforgeEvent(stopped).success).toBe(true);
+    await expectStoppedWithoutMutation({ cwd, db, mutationReasons, wakeReasons, prdId: 'missing-artifacts', before, reason: 'ineligible-artifacts', attempt: 0, maxAttempts: 1 });
   });
 
   it('stops missing eligibility metadata and queue preflight blockers without consuming an attempt', async () => {
@@ -439,6 +579,19 @@ describe('evaluateGuardedRecoveryAutoResume', () => {
     await mkdir(join(rootBlocked.cwd, '.eforge/queue'), { recursive: true });
     await writeFile(join(rootBlocked.cwd, '.eforge/queue/root-blocked.md'), '# conflicting queued PRD\n', 'utf-8');
     expect(await evaluateGuardedRecoveryAutoResume(rootBlocked.context, 'root-blocked')).toMatchObject({ status: 'stopped', reason: 'queue-preflight-blocked', attempt: 0 });
+
+    const descendantBlocked = await makeHarness();
+    const prdId = 'descendant-blocked';
+    await seedFailedRecoveryFixture(descendantBlocked.cwd, prdId, { landedCommitSha: 'abc123' });
+    await writeCompiledArtifactsOnFeatureBranch(descendantBlocked.cwd, `${prdId}-set`);
+    await mkdir(join(descendantBlocked.cwd, '.eforge/queue/skipped'), { recursive: true });
+    await mkdir(join(descendantBlocked.cwd, '.eforge/queue/waiting'), { recursive: true });
+    await writeFile(join(descendantBlocked.cwd, '.eforge/queue/skipped/child.md'), `---\ntitle: child\ndepends_on: [${prdId}]\n---\n\n# child`, 'utf-8');
+    await writeFile(join(descendantBlocked.cwd, '.eforge/queue/waiting/child.md'), '# target collision\n', 'utf-8');
+    const before = await readFile(join(descendantBlocked.cwd, '.eforge/queue/failed', `${prdId}.recovery.json`), 'utf-8');
+    const outcome = await evaluateGuardedRecoveryAutoResume(descendantBlocked.context, prdId);
+    expect(outcome).toMatchObject({ status: 'stopped', reason: 'queue-preflight-blocked', attempt: 0 });
+    await expectStoppedWithoutMutation({ cwd: descendantBlocked.cwd, db: descendantBlocked.db, mutationReasons: descendantBlocked.mutationReasons, wakeReasons: descendantBlocked.wakeReasons, prdId, before, reason: 'queue-preflight-blocked', attempt: 0, maxAttempts: 1 });
   });
 
   it('stops active queue-dispatch policy gates without consuming an attempt', async () => {

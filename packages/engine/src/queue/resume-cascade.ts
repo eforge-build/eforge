@@ -40,7 +40,7 @@ interface ResumeQueueSnapshot {
   skipped: QueuedPrd[];
 }
 
-export async function requeueFailedPrdForCompiledResume(options: RequeueCompiledResumeOptions): Promise<RequeueCompiledResumeResult> {
+export async function preflightRequeueFailedPrdForCompiledResume(options: RequeueCompiledResumeOptions): Promise<RequeueCompiledResumeResult | { status: 'ready'; prdId: string; setName: string; featureBranch: string; baseBranch: string; movedDescendantIds: string[]; queueDir: string; parent: QueuedPrd; moves: Array<{ source: string; target: string }> }> {
   const unsafe = unsafePrdIdReason(options.prdId);
   if (unsafe) return blockedRequeue(options, unsafe);
 
@@ -48,9 +48,6 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
   const root = snapshot.queue.find((prd) => prd.id === options.prdId);
   if (root) {
     if (compiledResumeMatches(root, options)) {
-      if (options.profileOverride !== undefined && root.frontmatter.profile !== options.profileOverride) {
-        await setQueuedPrdFrontmatterFields(root, { profile: options.profileOverride });
-      }
       return { status: 'already-queued', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: [] };
     }
     return blockedRequeue(options, `Queue root already contains ${options.prdId}.md without matching compiled-resume metadata.`);
@@ -69,6 +66,22 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
   ];
   const preflightBlocker = await preflightMoves(moves);
   if (preflightBlocker) return blockedRequeue(options, preflightBlocker);
+  return { status: 'ready', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: descendantIds, queueDir: snapshot.queueDir, parent, moves };
+}
+
+export async function requeueFailedPrdForCompiledResume(options: RequeueCompiledResumeOptions): Promise<RequeueCompiledResumeResult> {
+  const preflight = await preflightRequeueFailedPrdForCompiledResume(options);
+  if (preflight.status !== 'ready') {
+    if (preflight.status === 'already-queued' && options.profileOverride !== undefined) {
+      const snapshot = await loadResumeQueueSnapshot(options);
+      const root = snapshot.queue.find((prd) => prd.id === options.prdId);
+      if (root && root.frontmatter.profile !== options.profileOverride) await setQueuedPrdFrontmatterFields(root, { profile: options.profileOverride });
+    }
+    return preflight;
+  }
+
+  const descendantIds = preflight.movedDescendantIds;
+  const moves = preflight.moves;
 
   const patch: Record<string, string> = {
     resume_mode: 'compiled',
@@ -78,12 +91,12 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
     resume_base_branch: options.baseBranch,
   };
   if (options.profileOverride !== undefined) patch.profile = options.profileOverride;
-  const originalParentContent = parent.content;
-  await setQueuedPrdFrontmatterFields(parent, patch);
+  const originalParentContent = preflight.parent.content;
+  await setQueuedPrdFrontmatterFields(preflight.parent, patch);
 
   const appliedMoves: Array<{ source: string; target: string }> = [];
   try {
-    await mkdir(snapshot.queueDir, { recursive: true });
+    await mkdir(preflight.queueDir, { recursive: true });
     for (const move of moves) {
       await moveNoOverwrite(move.source, move.target);
       appliedMoves.push(move);
@@ -96,8 +109,8 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
     }
     const parentMove = moves[0];
     const parentMoveApplied = parentMove !== undefined && appliedMoves.some((move) => move.target === parentMove.target);
-    if (await exists(parent.filePath)) {
-      await writeFile(parent.filePath, originalParentContent, 'utf-8');
+    if (await exists(preflight.parent.filePath)) {
+      await writeFile(preflight.parent.filePath, originalParentContent, 'utf-8');
     } else if (parentMove !== undefined && parentMoveApplied && await exists(parentMove.target)) {
       await writeFile(parentMove.target, originalParentContent, 'utf-8');
     }

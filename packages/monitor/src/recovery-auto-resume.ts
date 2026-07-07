@@ -7,32 +7,25 @@ import { constants } from 'node:fs';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { loadQueue } from '@eforge-build/engine/prd-queue';
 import { applyRecoveryContinueRepair, RecoveryApplyConflictError, type ApplyHelperOptions } from '@eforge-build/engine/recovery/apply';
+import { preflightRequeueFailedPrdForCompiledResume } from '@eforge-build/engine/queue/resume-cascade';
 import { readRecoverySidecarProjection } from '@eforge-build/engine/recovery/sidecar-read';
 import { readRawAppliedAction } from '@eforge-build/engine/recovery/applied-sidecar';
+import { projectResumeEligibility } from '@eforge-build/engine/resume/compiled-build';
+import { computeWorktreeBase } from '@eforge-build/engine/worktree-ops';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '@eforge-build/engine/extensions/policy-gate-runtime';
+import type { EforgeEvent } from '@eforge-build/client';
 import type { MonitorContext } from './context.js';
 import { writeDaemonEvent } from './daemon-events.js';
 
 const execFileAsync = promisify(execFile);
 
-export type RecoveryAutoResumeStopReason =
-  | 'disabled'
-  | 'attempt-budget-exhausted'
-  | 'not-continue-repair'
-  | 'not-high-confidence'
-  | 'not-eligible'
-  | 'manual-confirmation-required'
-  | 'partial-sidecar'
-  | 'malformed-sidecar'
-  | 'missing-sidecar'
-  | 'ineligible-artifacts'
-  | 'dirty-worktree'
-  | 'conflicting-worktree'
-  | 'queue-preflight-blocked'
-  | 'conflicting-applied-marker'
-  | 'active-gate-or-hold'
-  | 'repeated-failure-signature'
-  | 'error';
+type RecoveryAutoResumeEvaluateEvent = Extract<EforgeEvent, { type: 'recovery:auto-resume:evaluate' }>;
+type RecoveryAutoResumeQueuedEvent = Extract<EforgeEvent, { type: 'recovery:auto-resume:queued' }>;
+type RecoveryAutoResumeStoppedEvent = Extract<EforgeEvent, { type: 'recovery:auto-resume:stopped' }>;
+type RecoveryAutoResumeAuditEvent = RecoveryAutoResumeEvaluateEvent | RecoveryAutoResumeQueuedEvent | RecoveryAutoResumeStoppedEvent;
+type RecoveryAutoResumeAuditEventInput = Omit<RecoveryAutoResumeEvaluateEvent, 'timestamp'> | Omit<RecoveryAutoResumeQueuedEvent, 'timestamp'> | Omit<RecoveryAutoResumeStoppedEvent, 'timestamp'>;
+
+export type RecoveryAutoResumeStopReason = RecoveryAutoResumeStoppedEvent['reason'];
 
 export type RecoveryAutoResumeOutcome =
   | { status: 'queued'; attempt: number; detail: string }
@@ -53,6 +46,7 @@ interface SidecarWithAutoResume {
   [key: string]: unknown;
 }
 
+// --- eforge:region evaluator ---
 export async function evaluateGuardedRecoveryAutoResume(
   context: MonitorContext,
   prdId: string,
@@ -91,7 +85,7 @@ export async function evaluateGuardedRecoveryAutoResume(
       return stop(context, { prdId, setName, reason: manualVerdicts.has(projection.verdict.verdict) ? 'manual-confirmation-required' : 'not-continue-repair', attempt, maxAttempts });
     }
     if (projection.verdict.confidence !== 'high') return stop(context, { prdId, setName, reason: 'not-high-confidence', attempt, maxAttempts });
-    if (projection.summary.partial === true || projection.sidecar.boundedEvidence.identity.partial === true) return stop(context, { prdId, setName, reason: 'partial-sidecar', attempt, maxAttempts });
+    if (projection.verdict.partial === true || projection.summary.partial === true || projection.sidecar.boundedEvidence.identity.partial === true) return stop(context, { prdId, setName, reason: 'partial-sidecar', attempt, maxAttempts });
     const eligibility = projection.sidecar.continueRepairEligibility;
     if (!eligibility) return stop(context, { prdId, setName, reason: 'not-eligible', attempt, maxAttempts, message: 'Recovery sidecar does not contain continue-and-repair artifact eligibility.' });
     if (eligibility.eligible !== true) return stop(context, { prdId, setName, reason: 'ineligible-artifacts', attempt, maxAttempts, message: eligibility.reason });
@@ -103,7 +97,7 @@ export async function evaluateGuardedRecoveryAutoResume(
     const autoBuildBlocker = autoBuildPausePreflight(context);
     if (autoBuildBlocker) return stop(context, { prdId, setName, reason: 'active-gate-or-hold', attempt, maxAttempts, message: autoBuildBlocker });
 
-    const worktreeBlocker = await worktreePreflight(context.cwd);
+    const worktreeBlocker = await worktreePreflight(context.cwd, queueDir);
     if (worktreeBlocker) return stop(context, { prdId, setName, reason: worktreeBlocker.reason, attempt, maxAttempts, message: worktreeBlocker.message });
     const queueBlocker = await queuePreflight(context.cwd, queueDir, prdId, appliedAction);
     if (queueBlocker) return stop(context, { prdId, setName, reason: queueBlocker.reason, attempt, maxAttempts, message: queueBlocker.message });
@@ -113,18 +107,31 @@ export async function evaluateGuardedRecoveryAutoResume(
 
     const progressMarker = buildProgressMarker(projection.sidecar.boundedEvidence);
     const failureSignature = buildFailureSignature(projection.sidecar.boundedEvidence);
-    if (attempt > 0 && state.lastProgressMarker === progressMarker && state.lastFailureSignature === failureSignature) {
-      return stop(context, { prdId, setName, reason: 'repeated-failure-signature', attempt, maxAttempts });
+    if (attempt > 0) {
+      if (!hasValidPriorMarkers(state)) return stop(context, { prdId, setName, reason: 'malformed-sidecar', attempt, maxAttempts, message: 'Prior auto-resume markers are missing or malformed.' });
+      if (state.lastProgressMarker === progressMarker && state.lastFailureSignature === failureSignature) {
+        return stop(context, { prdId, setName, reason: 'repeated-failure-signature', attempt, maxAttempts });
+      }
     }
 
+    const compiledEligibilityBlocker = await compiledResumeEligibilityPreflight(context, prdId, setName, projection);
+    if (compiledEligibilityBlocker) return stop(context, { prdId, setName, reason: 'ineligible-artifacts', attempt, maxAttempts, message: compiledEligibilityBlocker });
+
+    const transitionBlocker = await queueTransitionPreflight(context, prdId, queueDir, setName, projection);
+    if (transitionBlocker) return stop(context, { prdId, setName, reason: 'queue-preflight-blocked', attempt, maxAttempts, message: transitionBlocker });
+
+    const inactiveMessage = 'Auto-build watcher is no longer active.';
+    if (context.isActiveController?.() === false) return stop(context, { prdId, setName, reason: 'active-gate-or-hold', attempt, maxAttempts, message: inactiveMessage });
+
     const nextAttempt = attempt + 1;
-    const result = await applyRecoveryContinueRepair(helperOptions(context, prdId, queueDir));
-    await writeAutoResumeState(sidecarJsonPath, await readRawSidecar(sidecarJsonPath), {
+    await writeAutoResumeState(sidecarJsonPath, rawSidecar, {
       attempts: nextAttempt,
       lastFailureSignature: failureSignature,
       lastProgressMarker: progressMarker,
       lastAttemptAt: new Date().toISOString(),
     });
+    if (context.isActiveController?.() === false) return stop(context, { prdId, setName, reason: 'active-gate-or-hold', attempt, maxAttempts, message: inactiveMessage });
+    const result = await applyRecoveryContinueRepair(helperOptions(context, prdId, queueDir));
     context.notifyQueueMutation('apply-recovery');
     emit(context, { type: 'recovery:auto-resume:queued', prdId, setName, action: 'continue-repair', attempt: nextAttempt, maxAttempts });
     return { status: 'queued', attempt: nextAttempt, detail: result.detail };
@@ -135,6 +142,9 @@ export async function evaluateGuardedRecoveryAutoResume(
   }
 }
 
+// --- eforge:endregion evaluator ---
+
+// --- eforge:region sidecar-state-helpers ---
 function helperOptions(context: MonitorContext, prdId: string, queueDir: string): ApplyHelperOptions {
   if (!context.cwd) throw new Error('Working directory not configured');
   return {
@@ -160,7 +170,7 @@ async function stop(context: MonitorContext, options: { prdId: string; setName: 
   return { status: 'stopped', reason: options.reason, attempt: options.attempt, ...(options.message !== undefined ? { message: options.message } : {}) };
 }
 
-function emit(context: MonitorContext, event: { type: string } & Record<string, unknown>): void {
+function emit(context: MonitorContext, event: RecoveryAutoResumeAuditEventInput): void {
   writeDaemonEvent(context.db, event, context.daemonSessionId);
 }
 
@@ -188,6 +198,11 @@ function readAutoResumeState(sidecar: SidecarWithAutoResume): AutoResumeState {
   };
 }
 
+function hasValidPriorMarkers(state: AutoResumeState): boolean {
+  return typeof state.lastProgressMarker === 'string' && state.lastProgressMarker.length > 0
+    && typeof state.lastFailureSignature === 'string' && state.lastFailureSignature.length > 0;
+}
+
 async function writeAutoResumeState(path: string, sidecar: SidecarWithAutoResume, state: AutoResumeState): Promise<void> {
   sidecar.autoResume = state;
   const tmp = `${path}.auto-resume.${process.pid}.${randomUUID()}.tmp`;
@@ -205,6 +220,9 @@ async function writeAutoResumeState(path: string, sidecar: SidecarWithAutoResume
   }
 }
 
+// --- eforge:endregion sidecar-state-helpers ---
+
+// --- eforge:region preflight-helpers ---
 function autoBuildPausePreflight(context: MonitorContext): string | undefined {
   const snapshot = context.options.daemonState?.autoBuildController.getSnapshot?.();
   if (!snapshot) return undefined;
@@ -242,6 +260,29 @@ async function policyGatePreflight(context: MonitorContext, prdId: string, sidec
   return result.blocked ? result.decision.reason ?? 'Queue dispatch blocked by policy gate.' : undefined;
 }
 
+async function compiledResumeEligibilityPreflight(
+  context: MonitorContext,
+  prdId: string,
+  setName: string,
+  projection: Awaited<ReturnType<typeof readRecoverySidecarProjection>>,
+): Promise<string | undefined> {
+  if (!context.cwd) return 'Working directory is not configured.';
+  const identity = projection.sidecar.boundedEvidence.identity;
+  const eligibility = await projectResumeEligibility({
+    cwd: context.cwd,
+    setName,
+    prdId,
+    mergeWorktreePath: join(computeWorktreeBase(context.cwd, setName), '__merge__'),
+    outputDir: context.options.config?.plan?.outputDir ?? context.options.planOutputDir ?? 'eforge/plans',
+    ...(context.options.config?.build?.trunkBranch !== undefined ? { trunkBranch: context.options.config.build.trunkBranch } : {}),
+    dbPath: resolve(context.cwd, '.eforge', 'monitor.db'),
+    featureBranch: identity.featureBranch,
+    baseBranch: identity.baseBranch,
+    failureSummary: projection.summary,
+  });
+  return eligibility.eligible ? undefined : eligibility.reason;
+}
+
 async function queuePreflight(cwd: string, queueDir: string, prdId: string, appliedAction: string | undefined): Promise<{ reason: 'queue-preflight-blocked' | 'active-gate-or-hold'; message: string } | undefined> {
   const failed = await loadQueue(join(queueDir, 'failed'), cwd);
   const failedPrd = failed.find((prd) => prd.id === prdId);
@@ -255,11 +296,31 @@ async function queuePreflight(cwd: string, queueDir: string, prdId: string, appl
   return undefined;
 }
 
-async function worktreePreflight(cwd: string): Promise<{ reason: 'dirty-worktree' | 'conflicting-worktree'; message: string } | undefined> {
+async function queueTransitionPreflight(
+  context: MonitorContext,
+  prdId: string,
+  queueDir: string,
+  setName: string,
+  projection: Awaited<ReturnType<typeof readRecoverySidecarProjection>>,
+): Promise<string | undefined> {
+  if (!context.cwd) return 'Working directory is not configured.';
+  const identity = projection.sidecar.boundedEvidence.identity;
+  const result = await preflightRequeueFailedPrdForCompiledResume({
+    cwd: context.cwd,
+    prdId,
+    queueDir,
+    setName,
+    featureBranch: identity.featureBranch,
+    baseBranch: identity.baseBranch,
+  });
+  return result.status === 'blocked' ? result.reason : undefined;
+}
+
+async function worktreePreflight(cwd: string, queueDir: string): Promise<{ reason: 'dirty-worktree' | 'conflicting-worktree'; message: string } | undefined> {
   const unmerged = await execFileAsync('git', ['ls-files', '-u'], { cwd });
   if (unmerged.stdout.trim().length > 0) return { reason: 'conflicting-worktree', message: 'Worktree has unmerged/conflicting paths.' };
   const status = await execFileAsync('git', ['status', '--porcelain', '-z'], { cwd, encoding: 'buffer' });
-  const dirty = parsePorcelainZPaths(status.stdout).filter((path) => !isAllowedFailedSidecarPath(path));
+  const dirty = parsePorcelainZPaths(status.stdout).filter((path) => !isAllowedFailedSidecarPath(path, cwd, queueDir));
   if (dirty.length > 0) return { reason: 'dirty-worktree', message: 'Worktree has uncommitted changes outside the failed recovery sidecar.' };
   return undefined;
 }
@@ -279,8 +340,13 @@ function parsePorcelainZPaths(output: Buffer): string[] {
   return paths;
 }
 
-function isAllowedFailedSidecarPath(path: string): boolean {
-  return /^\.eforge\/queue\/failed\/[^/]+\.(?:md|recovery\.json|recovery\.md)$/.test(path);
+function isAllowedFailedSidecarPath(path: string, cwd: string, queueDir: string): boolean {
+  const relativeQueueDir = resolve(cwd, queueDir).slice(resolve(cwd).length + 1).replaceAll('\\\\', '/');
+  return new RegExp(`^${escapeRegExp(relativeQueueDir)}/failed/[^/]+\\.(?:md|recovery\\.json|recovery\\.md)$`).test(path);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -292,6 +358,9 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+// --- eforge:endregion preflight-helpers ---
+
+// --- eforge:region signature-helpers ---
 function buildProgressMarker(evidence: SidecarWithAutoResume['boundedEvidence']): string {
   const record = evidence as { landedCommits?: Array<{ sha?: string }>; diffStat?: string } | undefined;
   const commits = record?.landedCommits?.map((commit) => commit.sha ?? '').filter(Boolean).join(',') ?? '';
@@ -338,6 +407,8 @@ function stableFailure(failure: StableFailure): StableFailure {
     errorMessage: failure.errorMessage ?? failure.message,
   };
 }
+
+// --- eforge:endregion signature-helpers ---
 
 class SidecarReadError extends Error {
   constructor(readonly cause: unknown) {
