@@ -10,12 +10,14 @@ import { getEvaluationSchemaYaml, getEvaluationSubmissionSchemaYaml, type Evalua
 import {
   applyEvaluationVerdicts,
   assertNoEvaluationDrift,
+  commitEvaluationSnapshot,
   createEvaluationTools,
   discardEvaluationCandidateFixes,
   restoreEvaluationSnapshotAfterFailure,
   validateEvaluationPath,
   type EvaluationSnapshot,
 } from '../evaluation/index.js';
+import { syncArchitectureManifestDependencies } from '../planning-quality/manifest-sync.js';
 import type { ModelTracker } from '../model-tracker.js';
 import { parseEvaluationBlock } from './common.js';
 import { mergeMutationDisallowedTools } from '../harnesses/tool-safety.js';
@@ -256,6 +258,7 @@ async function* runEvaluate(
   options: PlanPhaseEvaluatorOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { mode, harness, planSetName, sourceContent, cwd, verbose, abortController } = options;
+  const outputDir = options.outputDir ?? 'eforge/plans';
   const config = MODE_CONFIG[mode];
 
   yield { timestamp: new Date().toISOString(), type: config.startEvent };
@@ -283,7 +286,7 @@ The previous evaluator run was interrupted before a final verdict submission was
     source_content: sourceContent,
     evaluation_schema: getEvaluationSchemaYaml(),
     evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
-    outputDir: options.outputDir ?? 'eforge/plans',
+    outputDir,
     continuation_context: continuationContextText,
     list_files_tool: harness.effectiveCustomToolName('list_evaluation_files'),
     get_diff_tool: harness.effectiveCustomToolName('get_evaluation_diff'),
@@ -362,7 +365,7 @@ The previous evaluator run was interrupted before a final verdict submission was
     return;
   }
 
-  const effectivePathPrefix = options.allowedPathPrefix ?? posix.join(options.outputDir ?? 'eforge/plans', planSetName);
+  const effectivePathPrefix = options.allowedPathPrefix ?? posix.join(outputDir, planSetName);
   try {
     validatePathGuard(verdicts, effectivePathPrefix, options.evaluationSnapshot);
     validateProtectedArtifacts(
@@ -371,10 +374,19 @@ The previous evaluator run was interrupted before a final verdict submission was
       'protectedArtifacts' in config ? config.protectedArtifacts : undefined,
       options.evaluationSnapshot,
     );
-    const application = await applyEvaluationVerdicts(options.evaluationSnapshot, verdicts, {
-      commitMessage: options.commitMessage ?? `plan(${planSetName}): planning artifacts`,
-      modelTracker: options.modelTracker,
-    });
+    const application = await applyEvaluationVerdicts(options.evaluationSnapshot, verdicts, { commit: false });
+    // Orchestration is the dependency source of truth once fixes can mutate it;
+    // re-derive the machine-managed manifest fence before committing so the
+    // committed artifacts always pass cohesion validation together.
+    const manifestSync = await syncArchitectureManifestDependencies({ cwd, outputDir, planSetName });
+    if (manifestSync.changed && manifestSync.relPath) {
+      await exec('git', ['add', '--', manifestSync.relPath], { cwd });
+    }
+    await commitEvaluationSnapshot(
+      options.evaluationSnapshot,
+      options.commitMessage ?? `plan(${planSetName}): planning artifacts`,
+      options.modelTracker,
+    );
     yield {
       timestamp: new Date().toISOString(),
       type: config.completeEvent,
