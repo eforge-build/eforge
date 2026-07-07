@@ -1,5 +1,6 @@
 import type { EforgeEvent } from './events/root.js';
 import { PLANNING_DECOMPOSITION_EVENT_TYPES } from './events/shared/planning-decomposition.js';
+import { RECOVERY_AUTO_RESUME_MAX_ATTEMPTS } from './events/shared/recovery-auto-resume.js';
 import type { SchemaError } from './schema-utils.js';
 
 export const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
@@ -125,6 +126,19 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
 
   if (event.type === 'stack:landing:conflict:recovery:start' && event.attempt > event.maxAttempts) {
     return validationError('/attempt', 'recovery attempt cannot exceed maxAttempts');
+  }
+
+  if (
+    event.type === 'recovery:auto-resume:evaluate' ||
+    event.type === 'recovery:auto-resume:queued' ||
+    event.type === 'recovery:auto-resume:stopped'
+  ) {
+    if (event.maxAttempts > RECOVERY_AUTO_RESUME_MAX_ATTEMPTS) {
+      return validationError('/maxAttempts', `recovery auto-resume maxAttempts cannot exceed ${RECOVERY_AUTO_RESUME_MAX_ATTEMPTS}`);
+    }
+    if (event.attempt > event.maxAttempts) {
+      return validationError('/attempt', 'recovery auto-resume attempt cannot exceed maxAttempts');
+    }
   }
 
   if (event.type === 'planning:scope-context:failure' && event.failure.recovery.attempt > event.failure.recovery.maxAttempts) {

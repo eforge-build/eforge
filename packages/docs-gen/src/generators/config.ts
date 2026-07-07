@@ -52,6 +52,7 @@ const TOP_LEVEL_CONFIG_FIELD_DESCRIPTIONS: Record<string, string> = {
   plan: 'Plan artifact output settings used during compile.',
   plugins: 'Host plugin integration settings.',
   prdQueue: 'Queue directory, auto-build, and watcher polling settings for queued PRDs.',
+  recovery: 'Disabled-by-default bounded recovery auto-resume policy and attempt budget.',
   stacking: 'Stacking configuration for git-spice backed stacked PRs.',
   tools: 'Toolbelt configuration for named project MCP server bundles.',
 };
@@ -115,6 +116,24 @@ export async function generateConfig(opts: {
   lines.push(`| \`compile.planningUnitMaxCriteriaPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxCriteriaPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxCriteriaPerUnit}\` | Maximum acceptance criteria assigned to one planning unit. |`);
   lines.push(`| \`compile.planningUnitMaxSubsystemsPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxSubsystemsPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxSubsystemsPerUnit}\` | Maximum subsystems assigned to one planning unit. |`);
   lines.push(`| \`compile.planningUnitMaxSplitAttemptsPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxSplitAttemptsPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxSplitAttemptsPerUnit}\` | Maximum split retries attempted for one planning unit. |`);
+  lines.push('');
+  lines.push('## Recovery auto-resume');
+  lines.push('');
+  lines.push('`recovery.autoResume` is disabled by default. With the default config, daemon policy consumers must emit an audit/stop decision and stop before any queue mutation. Manual recovery routes and tools remain available.');
+  lines.push('');
+  lines.push('| Field | Default | Description |');
+  lines.push('|-------|---------|-------------|');
+  lines.push('| `recovery.autoResume.enabled` | `false` | Opt in to daemon-owned bounded auto-resume for high-confidence compiled-artifact `continue-repair` recommendations. |');
+  lines.push('| `recovery.autoResume.maxAttempts` | `1` | Maximum automatic continue-repair attempts per failed PRD. `0` is audit-only/non-mutating mode. |');
+  lines.push('');
+  lines.push('Policy audit events surface attempt counts and stop reasons such as `disabled`, `attempt-budget-exhausted`, `not-continue-repair`, `not-high-confidence`, `not-eligible`, `manual-confirmation-required`, and `error`.');
+  lines.push('');
+  lines.push('```yaml');
+  lines.push('recovery:');
+  lines.push('  autoResume:');
+  lines.push('    enabled: false');
+  lines.push('    maxAttempts: 1');
+  lines.push('```');
   lines.push('');
   lines.push('## Runtime Choices and Routing');
   lines.push('');

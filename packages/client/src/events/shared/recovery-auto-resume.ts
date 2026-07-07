@@ -1,0 +1,1 @@
+export const RECOVERY_AUTO_RESUME_MAX_ATTEMPTS = 3;

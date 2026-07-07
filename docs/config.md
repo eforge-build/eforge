@@ -189,6 +189,11 @@ prdQueue:
   dir: .eforge/queue          # Where queued PRDs are stored (gitignored — runtime state)
   autoBuild: true             # Desired auto-build state; scheduler pause can still gate launches
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
+
+recovery:
+  autoResume:
+    enabled: false            # Default false. When disabled, daemon policy consumers stop before any auto-resume mutation.
+    maxAttempts: 1            # Bounded automatic continue-repair attempts per failed PRD when enabled; 0 = audit/stop without mutation; maximum 3.
   # Explicit build dependency (per-enqueue, not a config key):
   #   Pass --after <queue-id> to the CLI or afterQueueId to the eforge_build tool
   #   to create a deterministic dependency on an active or completed queue entry.
@@ -921,7 +926,7 @@ Config merges from three levels (lowest to highest priority):
 
 Scope discovery and precedence are implemented in `@eforge-build/scopes`. Engine code calls `getScopeDirectory(scope)` for tier directory lookup, `resolveLayeredSingletons('config.yaml')` for the layered-singleton merge order, and `resolveNamedSet('profiles')` for active-profile resolution. Engine retains parsing, schema validation, `mergePartialConfigs()`, and active-profile semantics.
 
-Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`, `prdQueue`, `daemon`, `monitor`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`, `prdQueue`, `daemon`, `monitor`, `recovery`) merge per-field, including nested per-field merges for objects such as `recovery.autoResume` (overriding `maxAttempts` does not drop `enabled`). Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
 ### Lookup modes
 
@@ -973,6 +978,10 @@ PRDs with `depends_on` frontmatter whose upstream builds are still active (pendi
 Queue controls mutate runtime filesystem state under `.eforge/queue/` (or the configured `prdQueue.dir`), which is gitignored and produces no git commits. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items reject priority mutation with a conflict until recovery/requeue makes them runnable, and running items reject priority changes because active cancellation requires live queue-lock and daemon run/session ownership evidence. Queue hold state is runtime-only PRD frontmatter (`held`, `hold_reason`, `held_at`) on pending or waiting items; held items keep their location and ordering metadata but scheduler ticks skip them until they are unheld. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal deletes matching `.recovery.md` and `.recovery.json` sidecars. Legacy removal fails closed when live pending/waiting dependents exist and lists dependent ids. Cascade remove and cancel use preview/apply controls that recheck an expected affected token and require explicit dependent confirmation before mutating dependents. Scheduler pause is separate from `prdQueue.autoBuild`: it leaves desired auto-build enabled but prevents new launches until resume, while already-running builds continue unless cancelled. After successful mutations, the daemon records the queue mutation; when the scheduler is not explicitly paused, it re-reads queue files before dispatch.
 
 When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`. Failed upstream cascades can be inspected through the queue recovery analysis/preflight contract; analysis includes dependency classifications, dispatch preflight, and bounded metadata repair actions. The daemon apply route passes selected repair actions and dependency-removal confirmation through to the engine, then returns repair results from the client-owned queue recovery contract.
+
+### Recovery auto-resume policy
+
+`recovery.autoResume` is disabled by default. With the default config, daemon policy consumers must emit an audit/stop decision and stop before mutating failed queue state; queued builds retain the existing failure-pause behavior and manual recovery controls remain available. Opting in (`enabled: true`) allows only the high-confidence compiled-artifact `continue-repair` automation path to consume a bounded attempt budget. `maxAttempts` caps automatic attempts per failed PRD at 3; `0` is a non-mutating audit mode even when enabled. Policy events surface the attempt count and stop reason (`disabled`, `attempt-budget-exhausted`, `not-continue-repair`, `not-high-confidence`, `not-eligible`, `manual-confirmation-required`, or `error`) so operators can see why automation did or did not run.
 
 #### Queue recovery contract fields
 

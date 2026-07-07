@@ -1248,6 +1248,24 @@ const eventRegistry = {
     summary: (e) => `Recovery parse failed: ${e.error}`,
   },
 
+  'recovery:auto-resume:evaluate': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume policy evaluated for ${e.prdId}: ${e.enabled ? 'enabled' : 'disabled'} (${e.attempt}/${e.maxAttempts})`,
+  },
+
+  'recovery:auto-resume:queued': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume queued continue-repair for ${e.prdId} (${e.attempt}/${e.maxAttempts})`,
+  },
+
+  'recovery:auto-resume:stopped': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume stopped for ${e.prdId}: ${e.reason}`,
+  },
+
   'recovery:apply:start': { scope: 'session', persist: false },
 
   'recovery:apply:complete': {

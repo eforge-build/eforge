@@ -123,6 +123,7 @@ export type {
 export { EventEnvelopeSchema } from './events/envelope.js';
 export { EforgeEventSchema } from './events/root.js';
 export { EforgeEventVariantsSchema } from './events/variants.js';
+export { RECOVERY_AUTO_RESUME_MAX_ATTEMPTS } from './events/shared/recovery-auto-resume.js';
 export { DaemonStreamSnapshotSchema, SessionStreamSnapshotSchema } from './events/snapshots.js';
 export { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, isBuiltInReviewPerspective } from './events/utilities.js';
 export { parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, safeParseSessionStreamSnapshot } from './events/parse.js';

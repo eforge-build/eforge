@@ -2764,10 +2764,14 @@ export class EforgeEngine {
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   const landing = overrides.landing ? { ...base.landing, ...overrides.landing } : { ...base.landing };
   const build = overrides.build ? { ...base.build, ...overrides.build } : { ...base.build };
+  const recovery = overrides.recovery
+    ? { ...base.recovery, ...overrides.recovery, autoResume: { ...base.recovery.autoResume, ...overrides.recovery.autoResume } }
+    : base.recovery;
 
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
+    recovery,
     compile: overrides.compile ? { ...base.compile, ...overrides.compile } : base.compile,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build,

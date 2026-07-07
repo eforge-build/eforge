@@ -58,6 +58,7 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
 });
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
+const RECOVERY_AUTO_RESUME_MAX_ATTEMPTS = 3;
 const compileConfigSchema = z.object({
   planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
   planningUnitMaxDepth: boundedPositiveIntegerConfigSchema('planningUnitMaxDepth').optional(),
@@ -109,7 +110,6 @@ const toolsConfigSchema = z.object({
 // ---------------------------------------------------------------------------
 // ModelRef — model references
 // ---------------------------------------------------------------------------
-
 /** A model reference: id is always required. Resolver-only `provider` is spliced
  * in for Pi harness from `agents.tiers.<tier>.pi.provider`. Do not set `provider`
  * on config model refs. */
@@ -117,7 +117,6 @@ export interface ModelRef {
   id: string;
   provider?: string;
 }
-
 export const modelRefSchema = z.object({
   id: z.string().describe('Model identifier (e.g. "claude-opus-4-7", "gpt-5.4")'),
   provider: z.string().optional(),
@@ -130,19 +129,15 @@ export const modelRefSchema = z.object({
     });
   }
 }).describe('Model reference (provider must not be set here; use tier pi.provider)');
-
 // ---------------------------------------------------------------------------
 // SDK Passthrough Config Schemas
 // ---------------------------------------------------------------------------
-
 export const thinkingConfigSchema = z.union([
   z.object({ type: z.literal('adaptive') }),
   z.object({ type: z.literal('enabled'), budgetTokens: z.number().int().positive().optional() }),
   z.object({ type: z.literal('disabled') }),
 ]).describe('Controls Claude\'s thinking/reasoning behavior');
-
 export const effortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']).describe('Effort level for controlling thinking depth');
-
 export const sdkPassthroughConfigSchema = z.object({
   model: modelRefSchema.optional().describe('Model override'),
   thinking: thinkingConfigSchema.optional().describe('Thinking/reasoning behavior'),
@@ -152,15 +147,12 @@ export const sdkPassthroughConfigSchema = z.object({
   allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
   disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
 });
-
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
-
 /** Safe key rule for review perspective identifiers: lowercase slug 1–64 chars. */
 const reviewPerspectiveKeySchema = z
   .string()
   .regex(/^[a-z][a-z0-9-]{0,63}$/, 'Perspective key must be a lowercase slug starting with a letter (e.g. "code", "accessibility")');
-
 // Bound to `z.ZodType<ReviewProfileConfig>` so a drift between this schema and
 // the shared TypeScript type in `@eforge-build/client` produces a compile error.
 export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
@@ -170,26 +162,22 @@ export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.objec
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
   evaluatorStrictness: z.enum(STRICTNESS).describe('How strictly the evaluator judges fixes: "strict", "standard", or "lenient"'),
 });
-
 /** A build stage spec: either a single stage name or an array of stage names to run in parallel. */
 export const buildStageSpecSchema = z.union([
   z.string().describe('A single stage name'),
   z.array(z.string()).describe('Stage names to run in parallel'),
 ]).describe('A stage name or array of stage names to run in parallel');
-
 const hookConfigSchema = z.object({
   event: z.string(),
   command: z.string(),
   timeout: z.number().positive().default(5000),
 });
-
 const pluginConfigSchema = z.object({
   enabled: z.boolean().optional(),
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
   paths: z.array(z.string()).optional(),
 });
-
 export const extensionConfigSchema = z.object({
   enabled: z.boolean().optional().describe('Enable native eforge extension discovery and loading'),
   include: z.array(z.string()).optional().describe('Native extension names to include during auto-discovery'),
@@ -202,9 +190,7 @@ export const extensionConfigSchema = z.object({
   profileRouterTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)'),
   validationProviderTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for validation provider handlers and commands (defaults to eventHookTimeoutMs)'),
 }).strict().describe('Native eforge extension configuration');
-
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
-
 /** Harness kind for a tier recipe. */
 export const harnessTypeSchema = z.enum(['claude-sdk', 'pi']).describe('Harness kind for the tier recipe');
 /** Backwards-compatible alias. */
@@ -388,6 +374,8 @@ const stackingConfigSchema = z.object({
   'Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology.',
 );
 
+const recoveryAutoResumeConfigSchema = z.object({ enabled: z.boolean().optional().describe('Opt in to daemon-owned bounded recovery auto-resume for high-confidence compiled-artifact continue-repair recommendations. Default: false; disabled policy consumers stop before mutation.'), maxAttempts: z.number().int().nonnegative().max(RECOVERY_AUTO_RESUME_MAX_ATTEMPTS).optional().describe(`Maximum automatic continue-repair attempts per failed PRD before policy stops. Default: 1. Maximum: ${RECOVERY_AUTO_RESUME_MAX_ATTEMPTS}. Set 0 to audit decisions without mutation even when enabled.`) }).strict().describe('Disabled-by-default bounded recovery auto-resume policy.');
+const recoveryConfigSchema = z.object({ autoResume: recoveryAutoResumeConfigSchema.optional() }).strict().describe('Recovery automation settings. Manual recovery tools remain available regardless of this policy.');
 const LEGACY_BUILD_ON_SUCCESS_MIGRATION_MESSAGE =
   `"build.onSuccess" is no longer supported. Use "landing.action: pr|merge|leave" instead. ` +
   `Replace build.onSuccess: merge-to-base-branch → landing.action: merge, ` +
@@ -523,7 +511,7 @@ const eforgeConfigBaseSchema = z.object({
   }).optional(),
   monitor: z.object({
     retentionCount: z.number().int().positive().optional(),
-  }).optional(),
+  }).optional(), recovery: recoveryConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
   tools: toolsConfigSchema.optional(),
   stacking: stackingConfigSchema.optional(),
@@ -750,9 +738,11 @@ export interface ClaudeSdkConfig {
   disableSubagents: boolean;
 }
 
+export interface RecoveryAutoResumeConfig { enabled: boolean; maxAttempts: number }
 export interface EforgeConfig {
   maxConcurrentBuilds: number;
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
+  recovery: { autoResume: RecoveryAutoResumeConfig };
   agents: {
     maxTurns: number;
     maxContinuations: number;
@@ -952,6 +942,7 @@ const DEFAULT_TIER_RECIPES: Partial<Record<AgentTier, TierConfig>> = Object.free
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   maxConcurrentBuilds: 2,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
+  recovery: Object.freeze({ autoResume: Object.freeze({ enabled: false, maxAttempts: 1 }) }),
   compile: DEFAULT_PLANNING_DECOMPOSITION_CONFIG,
   agents: Object.freeze({
     maxTurns: DEFAULT_AGENT_MAX_TURNS,
@@ -1148,6 +1139,7 @@ export function resolveConfig(
     monitor: Object.freeze({
       retentionCount: fileConfig.monitor?.retentionCount ?? DEFAULT_CONFIG.monitor.retentionCount,
     }),
+    recovery: Object.freeze({ autoResume: Object.freeze({ enabled: fileConfig.recovery?.autoResume?.enabled ?? DEFAULT_CONFIG.recovery.autoResume.enabled, maxAttempts: fileConfig.recovery?.autoResume?.maxAttempts ?? DEFAULT_CONFIG.recovery.autoResume.maxAttempts }) }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
     tools: Object.freeze({
       toolbelts: fileConfig.tools?.toolbelts ?? DEFAULT_CONFIG.tools.toolbelts,
@@ -1398,6 +1390,16 @@ export function mergePartialConfigs(
   }
   if (global.plan || project.plan) {
     result.plan = { ...global.plan, ...project.plan };
+  }
+  if (global.recovery || project.recovery) {
+    const mergedAutoResume = (global.recovery?.autoResume || project.recovery?.autoResume)
+      ? { ...global.recovery?.autoResume, ...project.recovery?.autoResume }
+      : undefined;
+    result.recovery = {
+      ...global.recovery,
+      ...project.recovery,
+      ...(mergedAutoResume !== undefined ? { autoResume: mergedAutoResume } : {}),
+    };
   }
   if (global.plugins || project.plugins) {
     result.plugins = { ...global.plugins, ...project.plugins };

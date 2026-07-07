@@ -14166,6 +14166,141 @@
           "type": "object",
           "required": [
             "type",
+            "prdId",
+            "setName",
+            "enabled",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:evaluate",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "attempt": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName",
+            "action",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:queued",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "action": {
+              "const": "continue-repair",
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName",
+            "reason",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:stopped",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "disabled",
+                  "type": "string"
+                },
+                {
+                  "const": "attempt-budget-exhausted",
+                  "type": "string"
+                },
+                {
+                  "const": "not-continue-repair",
+                  "type": "string"
+                },
+                {
+                  "const": "not-high-confidence",
+                  "type": "string"
+                },
+                {
+                  "const": "not-eligible",
+                  "type": "string"
+                },
+                {
+                  "const": "manual-confirmation-required",
+                  "type": "string"
+                },
+                {
+                  "const": "error",
+                  "type": "string"
+                }
+              ]
+            },
+            "attempt": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "prdId"
           ],
           "properties": {
@@ -31744,6 +31879,141 @@
                             "type": "string"
                           },
                           "rawOutput": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "setName",
+                          "enabled",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:evaluate",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "attempt": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "setName",
+                          "action",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:queued",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "const": "continue-repair",
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "setName",
+                          "reason",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:stopped",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "const": "disabled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attempt-budget-exhausted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-continue-repair",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-high-confidence",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-eligible",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual-confirmation-required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "error",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attempt": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "message": {
                             "type": "string"
                           }
                         }

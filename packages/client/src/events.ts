@@ -168,6 +168,7 @@ export {
   MAX_COMPILE_SCOPE_CONTEXT_EXPLANATION_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_EXCERPT_LENGTH,
   MAX_VALIDATION_DIAGNOSTIC_MESSAGE_LENGTH,
+  RECOVERY_AUTO_RESUME_MAX_ATTEMPTS,
 } from './events.schemas.js';
 
 export { DaemonStreamSnapshotSchema, EforgeEventSchema } from './events.schemas.js';

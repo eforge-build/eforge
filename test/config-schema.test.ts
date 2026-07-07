@@ -27,7 +27,7 @@ import {
   DEFAULT_TIER_MAX_TURNS,
 } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/harness';
-import { DAEMON_API_VERSION } from '@eforge-build/client';
+import { DAEMON_API_VERSION, RECOVERY_AUTO_RESUME_MAX_ATTEMPTS } from '@eforge-build/client';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
 describe('parseRawConfig strict validation', () => {
@@ -41,6 +41,28 @@ describe('parseRawConfig strict validation', () => {
 });
 
 describe('eforgeConfigSchema', () => {
+  it('defaults recovery auto-resume to disabled with a bounded attempt budget', () => {
+    const config = resolveConfig({});
+    expect(config.recovery.autoResume).toEqual({ enabled: false, maxAttempts: 1 });
+  });
+
+  it('parses enabled recovery auto-resume with an explicit attempt budget', () => {
+    const config = resolveConfig({ recovery: { autoResume: { enabled: true, maxAttempts: 2 } } });
+    expect(config.recovery.autoResume).toEqual({ enabled: true, maxAttempts: 2 });
+  });
+
+  it('accepts maxAttempts 0 as a non-mutating recovery auto-resume audit budget', () => {
+    const result = configYamlSchema.safeParse({ recovery: { autoResume: { enabled: true, maxAttempts: 0 } } });
+    expect(result.success).toBe(true);
+    expect(resolveConfig({ recovery: { autoResume: { enabled: true, maxAttempts: 0 } } }).recovery.autoResume).toEqual({ enabled: true, maxAttempts: 0 });
+  });
+
+  it('rejects negative, fractional, or excessive recovery auto-resume attempt budgets', () => {
+    expect(configYamlSchema.safeParse({ recovery: { autoResume: { maxAttempts: -1 } } }).success).toBe(false);
+    expect(configYamlSchema.safeParse({ recovery: { autoResume: { maxAttempts: 1.5 } } }).success).toBe(false);
+    expect(configYamlSchema.safeParse({ recovery: { autoResume: { maxAttempts: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS + 1 } } }).success).toBe(false);
+  });
+
   it('accepts a valid config with tier recipes', () => {
     const result = eforgeConfigSchema.safeParse({
       agents: {
@@ -405,5 +427,33 @@ describe('removed extension trust config field validation', () => {
     const project: PartialEforgeConfig = { extensions: { include: ['alpha'] } };
     const merged = mergePartialConfigs(user, project);
     expect(merged.extensions).toMatchObject({ enabled: false, include: ['alpha'], eventHookTimeoutMs: 1234 });
+  });
+
+  it('mergePartialConfigs preserves recovery auto-resume fields across layers', () => {
+    const user: PartialEforgeConfig = { recovery: { autoResume: { enabled: true, maxAttempts: 2 } } };
+    const project: PartialEforgeConfig = { recovery: { autoResume: { maxAttempts: 3 } } };
+    const merged = mergePartialConfigs(user, project);
+    expect(merged.recovery?.autoResume).toEqual({ enabled: true, maxAttempts: 3 });
+  });
+
+  it('loadConfig preserves recovery auto-resume from project config files', async () => {
+    const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-recovery-config-'));
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
+    try {
+      await mkdir(join(tmpDir, 'project', 'eforge'), { recursive: true });
+      await writeFile(join(tmpDir, 'project', 'eforge', 'config.yaml'), 'recovery:\n  autoResume:\n    enabled: true\n    maxAttempts: 2\n', 'utf-8');
+
+      const { config } = await loadConfig(join(tmpDir, 'project'));
+      expect(config.recovery.autoResume).toEqual({ enabled: true, maxAttempts: 2 });
+    } finally {
+      if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      await rm(tmpDir, { recursive: true });
+    }
   });
 });

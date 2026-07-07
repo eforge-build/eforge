@@ -191,3 +191,84 @@ describe('eventRegistry parity', () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Recovery auto-resume audit events — parity with shared event registry
+// ---------------------------------------------------------------------------
+
+describe('recovery:auto-resume:* schema and registry parity', () => {
+  const timestamp = '2026-07-06T12:00:00.000Z';
+
+  const variants = [
+    'recovery:auto-resume:evaluate',
+    'recovery:auto-resume:queued',
+    'recovery:auto-resume:stopped',
+  ] as const;
+
+  it('round-trips all recovery auto-resume audit event variants', () => {
+    const fixtures = [
+      {
+        type: 'recovery:auto-resume:evaluate' as const,
+        timestamp,
+        prdId: 'compiled-artifact-repair',
+        setName: 'compiled-artifact-repair',
+        enabled: true,
+        attempt: 0,
+        maxAttempts: 1,
+      },
+      {
+        type: 'recovery:auto-resume:queued' as const,
+        timestamp,
+        prdId: 'compiled-artifact-repair',
+        setName: 'compiled-artifact-repair',
+        action: 'continue-repair' as const,
+        attempt: 1,
+        maxAttempts: 1,
+      },
+      {
+        type: 'recovery:auto-resume:stopped' as const,
+        timestamp,
+        prdId: 'compiled-artifact-repair',
+        setName: 'compiled-artifact-repair',
+        reason: 'attempt-budget-exhausted' as const,
+        attempt: 1,
+        maxAttempts: 1,
+        message: 'Configured recovery auto-resume attempt budget is exhausted.',
+      },
+    ];
+
+    for (const event of fixtures) {
+      expect(safeParseEforgeEvent(event).success, event.type).toBe(true);
+    }
+  });
+
+  it('rejects malformed recovery auto-resume audit events', () => {
+    expect(safeParseEforgeEvent({
+      type: 'recovery:auto-resume:queued',
+      timestamp,
+      prdId: 'compiled-artifact-repair',
+      setName: 'compiled-artifact-repair',
+      action: 'retry',
+      attempt: 1,
+      maxAttempts: 1,
+    }).success).toBe(false);
+
+    expect(safeParseEforgeEvent({
+      type: 'recovery:auto-resume:stopped',
+      timestamp,
+      prdId: 'compiled-artifact-repair',
+      setName: 'compiled-artifact-repair',
+      reason: 'silent-auto-apply',
+      attempt: 0,
+      maxAttempts: 1,
+    }).success).toBe(false);
+  });
+
+  for (const variant of variants) {
+    it(`eventRegistry has entry for ${variant}`, () => {
+      expect(eventRegistry[variant]).toBeDefined();
+      expect(eventRegistry[variant].scope).toBe('session');
+      expect(eventRegistry[variant].persist).toBe(true);
+    });
+  }
+});

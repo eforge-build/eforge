@@ -31,6 +31,19 @@ The new schema collapses both layers into a single concept: **tier recipes**. A 
 
 ---
 
+## Recovery auto-resume default
+
+No migration is required for recovery automation. `recovery.autoResume.enabled` defaults to `false`, so existing installations keep manual recovery behavior and daemon policy consumers stop before any auto-resume mutation. To opt in to the bounded high-confidence compiled-artifact continue-repair exception, configure:
+
+```yaml
+recovery:
+  autoResume:
+    enabled: true
+    maxAttempts: 1
+```
+
+`maxAttempts: 0` is accepted as audit-only/non-mutating mode. Policy events keep audit and stop reasons visible when automation does not run.
+
 ## Pattern 1: Single `agentRuntimes` Entry (Most Common)
 
 The most common old pattern: one runtime entry that sets the harness and provider for all agents, with a global model override.

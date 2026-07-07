@@ -49,6 +49,7 @@ import {
 } from '../shared/extension-actions.js';
 import { BuildDecisionSchema, PlanningDecisionEventSchema } from '../decisions.js';
 import { queueEventVariants } from '../queue-events.js';
+import { RECOVERY_AUTO_RESUME_MAX_ATTEMPTS } from '../shared/recovery-auto-resume.js';
 
 export const validationRecoveryEventVariants = [
   // Validation (post-merge)
@@ -164,6 +165,41 @@ export const validationRecoveryEventVariants = [
     prdId: Type.String(),
     error: Type.String(),
     rawOutput: Type.Optional(Type.String()),
+  }),
+
+  // Recovery auto-resume policy audit
+  Type.Object({
+    type: Type.Literal('recovery:auto-resume:evaluate'),
+    prdId: Type.String(),
+    setName: Type.String(),
+    enabled: Type.Boolean(),
+    attempt: Type.Integer({ minimum: 0 }),
+    maxAttempts: Type.Integer({ minimum: 0, maximum: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS }),
+  }),
+  Type.Object({
+    type: Type.Literal('recovery:auto-resume:queued'),
+    prdId: Type.String(),
+    setName: Type.String(),
+    action: Type.Literal('continue-repair'),
+    attempt: Type.Integer({ minimum: 1 }),
+    maxAttempts: Type.Integer({ minimum: 1, maximum: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS }),
+  }),
+  Type.Object({
+    type: Type.Literal('recovery:auto-resume:stopped'),
+    prdId: Type.String(),
+    setName: Type.String(),
+    reason: Type.Union([
+      Type.Literal('disabled'),
+      Type.Literal('attempt-budget-exhausted'),
+      Type.Literal('not-continue-repair'),
+      Type.Literal('not-high-confidence'),
+      Type.Literal('not-eligible'),
+      Type.Literal('manual-confirmation-required'),
+      Type.Literal('error'),
+    ]),
+    attempt: Type.Integer({ minimum: 0 }),
+    maxAttempts: Type.Integer({ minimum: 0, maximum: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS }),
+    message: Type.Optional(Type.String()),
   }),
 
   // Recovery apply

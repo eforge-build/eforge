@@ -26,6 +26,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `plan` | Plan artifact output settings used during compile. |
 | `plugins` | Host plugin integration settings. |
 | `prdQueue` | Queue directory, auto-build, and watcher polling settings for queued PRDs. |
+| `recovery` | Recovery automation settings. Manual recovery tools remain available regardless of this policy. |
 | `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
 | `tools` | Toolbelt configuration for named project MCP server bundles. |
 
@@ -46,6 +47,24 @@ eforge merges configuration from three tiers (highest precedence first):
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | `64` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
+
+## Recovery auto-resume
+
+`recovery.autoResume` is disabled by default. With the default config, daemon policy consumers must emit an audit/stop decision and stop before any queue mutation. Manual recovery routes and tools remain available.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `recovery.autoResume.enabled` | `false` | Opt in to daemon-owned bounded auto-resume for high-confidence compiled-artifact `continue-repair` recommendations. |
+| `recovery.autoResume.maxAttempts` | `1` | Maximum automatic continue-repair attempts per failed PRD. `0` is audit-only/non-mutating mode. |
+
+Policy audit events surface attempt counts and stop reasons such as `disabled`, `attempt-budget-exhausted`, `not-continue-repair`, `not-high-confidence`, `not-eligible`, `manual-confirmation-required`, and `error`.
+
+```yaml
+recovery:
+  autoResume:
+    enabled: false
+    maxAttempts: 1
+```
 
 ## Runtime Choices and Routing
 
