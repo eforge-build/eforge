@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 230
+Total variants: 233
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -190,6 +190,9 @@ Total variants: 230
 | `recovery:summary` | `prdId`, `summary` |
 | `recovery:complete` | `prdId`, `sidecarJsonPath`, `sidecarMdPath`, `verdict` |
 | `recovery:error` | `error`, `prdId`, `rawOutput` |
+| `recovery:auto-resume:evaluate` | `attempt`, `enabled`, `maxAttempts`, `prdId`, `setName` |
+| `recovery:auto-resume:queued` | `action`, `attempt`, `maxAttempts`, `prdId`, `setName` |
+| `recovery:auto-resume:stopped` | `attempt`, `maxAttempts`, `message`, `prdId`, `reason`, `setName` |
 | `recovery:apply:start` | `prdId` |
 | `recovery:apply:complete` | `noAction`, `prdId`, `verdict` |
 | `recovery:apply:error` | `message`, `prdId` |

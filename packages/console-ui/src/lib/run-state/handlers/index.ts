@@ -359,6 +359,11 @@ export const IGNORED_EVENT_TYPES = [
   'build:resume:start',
   'build:resume:ineligible',
   'build:resume:complete',
+  // recovery:auto-resume:* — policy audit events are surfaced in event history;
+  // queue state changes are projected through queue/run snapshots.
+  'recovery:auto-resume:evaluate',
+  'recovery:auto-resume:queued',
+  'recovery:auto-resume:stopped',
   // Durable daemon-wide failed-enqueue projections are handled outside the per-run reducer.
   'daemon:failed-enqueue:upsert',
   'daemon:failed-enqueue:resolved',

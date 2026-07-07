@@ -580,6 +580,38 @@ depends_on: ["${prdId}"]
     expect(md).toContain(baseBranch);
   });
 
+  it('preserves auto-resume state when refreshing failed queued resume sidecars', async () => {
+    const cwd = initRepo();
+    const prdId = 'auto-resume-preserved-prd';
+    const setName = 'auto-resume-preserved-set';
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    const autoResume = {
+      attempts: 2,
+      lastProgressMarker: JSON.stringify({ commits: 'abc', diffStat: ' plan.md | 1 +' }),
+      lastFailureSignature: JSON.stringify({ failures: [{ planId: 'old-plan' }] }),
+      lastAttemptAt: '2026-01-01T00:00:00.000Z',
+    };
+    writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.recovery.json`), `${JSON.stringify({ ...JSON.parse(minimalV3Sidecar(prdId, setName)), autoResume }, null, 2)}\n`);
+    seedRecoveryRunSelectionFixture(cwd, setName, 'failed', { prdId });
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch: `eforge/${setName}`,
+      baseBranch: 'main',
+      agentRuntimes: new StubHarness([{ text: recoveryAnalystManualXml('plan-99') }]),
+      config: DEFAULT_CONFIG,
+      resumeRunId: `run-${setName}-resume`,
+    });
+
+    expect(result.status).toBe('refreshed');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as any;
+    expect(parsed.autoResume).toEqual(autoResume);
+    expect(parsed.boundedEvidence.failingPlan.planId).not.toBe('old-plan');
+  });
+
   it('refreshes sidecars for failed queued resume with acceptance-validation terminal evidence and no plan events', async () => {
     const cwd = initRepo();
     const prdId = 'acceptance-terminal-resume-prd';
@@ -621,6 +653,8 @@ depends_on: ["${prdId}"]
     const setName = 'degraded-evidence-set';
     const failedDir = join(cwd, '.eforge', 'queue', 'failed');
     writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    const autoResume = { attempts: 1, lastProgressMarker: 'progress-marker', lastFailureSignature: 'failure-signature', lastAttemptAt: '2026-01-01T00:00:00.000Z' };
+    writeFileEnsuringDir(join(failedDir, `${prdId}.recovery.json`), `${JSON.stringify({ autoResume }, null, 2)}\n`);
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const runId = 'current-incomplete-resume';
     const ts = '2026-01-01T00:00:00.000Z';
@@ -641,6 +675,7 @@ depends_on: ["${prdId}"]
 
     expect(result.status).toBe('degraded');
     const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as any;
+    expect(parsed.autoResume).toEqual(autoResume);
     expect(parsed.boundedEvidence.identity.partial).toBe(true);
     expect(parsed.boundedEvidence.failingPlan.planId).toBe('unknown');
     expect(parsed.verdict.verdict).toBe('manual');

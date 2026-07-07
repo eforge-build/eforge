@@ -3,6 +3,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { AgentHarness } from '@eforge-build/engine/harness';
 import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
+import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/types';
 import type { AutoBuildController } from './auto-build-supervisor.js';
 
 export interface MonitorServer {
@@ -33,8 +34,11 @@ export interface StartServerOptions {
   planOutputDir?: string;
   workerTracker?: WorkerTracker;
   daemonState?: DaemonState;
-  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'> & { stacking?: EforgeConfig['stacking'] };
+  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'> & { recovery?: EforgeConfig['recovery']; stacking?: EforgeConfig['stacking']; extensions?: EforgeConfig['extensions'] };
   agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
+  nativeExtensionRegistry?: Pick<NativeExtensionRegistry, 'policyGates'>;
+  nativeExtensionConfigDir?: string;
+  configDir?: string;
   uiDirs?: { consoleUiDir?: string };
   daemonSessionId?: string;
 }

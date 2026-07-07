@@ -105,12 +105,22 @@ export interface RecoverySidecarBoundedEvidence {
 
 export type RecoverySidecarSchemaVersion = 3 | 4 | 5;
 
+export interface RecoverySidecarAutoResumeState {
+  attempts?: number;
+  lastFailureSignature?: string;
+  lastProgressMarker?: string;
+  lastAttemptAt?: string;
+  stoppedReason?: string;
+  stoppedAt?: string;
+}
+
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
  * Concise sidecar contract: top-level identity, verdict, operator report,
  * bounded evidence, generated timestamp, optional read-only continue-and-repair
- * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
- * durable `applied` marker. Version 4 is used when compile-scope-context
+ * fields (`continueRepairEligibility` and `recoveryOptions`), optional
+ * durable `applied` marker, and optional daemon `autoResume` audit state.
+ * Version 4 is used when compile-scope-context
  * recovery guidance is present; version 5 is required when that guidance
  * carries decomposition evidence. schemaVersion 3 sidecars must not contain
  * compile-scope-context recovery options.
@@ -129,6 +139,8 @@ export interface RecoveryVerdictSidecar {
   recoveryOptions?: RecoverySidecarRecoveryOption[];
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
   applied?: RecoveryAppliedMetadata;
+  /** Bounded automatic recovery audit state written by daemon auto-resume. */
+  autoResume?: RecoverySidecarAutoResumeState;
 }
 
 /** Response for GET /api/recovery/sidecar */

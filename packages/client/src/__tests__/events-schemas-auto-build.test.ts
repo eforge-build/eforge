@@ -275,6 +275,91 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts recovery auto-resume projection state in daemon stream snapshots and heartbeats', () => {
+    const recoveryAutoResume = {
+      enabled: true,
+      maxAttempts: 2,
+      attempts: 2,
+      lastDecision: 'stopped',
+      prdId: 'failed-prd',
+      setName: 'failed-set',
+      stopReason: 'attempt-budget-exhausted',
+      message: 'Configured recovery auto-resume budget is exhausted.',
+    };
+    const snapshot = {
+      cursor: 1,
+      liveness: {
+        type: 'daemon:heartbeat',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        uptime: 1000,
+        queueDepth: 1,
+        runningBuilds: 0,
+        autoBuild: {
+          enabled: true,
+          paused: true,
+          desired: 'enabled',
+          mode: 'paused',
+          scheduler: { alive: true, paused: true, runningCount: 0, limit: 2 },
+          recoveryAutoResume,
+        },
+        subscribers: 1,
+      },
+      recentActivity: [],
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: 1234, sessionId: 'watcher-1' },
+        desired: 'enabled',
+        mode: 'paused',
+        scheduler: { alive: true, paused: true, runningCount: 0, limit: 2 },
+        recoveryAutoResume,
+      },
+      stackLayers: [],
+      failedEnqueues: [],
+    };
+
+    const result = safeParseDaemonStreamSnapshot(snapshot);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid recovery auto-resume projection state in daemon stream snapshots', () => {
+    const snapshot = {
+      cursor: 1,
+      liveness: {
+        type: 'daemon:heartbeat',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        uptime: 1000,
+        queueDepth: 1,
+        runningBuilds: 0,
+        autoBuild: {
+          enabled: true,
+          paused: false,
+          desired: 'enabled',
+          mode: 'running',
+          recoveryAutoResume: { enabled: true, maxAttempts: 1, attempts: 1, lastDecision: 'stopped', stopReason: 'silent-auto-apply' },
+        },
+        subscribers: 1,
+      },
+      recentActivity: [],
+      runs: [],
+      queue: [],
+      sessionMetadata: {},
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: 1234, sessionId: 'watcher-1' },
+        desired: 'enabled',
+        mode: 'running',
+      },
+      stackLayers: [],
+      failedEnqueues: [],
+    };
+
+    const result = safeParseDaemonStreamSnapshot(snapshot);
+    expect(result.success).toBe(false);
+  });
+
   it('rejects non-numeric scheduler runningCount and limit values', () => {
     const heartbeat = {
       type: 'daemon:heartbeat',

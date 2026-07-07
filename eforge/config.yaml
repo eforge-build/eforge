@@ -7,6 +7,10 @@ build:
     - node packages/docs-gen/dist/cli.js check
 compile:
   planningUnitParallelism: 4
+recovery:
+  autoResume:
+    enabled: false
+    maxAttempts: 1
 stacking:
   enabled: true
   provider: git-spice

@@ -84,6 +84,8 @@ export function buildHeartbeatObject(
   return buildDaemonHeartbeatObject({
     state: context.options.daemonState,
     capacity: { runningCount: runningBuilds, limit: context.getSchedulerLimit() },
+    recoveryAutoResume: context.options.config?.recovery?.autoResume,
+    latestRecoveryAutoResumeEvent: context.db.getLatestRecoveryAutoResumeEvent(),
     now: options.clock.now(),
     startedAtMs: options.startedAtMs,
     queueDepth: getQueueDepth(context),

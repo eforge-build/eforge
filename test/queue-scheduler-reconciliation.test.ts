@@ -20,6 +20,30 @@ import {
 } from './queue-scheduler-helpers';
 
 describe('QueueScheduler — runtime lock reconciliation', () => {
+  it('rediscovers auto-resume requeues after failed completion without propagating skipped dependents', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+    const scheduler = makeScheduler([]);
+    await scheduler.start();
+    eventQueue.drainAvailable();
+
+    await mkdir(join(cwd, 'eforge', 'queue', 'failed'), { recursive: true });
+    await mkdir(join(cwd, 'eforge', 'queue', 'waiting'), { recursive: true });
+    await writeFile(join(cwd, 'eforge', 'queue', 'parent.md'), '---\ntitle: parent\n---\n\n# parent');
+    await writeFile(join(cwd, 'eforge', 'queue', 'waiting', 'child.md'), '---\ntitle: child\ndepends_on: [parent]\n---\n\n# child');
+    await writeFile(join(cwd, 'eforge', 'queue', 'failed', 'parent.recovery.json'), JSON.stringify({ applied: { action: 'continue-repair', appliedAt: '2026-01-01T00:00:00.000Z' } }));
+
+    bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'parent', status: 'failed', timestamp: new Date().toISOString() } as SchedulerInputEvent);
+
+    await waitForSpawnCallCount(spawnPrdChild, 1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('parent');
+    expect(existsSync(join(cwd, 'eforge', 'queue', 'waiting', 'child.md'))).toBe(true);
+    expect(existsSync(join(cwd, 'eforge', 'queue', 'skipped', 'child.md'))).toBe(false);
+    expect(eventQueue.drainAvailable()).toContainEqual(expect.objectContaining({ type: 'daemon:scheduler:dequeued', prdId: 'parent' }));
+
+    eventQueue.removeProducer();
+  });
+
   it('demotes a running PRD to pending and re-dispatches it after its lock is deleted', async () => {
     // Scenario: a has a live lock at startup (counts as running, not dispatched by
     // this scheduler). After deleting a's lock, the next mutation tick demotes a

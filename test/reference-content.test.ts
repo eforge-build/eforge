@@ -281,6 +281,70 @@ describe('plan-02 toolbelt preset docs and skill parity', () => {
     }
   });
 
+  it('config and recovery skills document disabled-by-default recovery auto-resume consistently', () => {
+    for (const path of [
+      'eforge-plugin/skills/config/config.md',
+      'packages/pi-eforge/skills/eforge-config/SKILL.md',
+      'eforge-plugin/skills/recover/recover.md',
+      'packages/pi-eforge/skills/eforge-recover/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw, path).toContain('recovery.autoResume.enabled');
+      expect(raw, path).toMatch(/disabled by default|defaults to `false`|default-off/i);
+      expect(raw, path).toContain('continue-repair');
+      expect(raw, path).toMatch(/high-confidence/i);
+      expect(raw, path).toMatch(/compiled-artifact|compiled artifacts/i);
+      expect(raw, path).toMatch(/recovery\.autoResume\.maxAttempts|bounded attempt budget|bounded daemon-owned|bounded automatic/i);
+      expect(raw, path).toMatch(/manual recovery behavior|manual (?:confirmation )?controls remain available|always confirm/i);
+    }
+
+    for (const path of [
+      'eforge-plugin/skills/recover/recover.md',
+      'packages/pi-eforge/skills/eforge-recover/SKILL.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw, path).toMatch(/visible audit\/stop reasons|audit\/stop reasons|stop reasons/i);
+    }
+  });
+
+  it('generated config and event references expose recovery auto-resume policy contracts', () => {
+    for (const path of ['web/content/reference/config.md', 'web/public/reference/config.md']) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('## Recovery auto-resume');
+      expect(raw).toContain('recovery.autoResume.enabled');
+      expect(raw).toContain('recovery.autoResume.maxAttempts');
+      expect(raw).toContain('audit-only/non-mutating');
+      expect(raw).toMatch(/high-confidence/i);
+      expect(raw).toMatch(/compiled-artifact|compiled artifacts/i);
+      expect(raw).toMatch(/stop reasons/i);
+    }
+
+    for (const path of ['web/content/reference/events.md', 'web/public/reference/events.md']) {
+      const raw = readRepoFile(path);
+      expect(raw).toContain('recovery:auto-resume:evaluate');
+      expect(raw).toContain('recovery:auto-resume:queued');
+      expect(raw).toContain('recovery:auto-resume:stopped');
+    }
+  });
+
+  it('recovery documentation explains the opt-in automation exception without removing manual confirmation guidance', () => {
+    for (const path of [
+      'docs/config.md',
+      'docs/config-migration.md',
+      'packages/console-ui/README.md',
+    ]) {
+      const raw = readRepoFile(path);
+      expect(raw, path).toMatch(/recovery auto-resume/i);
+      expect(raw, path).toMatch(/disabled by default|defaults to `false`|default-off/i);
+      expect(raw, path).toContain('continue-repair');
+      expect(raw, path).toMatch(/high-confidence/i);
+      expect(raw, path).toMatch(/compiled-artifact|compiled artifacts/i);
+      expect(raw, path).toMatch(/maxAttempts|bounded.*attempt budget|within budget/i);
+      expect(raw, path).toMatch(/audit.*stop|stop reason|audit events/i);
+      expect(raw, path).toMatch(/manual recovery|manual controls|manual confirmation/i);
+    }
+  });
+
   it('config skills note that /eforge:config lists toolbelts', () => {
     for (const path of [
       'eforge-plugin/skills/config/config.md',

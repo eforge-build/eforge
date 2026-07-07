@@ -30,7 +30,12 @@ export function projectRunsForContext(context: MonitorContext): RunInfo[] {
 }
 
 export function projectAutoBuildForContext(context: MonitorContext): AutoBuildState {
-  return autoBuildStateToWire({ state: context.options.daemonState, capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() } });
+  return autoBuildStateToWire({
+    state: context.options.daemonState,
+    capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() },
+    recoveryAutoResume: context.options.config?.recovery?.autoResume,
+    latestRecoveryAutoResumeEvent: context.db.getLatestRecoveryAutoResumeEvent(),
+  });
 }
 
 export function projectSessionMetadataForContext(context: MonitorContext): Record<string, SessionMetadata> {

@@ -62,7 +62,10 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
   yield* writeCompilerDiagnosticsBestEffort(ctx, compilerDiagnostics);
 
   if (compilerResult.status === 'failed') {
-    const reason = `Bounded planner compiler failed: ${compilerResult.validationErrors.join('; ') || compilerResult.map.failedAtomIds.join(',') || compilerResult.reduce.validationErrors.join('; ') || 'unknown failure'}`;
+    const detail = compilerResult.validationErrors.join('; ') || compilerResult.map.failedAtomIds.join(',') || compilerResult.reduce.validationErrors.join('; ') || 'unknown failure';
+    const reason = compilerResult.rescopeDiagnostics?.status === 'exhausted-proceeded' && detail.includes('Atom planner did not call')
+      ? `Adaptive rescoping exhausted with critical source need(s) unresolved; failing compile instead of producing vague plans. ${detail}`
+      : `Bounded planner compiler failed: ${detail}`;
     yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };
     throw new Error(reason);
   }

@@ -31,6 +31,7 @@ export interface MonitorContext {
   getRunningBuildCount(): number;
   getSchedulerLimit(): number;
   notifyQueueMutation(reason: AutoBuildQueueMutationReason): void;
+  isActiveController?(): boolean;
   getDiscoveredConfigDir(): Promise<string | null>;
   getConfigDirOrConventional(): Promise<string>;
 }

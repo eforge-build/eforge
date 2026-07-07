@@ -1810,18 +1810,14 @@ export class EforgeEngine {
     // Initial scan + launch ready PRDs.
     await scheduler.start();
 
-    // Thin pump: emit scheduler-relevant events onto the bus BEFORE yielding
-    // to the outer caller. This ensures QueueScheduler.onComplete() is queued
-    // (as a microtask via the bus handler) before the consumer's synchronous
-    // reaction runs. Any follow-up session:start / spawn events pushed by
-    // onComplete() are enqueued into eventQueue asynchronously, so they still
-    // appear after the completion event in the outer consumer's view — the
-    // emit-before-yield ordering does NOT cause out-of-order events.
+    // Thin pump: yield completion events before forwarding them to the scheduler
+    // bus so daemon-side guarded recovery can requeue a failed PRD before
+    // QueueScheduler.onComplete() propagates failed-parent skips.
     for await (const event of eventQueue) {
+      yield event;
       if (SCHEDULER_INPUT_TYPES.has(event.type)) {
         bus.emit(event.type, event);
       }
-      yield event;
     }
 
     // Finalize: count blocked PRDs as skipped, then emit the terminal event.
@@ -2764,10 +2760,14 @@ export class EforgeEngine {
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   const landing = overrides.landing ? { ...base.landing, ...overrides.landing } : { ...base.landing };
   const build = overrides.build ? { ...base.build, ...overrides.build } : { ...base.build };
+  const recovery = overrides.recovery
+    ? { ...base.recovery, ...overrides.recovery, autoResume: { ...base.recovery.autoResume, ...overrides.recovery.autoResume } }
+    : base.recovery;
 
   return {
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
+    recovery,
     compile: overrides.compile ? { ...base.compile, ...overrides.compile } : base.compile,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build,

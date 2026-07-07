@@ -97,6 +97,7 @@ function appliedSidecarFixture(): ReadSidecarResponse {
     markdown: '# Recovery report\n\nAlready applied.',
     json: {
       ...sidecarFixture('continue-repair', 'high').json,
+      autoResume: { attempts: 1, lastAttemptAt: '2026-01-02T00:00:00Z', stoppedReason: 'not-eligible' },
       applied: { action: 'continue-repair', appliedAt: '2026-01-02T00:00:00Z' },
     },
   } as unknown as ReadSidecarResponse;
@@ -345,14 +346,16 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     expect(await screen.findByText(/archived or removed/)).toBeDefined();
   });
 
-  it('opens an already-applied completion panel from a continue-repair sidecar marker without calling apply', async () => {
+  it('renders automatic and applied provenance from a sidecar marker while preserving backend manual controls', async () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(appliedSidecarFixture());
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
     renderDialog();
 
-    expect(await screen.findByText('Recovery already applied')).toBeDefined();
-    expect(screen.getAllByText('continue-repair').length).toBeGreaterThan(0);
-    // The mutating action must never be offered or invoked for an applied row.
-    expect(screen.queryByRole('button', { name: 'Continue and repair build' })).toBeNull();
+    expect(await screen.findByText('Automatic recovery decision')).toBeDefined();
+    expect(screen.getByText('Applied recovery provenance')).toBeDefined();
+    expect(screen.getByText(/Continue and repair build was already applied/)).toBeDefined();
+    expect(screen.queryByText('Recovery already applied')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Continue and repair build' })).toBeDefined();
     expect(applySidecarRecovery).not.toHaveBeenCalled();
     expect(startContinueRepair).not.toHaveBeenCalled();
   });

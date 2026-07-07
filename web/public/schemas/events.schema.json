@@ -14166,6 +14166,184 @@
           "type": "object",
           "required": [
             "type",
+            "prdId",
+            "setName",
+            "enabled",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:evaluate",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "attempt": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 0,
+              "maximum": 3,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName",
+            "action",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:queued",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "action": {
+              "const": "continue-repair",
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "maximum": 3,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName",
+            "reason",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:auto-resume:stopped",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "disabled",
+                  "type": "string"
+                },
+                {
+                  "const": "attempt-budget-exhausted",
+                  "type": "string"
+                },
+                {
+                  "const": "not-continue-repair",
+                  "type": "string"
+                },
+                {
+                  "const": "not-high-confidence",
+                  "type": "string"
+                },
+                {
+                  "const": "not-eligible",
+                  "type": "string"
+                },
+                {
+                  "const": "manual-confirmation-required",
+                  "type": "string"
+                },
+                {
+                  "const": "partial-sidecar",
+                  "type": "string"
+                },
+                {
+                  "const": "malformed-sidecar",
+                  "type": "string"
+                },
+                {
+                  "const": "missing-sidecar",
+                  "type": "string"
+                },
+                {
+                  "const": "ineligible-artifacts",
+                  "type": "string"
+                },
+                {
+                  "const": "dirty-worktree",
+                  "type": "string"
+                },
+                {
+                  "const": "conflicting-worktree",
+                  "type": "string"
+                },
+                {
+                  "const": "queue-preflight-blocked",
+                  "type": "string"
+                },
+                {
+                  "const": "conflicting-applied-marker",
+                  "type": "string"
+                },
+                {
+                  "const": "active-gate-or-hold",
+                  "type": "string"
+                },
+                {
+                  "const": "repeated-failure-signature",
+                  "type": "string"
+                },
+                {
+                  "const": "error",
+                  "type": "string"
+                }
+              ]
+            },
+            "attempt": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 0,
+              "maximum": 3,
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "prdId"
           ],
           "properties": {
@@ -14608,6 +14786,124 @@
                 },
                 "reason": {
                   "type": "string"
+                },
+                "recoveryAutoResume": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "maxAttempts",
+                    "attempts"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "maxAttempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "lastDecision": {
+                      "anyOf": [
+                        {
+                          "const": "evaluate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "stopped",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "prdId": {
+                      "type": "string"
+                    },
+                    "setName": {
+                      "type": "string"
+                    },
+                    "stopReason": {
+                      "anyOf": [
+                        {
+                          "const": "disabled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attempt-budget-exhausted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-continue-repair",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-high-confidence",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-eligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual-confirmation-required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partial-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "malformed-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "missing-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ineligible-artifacts",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dirty-worktree",
+                          "type": "string"
+                        },
+                        {
+                          "const": "conflicting-worktree",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queue-preflight-blocked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "conflicting-applied-marker",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active-gate-or-hold",
+                          "type": "string"
+                        },
+                        {
+                          "const": "repeated-failure-signature",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             },
@@ -17564,6 +17860,124 @@
                 },
                 "reason": {
                   "type": "string"
+                },
+                "recoveryAutoResume": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "maxAttempts",
+                    "attempts"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "maxAttempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "attempts": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "lastDecision": {
+                      "anyOf": [
+                        {
+                          "const": "evaluate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "stopped",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "prdId": {
+                      "type": "string"
+                    },
+                    "setName": {
+                      "type": "string"
+                    },
+                    "stopReason": {
+                      "anyOf": [
+                        {
+                          "const": "disabled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attempt-budget-exhausted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-continue-repair",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-high-confidence",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not-eligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual-confirmation-required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partial-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "malformed-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "missing-sidecar",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ineligible-artifacts",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dirty-worktree",
+                          "type": "string"
+                        },
+                        {
+                          "const": "conflicting-worktree",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queue-preflight-blocked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "conflicting-applied-marker",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active-gate-or-hold",
+                          "type": "string"
+                        },
+                        {
+                          "const": "repeated-failure-signature",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             },
@@ -31752,6 +32166,184 @@
                         "type": "object",
                         "required": [
                           "type",
+                          "prdId",
+                          "setName",
+                          "enabled",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:evaluate",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "attempt": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 0,
+                            "maximum": 3,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "setName",
+                          "action",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:queued",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "const": "continue-repair",
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "maximum": 3,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "prdId",
+                          "setName",
+                          "reason",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "recovery:auto-resume:stopped",
+                            "type": "string"
+                          },
+                          "prdId": {
+                            "type": "string"
+                          },
+                          "setName": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "const": "disabled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attempt-budget-exhausted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-continue-repair",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-high-confidence",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not-eligible",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual-confirmation-required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partial-sidecar",
+                                "type": "string"
+                              },
+                              {
+                                "const": "malformed-sidecar",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missing-sidecar",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ineligible-artifacts",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dirty-worktree",
+                                "type": "string"
+                              },
+                              {
+                                "const": "conflicting-worktree",
+                                "type": "string"
+                              },
+                              {
+                                "const": "queue-preflight-blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "conflicting-applied-marker",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active-gate-or-hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "repeated-failure-signature",
+                                "type": "string"
+                              },
+                              {
+                                "const": "error",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attempt": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 0,
+                            "maximum": 3,
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
                           "prdId"
                         ],
                         "properties": {
@@ -32194,6 +32786,124 @@
                               },
                               "reason": {
                                 "type": "string"
+                              },
+                              "recoveryAutoResume": {
+                                "type": "object",
+                                "required": [
+                                  "enabled",
+                                  "maxAttempts",
+                                  "attempts"
+                                ],
+                                "properties": {
+                                  "enabled": {
+                                    "type": "boolean"
+                                  },
+                                  "maxAttempts": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "attempts": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "lastDecision": {
+                                    "anyOf": [
+                                      {
+                                        "const": "evaluate",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "queued",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "stopped",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "prdId": {
+                                    "type": "string"
+                                  },
+                                  "setName": {
+                                    "type": "string"
+                                  },
+                                  "stopReason": {
+                                    "anyOf": [
+                                      {
+                                        "const": "disabled",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "attempt-budget-exhausted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "not-continue-repair",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "not-high-confidence",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "not-eligible",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "manual-confirmation-required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "partial-sidecar",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "malformed-sidecar",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "missing-sidecar",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ineligible-artifacts",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "dirty-worktree",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "conflicting-worktree",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "queue-preflight-blocked",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "conflicting-applied-marker",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "active-gate-or-hold",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "repeated-failure-signature",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "error",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  }
+                                }
                               }
                             }
                           },
@@ -35706,6 +36416,124 @@
             },
             "reason": {
               "type": "string"
+            },
+            "recoveryAutoResume": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "maxAttempts",
+                "attempts"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "maxAttempts": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "attempts": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "lastDecision": {
+                  "anyOf": [
+                    {
+                      "const": "evaluate",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "type": "string"
+                    },
+                    {
+                      "const": "stopped",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "prdId": {
+                  "type": "string"
+                },
+                "setName": {
+                  "type": "string"
+                },
+                "stopReason": {
+                  "anyOf": [
+                    {
+                      "const": "disabled",
+                      "type": "string"
+                    },
+                    {
+                      "const": "attempt-budget-exhausted",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not-continue-repair",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not-high-confidence",
+                      "type": "string"
+                    },
+                    {
+                      "const": "not-eligible",
+                      "type": "string"
+                    },
+                    {
+                      "const": "manual-confirmation-required",
+                      "type": "string"
+                    },
+                    {
+                      "const": "partial-sidecar",
+                      "type": "string"
+                    },
+                    {
+                      "const": "malformed-sidecar",
+                      "type": "string"
+                    },
+                    {
+                      "const": "missing-sidecar",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ineligible-artifacts",
+                      "type": "string"
+                    },
+                    {
+                      "const": "dirty-worktree",
+                      "type": "string"
+                    },
+                    {
+                      "const": "conflicting-worktree",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queue-preflight-blocked",
+                      "type": "string"
+                    },
+                    {
+                      "const": "conflicting-applied-marker",
+                      "type": "string"
+                    },
+                    {
+                      "const": "active-gate-or-hold",
+                      "type": "string"
+                    },
+                    {
+                      "const": "repeated-failure-signature",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
             }
           }
         },

@@ -63,8 +63,9 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 9. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
 10. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
 11. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - desired daemon auto-build state; scheduler pause is a separate runtime launch gate), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
-12. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-13. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs normally target the parent artifact branch rather than the feature/trunk branch; during landing, eforge can repair a missing integrated parent by choosing trunk as the effective base for an initially untracked child or by retargeting a child that is already tracked, then gates PR submission on provider sync/restack and a remote-base freshness proof), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
+12. **Recovery auto-resume** (opt-in - "Would you like the daemon to auto-queue high-confidence compiled-artifact recovery attempts?") - `recovery.autoResume.enabled` defaults to `false`, so failed builds keep manual recovery behavior and policy consumers stop before mutation. When enabled, only high-confidence `continue-repair` recommendations that pass compiled-resume artifact eligibility may auto-queue, bounded by `recovery.autoResume.maxAttempts` (default `1`; `0` is audit-only/non-mutating).
+13. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
+14. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs normally target the parent artifact branch rather than the feature/trunk branch; during landing, eforge can repair a missing integrated parent by choosing trunk as the effective base for an initially untracked child or by retargeting a child that is already tracked, then gates PR submission on provider sync/restack and a remote-base freshness proof), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 3. Skip sections the user isn't interested in.
 
@@ -244,6 +245,12 @@ prdQueue:
   dir: eforge/queue
   autoBuild: true                      # Desired auto-build state; scheduler pause can gate launches
   watchPollIntervalMs: 5000            # Poll interval for watch mode (ms)
+
+# Recovery auto-resume (disabled by default)
+recovery:
+  autoResume:
+    enabled: false                     # Opt in to bounded daemon-owned continue-repair automation
+    maxAttempts: 1                     # Automatic attempts per failed PRD; 0 = audit-only/no mutation
 
 # Daemon
 daemon:

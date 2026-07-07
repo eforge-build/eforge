@@ -560,11 +560,41 @@ export const AutoBuildTransitionDetailSchema = Type.Object({
   reason: Type.Optional(Type.String()),
   source: Type.String(),
 });
+export const RecoveryAutoResumeStopReasonSchema = Type.Union([
+  Type.Literal('disabled'),
+  Type.Literal('attempt-budget-exhausted'),
+  Type.Literal('not-continue-repair'),
+  Type.Literal('not-high-confidence'),
+  Type.Literal('not-eligible'),
+  Type.Literal('manual-confirmation-required'),
+  Type.Literal('partial-sidecar'),
+  Type.Literal('malformed-sidecar'),
+  Type.Literal('missing-sidecar'),
+  Type.Literal('ineligible-artifacts'),
+  Type.Literal('dirty-worktree'),
+  Type.Literal('conflicting-worktree'),
+  Type.Literal('queue-preflight-blocked'),
+  Type.Literal('conflicting-applied-marker'),
+  Type.Literal('active-gate-or-hold'),
+  Type.Literal('repeated-failure-signature'),
+  Type.Literal('error'),
+]);
+export const RecoveryAutoResumeProjectionStateSchema = Type.Object({
+  enabled: Type.Boolean(),
+  maxAttempts: Type.Integer({ minimum: 0 }),
+  attempts: Type.Integer({ minimum: 0 }),
+  lastDecision: Type.Optional(Type.Union([Type.Literal('evaluate'), Type.Literal('queued'), Type.Literal('stopped')])),
+  prdId: Type.Optional(Type.String()),
+  setName: Type.Optional(Type.String()),
+  stopReason: Type.Optional(RecoveryAutoResumeStopReasonSchema),
+  message: Type.Optional(Type.String()),
+});
 export const AutoBuildDetailFields = {
   desired: Type.Optional(AutoBuildDesiredSchema),
   mode: Type.Optional(AutoBuildRuntimeModeSchema),
   scheduler: Type.Optional(AutoBuildSchedulerStateSchema),
   lastTransition: Type.Optional(AutoBuildTransitionDetailSchema),
   reason: Type.Optional(Type.String()),
+  recoveryAutoResume: Type.Optional(RecoveryAutoResumeProjectionStateSchema),
 };
 // --- eforge:endregion auto-build-schemas ---

@@ -1031,6 +1031,30 @@
       },
       "additionalProperties": false
     },
+    "recovery": {
+      "type": "object",
+      "properties": {
+        "autoResume": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Opt in to daemon-owned bounded recovery auto-resume for high-confidence compiled-artifact continue-repair recommendations. Default: false; disabled policy consumers stop before mutation.",
+              "type": "boolean"
+            },
+            "maxAttempts": {
+              "description": "Maximum automatic continue-repair attempts per failed PRD before policy stops. Default: 1. Maximum: 3. Set 0 to audit decisions without mutation even when enabled.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false,
+          "description": "Disabled-by-default bounded recovery auto-resume policy."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Recovery automation settings. Manual recovery tools remain available regardless of this policy."
+    },
     "hooks": {
       "type": "array",
       "items": {

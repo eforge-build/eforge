@@ -15,6 +15,8 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   getCompiledResumeFrontmatter,
@@ -41,33 +43,10 @@ import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 import { applyStackedDispatchValidation } from './dispatch-validation.js';
-
-// ---------------------------------------------------------------------------
-// Scheduler child result type
-// ---------------------------------------------------------------------------
-
-/**
- * Internal scheduler child result.
- * `'already-claimed'` is non-terminal: the scheduler does not emit
- * `queue:prd:complete` and leaves the PRD in `running` state until
- * the original worker emits a real terminal completion.
- */
-export type QueueSchedulerChildStatus = 'completed' | 'failed' | 'skipped' | 'already-claimed';
-
-// ---------------------------------------------------------------------------
-// Scheduler input event types
-// ---------------------------------------------------------------------------
-
-/** Events the scheduler reacts to on the bus. */
-export type SchedulerInputEvent =
-  | { type: 'queue:mutation'; reason: 'enqueue' | 'apply-recovery' | 'external'; timestamp: string }
-  | { type: 'queue:prd:complete'; prdId: string; status: 'completed' | 'failed' | 'skipped'; timestamp: string };
-
-/**
- * Set of event type strings the scheduler subscribes to on the bus.
- * The watcher pump uses this set to decide which events to re-emit.
- */
-export const SCHEDULER_INPUT_TYPES = new Set<string>(['queue:mutation', 'queue:prd:complete']);
+import { readRawAppliedAction } from '../recovery/applied-sidecar.js';
+import type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
+export { SCHEDULER_INPUT_TYPES } from './scheduler-events.js';
+export type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
 
 // ---------------------------------------------------------------------------
 // Internal state types
@@ -913,6 +892,12 @@ export class QueueScheduler {
   private async onComplete(event: Extract<SchedulerInputEvent, { type: 'queue:prd:complete' }>): Promise<void> {
     const { prdId, status } = event;
 
+    if (status === 'failed' && await this.wasAutoResumeRequeued(prdId)) {
+      await this.discoverNewPrds();
+      await this.startReadyPrds();
+      return;
+    }
+
     // Update counters synchronously before any awaits.
     if (status === 'skipped') {
       this._skipped++;
@@ -978,8 +963,29 @@ export class QueueScheduler {
     await this.startReadyPrds();
   }
 
+  private async wasAutoResumeRequeued(prdId: string): Promise<boolean> {
+    try {
+      const rootPrdPath = resolve(this.cwd, this.queueDir, `${prdId}.md`);
+      await access(rootPrdPath, constants.F_OK);
+      const sidecarPath = resolve(this.cwd, this.queueDir, 'failed', `${prdId}.recovery.json`);
+      if (await readRawAppliedAction(sidecarPath) === 'continue-repair') return true;
+      return await hasAutoResumeAttempt(sidecarPath);
+    } catch {
+      return false;
+    }
+  }
+
   /** Handles `queue:mutation` injected by HTTP routes. */
   private async onMutation(_event: SchedulerInputEvent): Promise<void> {
     await this.tick();
+  }
+}
+
+async function hasAutoResumeAttempt(sidecarPath: string): Promise<boolean> {
+  try {
+    const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { autoResume?: { attempts?: unknown } };
+    return typeof parsed.autoResume?.attempts === 'number' && Number.isInteger(parsed.autoResume.attempts) && parsed.autoResume.attempts > 0;
+  } catch {
+    return false;
   }
 }

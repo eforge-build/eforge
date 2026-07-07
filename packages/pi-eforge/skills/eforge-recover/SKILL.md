@@ -10,7 +10,7 @@ Inspect the recovery analysis for a failed PRD and act on the verdict — retry 
 
 ## Workflow
 
-Call `eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and then call the matching tool. Use `eforge_apply_recovery` for `retry` and `abandon`. Use `eforge_continue_repair` for the `continue-repair` action when preserved artifacts are eligible. Never auto-apply — always confirm.
+Call `eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and then call the matching tool. Use `eforge_apply_recovery` for `retry` and `abandon`. Use `eforge_continue_repair` for the `continue-repair` action when preserved artifacts are eligible. Manual use of this skill never auto-applies — always confirm. The only automation exception is daemon-owned recovery auto-resume when `recovery.autoResume.enabled: true`: it is disabled by default, may only auto-queue high-confidence `continue-repair` that passes compiled-resume artifact eligibility, consumes the configured bounded attempt budget, and emits visible audit/stop reasons before or after it decides. Manual confirmation controls remain available regardless of that policy.
 
 ## Steps
 

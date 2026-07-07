@@ -19,11 +19,6 @@ interface RunRow {
   pid: number | null;
 }
 
-/**
- * Map a raw `runs` DB row to the canonical `RunInfo` wire shape.
- * Explicit field mapping ensures a new required `RunInfo` field causes a
- * `pnpm type-check` failure here rather than silently producing bad JSON.
- */
 function rowToRunInfo(row: RunRow): RunInfo {
   return {
     id: row.id,
@@ -101,11 +96,6 @@ function rowsToSessionMetadata(rows: SessionMetadataEventRow[]): Record<string, 
   return result;
 }
 
-/**
- * Map a raw event DB row to the canonical `EventRecord` shape.
- * Explicit mapping ensures a new required field causes a type error here
- * rather than silently producing bad data.
- */
 function rowToEventRecord(row: RawEventRow): EventRecord {
   return {
     id: row.id,
@@ -186,30 +176,14 @@ export interface MonitorDB {
    * (not per-session). Adding a new daemon-wide type requires updating `db.ts`.
    */
   getDaemonEventsAfter(afterId: number): EventRecord[];
+  /** Returns the latest persisted recovery auto-resume daemon event, if present. */
+  getLatestRecoveryAutoResumeEvent(): EventRecord | undefined;
   /**
    * Returns queue dispatch failure/clear events for the provided PRD ids,
    * ordered by id ascending.
    */
   getQueueDispatchFailureEvents(prdIds: string[]): EventRecord[];
-  /**
-   * Returns the highest event row id among daemon-wide events (those whose type
-   * appears in the `DAEMON_EVENT_TYPES` allowlist), or 0 when no such events exist.
-   *
-   * Filter parity: uses the same `DAEMON_EVENT_TYPES` allowlist as
-   * `getDaemonEventsAfter`, so `getMaxDaemonEventId()` always equals the largest
-   * `id` that `getDaemonEventsAfter(0)` would surface.
-   */
   getMaxDaemonEventId(): number;
-  /**
-   * Aggregate profile usage statistics for runs using `profileName` within
-   * the last `windowMs` milliseconds.
-   *
-   * Returns `null` when no `session:profile` events matching the profile name
-   * exist within the window (caller maps to `{ dataSource: 'none' }`).
-   *
-   * `recentQuotaErrors` counts `agent:stop` events whose error field contains
-   * rate-limit/quota indicators (429, rate_limit, quota, rate limit).
-   */
   getProfileUsageSummary(profileName: string, windowMs: number): {
     lastUsedAt?: string;
     recentRunCount: number;
@@ -470,6 +444,13 @@ export function openDatabase(dbPath: string): MonitorDB {
     getDaemonEventsAfter: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
+    getLatestRecoveryAutoResumeEvent: db.prepare(
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
+       FROM events
+       WHERE type IN ('recovery:auto-resume:evaluate', 'recovery:auto-resume:queued', 'recovery:auto-resume:stopped')
+       ORDER BY id DESC
+       LIMIT 1`,
+    ),
     getQueueDispatchFailureEvents: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
        FROM events
@@ -635,6 +616,11 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getDaemonEventsAfter(afterId) {
       return (stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
+    },
+
+    getLatestRecoveryAutoResumeEvent() {
+      const row = stmts.getLatestRecoveryAutoResumeEvent.get() as unknown as RawEventRow | undefined;
+      return row ? rowToEventRecord(row) : undefined;
     },
 
     getQueueDispatchFailureEvents(prdIds) {

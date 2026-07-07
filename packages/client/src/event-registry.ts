@@ -34,6 +34,7 @@ export interface ProjectableState {
         scheduler?: AutoBuildState['scheduler'];
         lastTransition?: AutoBuildState['lastTransition'];
         reason?: string;
+        recoveryAutoResume?: AutoBuildState['recoveryAutoResume'];
       };
       subscribers: number;
     };
@@ -1248,6 +1249,27 @@ const eventRegistry = {
     summary: (e) => `Recovery parse failed: ${e.error}`,
   },
 
+  'recovery:auto-resume:evaluate': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume policy evaluated for ${e.prdId}: ${e.enabled ? 'enabled' : 'disabled'} (${e.attempt}/${e.maxAttempts})`,
+    project: (e, state) => state.autoBuild ? { autoBuild: { ...state.autoBuild, recoveryAutoResume: { enabled: e.enabled, maxAttempts: e.maxAttempts, attempts: e.attempt, lastDecision: 'evaluate', prdId: e.prdId, setName: e.setName } } } : undefined,
+  },
+
+  'recovery:auto-resume:queued': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume queued continue-repair for ${e.prdId} (${e.attempt}/${e.maxAttempts})`,
+    project: (e, state) => state.autoBuild ? { autoBuild: { ...state.autoBuild, recoveryAutoResume: { enabled: true, maxAttempts: e.maxAttempts, attempts: e.attempt, lastDecision: 'queued', prdId: e.prdId, setName: e.setName } } } : undefined,
+  },
+
+  'recovery:auto-resume:stopped': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Recovery auto-resume stopped for ${e.prdId}: ${e.reason}`,
+    project: (e, state) => state.autoBuild ? { autoBuild: { ...state.autoBuild, recoveryAutoResume: { enabled: e.reason !== 'disabled', maxAttempts: e.maxAttempts, attempts: e.attempt, lastDecision: 'stopped', prdId: e.prdId, setName: e.setName, stopReason: e.reason, ...(e.message !== undefined ? { message: e.message } : {}) } } } : undefined,
+  },
+
   'recovery:apply:start': { scope: 'session', persist: false },
 
   'recovery:apply:complete': {
@@ -1382,6 +1404,7 @@ const eventRegistry = {
           ...(event.autoBuild.mode !== undefined && { mode: event.autoBuild.mode }),
           ...(event.autoBuild.lastTransition !== undefined && { lastTransition: event.autoBuild.lastTransition }),
           ...(event.autoBuild.reason !== undefined && { reason: event.autoBuild.reason }),
+          ...(event.autoBuild.recoveryAutoResume !== undefined && { recoveryAutoResume: event.autoBuild.recoveryAutoResume }),
           ...(event.autoBuild.scheduler !== undefined && {
             scheduler: {
               ...(state.autoBuild.scheduler ?? {}),
