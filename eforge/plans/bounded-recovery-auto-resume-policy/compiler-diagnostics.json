@@ -24,11 +24,11 @@
         "requiredAspectIds": [
           "ac-001:interface:configuration"
         ],
-        "resolvedAspectIds": [],
-        "skippedAspectIds": [],
-        "representedAspectIds": [
+        "resolvedAspectIds": [
           "ac-001:interface:configuration"
         ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
         "pendingAspectIds": []
       },
       {
@@ -71,11 +71,11 @@
         "requiredAspectIds": [
           "ac-004:general:general"
         ],
-        "resolvedAspectIds": [],
-        "skippedAspectIds": [],
-        "representedAspectIds": [
+        "resolvedAspectIds": [
           "ac-004:general:general"
         ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
         "pendingAspectIds": []
       },
       {
@@ -84,11 +84,11 @@
         "requiredAspectIds": [
           "ac-005:evidence:queue-run-auto-build"
         ],
-        "resolvedAspectIds": [
+        "resolvedAspectIds": [],
+        "skippedAspectIds": [],
+        "representedAspectIds": [
           "ac-005:evidence:queue-run-auto-build"
         ],
-        "skippedAspectIds": [],
-        "representedAspectIds": [],
         "pendingAspectIds": []
       },
       {
@@ -97,11 +97,11 @@
         "requiredAspectIds": [
           "ac-006:general:general"
         ],
-        "resolvedAspectIds": [],
-        "skippedAspectIds": [],
-        "representedAspectIds": [
+        "resolvedAspectIds": [
           "ac-006:general:general"
         ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
         "pendingAspectIds": []
       },
       {
@@ -148,7 +148,9 @@
           "ac-008:subsystem:test",
           "ac-008:subsystem:unit"
         ],
-        "resolvedAspectIds": [
+        "resolvedAspectIds": [],
+        "skippedAspectIds": [],
+        "representedAspectIds": [
           "ac-008:interface:config",
           "ac-008:interface:configuration",
           "ac-008:interface:docs",
@@ -160,8 +162,6 @@
           "ac-008:subsystem:test",
           "ac-008:subsystem:unit"
         ],
-        "skippedAspectIds": [],
-        "representedAspectIds": [],
         "pendingAspectIds": []
       }
     ],
@@ -169,10 +169,12 @@
       {
         "aspectId": "ac-001:interface:configuration",
         "criterionId": "ac-001",
-        "status": "represented",
+        "status": "resolved",
         "satisfied": true,
-        "completedByAtomIds": [],
-        "representedByModuleId": "general-default-config-safety"
+        "completedByAtomIds": [
+          "atom-rescope-general"
+        ],
+        "reason": "Planned the default-configuration consumer behavior in the auto-resume policy module while leaving the concrete config schema/name to prerequisite config/interface work; validation requires no auto-resume mutation under defaults."
       },
       {
         "aspectId": "ac-002:subsystem:apply",
@@ -182,7 +184,7 @@
         "completedByAtomIds": [
           "atom-rescope-apply"
         ],
-        "reason": "Planned the continue-and-repair handoff through existing apply/recovery helpers rather than a parallel apply path."
+        "reason": "Planned eligibility, attempt accounting, and enqueue integration through existing apply/recovery helpers."
       },
       {
         "aspectId": "ac-002:subsystem:resume",
@@ -192,7 +194,7 @@
         "completedByAtomIds": [
           "atom-rescope-apply"
         ],
-        "reason": "Planned use of existing resume helpers for eligible compiled artifacts after the continue-repair verdict passes policy and budget gates."
+        "reason": "Planned compiled-artifact eligibility and queued resume helper integration."
       },
       {
         "aspectId": "ac-002:subsystem:resumes",
@@ -202,7 +204,7 @@
         "completedByAtomIds": [
           "atom-rescope-apply"
         ],
-        "reason": "Planned resumed scheduling behavior and validation around the queued continue-and-repair attempt."
+        "reason": "Planned scheduler resumption after successful continue-and-repair queueing."
       },
       {
         "aspectId": "ac-002:subsystem:wakes",
@@ -212,7 +214,7 @@
         "completedByAtomIds": [
           "atom-rescope-apply"
         ],
-        "reason": "Planned scheduler wake integration after the resume/apply attempt is queued."
+        "reason": "Planned wake/cascade behavior after enqueue and typed audit emission."
       },
       {
         "aspectId": "ac-003:evidence:gates-holds-approvals",
@@ -222,7 +224,7 @@
         "completedByAtomIds": [
           "atom-rescope-abandon"
         ],
-        "reason": "Planned terminal auto-resume blocker coverage for active manual gates, holds, and approvals with user-visible stop reasons."
+        "reason": "Planned explicit auto-resume blocker handling for active manual gates, holds, and approval requirements with visible stop reasons."
       },
       {
         "aspectId": "ac-003:evidence:manual-retry-abandon",
@@ -232,33 +234,35 @@
         "completedByAtomIds": [
           "atom-rescope-abandon"
         ],
-        "reason": "Planned terminal auto-resume blocker coverage for manual, retry, and abandon verdicts with user-visible stop reasons."
+        "reason": "Planned explicit auto-resume blocker handling for manual, retry, and abandon verdicts with visible stop reasons."
       },
       {
         "aspectId": "ac-004:general:general",
         "criterionId": "ac-004",
-        "status": "represented",
+        "status": "resolved",
         "satisfied": true,
-        "completedByAtomIds": [],
-        "representedByModuleId": "general-progress-signature-budget"
+        "completedByAtomIds": [
+          "atom-rescope-general"
+        ],
+        "reason": "Planned bounded attempt accounting, progress gating, and identical failure-signature loop prevention."
       },
       {
         "aspectId": "ac-005:evidence:queue-run-auto-build",
         "criterionId": "ac-005",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-auto-build"
-        ],
-        "reason": "Planned bounded work for queue/run/auto-build projections to expose enabled/disabled policy, attempt count, last decision, and stop reason, plus Console consumption of those fields."
+        "completedByAtomIds": [],
+        "representedByModuleId": "queue-run-auto-build-projection-state"
       },
       {
         "aspectId": "ac-006:general:general",
         "criterionId": "ac-006",
-        "status": "represented",
+        "status": "resolved",
         "satisfied": true,
-        "completedByAtomIds": [],
-        "representedByModuleId": "general-console-recovery-controls"
+        "completedByAtomIds": [
+          "atom-rescope-general"
+        ],
+        "reason": "Planned console provenance handling so manual recovery controls remain visible and automatic decisions are visually distinct from user-confirmed actions."
       },
       {
         "aspectId": "ac-007:interface:route",
@@ -268,7 +272,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by the manual route regression module, which keeps applyRecovery and continueRepair route behavior valid."
+        "reason": "Planned route-compatibility work keeps the manual applyRecovery and continueRepair route contracts exercised by existing route tests."
       },
       {
         "aspectId": "ac-007:interface:route-api",
@@ -278,7 +282,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by the manual route regression module using shared client route helpers/API route contracts."
+        "reason": "Planned route work uses the shared client route map/API helpers and avoids parallel route literals or wire-shape definitions."
       },
       {
         "aspectId": "ac-007:interface:schema",
@@ -288,7 +292,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by the event/schema parity module for new typed recovery event variants."
+        "reason": "Planned event-schema module adds the bounded recovery auto-resume variants to the owned @eforge-build/client event schema surface."
       },
       {
         "aspectId": "ac-007:interface:schema-contract",
@@ -298,7 +302,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by the event/schema parity module, including runtime validation and discriminated union parity."
+        "reason": "Planned parity coverage keeps TypeBox/runtime validation, exported event types, and typed fixtures aligned for the new variants."
       },
       {
         "aspectId": "ac-007:interface:test",
@@ -308,7 +312,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by authoring typed event/schema parity tests and exercising existing manual route tests."
+        "reason": "Planned tests both author typed event/schema parity cases and exercise existing applyRecovery/continueRepair route tests."
       },
       {
         "aspectId": "ac-007:subsystem:event",
@@ -318,7 +322,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by client-owned EforgeEvent variant planning for the new bounded recovery auto-resume events."
+        "reason": "Planned changes target the client event protocol modules and validation/registry surfaces for recovery-related event variants."
       },
       {
         "aspectId": "ac-007:subsystem:route",
@@ -328,7 +332,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by preserving monitor recovery route behavior and route tests."
+        "reason": "Planned route compatibility validates monitor recovery routes without changing the manual route contract."
       },
       {
         "aspectId": "ac-007:subsystem:schema",
@@ -338,7 +342,7 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by schema contract updates and schema validation tests."
+        "reason": "Planned schema work stays in the focused client schema/event modules and their schema test helpers."
       },
       {
         "aspectId": "ac-007:subsystem:test",
@@ -348,141 +352,143 @@
         "completedByAtomIds": [
           "atom-rescope-event"
         ],
-        "reason": "Covered by targeted parity tests plus existing route regression tests."
+        "reason": "Planned validation centers on targeted vitest coverage for event/schema parity plus the existing route regression tests."
       },
       {
         "aspectId": "ac-008:interface:config",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by the config/docs validation module, which scopes central config surface alignment before tests and docs checks."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:interface:configuration",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by the config/docs validation module, including configuration schema/default/example alignment."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:interface:docs",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by the config/docs validation module, including existing docs and generated reference synchronization."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:interface:test",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by the validation slice requiring targeted unit/integration tests plus workspace gates."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-validation-tests"
       },
       {
         "aspectId": "ac-008:subsystem:config",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by central config implementation and sample config synchronization planning."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:subsystem:docs",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by sync-existing docs work for config and plugin/user documentation surfaces."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:subsystem:integration",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by targeted integration validation for code paths that consume the config."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-validation-tests"
       },
       {
         "aspectId": "ac-008:subsystem:reference",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by generated/public reference config documentation synchronization and docs drift checking."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-config-doc-validation"
       },
       {
         "aspectId": "ac-008:subsystem:test",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by authored targeted tests and required test-cycle gates."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-validation-tests"
       },
       {
         "aspectId": "ac-008:subsystem:unit",
         "criterionId": "ac-008",
-        "status": "resolved",
+        "status": "represented",
         "satisfied": true,
-        "completedByAtomIds": [
-          "atom-rescope-config"
-        ],
-        "reason": "Covered by focused unit tests for config schema/default/rejection behavior."
+        "completedByAtomIds": [],
+        "representedByModuleId": "mod-ac008-validation-tests"
       }
     ]
   },
   "reduce": {
     "gaps": [
       {
-        "gapId": "gap-local-source-inspection",
-        "title": "Source evidence needs inspection",
+        "gapId": "gap-ac002-helper-entrypoint-evidence",
+        "title": "Apply/resume helper internals require inspection",
         "reduceNodeId": "reduce-001-001",
-        "issueKind": "missing-materialized-source",
+        "issueKind": "missing-entrypoint-evidence",
         "sourceLocalizationSignal": true,
         "representationRequired": false,
         "criterionIds": [
-          "ac-002",
-          "ac-008"
+          "ac-002"
         ],
         "aspectIds": [
           "ac-002:subsystem:apply",
-          "ac-002:subsystem:resume",
-          "ac-008:interface:config",
-          "ac-008:interface:docs"
+          "ac-002:subsystem:resume"
         ],
         "sourceNeedIds": [
-          "need-config-docs-owner-source",
-          "need-recovery-helper-source"
+          "need-ac002-apply-resume-helper-internals"
         ],
         "affectedAtomIds": [
-          "atom-rescope-apply",
+          "atom-rescope-apply"
+        ],
+        "ownerPaths": [],
+        "productScopedOutputRefs": [],
+        "productScopedValidationRefs": [],
+        "description": "Path-only/budget-limited evidence was available for apply/resume helpers. Inspect helper implementation before modifying policy calls.",
+        "resolution": "informational"
+      },
+      {
+        "gapId": "gap-ac008-config-evidence",
+        "title": "Config implementation evidence requires inspection",
+        "reduceNodeId": "reduce-001-001",
+        "issueKind": "missing-config-evidence",
+        "sourceLocalizationSignal": true,
+        "representationRequired": false,
+        "criterionIds": [
+          "ac-008"
+        ],
+        "aspectIds": [
+          "ac-008:interface:config",
+          "ac-008:subsystem:config",
+          "ac-008:subsystem:test"
+        ],
+        "sourceNeedIds": [
+          "need-ac008-config-implementation-evidence"
+        ],
+        "affectedAtomIds": [
           "atom-rescope-config"
         ],
         "ownerPaths": [],
         "productScopedOutputRefs": [],
         "productScopedValidationRefs": [],
-        "description": "Recovery helper and config/docs owner files were not materialized in child evidence. Inspect owners before exact edits; no concrete owner paths or product-scoped validation refs were supplied, so this is repair-only compiler diagnostics rather than buildable residue.",
+        "description": "Primary config evidence was status/path-only. Read the config implementation before docs, test, or behavior edits.",
         "resolution": "informational"
       }
     ],
@@ -572,293 +578,335 @@
       "inventory-subsystem-wakes"
     ],
     "reasons": [
-      "missing-contract-evidence",
-      "missing-owner-path",
       "tool-budget"
     ],
     "attemptedQueries": [
       {
-        "query": "packages **/__tests__/*{config,docs,route,schema,event,recovery,auto,queue,run}*.test.ts",
+        "needId": "criterion-ac-008-surface-test",
+        "query": "read test/config-schema.test.ts",
+        "tool": "read",
+        "result": "Confirmed Vitest config schema test importing resolveConfig, DEFAULT_CONFIG, loadConfig, findConfigFile, schema exports, and config validation errors."
+      },
+      {
+        "needId": "criterion-ac-008-surface-docs",
+        "query": "read test/recovery-queue-control-docs.test.ts",
+        "tool": "read",
+        "result": "Confirmed docs/reference drift-style test with NEW_ROUTE_KEYS including recoveryGuidancePrepare, queue hold/unhold, failed enqueue, scheduler pause/resume keys."
+      },
+      {
+        "needId": "criterion-ac-008-interface-config",
+        "query": "grep packages/engine/src/config.ts for eforgeConfigSchema, DEFAULT_CONFIG, prdQueue, autoBuild, configYamlSchema",
+        "tool": "grep",
+        "result": "Confirmed config schema ownership in packages/engine/src/config.ts around prdQueue.autoBuild and related exported schema/config symbols."
+      },
+      {
+        "needId": "inventory-interface-test",
+        "query": "grep packages/client/src for ConfigShowResponse, ConfigValidateResponse, QueueItem, RunInfo, AutoBuild",
+        "tool": "grep",
+        "result": "Confirmed shared queue-control wire contract path packages/client/src/routes/queue-control.ts imports AutoBuildState and QueueItemWithCapabilities."
+      },
+      {
+        "query": "grep packages/monitor/src for config show/validate, rowToRunInfo, autoBuild",
+        "tool": "grep",
+        "result": "Confirmed packages/monitor/src/server-main.ts contains pauseOnFailure on failed build and auto-build supervisor wiring."
+      },
+      {
+        "query": "grep packages/engine/src for Recovery/recovery/continueRepair/applyRecovery/resume",
+        "tool": "grep",
+        "result": "Confirmed recovery-related engine modules exist in shown snippets, including validation acceptance summary references to recovery/sidecar.ts and recovery/event-history.ts."
+      },
+      {
+        "query": "grep packages/client/src for Recovery/recovery/continueRepair/applyRecovery",
+        "tool": "grep",
+        "result": "Confirmed packages/client/src/browser-queue-recovery.ts as browser-safe fetch helpers for queue recovery routes."
+      },
+      {
+        "query": "grep repository for auto-resume/autoResume/continue-repair/applyRecovery",
+        "tool": "grep",
+        "result": "Shown output included changelog recovery UX loop entry; not enough to localize new auto-resume policy implementation before budget exhausted."
+      },
+      {
+        "needId": "criterion-ac-008-surface-config",
+        "query": "ls eforge",
+        "tool": "ls",
+        "result": "Confirmed eforge/config.yaml plus eforge/extensions, eforge/plans, eforge/playbooks, eforge/prds, and eforge/profiles directories."
+      },
+      {
+        "needId": "criterion-ac-008-surface-config",
+        "query": "read eforge/config.yaml",
+        "tool": "read",
+        "result": "Confirmed project-local config file; shown content contains build.postMergeCommands with pnpm install."
+      },
+      {
+        "needId": "criterion-ac-007-surface-route",
+        "query": "packages/client/src/routes/recovery.ts around recovery route/sidecar eligibility",
+        "tool": "read",
+        "result": "Confirmed recovery route contract file exists; observed continue-repair eligibility sidecar types/constants including RECOVERY_SIDECAR_COMPILE_SCOPE_CONTEXT_ACTIONS."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-event",
+        "query": "packages/client/src/events",
+        "tool": "ls",
+        "result": "Confirmed event subsystem directory with constants.ts, decisions.ts, envelope.ts, parse.ts, queue-events.ts, root.ts, shared/, snapshots.ts, utilities.ts, variants/, variants.ts."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-schema",
+        "query": "packages/client/src/events/variants",
+        "tool": "ls",
+        "result": "Confirmed focused event variant modules: agents.ts, build.ts, daemon.ts, extensions.ts, planning-map-reduce.ts, session-planning.ts, stack.ts, validation-recovery.ts."
+      },
+      {
+        "needId": "criterion-ac-007-interface-schema-contract",
+        "query": "packages/client/src/events/variants.ts",
+        "tool": "read",
+        "result": "Observed aggregate imports for BuildDecisionSchema, PlanningDecisionEventSchema, queueEventVariants, buildEventVariants, buildResumeEventVariants, daemonEventVariants, extensionEventVariants."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-schema",
+        "query": "packages/client/src/events/variants/validation-recovery.ts",
+        "tool": "read",
+        "result": "Observed TypeBox event variant module importing shared schemas including AutoBuildDesiredSchema, BuildResumeArtifactsEventSchema, BuildFailureSummarySchema, EforgeResultSchema."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-event",
+        "query": "packages/client/src/events/variants/daemon.ts scheduler events",
+        "tool": "read",
+        "result": "Observed daemon scheduler event literals including daemon:scheduler:capacity-blocked, dependency-blocked, and paused."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-event",
+        "query": "packages/client/src/events/queue-events.ts",
+        "tool": "read",
+        "result": "Observed QueueDispatchFailureStageSchema and queueEventVariants TypeBox definitions."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-event",
+        "query": "build:resume in packages/client/src/events/variants/build.ts",
+        "tool": "grep/read",
+        "result": "Observed build:resume:start event variant in build.ts near build resume variants."
+      },
+      {
+        "needId": "criterion-ac-003-subsystem-dirty",
+        "query": "packages/engine/src/queue/recovery-preflight.ts",
+        "tool": "read",
+        "result": "Confirmed recovery preflight implementation file; imports queue recovery dependency classification, dispatch preflight summary, notices, repair actions/results, artifact registry usability, and completion lookup."
+      },
+      {
+        "needId": "criterion-ac-003-subsystem-holds",
+        "query": "packages/engine/src/queue/hold.ts",
+        "tool": "read",
+        "result": "Confirmed queue hold helper file; imports queue load/claim/release/frontmatter mutation helpers plus QueueControlError/location/status and snapshot records."
+      },
+      {
+        "needId": "criterion-ac-003-subsystem-conflicting",
+        "query": "packages/engine/src/queue/control.ts",
+        "tool": "read",
+        "result": "Confirmed queue-control helpers for PRD priority/removal, lock classification, stale/corrupt lock cleanup, dependency safety preflight, conflict handling, and sidecar removal."
+      },
+      {
+        "needId": "criterion-ac-003-path-gates-holds-approvals",
+        "query": "*policy*gate* under packages",
         "tool": "find",
-        "result": "Found client event schema tests including events-schema-shape.test.ts and events-schemas-auto-build.test.ts."
+        "result": "Found packages/engine/src/extensions/policy-gate-runtime.ts."
       },
       {
-        "query": "test/apply-recovery-route.test.ts describe|it|applyRecovery|continue-repair|manual|retry|abandon",
+        "needId": "criterion-ac-003-subsystem-approvals",
+        "query": "packages/engine/src/extensions/policy-gate-runtime.ts",
+        "tool": "read",
+        "result": "Confirmed policy gate runtime; defines failure policy, decision kind allow/deny, policy decision/failed events, and runtime helpers."
+      },
+      {
+        "needId": "criterion-ac-003-subsystem-approvals",
+        "query": "executePolicyGate|buildQueueDispatchPolicyGateContext|PolicyGate|extension:policy",
         "tool": "grep",
-        "result": "Confirmed apply-recovery route test covers retry and abandon happy paths and response behavior."
+        "result": "Found policy gate hook/context references in packages/extension-sdk/src/hooks.ts including PolicyGateContext and QueueDispatchPolicyGateContext."
       },
       {
-        "query": "test/continue-repair-route.test.ts describe|it|continueRepair|eligibility|compiled|dirty|conflict|queue",
+        "needId": "criterion-ac-003-path-gates-holds-approvals",
+        "query": "queue-dispatch|beforeQueueDispatch|policyGate in multiple paths",
         "tool": "grep",
-        "result": "Confirmed continue-repair route test verifies queued mutation, validation, scheduler notification, and profile precedence."
-      },
-      {
-        "query": "test/auto-build-resume-after-failure.test.ts describe|it|auto-build|pause|resume|failed|queued",
-        "tool": "grep",
-        "result": "Confirmed integration-style scheduler pause/resume lifecycle tests."
-      },
-      {
-        "query": "test/auto-build-pause-on-failure.test.ts describe|it|auto-build|pause|resume|failed|queued",
-        "tool": "grep",
-        "result": "Confirmed pause-on-failure tests import maybePauseOnFailure and AutoBuildSupervisor."
-      },
-      {
-        "query": "packages/client/src/routes/route-map.ts",
-        "tool": "read",
-        "result": "Confirmed central API route map single source of truth for /api path patterns."
-      },
-      {
-        "query": "packages/client/src/routes/recovery.ts",
-        "tool": "read",
-        "result": "Confirmed recovery route request/response contracts include RecoverRequest and recovery-related schemas."
-      },
-      {
-        "query": "packages/client/src/api/apply-recovery.ts",
-        "tool": "read",
-        "result": "Confirmed typed apiApplyRecovery helper using API_ROUTES.applyRecovery and ApplyRecoveryRequest/Response."
-      },
-      {
-        "query": "packages/client/src/api/recover.ts",
-        "tool": "read",
-        "result": "Confirmed typed apiRecover helper using API_ROUTES.recover and RecoverRequest/Response."
-      },
-      {
-        "query": "read packages/monitor/src/routes/continue-repair.ts",
-        "tool": "read",
-        "result": "Found continue-repair route implementation using @eforge-build/client API_ROUTES, defineRoute, localMutation, route validation, eligibility and queue helpers."
-      },
-      {
-        "query": "read packages/client/src/api/apply-recovery.ts",
-        "tool": "read",
-        "result": "Found typed client helper for apply-recovery daemon API endpoint using daemonRequest, daemonRequestIfRunning, API_ROUTES.applyRecovery, ApplyRecoveryRequest/Response."
-      },
-      {
-        "query": "read packages/client/src/events.schemas.ts",
-        "tool": "read",
-        "result": "Found compatibility facade exporting event schema pieces and safeParseEforgeEvent from focused event modules."
-      },
-      {
-        "query": "read packages/client/src/events/variants/validation-recovery.ts",
-        "tool": "read",
-        "result": "Found validation/recovery event variant schema module importing resume artifacts, auto-build fields, build failure summary, and related schema components."
-      },
-      {
-        "query": "read packages/client/src/__tests__/events-schema-shape.test.ts",
-        "tool": "read",
-        "result": "Found schema shape/barrel parity tests for EforgeEventSchema and safeParseEforgeEvent imports."
-      },
-      {
-        "query": "read packages/client/src/__tests__/events-wire-parity.test.ts",
-        "tool": "read",
-        "result": "Found wire parity test iterating validPayloads through safeParseEforgeEvent."
-      },
-      {
-        "query": "read packages/client/src/event-registry.ts",
-        "tool": "read",
-        "result": "Found event metadata registry with exhaustive event variant tracking and projections for daemon state including queue and autoBuild."
-      },
-      {
-        "query": "read packages/client/src/__tests__/events-schemas-validation-recovery.test.ts",
-        "tool": "read",
-        "result": "Found validation recovery schema tests covering safeParseEforgeEvent, eventRegistry, getEventSummary, and extension policy variants."
-      },
-      {
-        "query": "grep recovery:apply|build:resume|daemon:auto-build|queue: in packages/client/src/event-registry.ts",
-        "tool": "grep",
-        "result": "Observed queue and autoBuild registry-related context; detailed matches were cut off by budget."
-      },
-      {
-        "query": "grep build:resume|daemon:auto-build|recovery:apply in packages/client/src/events",
-        "tool": "grep",
-        "result": "Observed match in events/shared/schemas.ts around BuildResumeArtifactSource; output truncated before full resolution."
-      },
-      {
-        "query": "packages/client/src/routes/recovery.ts",
-        "tool": "read",
-        "result": "Confirmed route contract file exists and imports recovery verdict/schema types; likely owner for manual apply/recover/continue-repair API shapes."
-      },
-      {
-        "query": "packages/engine/src/recovery/sidecar-read.ts",
-        "tool": "read",
-        "result": "Confirmed sidecar read/validation file exists; contains validateContinueRepairEligibility and recovery sidecar parsing/validation symbols."
-      },
-      {
-        "query": "packages/engine/src/recovery/applied-sidecar.ts",
-        "tool": "read",
-        "result": "Confirmed applied marker helper file exists; comments describe durable idempotency marker preventing duplicate queue mutation/repeated Console prompt."
-      },
-      {
-        "query": "packages/engine/src/recovery/sidecar-payload.ts",
-        "tool": "read",
-        "result": "Confirmed recovery sidecar payload file exists; imports RecoverySidecarReport, RecoveryVerdictSidecar, recovery options, and continue-repair eligibility evidence."
-      },
-      {
-        "query": "packages/engine/src/resume/queued-resume.ts",
-        "tool": "read",
-        "result": "Confirmed queued resume helper exists; imports requeueFailedPrdForCompiledResume and tryReadRecoverySidecarProjection."
-      },
-      {
-        "query": "packages/monitor/src/routes/continue-repair-service.ts",
-        "tool": "read",
-        "result": "Confirmed monitor continue-repair service exists; exposes queueContinueRepair and references AutoBuildQueueMutationReason."
-      },
-      {
-        "query": "packages/engine/src/queue/resume-cascade.ts",
-        "tool": "read",
-        "result": "Confirmed compiled-build resume queue transition helper exists; header says it owns reactivation/finalization queue transitions."
-      },
-      {
-        "query": "packages/engine/src/resume/compiled-build.ts",
-        "tool": "read",
-        "result": "Confirmed compiled-build resume eligibility helper exists; header describes eligibility checks, plan-state seed derivation, changed-file/diff-stat extraction."
+        "result": "Initial multi-path grep failed because the tool treated the space-separated path list as one path; a later scoped grep against packages/engine/src began but budget ended before full result capture."
       },
       {
         "needId": "criterion-ac-005-path-queue-run-auto-build",
-        "query": "Read queue/run/auto-build projection files under packages/monitor/src/projections",
-        "tool": "read",
-        "result": "Confirmed auto-build, queue, and monitor-state projection files exist and import @eforge-build/client wire types."
-      },
-      {
-        "needId": "criterion-ac-005-path-queue-run-auto-build",
-        "query": "Search packages/monitor/src for stream:hello, snapshot, autoBuildStateToWire, rowToRunInfo, loadQueueItems",
+        "query": "export interface RunInfo|export interface QueueItem|export interface DaemonStreamSnapshot|autoBuild in packages/client/src/types.ts",
         "tool": "grep",
-        "result": "Located route/control-plane usage of autoBuildStateToWire and stream snapshot/projection owners."
+        "result": "Found QueueItem area and queue wire type exports in packages/client/src/types.ts; output did not fully expose RunInfo/autoBuild details."
       },
       {
-        "needId": "criterion-ac-005-subsystem-run",
-        "query": "Read packages/monitor/src/db.ts for run projection mapping",
+        "needId": "criterion-ac-005-subsystem-queue",
+        "query": "read packages/client/src/types.ts around QueueItem",
         "tool": "read",
-        "result": "Confirmed RunInfo import and raw runs table mapping area; likely rowToRunInfo owner."
+        "result": "Confirmed QueueItem section and QueueDispatchFailureProjection in client wire types."
       },
       {
         "needId": "criterion-ac-005-subsystem-auto-build",
-        "query": "Read packages/monitor/src/streams/daemon-stream.ts and routes/control-plane.ts",
+        "query": "read packages/client/src/events/snapshots.ts",
         "tool": "read",
-        "result": "Confirmed daemon stream snapshot includes projectAutoBuildForContext and heartbeat uses buildDaemonHeartbeatObject; control-plane imports autoBuildStateToWire."
+        "result": "Confirmed snapshot schema imports AutoBuildDetailFields plus queue/stack wire schemas, likely daemon stream snapshot owner."
       },
       {
-        "needId": "inventory-subsystem-enabled",
-        "query": "Read Console project state reducer",
+        "needId": "criterion-ac-005-subsystem-auto-build",
+        "query": "AutoBuildDetailFields in packages/client/src/events/shared",
+        "tool": "grep",
+        "result": "Found AutoBuildDetailFields in packages/client/src/events/shared/schemas.ts."
+      },
+      {
+        "needId": "criterion-ac-005-subsystem-enabled",
+        "query": "read packages/client/src/events/shared/schemas.ts around AutoBuildDetailFields",
         "tool": "read",
-        "result": "Confirmed packages/console-ui/src/lib/project-state.ts consumes AutoBuildState, QueueItem, RunInfo, SessionMetadata, and SSE snapshot/event actions."
+        "result": "Confirmed AutoBuildDesiredSchema has enabled/disabled; AutoBuildRuntimeModeSchema includes disabled, starting, running, paused, stopping, restarting, faulted."
+      },
+      {
+        "needId": "criterion-ac-005-subsystem-run",
+        "query": "rowToRunInfo|rowTo.*Run|RunInfo|insertRun|updateRunStatus in packages/monitor/src",
+        "tool": "grep",
+        "result": "Found RunInfo imports/usages including packages/monitor/src/db.ts and analytics files."
+      },
+      {
+        "needId": "criterion-ac-005-subsystem-run",
+        "query": "read packages/monitor/src/db.ts",
+        "tool": "read",
+        "result": "Confirmed monitor DB API imports RunInfo and documents raw DB row shape for the runs table."
+      },
+      {
+        "needId": "criterion-ac-005-subsystem-queue",
+        "query": "routeKey queue/runs and projectQueueForContext/projectRunsForContext in packages/monitor/src/routes",
+        "tool": "grep",
+        "result": "Found queue-control route entries; monitor-data route later confirmed projection imports."
+      },
+      {
+        "needId": "criterion-ac-005-path-queue-run-auto-build",
+        "query": "read packages/monitor/src/routes/monitor-data.ts",
+        "tool": "read",
+        "result": "Confirmed monitor data routes import API_ROUTES and projectQueueForContext, projectRunsForContext, projectSessionMetadataForContext from projections/monitor-state.js."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-resume",
+        "query": "read packages/engine/src/resume/compiled-build.ts offsets 1-420 and 421-580",
+        "tool": "read",
+        "result": "Confirmed compiled-build resume helper file with eligibility checks, artifact availability handling, git/history and prompt-context helpers."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-wakes",
+        "query": "grep notifyQueueMutation|queue:mutation|AutoBuildQueueMutationReason|resume in packages/monitor/src",
+        "tool": "grep",
+        "result": "Found resume command injection in server-main.ts and scheduler mutation emission around apply-recovery/external."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-wakes",
+        "query": "read packages/monitor/src/auto-build-supervisor.ts offset 1-470",
+        "tool": "read",
+        "result": "Confirmed auto-build supervisor owns desired/runtime/scheduler state and transition detail types."
       },
       {
         "needId": "criterion-ac-002-subsystem-apply",
-        "query": "grep packages/engine/src for wake|resume\\(|pause|scheduler|apply-recovery|continue-repair",
-        "tool": "grep",
-        "result": "Found recovery/apply and continue-repair logic in packages/engine/src/eforge.ts plus scheduler references."
+        "query": "read packages/monitor/src/server-main.ts offset 500-820",
+        "tool": "read",
+        "result": "Confirmed daemon loads config and initializes persistent watcher/auto-build lifecycle; nearby scheduler mutation functions observed."
       },
       {
-        "needId": "criterion-ac-002-subsystem-resume",
-        "query": "read packages/engine/src/eforge.ts around applyRecovery and continue-and-repair sections",
-        "tool": "read",
-        "result": "Observed apply recovery verdict comment, resume seed delegation, runId/status setup, queuedResumeStarted/queuedResumeFinalized handling."
+        "needId": "criterion-ac-002-subsystem-apply",
+        "query": "grep maybePauseOnFailure|PauseOnFailure in packages/monitor/src",
+        "tool": "grep",
+        "result": "Found PauseOnFailureCtx and maybePauseOnFailure unit-testable failure-pause logic in server-main.ts."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-resumes",
+        "query": "grep interface SchedulerControl|SchedulerInputEvent|queue:mutation|pause(|resume(|inject in packages/engine/src/queue/scheduler.ts",
+        "tool": "grep",
+        "result": "Confirmed scheduler is event-driven and reacts to queue:mutation events emitted by daemon HTTP routes, including apply-recovery/kick."
       },
       {
         "needId": "criterion-ac-002-subsystem-wakes",
-        "query": "read packages/engine/src/queue/scheduler.ts",
+        "query": "read packages/engine/src/queue/scheduler.ts offset 1-90",
         "tool": "read",
-        "result": "Scheduler is event-driven; queue:mutation events are injected by HTTP routes including enqueue, apply-recovery, and kick."
+        "result": "Confirmed file-level scheduler contract: EventEmitter bus inputs include queue:mutation, apply-recovery, kick, and queue:prd:complete."
       },
       {
-        "needId": "criterion-ac-002-subsystem-wakes",
-        "query": "grep packages/monitor/src for wake|queue:mutation|apply-recovery|continue-repair|inject",
-        "tool": "grep",
-        "result": "Found packages/monitor/src/auto-build-supervisor.ts with AutoBuildQueueMutationReason including apply-recovery and watcher start logic."
-      },
-      {
-        "needId": "criterion-ac-002-subsystem-resume",
-        "query": "find packages/monitor/src/routes *.ts",
+        "query": "find packages **/*config*.ts",
         "tool": "find",
-        "result": "Confirmed continue-repair.ts and continue-repair-service.ts exist under packages/monitor/src/routes."
+        "result": "Found config-related files including packages/client/src/api/config.ts, packages/docs-gen/src/generators/config.ts, packages/engine/src/config.ts, packages/engine/test/config.legacy-rejection.test.ts, packages/engine/test/plan-file.agent-config.test.ts, and monitor projection config tests."
       },
       {
-        "needId": "inventory-subsystem-apply",
-        "query": "find packages/client/src/api *.ts and grep recovery API symbols",
-        "tool": "find/grep",
-        "result": "Confirmed client API modules apply-recovery.ts, continue-repair.ts, continue-repair-eligibility.ts and recovery route contract metadata in packages/client/src/routes/recovery.ts."
-      },
-      {
-        "needId": "criterion-ac-001-interface-configuration",
-        "query": "config.yaml|profiles|configuration",
+        "query": "grep auto.*resume|resume.*auto|autoResume|auto-resume",
         "tool": "grep",
-        "result": "Found README.md references to public docs/configuration and /eforge:init creating eforge/config.yaml/profiles."
+        "result": "No concrete auto-resume implementation surface found in observed output; only broad README mention of daemon/planning/building."
       },
       {
-        "needId": "criterion-ac-001-surface-config",
-        "query": "**/*config*.ts under packages",
-        "tool": "find",
-        "result": "Found config owners including client/src/api/config.ts, docs-gen/src/generators/config.ts, engine/src/config.ts, and config tests."
-      },
-      {
-        "needId": "criterion-ac-001-interface-configuration",
-        "query": "ConfigSchema|EforgeConfig|parse.*config|mergePartialConfigs|resolveLayeredSingletons|config.yaml",
-        "tool": "grep",
-        "result": "Found extension-sdk context comments, client opaque config types, docs-gen manifest entry, and engine imports of EforgeConfig."
-      },
-      {
-        "needId": "criterion-ac-001-interface-configuration",
-        "query": "packages/engine/src/config.ts offsets around schema/defaults",
+        "query": "read packages/engine/src/config.ts",
         "tool": "read",
-        "result": "Confirmed eforgeConfigBaseSchema, EforgeConfig resource/extension shapes, DEFAULT_CONFIG with prdQueue.autoBuild true, and config merge defaults."
+        "result": "Confirmed engine config source exists; imports client config parsing and includes zod schema/default configuration sections."
       },
       {
-        "needId": "inventory-interface-configuration",
-        "query": "docs/config.md prdQueue|autoBuild|auto-build",
+        "query": "grep prdQueue|autoBuild|defaultConfig|DEFAULT_CONFIG|ConfigSchema|Config in packages/engine/src/config.ts",
         "tool": "grep",
-        "result": "Attempted but budget ended before usable output was available."
+        "result": "Confirmed config.ts imports parseRawConfigLegacy and types from @eforge-build/client."
+      },
+      {
+        "query": "read packages/engine/src/config.ts schema/default regions",
+        "tool": "read",
+        "result": "Observed eforgeConfigBaseSchema and default constants such as DEFAULT_REVIEW and DEFAULT_TIER_RECIPES."
+      },
+      {
+        "query": "read eforge/config.yaml",
+        "tool": "read",
+        "result": "Confirmed project config surface with build.postMergeCommands, compile.planningUnitParallelism, stacking, landing, and tools."
+      },
+      {
+        "query": "read docs/config.md around config reference",
+        "tool": "read",
+        "result": "Confirmed configuration docs file and scope/profile discussion."
+      },
+      {
+        "query": "grep prdQueue|autoBuild|watchPollIntervalMs|Configuration Reference|Generated in docs/config.md",
+        "tool": "grep",
+        "result": "Output was truncated before useful grounding could be extracted."
       }
     ],
     "candidatePaths": [
-      "README.md",
-      "packages/client/src/__tests__/events-schema-shape.test.ts",
-      "packages/client/src/__tests__/events-schemas-auto-build.test.ts",
-      "packages/client/src/__tests__/events-schemas-validation-recovery.test.ts",
-      "packages/client/src/__tests__/events-wire-parity.test.ts",
-      "packages/client/src/api/apply-recovery.ts",
+      "docs/config.md",
+      "eforge/config.yaml",
+      "eforge/extensions/",
+      "eforge/plans/",
+      "eforge/playbooks/",
+      "eforge/prds/",
+      "eforge/profiles/",
       "packages/client/src/api/config.ts",
-      "packages/client/src/api/continue-repair-eligibility.ts",
-      "packages/client/src/api/continue-repair.ts",
-      "packages/client/src/api/recover.ts",
-      "packages/client/src/event-registry.ts",
-      "packages/client/src/events.schemas.ts",
+      "packages/client/src/browser-queue-recovery.ts",
+      "packages/client/src/events",
+      "packages/client/src/events/queue-events.ts",
+      "packages/client/src/events/shared/schemas.ts",
+      "packages/client/src/events/snapshots.ts",
+      "packages/client/src/events/variants.ts",
+      "packages/client/src/events/variants/build.ts",
+      "packages/client/src/events/variants/daemon.ts",
       "packages/client/src/events/variants/validation-recovery.ts",
+      "packages/client/src/routes/queue-control.ts",
       "packages/client/src/routes/recovery.ts",
-      "packages/client/src/routes/route-map.ts",
       "packages/client/src/types.ts",
-      "packages/console-ui/src/components/now/__tests__/failed-enqueue-row.test.tsx",
-      "packages/console-ui/src/lib/project-state.ts",
       "packages/docs-gen/src/generators/config.ts",
-      "packages/docs-gen/src/manifest.ts",
       "packages/engine/src/config.ts",
-      "packages/engine/src/eforge.ts",
-      "packages/engine/src/queue/resume-cascade.ts",
+      "packages/engine/src/extensions/policy-gate-runtime.ts",
+      "packages/engine/src/queue/control.ts",
+      "packages/engine/src/queue/hold.ts",
+      "packages/engine/src/queue/recovery-preflight.ts",
       "packages/engine/src/queue/scheduler.ts",
-      "packages/engine/src/recovery/applied-sidecar.ts",
-      "packages/engine/src/recovery/sidecar-payload.ts",
-      "packages/engine/src/recovery/sidecar-read.ts",
       "packages/engine/src/resume/compiled-build.ts",
-      "packages/engine/src/resume/queued-resume.ts",
       "packages/engine/test/config.legacy-rejection.test.ts",
-      "packages/monitor/src/__tests__/projections-config-redaction.test.ts",
+      "packages/engine/test/plan-file.agent-config.test.ts",
+      "packages/extension-sdk/src/hooks.ts",
       "packages/monitor/src/auto-build-supervisor.ts",
       "packages/monitor/src/db.ts",
-      "packages/monitor/src/projections/auto-build-state.ts",
-      "packages/monitor/src/projections/monitor-state.ts",
-      "packages/monitor/src/projections/queue-items.ts",
-      "packages/monitor/src/routes/apply-recovery.ts",
-      "packages/monitor/src/routes/continue-repair-service.ts",
-      "packages/monitor/src/routes/continue-repair.ts",
-      "packages/monitor/src/routes/control-plane.ts",
       "packages/monitor/src/routes/monitor-data.ts",
-      "packages/monitor/src/streams/daemon-stream.ts",
-      "test/apply-recovery-route.test.ts",
-      "test/auto-build-pause-on-failure.test.ts",
-      "test/auto-build-resume-after-failure.test.ts",
-      "test/continue-repair-route.test.ts"
+      "packages/monitor/src/routes/queue-control.ts",
+      "packages/monitor/src/server-main.ts",
+      "test/",
+      "test/config-schema.test.ts",
+      "test/recovery-queue-control-docs.test.ts"
     ],
     "rescopeHints": [],
-    "notes": "Submit-only grace mode reached after the stated 24 read-only tool uses; outcome preserves only confirmed observations and leaves broad config/docs/test subsystem localization unresolved.; Submit-only grace mode reached after repository tool budget. Prior observations identify likely route/API/schema/test owners for ac-007, but route constants, continue-repair typed helper, applyRecovery/continueRepair route tests, and full event variant payload fixtures were not fully inspected before budget exhaustion.; Submit-only grace mode was reached before gates/holds/approvals and manual/retry/abandon owner paths could be fully resolved. The listed files are confirmed concrete anchors from prior observations but should be treated as partial localization.; Budget exhausted in submit-only grace mode. Prior observations strongly localize ac-005 to monitor projection modules plus Console state consumption, but deeper UI component and client type/schema owners were not fully explored.; Tool budget was already exhausted before this turn. Hints above are limited to prior read-only observations and should be treated as starting points rather than complete ownership evidence.; Submit-only grace mode was reached after 14 read-only tool uses. Hints are limited to prior observations and focus on the unresolved configuration/config surface needs.",
+    "notes": "Tool budget was already exhausted on entry to this turn. Outcome is based only on prior observations; docs/reference generation owners and complete unit/integration test localization remain unresolved.; Submit-only grace mode reached after prior repository inspection. Concrete route/schema/event owners were partially localized, but test owner paths and full manual applyRecovery/continueRepair route test locations were not confirmed before the tool budget was exhausted.; Submit-only grace mode reached before resolving all requested low-confidence needs. Concrete files above were confirmed from prior observations, but ownership of manual/retry/abandon and approval/hold user-facing flows remains only partially localized.; Submit-only grace mode was reached before inspecting Console UI consumers or the monitor projection implementation file(s). Hints above are partial but concrete owners for queue/run/auto-build wire shapes, snapshot schema, and monitor data routing.; Submit-only grace mode reached after the read-only budget was exhausted. Hints reflect only confirmed prior observations; unresolved IDs remain listed because deeper ownership for apply/resume/resumes/wakes could not be fully verified within budget.; Submit-only grace mode requested after exhausting the 14-use read-only budget. Concrete configuration owner appears to be packages/engine/src/config.ts, with route/client config surface in packages/client/src/api/config.ts and generated docs likely owned by packages/docs-gen/src/generators/config.ts plus docs/config.md, but the unresolved configuration needs were not fully verified before budget exhaustion.",
     "unknownIdDrops": [],
     "toolUseCount": 134
   },

@@ -7,29 +7,10 @@ validate:
   - pnpm docs:check
   - pnpm maintainability:check
 plans:
-  - id: client-contracts-routes
-    name: Client contracts, projection, routes
+  - id: contracts-config-docs
+    name: Contracts, default-off config, docs
     depends_on: []
-    branch: bounded-recovery-auto-resume-policy/client-contracts-routes
-    build:
-      - implement
-      - test-write
-      - test-cycle
-      - review-cycle
-    review:
-      strategy: parallel
-      perspectives:
-        - code
-        - security
-        - test
-        - verify
-      maxRounds: 2
-      evaluatorStrictness: strict
-  - id: core-policy-config
-    name: Recovery core policy/config
-    depends_on:
-      - client-contracts-routes
-    branch: bounded-recovery-auto-resume-policy/core-policy-config
+    branch: bounded-recovery-auto-resume-policy/contracts-config-docs
     build:
       - implement
       - doc-sync
@@ -45,12 +26,31 @@ plans:
         - verify
       maxRounds: 2
       evaluatorStrictness: strict
-  - id: console-recovery-ui
-    name: Console recovery display/controls
+  - id: policy-resume-core
+    name: Guarded resume policy
     depends_on:
-      - client-contracts-routes
-      - core-policy-config
-    branch: bounded-recovery-auto-resume-policy/console-recovery-ui
+      - contracts-config-docs
+    branch: bounded-recovery-auto-resume-policy/policy-resume-core
+    build:
+      - implement
+      - doc-sync
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: visibility-provenance
+    name: Queue/run and Console visibility
+    depends_on:
+      - policy-resume-core
+    branch: bounded-recovery-auto-resume-policy/visibility-provenance
     build:
       - implement
       - doc-sync
@@ -91,20 +91,20 @@ pipeline:
 
     Set-level defaults follow the highest plan risk score (4).
 
-    - client-contracts-routes: risk score 4 (large-plan,
-    low-confidence-localization, multi-subsystem, dependency-root); declared
-    docs work none, test work author-new; derived build implement -> test-write
-    -> test-cycle -> review-cycle and parallel review with perspectives code,
-    security, test, verify, 2 round(s), strict evaluation
-
-    - console-recovery-ui: risk score 2 (low-confidence-localization,
-    multi-subsystem); declared docs work sync-existing, test work author-new;
+    - contracts-config-docs: risk score 3 (large-plan, multi-subsystem,
+    dependency-root); declared docs work sync-existing, test work author-new;
     derived build implement -> doc-sync -> test-write -> test-cycle ->
-    review-cycle and auto review with perspectives code, test, 1 round(s),
-    standard evaluation
+    review-cycle and parallel review with perspectives code, security, test,
+    verify, 2 round(s), strict evaluation
 
-    - core-policy-config: risk score 4 (large-plan, low-confidence-localization,
+    - policy-resume-core: risk score 4 (large-plan, low-confidence-localization,
     multi-subsystem, dependency-root); declared docs work sync-existing, test
     work author-new; derived build implement -> doc-sync -> test-write ->
     test-cycle -> review-cycle and parallel review with perspectives code,
     security, test, verify, 2 round(s), strict evaluation
+
+    - visibility-provenance: risk score 2 (low-confidence-localization,
+    multi-subsystem); declared docs work sync-existing, test work author-new;
+    derived build implement -> doc-sync -> test-write -> test-cycle ->
+    review-cycle and auto review with perspectives code, test, 1 round(s),
+    standard evaluation
