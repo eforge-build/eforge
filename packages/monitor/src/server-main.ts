@@ -30,6 +30,7 @@ import { randomBytes } from 'node:crypto';
 import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-supervisor.js';
+import { evaluateGuardedRecoveryAutoResume } from './recovery-auto-resume.js';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -305,13 +306,13 @@ export interface PauseOnFailureCtx {
  * Exported for unit-testing.
  */
 export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx): void {
-  if (
-    event.type === 'queue:prd:complete' &&
-    event.status === 'failed' &&
-    ctx.isActiveController()
-  ) {
+  if (isFailedQueuePrdComplete(event, ctx)) {
     ctx.daemonState.autoBuildController.pauseOnFailure(`Build failed: ${event.prdId}`);
   }
+}
+
+function isFailedQueuePrdComplete(event: EforgeEvent, ctx: PauseOnFailureCtx): event is EforgeEvent & { type: 'queue:prd:complete'; prdId: string; status: 'failed' } {
+  return event.type === 'queue:prd:complete' && event.status === 'failed' && ctx.isActiveController();
 }
 
 /**
@@ -658,7 +659,30 @@ async function main(): Promise<void> {
           daemonState: { autoBuildController: supervisor },
         };
         for await (const event of events) {
-          maybePauseOnFailure(event, pauseCtx);
+          if (isFailedQueuePrdComplete(event, pauseCtx) && config?.recovery?.autoResume?.enabled === true && cwd) {
+            const activeConfig = config;
+            const outcome = await evaluateGuardedRecoveryAutoResume({
+              db,
+              preferredPort,
+              options: { cwd, daemonState: { autoBuildController: supervisor }, config: activeConfig, daemonSessionId, nativeExtensionRegistry: engine.nativeExtensionRegistry, nativeExtensionConfigDir: engine.nativeExtensionConfigDir },
+              cwd,
+              relativePlanOutputDir: activeConfig.plan.outputDir,
+              planOutputDir: resolve(cwd, activeConfig.plan.outputDir),
+              queuePaths: { relativeQueueDir: activeConfig.prdQueue.dir, queueDir: resolve(cwd, activeConfig.prdQueue.dir), lockDir: resolve(cwd, '.eforge', 'queue-locks'), failedDir: resolve(cwd, activeConfig.prdQueue.dir, 'failed'), skippedDir: resolve(cwd, activeConfig.prdQueue.dir, 'skipped'), waitingDir: resolve(cwd, activeConfig.prdQueue.dir, 'waiting') },
+              uiRoots: { consoleUiDir: '' },
+              versionInfo: { daemonApiVersion: 0, eforgeVersion: 'unknown', pid: process.pid },
+              daemonSessionId,
+              cachedGitRemote: null,
+              apiRoutes: {} as never,
+              resolveSessionId: (id) => id, getRunningBuildCount: () => 0,
+              getSchedulerLimit: () => activeConfig.maxConcurrentBuilds,
+              notifyQueueMutation: (reason) => supervisor.notifyQueueMutation(reason),
+              getDiscoveredConfigDir: async () => null, getConfigDirOrConventional: async () => resolve(cwd, '.eforge'),
+            }, event.prdId);
+            if (outcome.status !== 'queued') maybePauseOnFailure(event, pauseCtx);
+          } else {
+            maybePauseOnFailure(event, pauseCtx);
+          }
           // Emit daemon:auto-build:triggered when a queue scan cycle produces builds.
           if (event.type === 'queue:complete' && event.processed > 0) {
             writeDaemonEvent(db, {

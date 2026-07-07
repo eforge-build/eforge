@@ -136,8 +136,8 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     if (event.maxAttempts > RECOVERY_AUTO_RESUME_MAX_ATTEMPTS) {
       return validationError('/maxAttempts', `recovery auto-resume maxAttempts cannot exceed ${RECOVERY_AUTO_RESUME_MAX_ATTEMPTS}`);
     }
-    if (event.attempt > event.maxAttempts) {
-      return validationError('/attempt', 'recovery auto-resume attempt cannot exceed maxAttempts');
+    if (event.type === 'recovery:auto-resume:queued' && event.attempt > event.maxAttempts) {
+      return validationError('/attempt', 'queued recovery auto-resume attempt cannot exceed maxAttempts');
     }
   }
 

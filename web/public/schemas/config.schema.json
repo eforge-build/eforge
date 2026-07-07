@@ -1042,10 +1042,10 @@
               "type": "boolean"
             },
             "maxAttempts": {
-              "description": "Maximum automatic continue-repair attempts per failed PRD before policy stops. Default: 1. Set 0 to audit decisions without mutation even when enabled.",
+              "description": "Maximum automatic continue-repair attempts per failed PRD before policy stops. Default: 1. Maximum: 3. Set 0 to audit decisions without mutation even when enabled.",
               "type": "integer",
               "minimum": 0,
-              "maximum": 9007199254740991
+              "maximum": 3
             }
           },
           "additionalProperties": false,

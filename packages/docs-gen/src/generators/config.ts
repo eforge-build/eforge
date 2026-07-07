@@ -119,7 +119,7 @@ export async function generateConfig(opts: {
   lines.push('');
   lines.push('## Recovery auto-resume');
   lines.push('');
-  lines.push('`recovery.autoResume` is disabled by default. With the default config, daemon policy consumers must emit an audit/stop decision and stop before any queue mutation. Manual recovery routes and tools remain available.');
+  lines.push('`recovery.autoResume` is disabled by default. With the default config, queued builds keep the existing failure handling and manual recovery routes/tools remain available; no auto-resume audit events or attempt state are written.');
   lines.push('');
   lines.push('| Field | Default | Description |');
   lines.push('|-------|---------|-------------|');

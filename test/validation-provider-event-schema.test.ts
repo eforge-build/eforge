@@ -267,7 +267,7 @@ describe('recovery:auto-resume:* schema and registry parity', () => {
   for (const variant of variants) {
     it(`eventRegistry has entry for ${variant}`, () => {
       expect(eventRegistry[variant]).toBeDefined();
-      expect(eventRegistry[variant].scope).toBe('session');
+      expect(eventRegistry[variant].scope).toBe('daemon');
       expect(eventRegistry[variant].persist).toBe(true);
     });
   }

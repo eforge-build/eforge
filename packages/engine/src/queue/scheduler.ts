@@ -15,6 +15,8 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   getCompiledResumeFrontmatter,
@@ -41,6 +43,7 @@ import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 import { applyStackedDispatchValidation } from './dispatch-validation.js';
+import { readRawAppliedAction } from '../recovery/applied-sidecar.js';
 
 // ---------------------------------------------------------------------------
 // Scheduler child result type
@@ -913,6 +916,12 @@ export class QueueScheduler {
   private async onComplete(event: Extract<SchedulerInputEvent, { type: 'queue:prd:complete' }>): Promise<void> {
     const { prdId, status } = event;
 
+    if (status === 'failed' && await this.wasAutoResumeRequeued(prdId)) {
+      await this.discoverNewPrds();
+      await this.startReadyPrds();
+      return;
+    }
+
     // Update counters synchronously before any awaits.
     if (status === 'skipped') {
       this._skipped++;
@@ -976,6 +985,16 @@ export class QueueScheduler {
       this.propagateBlocked(prdId);
     }
     await this.startReadyPrds();
+  }
+
+  private async wasAutoResumeRequeued(prdId: string): Promise<boolean> {
+    try {
+      const rootPrdPath = resolve(this.cwd, this.queueDir, `${prdId}.md`);
+      await access(rootPrdPath, constants.F_OK);
+      return await readRawAppliedAction(resolve(this.cwd, this.queueDir, 'failed', `${prdId}.recovery.json`)) === 'continue-repair';
+    } catch {
+      return false;
+    }
   }
 
   /** Handles `queue:mutation` injected by HTTP routes. */

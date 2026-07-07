@@ -875,9 +875,9 @@ describe('safeParseEforgeEvent — recovery auto-resume policy events', () => {
     expect(safeParseEforgeEvent({ ...validEvents[0], maxAttempts: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS + 1 }).success).toBe(false);
   });
 
-  it('rejects recovery auto-resume attempts that exceed maxAttempts', () => {
-    expect(safeParseEforgeEvent({ ...validEvents[0], attempt: 2, maxAttempts: 1 }).success).toBe(false);
-    expect(safeParseEforgeEvent({ ...validEvents[1], attempt: 2, maxAttempts: 1 }).success).toBe(false);
+  it('rejects queued recovery auto-resume attempts that exceed maxAttempts while allowing exhausted audit states', () => {
+    expect(safeParseEforgeEvent({ ...validEvents[0], attempt: 2, maxAttempts: 1 }).success).toBe(true);
+    expect(safeParseEforgeEvent({ ...validEvents[1], attempt: 2, maxAttempts: 1 }).success).toBe(true);
     expect(safeParseEforgeEvent({ ...validEvents[2], attempt: 2, maxAttempts: 1 }).success).toBe(false);
   });
 
@@ -889,6 +889,16 @@ describe('safeParseEforgeEvent — recovery auto-resume policy events', () => {
       'not-high-confidence',
       'not-eligible',
       'manual-confirmation-required',
+      'partial-sidecar',
+      'malformed-sidecar',
+      'missing-sidecar',
+      'ineligible-artifacts',
+      'dirty-worktree',
+      'conflicting-worktree',
+      'queue-preflight-blocked',
+      'conflicting-applied-marker',
+      'active-gate-or-hold',
+      'repeated-failure-signature',
       'error',
     ]) {
       expect(safeParseEforgeEvent({ ...validEvents[1], reason }).success, reason).toBe(true);

@@ -192,7 +192,7 @@ prdQueue:
 
 recovery:
   autoResume:
-    enabled: false            # Default false. When disabled, daemon policy consumers stop before any auto-resume mutation.
+    enabled: false            # Default false. When disabled, failed queued builds keep the normal pause/manual recovery behavior.
     maxAttempts: 1            # Bounded automatic continue-repair attempts per failed PRD when enabled; 0 = audit/stop without mutation; maximum 3.
   # Explicit build dependency (per-enqueue, not a config key):
   #   Pass --after <queue-id> to the CLI or afterQueueId to the eforge_build tool
@@ -981,7 +981,7 @@ When an active upstream build completes, its waiting dependents transition from 
 
 ### Recovery auto-resume policy
 
-`recovery.autoResume` is disabled by default. With the default config, daemon policy consumers must emit an audit/stop decision and stop before mutating failed queue state; queued builds retain the existing failure-pause behavior and manual recovery controls remain available. Opting in (`enabled: true`) allows only the high-confidence compiled-artifact `continue-repair` automation path to consume a bounded attempt budget. `maxAttempts` caps automatic attempts per failed PRD at 3; `0` is a non-mutating audit mode even when enabled. Policy events surface the attempt count and stop reason (`disabled`, `attempt-budget-exhausted`, `not-continue-repair`, `not-high-confidence`, `not-eligible`, `manual-confirmation-required`, or `error`) so operators can see why automation did or did not run.
+`recovery.autoResume` is disabled by default. With the default config, queued builds retain the existing failure-pause behavior and manual recovery controls remain available; no auto-resume attempt state is written. Opting in (`enabled: true`) allows only the high-confidence compiled-artifact `continue-repair` automation path to consume a bounded attempt budget after sidecar, artifact, worktree, queue, gate/hold, and loop-guard preflights pass. `maxAttempts` caps automatic attempts per failed PRD at 3; `0` is a non-mutating audit mode even when enabled. Policy events surface the attempt count and stop reason (`attempt-budget-exhausted`, `not-continue-repair`, `not-high-confidence`, `not-eligible`, `manual-confirmation-required`, `partial-sidecar`, `malformed-sidecar`, `missing-sidecar`, `ineligible-artifacts`, `dirty-worktree`, `conflicting-worktree`, `queue-preflight-blocked`, `conflicting-applied-marker`, `active-gate-or-hold`, `repeated-failure-signature`, or `error`) so operators can see why enabled automation did or did not run.
 
 #### Queue recovery contract fields
 

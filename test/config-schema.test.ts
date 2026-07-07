@@ -57,6 +57,12 @@ describe('eforgeConfigSchema', () => {
     expect(resolveConfig({ recovery: { autoResume: { enabled: true, maxAttempts: 0 } } }).recovery.autoResume).toEqual({ enabled: true, maxAttempts: 0 });
   });
 
+  it('accepts the maximum recovery auto-resume attempt budget', () => {
+    const input = { recovery: { autoResume: { enabled: true, maxAttempts: RECOVERY_AUTO_RESUME_MAX_ATTEMPTS } } };
+    expect(configYamlSchema.safeParse(input).success).toBe(true);
+    expect(resolveConfig(input).recovery.autoResume.maxAttempts).toBe(RECOVERY_AUTO_RESUME_MAX_ATTEMPTS);
+  });
+
   it('rejects negative, fractional, or excessive recovery auto-resume attempt budgets', () => {
     expect(configYamlSchema.safeParse({ recovery: { autoResume: { maxAttempts: -1 } } }).success).toBe(false);
     expect(configYamlSchema.safeParse({ recovery: { autoResume: { maxAttempts: 1.5 } } }).success).toBe(false);

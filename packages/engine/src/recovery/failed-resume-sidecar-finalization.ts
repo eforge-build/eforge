@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -172,12 +172,29 @@ async function writeSidecarOrInvalidate(
       failureSummary: summary,
       dbPath: resolve(options.cwd, '.eforge', 'monitor.db'),
     });
+    const priorAutoResume = await readPriorAutoResume(options.failedPrdDir, options.prdId);
     const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: options.failedPrdDir, prdId: options.prdId, summary, verdict, continueRepairEvidence });
+    if (priorAutoResume !== undefined) await restoreAutoResumeState(jsonPath, priorAutoResume);
     return { status, mdPath, jsonPath };
   } catch (err) {
     await removeRecoverySidecars(options.failedPrdDir, options.prdId);
     return { status: 'invalidated', reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+async function readPriorAutoResume(failedPrdDir: string, prdId: string): Promise<unknown | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(join(failedPrdDir, `${prdId}.recovery.json`), 'utf-8')) as { autoResume?: unknown };
+    return parsed.autoResume;
+  } catch {
+    return undefined;
+  }
+}
+
+async function restoreAutoResumeState(jsonPath: string, autoResume: unknown): Promise<void> {
+  const parsed = JSON.parse(await readFile(jsonPath, 'utf-8')) as Record<string, unknown>;
+  parsed.autoResume = autoResume;
+  await writeFile(jsonPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
 }
 
 async function readPrdContent(failedPrdDir: string, prdId: string): Promise<string> {
