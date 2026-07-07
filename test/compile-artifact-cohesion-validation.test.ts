@@ -1,9 +1,11 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { validateCompileArtifacts } from '@eforge-build/engine/compile-resilience/artifact-validation';
 import { DEFAULT_REVIEW } from '@eforge-build/engine/config';
+import { syncArchitectureManifestDependencies } from '@eforge-build/engine/planning-quality/manifest-sync';
 import type { PipelineContext } from '@eforge-build/engine/pipeline';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import {
@@ -116,6 +118,35 @@ describe('compile artifact cohesion validation', () => {
     expect(result.ok ? '' : result.message).toContain('plan dependency mismatch for module-c');
   });
 
+  it('re-derives manifest dependencies after an orchestration dependency fix so required validation passes', async () => {
+    // Mirrors the quality-review fix cycle: an accepted fix adds a depends_on
+    // edge to orchestration.yaml while the machine-managed manifest fence is
+    // frozen. Validation fail-closes until the sync re-derives the manifest.
+    const ctx = await writeCompilerSet(tempDir(), { dependency: false, planSetName: 'cohesion-sync' });
+    await rewriteOrchestration(ctx, (plans) => plans.map((plan) => plan.id === 'module-b' ? { ...plan, depends_on: ['module-a'] } : plan));
+
+    const beforeSync = await validateCompileArtifacts(ctx, { compilerArtifacts: 'require' });
+    expect(beforeSync.ok).toBe(false);
+    expect(beforeSync.ok ? '' : beforeSync.message).toContain('plan dependency mismatch for module-b');
+
+    const sync = await syncArchitectureManifestDependencies({ cwd: ctx.cwd, outputDir: ctx.config.plan.outputDir, planSetName: ctx.planSetName });
+    expect(sync.changed).toBe(true);
+
+    await expect(validateCompileArtifacts(ctx, { compilerArtifacts: 'require' })).resolves.toMatchObject({ ok: true });
+  });
+
+  it('keeps plan-presence mismatches fail-closed after the dependency sync', async () => {
+    const ctx = await writeCompilerSet(tempDir(), { planSetName: 'cohesion-sync-presence' });
+    await rewriteOrchestration(ctx, (plans) => plans.filter((plan) => plan.id !== 'module-b'));
+
+    const sync = await syncArchitectureManifestDependencies({ cwd: ctx.cwd, outputDir: ctx.config.plan.outputDir, planSetName: ctx.planSetName });
+    expect(sync.changed).toBe(false);
+
+    const result = await validateCompileArtifacts(ctx, { compilerArtifacts: 'require' });
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.message).toContain('architecture manifest plan missing from orchestration: module-b');
+  });
+
   it('fails when a plan boundary heading is missing from architecture.md', async () => {
     const ctx = await writeCompilerSet(tempDir());
     const architecturePath = resolve(planDir(ctx), 'architecture.md');
@@ -199,6 +230,12 @@ async function rewriteManifest(ctx: PipelineContext, mutate: (manifest: Planning
   if (!parsed.manifest) throw new Error(`Cannot rewrite manifest: ${parsed.errors.join('; ')}`);
   const fence = renderArchitectureManifestFence(parsed.manifest);
   await writeFile(architecturePath, architecture.replace(fence, renderArchitectureManifestFence(mutate(parsed.manifest))), 'utf8');
+}
+
+async function rewriteOrchestration(ctx: PipelineContext, mutate: (plans: Array<Record<string, unknown>>) => Array<Record<string, unknown>>): Promise<void> {
+  const orchestrationPath = resolve(planDir(ctx), 'orchestration.yaml');
+  const data = parseYaml(await readFile(orchestrationPath, 'utf8')) as Record<string, unknown>;
+  await writeFile(orchestrationPath, stringifyYaml({ ...data, plans: mutate(data.plans as Array<Record<string, unknown>>) }), 'utf8');
 }
 
 async function rewriteDiagnostics(ctx: PipelineContext, mutate: (diagnostics: CompilerDiagnostics) => CompilerDiagnostics): Promise<void> {

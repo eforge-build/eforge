@@ -64,6 +64,20 @@ function architectureManifestFencePattern(): RegExp {
 }
 
 /**
+ * Replace the machine-readable manifest fence in an architecture.md document with
+ * the canonical rendering of the given manifest, appending it under the standard
+ * heading when the document carries no fence.
+ */
+export function replaceArchitectureManifestFence(markdown: string, manifest: PlanningArchitectureManifest): string {
+  const canonicalFence = renderArchitectureManifestFence(manifest);
+  const fencePattern = architectureManifestFencePattern();
+  // Replacer function: the canonical fence is inserted literally, so `$`-substitution
+  // patterns ($&, $', $`) inside the manifest JSON are never interpreted.
+  if (fencePattern.test(markdown)) return markdown.replace(fencePattern, () => canonicalFence);
+  return `${markdown.replace(/\n*$/, '')}\n\n## Machine-readable manifest\n\n${canonicalFence}\n`;
+}
+
+/**
  * Preserve the canonical machine-readable manifest fence across an agent-authored
  * architecture.md replacement. The manifest is synthesized deterministically from
  * compiler results; reviewer fixes may edit prose but must never hand-author the
@@ -75,12 +89,7 @@ function architectureManifestFencePattern(): RegExp {
 export function preserveArchitectureManifestFence(existingContent: string, replacementContent: string): string {
   const existing = parseArchitectureManifest(existingContent);
   if (!existing.manifest) return replacementContent;
-  const canonicalFence = renderArchitectureManifestFence(existing.manifest);
-  const fencePattern = architectureManifestFencePattern();
-  // Replacer function: the canonical fence is inserted literally, so `$`-substitution
-  // patterns ($&, $', $`) inside the manifest JSON are never interpreted.
-  if (fencePattern.test(replacementContent)) return replacementContent.replace(fencePattern, () => canonicalFence);
-  return `${replacementContent.replace(/\n*$/, '')}\n\n## Machine-readable manifest\n\n${canonicalFence}\n`;
+  return replaceArchitectureManifestFence(replacementContent, existing.manifest);
 }
 
 export function parseArchitectureManifest(markdown: string): { manifest?: PlanningArchitectureManifest; errors: string[] } {

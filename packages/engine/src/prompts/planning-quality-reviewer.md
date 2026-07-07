@@ -93,10 +93,10 @@ The following YAML documents the schema for `{{submitTool}}`:
 ```
 
 **Variant reference:**
-- `replace_orchestration` — supply `description`, `baseBranch`, `validate`, and `plans` (with `dependsOn` in camelCase). The `pipeline` field is preserved automatically from the existing file.
+- `replace_orchestration` — supply `description`, `baseBranch`, `validate`, and `plans` (with `dependsOn` in camelCase). The `pipeline` field is preserved automatically from the existing file. Dependency changes belong here; the machine-readable manifest in `architecture.md` is machine-managed and re-derived automatically after accepted fixes.
 - `replace_plan_file` — supply `planId`, `frontmatter` (with `id`, `name`, `branch`), and `body`.
 - `replace_plan_body` — supply `planId` and `body`. The existing frontmatter is preserved byte-identically.
-- `replace_architecture` — supply `content` for the entire `architecture.md` file.
+- `replace_architecture` — supply `content` for the entire `architecture.md` file. The fenced `eforge-architecture-manifest` JSON block is machine-managed — edits to it are discarded; only prose changes take effect.
 - `replace_acceptance_coverage` — supply `content` for the entire `acceptance-coverage.md` file.
 
 There is **no fix variant for `compiler-diagnostics.json`** — the diagnostics record what the compiler did and must never be edited or deleted.
