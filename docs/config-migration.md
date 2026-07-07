@@ -33,7 +33,7 @@ The new schema collapses both layers into a single concept: **tier recipes**. A 
 
 ## Recovery auto-resume default
 
-No migration is required for recovery automation. `recovery.autoResume.enabled` defaults to `false`, so existing installations keep manual recovery behavior and do not write auto-resume attempt state. To opt in to the bounded high-confidence continue-repair exception with compiled-resume artifact eligibility, configure:
+No migration is required for recovery automation. `recovery.autoResume.enabled` defaults to `false`, so existing installations keep manual recovery behavior and do not write auto-resume attempt state. To opt in to the bounded high-confidence compiled-artifact continue-repair exception with compiled-artifact eligibility, configure:
 
 ```yaml
 recovery:

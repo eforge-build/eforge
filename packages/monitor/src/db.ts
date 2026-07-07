@@ -19,11 +19,6 @@ interface RunRow {
   pid: number | null;
 }
 
-/**
- * Map a raw `runs` DB row to the canonical `RunInfo` wire shape.
- * Explicit field mapping ensures a new required `RunInfo` field causes a
- * `pnpm type-check` failure here rather than silently producing bad JSON.
- */
 function rowToRunInfo(row: RunRow): RunInfo {
   return {
     id: row.id,
@@ -101,11 +96,6 @@ function rowsToSessionMetadata(rows: SessionMetadataEventRow[]): Record<string, 
   return result;
 }
 
-/**
- * Map a raw event DB row to the canonical `EventRecord` shape.
- * Explicit mapping ensures a new required field causes a type error here
- * rather than silently producing bad data.
- */
 function rowToEventRecord(row: RawEventRow): EventRecord {
   return {
     id: row.id,
@@ -193,25 +183,7 @@ export interface MonitorDB {
    * ordered by id ascending.
    */
   getQueueDispatchFailureEvents(prdIds: string[]): EventRecord[];
-  /**
-   * Returns the highest event row id among daemon-wide events (those whose type
-   * appears in the `DAEMON_EVENT_TYPES` allowlist), or 0 when no such events exist.
-   *
-   * Filter parity: uses the same `DAEMON_EVENT_TYPES` allowlist as
-   * `getDaemonEventsAfter`, so `getMaxDaemonEventId()` always equals the largest
-   * `id` that `getDaemonEventsAfter(0)` would surface.
-   */
   getMaxDaemonEventId(): number;
-  /**
-   * Aggregate profile usage statistics for runs using `profileName` within
-   * the last `windowMs` milliseconds.
-   *
-   * Returns `null` when no `session:profile` events matching the profile name
-   * exist within the window (caller maps to `{ dataSource: 'none' }`).
-   *
-   * `recentQuotaErrors` counts `agent:stop` events whose error field contains
-   * rate-limit/quota indicators (429, rate_limit, quota, rate limit).
-   */
   getProfileUsageSummary(profileName: string, windowMs: number): {
     lastUsedAt?: string;
     recentRunCount: number;
