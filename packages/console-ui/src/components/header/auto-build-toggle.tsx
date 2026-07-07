@@ -32,6 +32,14 @@ export function AutoBuildToggle({ enabled, autoBuild, toggling, error, onSetEnab
   const effectiveEnabled = isAutoStartActive(autoBuild) ?? enabled;
   const disabled = effectiveEnabled === null || toggling;
   const statusLabel = effectiveEnabled === null ? 'Unknown' : effectiveEnabled ? 'On' : 'Off';
+  const recoveryAutoResume = autoBuild?.recoveryAutoResume;
+  const recoveryDecisionLabel = recoveryAutoResume?.lastDecision === 'queued'
+    ? `Automatic recovery queued (${recoveryAutoResume.attempts}/${recoveryAutoResume.maxAttempts})`
+    : recoveryAutoResume?.lastDecision === 'stopped'
+      ? `Automatic recovery stopped: ${recoveryAutoResume.stopReason ?? 'unknown'} (${recoveryAutoResume.attempts}/${recoveryAutoResume.maxAttempts})`
+      : recoveryAutoResume
+        ? `Automatic recovery ${recoveryAutoResume.enabled ? 'enabled' : 'disabled'} (${recoveryAutoResume.attempts}/${recoveryAutoResume.maxAttempts})`
+        : null;
 
   function handleToggleClick() {
     if (disabled) return;
@@ -85,6 +93,7 @@ export function AutoBuildToggle({ enabled, autoBuild, toggling, error, onSetEnab
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+        {recoveryDecisionLabel && <span className="text-xs text-muted-foreground">{recoveryDecisionLabel}</span>}
         {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
       </div>
 

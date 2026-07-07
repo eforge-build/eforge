@@ -9,7 +9,12 @@ import { prepareEnqueueRequest, markSessionPlanSubmittedAfterEnqueue } from './e
 import { createControlMonitorRuntime, type ControlMonitorRuntime } from './control-runtime.js';
 
 function autoBuildWire(context: MonitorContext) {
-  return autoBuildStateToWire({ state: context.options.daemonState, capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() } });
+  return autoBuildStateToWire({
+    state: context.options.daemonState,
+    capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() },
+    recoveryAutoResume: context.options.config?.recovery?.autoResume,
+    latestRecoveryAutoResumeEvent: context.db.getLatestRecoveryAutoResumeEvent(),
+  });
 }
 
 export function createControlPlaneRoutes(context: MonitorContext, runtime: ControlMonitorRuntime = createControlMonitorRuntime()): RouteDefinition[] {

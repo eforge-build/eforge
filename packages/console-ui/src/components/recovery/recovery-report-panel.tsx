@@ -53,6 +53,10 @@ function isSidecarActionVerdict(verdict: RecoveryVerdictValue | undefined): verd
   return verdict === 'retry' || verdict === 'continue-repair' || verdict === 'abandon';
 }
 
+function appliedActionLabel(applied: RecoveryAppliedMetadata): string {
+  return applied.action === 'accepted-success' ? 'Accepted success' : SIDECAR_ACTIONS[applied.action].triggerLabel;
+}
+
 export interface RecoveryReportPanelProps {
   prdId: string | null;
   reportStatus: ReportStatus;
@@ -184,6 +188,28 @@ export function RecoveryReportPanel({
           </div>
         )}
       </section>
+
+      {reportStatus === 'loaded' && sidecar?.json.autoResume && (
+        <section className="space-y-1 rounded-md border border-primary/30 bg-primary/10 p-3">
+          <h3 className="text-sm font-medium text-foreground">Automatic recovery decision</h3>
+          <p className="text-sm text-muted-foreground">
+            Automatic continue-and-repair attempts: {sidecar.json.autoResume.attempts ?? 0}
+            {sidecar.json.autoResume.stoppedReason ? ` · stopped: ${sidecar.json.autoResume.stoppedReason}` : ''}
+          </p>
+          {sidecar.json.autoResume.lastAttemptAt && (
+            <p className="text-xs text-muted-foreground">Last automatic attempt: {sidecar.json.autoResume.lastAttemptAt}</p>
+          )}
+        </section>
+      )}
+
+      {appliedMetadata && (
+        <section className="space-y-1 rounded-md border p-3">
+          <h3 className="text-sm font-medium text-foreground">Applied recovery provenance</h3>
+          <p className="text-sm text-muted-foreground">
+            {appliedActionLabel(appliedMetadata)} was already applied. Manual controls below remain available when the backend exposes them.
+          </p>
+        </section>
+      )}
 
       {reportStatus === 'loaded' && sidecar && (
         <CompileScopeContextOptions options={sidecar.json.recoveryOptions} />

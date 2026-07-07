@@ -143,12 +143,9 @@ export function QueueRecoveryDialog({
         setReportStatus('loaded');
         const sidecarEligibility = eligibilityFromSidecar(response);
         if (sidecarEligibility) setEligibility(sidecarEligibility);
-        // A durable applied marker means the verdict was already applied: show a
-        // completion panel rather than the mutating action.
-        const applied = response.json.applied;
-        if (applied) {
-          setCompletion((prev) => prev ?? { kind: 'already-applied', applied });
-        }
+        // Durable applied markers are rendered as provenance in the report panel.
+        // Do not hide the rest of the manual recovery controls solely because an
+        // automatic auto-resume decision already acted on the sidecar.
       })
       .catch((err: unknown) => {
         if (cancelled) return;

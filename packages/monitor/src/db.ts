@@ -186,6 +186,8 @@ export interface MonitorDB {
    * (not per-session). Adding a new daemon-wide type requires updating `db.ts`.
    */
   getDaemonEventsAfter(afterId: number): EventRecord[];
+  /** Returns the latest persisted recovery auto-resume daemon event, if present. */
+  getLatestRecoveryAutoResumeEvent(): EventRecord | undefined;
   /**
    * Returns queue dispatch failure/clear events for the provided PRD ids,
    * ordered by id ascending.
@@ -470,6 +472,13 @@ export function openDatabase(dbPath: string): MonitorDB {
     getDaemonEventsAfter: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
+    getLatestRecoveryAutoResumeEvent: db.prepare(
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
+       FROM events
+       WHERE type IN ('recovery:auto-resume:evaluate', 'recovery:auto-resume:queued', 'recovery:auto-resume:stopped')
+       ORDER BY id DESC
+       LIMIT 1`,
+    ),
     getQueueDispatchFailureEvents: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
        FROM events
@@ -635,6 +644,11 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getDaemonEventsAfter(afterId) {
       return (stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
+    },
+
+    getLatestRecoveryAutoResumeEvent() {
+      const row = stmts.getLatestRecoveryAutoResumeEvent.get() as unknown as RawEventRow | undefined;
+      return row ? rowToEventRecord(row) : undefined;
     },
 
     getQueueDispatchFailureEvents(prdIds) {

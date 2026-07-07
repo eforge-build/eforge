@@ -1,4 +1,3 @@
-import type { EforgeEvent } from './events.js';
 import type {
   ConsoleContributionManifestEntry,
   ConsoleWorkstationManifestEntry,
@@ -11,6 +10,7 @@ import type {
   ExtensionDependencyRequirement,
   IntegrationCommandManifestEntry,
 } from './extension-contributions.js';
+import type { EforgeEvent } from './events.js';
 import type { RecoveryAppliedMetadata } from './routes/recovery.js';
 import type { QueueItemCapabilities, QueueItemHold } from './queue-wire-types.js';
 
@@ -21,47 +21,16 @@ export interface HealthResponse {
 }
 
 // GET /api/auto-build, POST /api/auto-build
-export type AutoBuildDesired = 'enabled' | 'disabled';
-export type AutoBuildRuntimeMode =
-  | 'disabled'
-  | 'starting'
-  | 'running'
-  | 'paused'
-  | 'stopping'
-  | 'restarting'
-  | 'faulted';
-
-export interface AutoBuildSchedulerState {
-  alive: boolean;
-  paused: boolean;
-  lastMutationReason?: string;
-  /** Number of builds currently running, as reported by the scheduler. */ runningCount?: number;
-  /** Maximum concurrent build limit configured in the daemon, as reported by the scheduler. */ limit?: number;
-}
-
-export interface AutoBuildTransitionDetail {
-  at: string;
-  previousMode: AutoBuildRuntimeMode;
-  nextMode: AutoBuildRuntimeMode;
-  desired: AutoBuildDesired;
-  reason?: string;
-  source: string;
-}
-
-export interface AutoBuildState {
-  /** Desired auto-build toggle. Remains true during scheduler pauses; use mode/scheduler.paused for runtime pause state. */
-  enabled: boolean;
-  watcher: {
-    running: boolean;
-    pid: number | null;
-    sessionId: string | null;
-  };
-  desired?: AutoBuildDesired;
-  mode?: AutoBuildRuntimeMode;
-  scheduler?: AutoBuildSchedulerState;
-  lastTransition?: AutoBuildTransitionDetail;
-  reason?: string;
-}
+export type {
+  AutoBuildDesired,
+  AutoBuildRuntimeMode,
+  AutoBuildSchedulerState,
+  AutoBuildTransitionDetail,
+  RecoveryAutoResumeStopReason,
+  RecoveryAutoResumeLastDecision,
+  RecoveryAutoResumeProjectionState,
+  AutoBuildState,
+} from './types/auto-build.js';
 
 // GET /api/project-context
 export interface ProjectContext {

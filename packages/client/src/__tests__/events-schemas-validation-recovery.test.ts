@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { RECOVERY_AUTO_RESUME_MAX_ATTEMPTS, safeParseEforgeEvent } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
+import type { ProjectableState } from '../event-registry.js';
 import type { BuildFailureSummary, EforgeEvent } from '../events.schemas.js';
+import type { AutoBuildState } from '../types.js';
 import { extensionPolicyGateMatrixVariants, extensionPolicyVariants } from './events-schema-test-helpers.js';
 
 // --- eforge:region event-schema-tests ---
@@ -903,6 +905,71 @@ describe('safeParseEforgeEvent — recovery auto-resume policy events', () => {
     ]) {
       expect(safeParseEforgeEvent({ ...validEvents[1], reason }).success, reason).toBe(true);
     }
+  });
+
+  it('projects recovery auto-resume decisions into auto-build state without stale stopped fields', () => {
+    const autoBuild: AutoBuildState = {
+      enabled: true,
+      watcher: { running: false, pid: null, sessionId: null },
+      desired: 'enabled',
+      mode: 'running',
+      scheduler: { alive: true, paused: false },
+      recoveryAutoResume: {
+        enabled: true,
+        maxAttempts: 1,
+        attempts: 1,
+        lastDecision: 'stopped',
+        stopReason: 'not-eligible',
+        message: 'old stopped message',
+      },
+    };
+    const state: ProjectableState = { runs: [], queue: [], autoBuild, latestHeartbeat: null, stackLayers: [] };
+
+    const evaluateEvent = validEvents[0] as Extract<EforgeEvent, { type: 'recovery:auto-resume:evaluate' }>;
+    const stoppedEvent = validEvents[1] as Extract<EforgeEvent, { type: 'recovery:auto-resume:stopped' }>;
+    const queuedEvent = validEvents[2] as Extract<EforgeEvent, { type: 'recovery:auto-resume:queued' }>;
+
+    expect(eventRegistry['recovery:auto-resume:evaluate'].project?.(evaluateEvent, state)?.autoBuild?.recoveryAutoResume).toEqual({
+      enabled: false,
+      maxAttempts: 1,
+      attempts: 0,
+      lastDecision: 'evaluate',
+      prdId: 'prd-auto-resume',
+      setName: 'set-auto-resume',
+    });
+    expect(eventRegistry['recovery:auto-resume:queued'].project?.(queuedEvent, state)?.autoBuild?.recoveryAutoResume).toEqual({
+      enabled: true,
+      maxAttempts: 1,
+      attempts: 1,
+      lastDecision: 'queued',
+      prdId: 'prd-auto-resume',
+      setName: 'set-auto-resume',
+    });
+    expect(eventRegistry['recovery:auto-resume:stopped'].project?.(stoppedEvent, state)?.autoBuild?.recoveryAutoResume).toEqual({
+      enabled: false,
+      maxAttempts: 1,
+      attempts: 0,
+      lastDecision: 'stopped',
+      prdId: 'prd-auto-resume',
+      setName: 'set-auto-resume',
+      stopReason: 'disabled',
+      message: 'Recovery auto-resume is disabled by configuration.',
+    });
+
+    const heartbeat = {
+      type: 'daemon:heartbeat',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      uptime: 1,
+      queueDepth: 0,
+      runningBuilds: 0,
+      subscribers: 1,
+      autoBuild: {
+        enabled: true,
+        paused: false,
+        recoveryAutoResume: { enabled: true, maxAttempts: 1, attempts: 1, lastDecision: 'queued', prdId: 'prd-auto-resume', setName: 'set-auto-resume' },
+      },
+    } as Extract<EforgeEvent, { type: 'daemon:heartbeat' }>;
+    expect(eventRegistry['daemon:heartbeat'].project?.(heartbeat, state)?.autoBuild?.recoveryAutoResume).toEqual(heartbeat.autoBuild.recoveryAutoResume);
   });
 
   it('summarizes recovery auto-resume policy events with PRD and budget or reason context', () => {
