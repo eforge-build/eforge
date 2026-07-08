@@ -372,6 +372,13 @@ export const IGNORED_EVENT_TYPES = [
   'recovery:auto-resume:evaluate',
   'recovery:auto-resume:queued',
   'recovery:auto-resume:stopped',
+  // Same-plan recovery lifecycle is evidence-only for run history; plan state
+  // changes continue to flow through existing build failure/complete events.
+  'plan:build:recovery:start',
+  'plan:build:recovery:attempt:start',
+  'plan:build:recovery:attempt:result',
+  'plan:build:recovery:skip',
+  'plan:build:recovery:exhausted',
   // Durable daemon-wide failed-enqueue projections are handled outside the per-run reducer.
   'daemon:failed-enqueue:upsert',
   'daemon:failed-enqueue:resolved',

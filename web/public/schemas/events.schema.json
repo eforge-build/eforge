@@ -10553,6 +10553,260 @@
           "required": [
             "type",
             "planId",
+            "blockerKind",
+            "issueCount",
+            "maxAttempts",
+            "attemptsRemaining"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:recovery:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "blockerKind": {
+              "anyOf": [
+                {
+                  "const": "review",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "issueCount": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            },
+            "attemptsRemaining": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "blockerKind",
+            "attempt",
+            "maxAttempts",
+            "attemptsRemaining"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:recovery:attempt:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "blockerKind": {
+              "anyOf": [
+                {
+                  "const": "review",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            },
+            "attemptsRemaining": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "blockerKind",
+            "attempt",
+            "maxAttempts",
+            "blockersCleared",
+            "attemptsRemaining"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:recovery:attempt:result",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "blockerKind": {
+              "anyOf": [
+                {
+                  "const": "review",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            },
+            "blockersCleared": {
+              "type": "boolean"
+            },
+            "attemptsRemaining": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "blockerKind",
+            "reason",
+            "details",
+            "attemptsRemaining"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:recovery:skip",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "blockerKind": {
+              "anyOf": [
+                {
+                  "const": "review",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "not-active-plan",
+                  "type": "string"
+                },
+                {
+                  "const": "manual-gate",
+                  "type": "string"
+                },
+                {
+                  "const": "human-review-gate",
+                  "type": "string"
+                },
+                {
+                  "const": "cross-plan-blocker",
+                  "type": "string"
+                },
+                {
+                  "const": "upstream-or-base-owned",
+                  "type": "string"
+                },
+                {
+                  "const": "low-confidence",
+                  "type": "string"
+                },
+                {
+                  "const": "incomplete-classification",
+                  "type": "string"
+                },
+                {
+                  "const": "unsupported-blocker",
+                  "type": "string"
+                },
+                {
+                  "const": "unsafe-worktree",
+                  "type": "string"
+                },
+                {
+                  "const": "budget-exhausted",
+                  "type": "string"
+                },
+                {
+                  "const": "stale-pass-data",
+                  "type": "string"
+                }
+              ]
+            },
+            "details": {
+              "type": "string"
+            },
+            "attemptsRemaining": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "blockerKind",
+            "attemptsUsed",
+            "maxAttempts",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:recovery:exhausted",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "blockerKind": {
+              "anyOf": [
+                {
+                  "const": "review",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "attemptsUsed": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            },
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
             "error"
           ],
           "properties": {
@@ -28826,6 +29080,260 @@
                             "type": "string"
                           },
                           "planId": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "blockerKind",
+                          "issueCount",
+                          "maxAttempts",
+                          "attemptsRemaining"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:recovery:start",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "blockerKind": {
+                            "anyOf": [
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "issueCount": {
+                            "type": "number"
+                          },
+                          "maxAttempts": {
+                            "type": "number"
+                          },
+                          "attemptsRemaining": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "blockerKind",
+                          "attempt",
+                          "maxAttempts",
+                          "attemptsRemaining"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:recovery:attempt:start",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "blockerKind": {
+                            "anyOf": [
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attempt": {
+                            "type": "number"
+                          },
+                          "maxAttempts": {
+                            "type": "number"
+                          },
+                          "attemptsRemaining": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "blockerKind",
+                          "attempt",
+                          "maxAttempts",
+                          "blockersCleared",
+                          "attemptsRemaining"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:recovery:attempt:result",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "blockerKind": {
+                            "anyOf": [
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attempt": {
+                            "type": "number"
+                          },
+                          "maxAttempts": {
+                            "type": "number"
+                          },
+                          "blockersCleared": {
+                            "type": "boolean"
+                          },
+                          "attemptsRemaining": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "blockerKind",
+                          "reason",
+                          "details",
+                          "attemptsRemaining"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:recovery:skip",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "blockerKind": {
+                            "anyOf": [
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "const": "not-active-plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual-gate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "human-review-gate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cross-plan-blocker",
+                                "type": "string"
+                              },
+                              {
+                                "const": "upstream-or-base-owned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "low-confidence",
+                                "type": "string"
+                              },
+                              {
+                                "const": "incomplete-classification",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unsupported-blocker",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unsafe-worktree",
+                                "type": "string"
+                              },
+                              {
+                                "const": "budget-exhausted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "stale-pass-data",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "details": {
+                            "type": "string"
+                          },
+                          "attemptsRemaining": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "blockerKind",
+                          "attemptsUsed",
+                          "maxAttempts",
+                          "details"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:recovery:exhausted",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "blockerKind": {
+                            "anyOf": [
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attemptsUsed": {
+                            "type": "number"
+                          },
+                          "maxAttempts": {
+                            "type": "number"
+                          },
+                          "details": {
                             "type": "string"
                           }
                         }

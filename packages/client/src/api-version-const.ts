@@ -49,5 +49,7 @@
  * (v82 is a case 1 bump: deletes the expedition/architecture/cohesion/preflight
  * event variants, the orchestration scope enum and mode/scope fields, the
  * retry-as-expedition recovery action, and six retired agent roles.)
+ * (v83 is a case 1 bump: adds closed-union same-plan recovery lifecycle
+ * event variants, so stale clients must be rejected before parsing sessions.)
  */
-export const DAEMON_API_VERSION = 82; // v82: scorched-earth planning wire-surface deletion.
+export const DAEMON_API_VERSION = 83; // v83: same-plan recovery lifecycle event variants.

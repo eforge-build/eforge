@@ -59,8 +59,12 @@ export function renderReviewFixerEvaluatorFeedback(feedback: ReviewCycleFeedback
     'A previous review-fixer attempt was evaluated. Use this memory to avoid repeating rejected broad fixes and to retry only the still-blocking issues narrowly.',
   ];
   if (feedback.blockingRetryGuidance.length > 0) {
-    lines.push('', '## Blocking issues to retry narrowly', '');
-    lines.push(...feedback.blockingRetryGuidance.map(formatFeedbackLine));
+    const rejected = feedback.blockingRetryGuidance.filter(item => item.action === 'reject');
+    const unresolved = feedback.blockingRetryGuidance.filter(item => item.action !== 'reject');
+    lines.push('', '## Rejected verifier issues', '');
+    lines.push(...formatFeedbackGroup(rejected, 'No rejected verifier issues.'));
+    lines.push('', '## Unresolved verifier issues', '');
+    lines.push(...formatFeedbackGroup(unresolved, 'No unresolved verifier issues.'));
   }
   const nonBlocking = nonBlockingFeedbackItems(feedback);
   if (nonBlocking.length > 0) {
@@ -140,4 +144,11 @@ function formatFeedbackLine(item: ReviewCycleFeedbackItem): string {
   const guidance = item.retryGuidance ? ` Retry guidance: ${item.retryGuidance}` : '';
   const issueIds = item.issueIds && item.issueIds.length > 0 ? ` Issue IDs: ${item.issueIds.join(', ')}.` : '';
   return `- ${formatFeedbackLocation(item)} — action=${item.action}, issueOutcome=${outcome}.${issueIds} Reason: ${item.reason}${guidance}`;
+}
+
+function formatFeedbackGroup(items: ReviewCycleFeedbackItem[], empty: string): string[] {
+  if (items.length === 0) return [`- ${empty}`];
+  return [...items]
+    .sort((a, b) => `${a.file}:${a.hunk ?? 0}:${a.reason}`.localeCompare(`${b.file}:${b.hunk ?? 0}:${b.reason}`))
+    .map(formatFeedbackLine);
 }

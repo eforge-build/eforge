@@ -626,6 +626,36 @@ const eventRegistry = {
     summary: (e) => `Plan ${e.planId}: complete`,
   },
 
+  'plan:build:recovery:start': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: same-plan ${e.blockerKind} recovery started (${e.maxAttempts} attempt(s))`,
+  },
+
+  'plan:build:recovery:attempt:start': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: same-plan recovery attempt ${e.attempt}/${e.maxAttempts}`,
+  },
+
+  'plan:build:recovery:attempt:result': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: same-plan recovery attempt ${e.attempt}/${e.maxAttempts} ${e.blockersCleared ? 'cleared blockers' : 'left blockers'}`,
+  },
+
+  'plan:build:recovery:skip': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: same-plan ${e.blockerKind} recovery skipped (${e.reason})`,
+  },
+
+  'plan:build:recovery:exhausted': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: same-plan ${e.blockerKind} recovery exhausted`,
+  },
+
   'plan:build:failed': {
     scope: 'session',
     persist: false,
