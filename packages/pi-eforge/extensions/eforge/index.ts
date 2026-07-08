@@ -70,6 +70,7 @@ import {
   apiStackSyncIfRunning,
 } from '@eforge-build/client';
 import { requireDaemon, piDaemonRequest, DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
+import { getPiDaemonVersionMismatch } from './version-compat.js';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   EnqueueRequest,
@@ -591,13 +592,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       );
       const daemonVersion = versionData.eforgeVersion ?? 'unknown (pre-version-aware daemon)';
       const piExtensionVersion = PI_EFORGE_VERSION;
-      const versionMismatch = versionData.eforgeVersion !== undefined && daemonVersion !== piExtensionVersion;
+      const versionMismatch = getPiDaemonVersionMismatch(versionData.eforgeVersion, piExtensionVersion);
       const versions = {
         daemonVersion,
         piExtensionVersion,
-        ...(versionMismatch && {
-          versionMismatch: 'Daemon was built from a different version than the installed Pi extension. Restart the daemon (or update the Pi extension) so they match.',
-        }),
+        ...(versionMismatch && { versionMismatch }),
       };
 
       const summariesResult = await apiGetRunningSessionSummariesIfRunning({ cwd: ctx.cwd });
