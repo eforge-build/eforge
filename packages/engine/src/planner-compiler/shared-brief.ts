@@ -1,6 +1,6 @@
 import type { PlanningAtom, PlanningAtomGraph } from './atom-graph.js';
 import { classifyEvidenceCandidate, evidenceSlug, normalizeEvidenceValue } from './evidence-hygiene.js';
-import { stableSlug, utf8ByteLength } from './source-analysis.js';
+import { hashText, stableSlug, utf8ByteLength } from './source-analysis.js';
 import { selectSectionsWithinBudgets, type SectionBudgetSelection } from './shared-brief-budget.js';
 import { DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, validateSharedPlanningBrief, type PlanningAtomBrief, type PlanningAtomBriefEvidenceSummary, type PlanningAtomBriefSection, type PlanningEvidenceOwnership, type SharedPlanningBrief, type SharedPlanningBriefLimits, type SharedPlanningBriefSection, type SharedPlanningInterfaceSummary } from './shared-brief-contracts.js';
 import type { SourceLocalizationBundle, SourceLocalizationCandidate, SourceLocalizationConfidence, SourceLocalizationRecord, SourceLocalizationStatus } from './source-localization-contracts.js';
@@ -11,10 +11,11 @@ export function deriveSharedPlanningBrief(input: DeriveSharedPlanningBriefInput)
   const limits = { ...DEFAULT_SHARED_PLANNING_BRIEF_LIMITS, ...(input.limits ?? {}) };
   const evidenceOwnership = deriveEvidenceOwnership(input.graph, input.sourceLocalizationBundle);
   const interfaceSummaries = deriveInterfaceSummaries(input.graph, input.sourceLocalizationBundle);
-  const candidateSections = deriveSections(input.graph, evidenceOwnership, interfaceSummaries, limits);
-  const sectionIdByEvidencePath = new Map(evidenceOwnership.filter((entry) => entry.shared).map((entry) => [entry.path, `shared-evidence-${evidenceSlug(entry.path)}`] as const));
+  const sectionIdByEvidencePath = deriveEvidenceSectionIds(evidenceOwnership);
+  const sectionIdByInterfaceKey = deriveInterfaceSectionIds(interfaceSummaries);
+  const candidateSections = deriveSections(input.graph, evidenceOwnership, interfaceSummaries, limits, sectionIdByEvidencePath, sectionIdByInterfaceKey);
   const selection = selectSectionsWithinBudgets({ graph: input.graph, ownership: evidenceOwnership, sections: candidateSections, sectionIdByEvidencePath, limits });
-  const atomBriefs = deriveAtomBriefs(input.graph, evidenceOwnership, interfaceSummaries, selection);
+  const atomBriefs = deriveAtomBriefs(input.graph, evidenceOwnership, interfaceSummaries, selection, sectionIdByEvidencePath, sectionIdByInterfaceKey);
   const brief: SharedPlanningBrief = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, evidenceOwnership, interfaceSummaries, atomBriefs, sections: selection.sections, byteLength: selection.sections.reduce((sum, section) => sum + section.byteLength, 0), limits, budgetDiagnostics: selection.diagnostics };
   // Budgets are enforced by construction in selectSectionsWithinBudgets; a
   // validation failure here is a compiler defect, not an input condition.
@@ -170,16 +171,45 @@ function interfaceSummaryForKey(key: string, atomIds: string[], graph: PlanningA
   return { key, atomIds, primaryAtomId, consumerAtomIds, summary: `Shared interface ${key} is referenced by atoms ${atomIds.join(', ')}. Primary atom ${primaryAtomId} owns reusable interface findings for consumers ${consumerAtomIds.join(', ') || '(none)'}.` };
 }
 
-function deriveSections(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], limits: SharedPlanningBriefLimits): SharedPlanningBriefSection[] {
-  const evidenceSections = ownership.filter((entry) => entry.shared && entry.primaryAtomId).map((entry) => section(`shared-evidence-${evidenceSlug(entry.path)}`, 'evidence', entry.referencedByAtomIds, bounded(`Shared evidence path: ${entry.path}\nPrimary atom: ${entry.primaryAtomId}\nConsumer atoms: ${entry.consumerAtomIds.join(', ') || '(none)'}${entry.localizationNeedIds?.length ? `\nLocalization needs: ${entry.localizationNeedIds.join(', ')}` : ''}${entry.localizationConfidence ? `\nLocalization confidence: ${entry.localizationConfidence}` : ''}${entry.candidateRank !== undefined ? `\nCandidate rank: ${entry.candidateRank}` : ''}${entry.ownershipRationale ? `\nWhy selected: ${entry.ownershipRationale}` : ''}\nUse the primary atom's accepted shared finding instead of repeating detailed exploration.`, limits.maxSectionBytes), entry.primaryAtomId));
-  const interfaceSections = interfaceSummaries.map((item) => section(`shared-interface-${stableSlug(item.key)}`, 'interface', item.atomIds, bounded(item.summary, limits.maxSectionBytes), item.primaryAtomId));
+// Slugs are capped by stableSlug; deduplicated ids stay within the same cap by
+// reserving room for a '-' separator plus a short content hash.
+const SECTION_SLUG_MAX_LENGTH = 48;
+const SECTION_ID_HASH_LENGTH = 8;
+
+function deriveEvidenceSectionIds(ownership: PlanningEvidenceOwnership[]): Map<string, string> {
+  const shared = ownership.filter((entry) => entry.shared);
+  return deriveUniqueSectionIds('shared-evidence-', shared.map((entry) => [entry.path, evidenceSlug(entry.path)] as const));
+}
+
+function deriveInterfaceSectionIds(interfaceSummaries: SharedPlanningInterfaceSummary[]): Map<string, string> {
+  return deriveUniqueSectionIds('shared-interface-', interfaceSummaries.map((item) => [item.key, stableSlug(item.key)] as const));
+}
+
+/**
+ * Map each value to a unique section id. Distinct values whose slugs collide
+ * (stableSlug lowercases, collapses non-alphanumerics, and truncates) get a
+ * hash suffix derived from the original value so ids never duplicate.
+ */
+function deriveUniqueSectionIds(prefix: string, entries: ReadonlyArray<readonly [value: string, slug: string]>): Map<string, string> {
+  const slugCounts = new Map<string, number>();
+  for (const [, slug] of entries) slugCounts.set(slug, (slugCounts.get(slug) ?? 0) + 1);
+  return new Map(entries.map(([value, slug]) => [value, (slugCounts.get(slug) ?? 0) <= 1 ? `${prefix}${slug}` : `${prefix}${dedupedSectionSlug(slug, value)}`] as const));
+}
+
+function dedupedSectionSlug(slug: string, value: string): string {
+  const stem = slug.slice(0, SECTION_SLUG_MAX_LENGTH - SECTION_ID_HASH_LENGTH - 1).replace(/-+$/, '');
+  return `${stem}-${hashText(value).slice(0, SECTION_ID_HASH_LENGTH)}`;
+}
+
+function deriveSections(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], limits: SharedPlanningBriefLimits, sectionIdByEvidencePath: Map<string, string>, sectionIdByInterfaceKey: Map<string, string>): SharedPlanningBriefSection[] {
+  const evidenceSections = ownership.filter((entry) => entry.shared && entry.primaryAtomId).map((entry) => section(sectionIdByEvidencePath.get(entry.path)!, 'evidence', entry.referencedByAtomIds, bounded(`Shared evidence path: ${entry.path}\nPrimary atom: ${entry.primaryAtomId}\nConsumer atoms: ${entry.consumerAtomIds.join(', ') || '(none)'}${entry.localizationNeedIds?.length ? `\nLocalization needs: ${entry.localizationNeedIds.join(', ')}` : ''}${entry.localizationConfidence ? `\nLocalization confidence: ${entry.localizationConfidence}` : ''}${entry.candidateRank !== undefined ? `\nCandidate rank: ${entry.candidateRank}` : ''}${entry.ownershipRationale ? `\nWhy selected: ${entry.ownershipRationale}` : ''}\nUse the primary atom's accepted shared finding instead of repeating detailed exploration.`, limits.maxSectionBytes), entry.primaryAtomId));
+  const interfaceSections = interfaceSummaries.map((item) => section(sectionIdByInterfaceKey.get(item.key)!, 'interface', item.atomIds, bounded(item.summary, limits.maxSectionBytes), item.primaryAtomId));
   const dependencySection = graph.edges.length > 0 ? [section('atom-dependency-overview', 'dependency', graph.atoms.map((atom) => atom.atomId), bounded(`Atom dependency edges:\n${graph.edges.map((edge) => `- ${edge.fromAtomId} -> ${edge.toAtomId}: ${edge.reason}`).join('\n')}`, limits.maxSectionBytes))] : [];
   const avoidance = graph.atoms.length > 0 ? [section('evidence-avoidance-guidance', 'avoidance', graph.atoms.map((atom) => atom.atomId), bounded('Avoid generated planner artifacts, .decomposition outputs, orchestration files, broad package roots, and tool-noise paths as implementation evidence.', limits.maxSectionBytes))] : [];
   return [...evidenceSections, ...interfaceSections, ...dependencySection, ...avoidance].sort((a, b) => a.sectionId.localeCompare(b.sectionId));
 }
 
-function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], selection: SectionBudgetSelection): PlanningAtomBrief[] {
-  const sectionByInterfaceKey = new Map(interfaceSummaries.map((entry) => [entry.key, `shared-interface-${stableSlug(entry.key)}`]));
+function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceOwnership[], interfaceSummaries: SharedPlanningInterfaceSummary[], selection: SectionBudgetSelection, sectionIdByEvidencePath: Map<string, string>, sectionIdByInterfaceKey: Map<string, string>): PlanningAtomBrief[] {
   const retainedSectionIds = new Set(selection.sections.map((section) => section.sectionId));
   return graph.atoms.map((atom) => {
     const ownedEvidencePaths = ownership.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.path).sort();
@@ -187,8 +217,8 @@ function deriveAtomBriefs(graph: PlanningAtomGraph, ownership: PlanningEvidenceO
     const ownedInterfaceKeys = interfaceSummaries.filter((entry) => entry.primaryAtomId === atom.atomId).map((entry) => entry.key).sort();
     // Refs may only point at retained sections; prerequisites are computed
     // from ownership/interface data so scheduling survives section drops.
-    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(`shared-evidence-${evidenceSlug(entry.path)}`)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: `shared-evidence-${evidenceSlug(entry.path)}`, ...evidenceRefMetadata(entry) })).sort((a, b) => a.path.localeCompare(b.path));
-    const sharedInterfaceRefs = interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(sectionByInterfaceKey.get(entry.key)!)).map((entry) => ({ key: entry.key, primaryAtomId: entry.primaryAtomId, sectionId: sectionByInterfaceKey.get(entry.key)! })).sort((a, b) => a.key.localeCompare(b.key));
+    const sharedEvidenceRefs = ownership.filter((entry) => entry.shared && entry.primaryAtomId && entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(sectionIdByEvidencePath.get(entry.path)!)).map((entry) => ({ path: entry.path, primaryAtomId: entry.primaryAtomId!, sectionId: sectionIdByEvidencePath.get(entry.path)!, ...evidenceRefMetadata(entry) })).sort((a, b) => a.path.localeCompare(b.path));
+    const sharedInterfaceRefs = interfaceSummaries.filter((entry) => entry.consumerAtomIds.includes(atom.atomId) && retainedSectionIds.has(sectionIdByInterfaceKey.get(entry.key)!)).map((entry) => ({ key: entry.key, primaryAtomId: entry.primaryAtomId, sectionId: sectionIdByInterfaceKey.get(entry.key)! })).sort((a, b) => a.key.localeCompare(b.key));
     const sectionIds = selection.sectionIdsByAtom.get(atom.atomId) ?? [];
     const atomSections = selection.sections.filter((section) => sectionIds.includes(section.sectionId)).map(briefSection);
     const prerequisiteAtomIds = [...new Set([

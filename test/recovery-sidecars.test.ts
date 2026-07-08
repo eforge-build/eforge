@@ -93,6 +93,33 @@ describe('writeRecoverySidecar', () => {
     expect(typeof parsed.generatedAt).toBe('string');
   });
 
+  it('reads legacy partial finalizer-replay sidecars with empty baseBranch using main fallback', () => {
+    const payload = buildRecoverySidecarPayload({
+      prdId: 'test-prd',
+      summary: { ...makeSummary(), baseBranch: 'main', partial: true, plans: [], failingPlan: { planId: 'unknown' }, landedCommits: [], diffStat: '', modelsUsed: [] },
+      verdict: { ...makeVerdict('manual')!, recommendationSource: 'manual-fallback', recommendationRationale: 'shared finalizer replay without build evidence' },
+    });
+    payload.boundedEvidence.identity.baseBranch = '';
+
+    const parsed = parseRecoverySidecarPayload(JSON.stringify(payload), 'test-prd');
+
+    expect(parsed.boundedEvidence.identity.baseBranch).toBe('main');
+    expect(parsed.boundedEvidence.identity.partial).toBe(true);
+  });
+
+  it('rejects empty baseBranch when the sidecar is not partial', () => {
+    for (const partial of [false, undefined]) {
+      const payload = buildRecoverySidecarPayload({
+        prdId: 'test-prd',
+        summary: { ...makeSummary(), ...(partial === undefined ? {} : { partial }), plans: [], failingPlan: { planId: 'unknown' }, landedCommits: [], diffStat: '', modelsUsed: [] },
+        verdict: { ...makeVerdict('manual')!, recommendationSource: 'manual-fallback', recommendationRationale: 'non-partial sidecar with empty baseBranch' },
+      });
+      payload.boundedEvidence.identity.baseBranch = '';
+
+      expect(() => parseRecoverySidecarPayload(JSON.stringify(payload), 'test-prd')).toThrow('boundedEvidence.identity.baseBranch is invalid');
+    }
+  });
+
   it('uses schemaVersion: 4 for compile-scope-context recovery options', () => {
     const payload = buildRecoverySidecarPayload({
       prdId: 'test-prd',

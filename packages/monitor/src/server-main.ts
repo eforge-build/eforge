@@ -693,7 +693,7 @@ async function main(): Promise<void> {
   const daemonState: DaemonState | undefined = autoBuildSupervisor ? {
     autoBuildController: autoBuildSupervisor,
     async finalizeQueuePrdCompletion(completion) {
-      await finalizeQueuedPrd({ cwd, queueDir: config?.prdQueue.dir ?? '.eforge/queue', prdId: completion.prdId, status: completion.status, releaseLock: true });
+      await finalizeQueuedPrd({ cwd, queueDir: config?.prdQueue.dir ?? '.eforge/queue', prdId: completion.prdId, status: completion.status, releaseLock: true, ...(config?.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}) });
     },
     onShutdown: undefined as (() => void) | undefined,
   } : undefined;
@@ -744,14 +744,14 @@ async function main(): Promise<void> {
   registerPort(cwd, server.port, process.pid);
 
   if (daemonState && config) {
-    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
+    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId, ...(config.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}) });
   }
 
   // One-shot reconciliation for state left behind by a previous crash or
   // hard-kill. Runs after persisted terminal queue completions are replayed so
   // stale running rows do not overwrite authoritative completed/skipped state.
   writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
-  const reconcileReport = await reconcileOrphanedState(db, cwd, config ? { queueDir: config.prdQueue.dir } : undefined);
+  const reconcileReport = await reconcileOrphanedState(db, cwd, config ? { queueDir: config.prdQueue.dir, ...(config.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}) } : undefined);
   for (const run of reconcileReport.runsFailed) {
     // Emit the daemon-scoped failure event alongside the backward-compatible
     // phase:end that reconcileOrphanedState already inserted per run.
@@ -792,6 +792,7 @@ async function main(): Promise<void> {
       cwd,
       queueDir: config.prdQueue.dir,
       locks: reconcileReport.locksAdopted,
+      ...(config.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}),
       autoBuildController: daemonState.autoBuildController,
       afterCursor: beforeStartupDaemonCursor,
     });
@@ -857,7 +858,7 @@ async function main(): Promise<void> {
                     });
                     orphanFinalStatus = cancellation ? 'skipped' : 'failed';
                   }
-                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: orphanFinalStatus, releaseLock: true });
+                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: orphanFinalStatus, releaseLock: true, ...(config.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}) });
                 } else {
                   const lockDescription = lock.state === 'live' || lock.state === 'stale' ? `${lock.state} pid ${lock.pid}` : lock.state;
                   writeDaemonEvent(db, {

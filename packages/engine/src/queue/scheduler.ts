@@ -546,6 +546,7 @@ export class QueueScheduler {
         filePath: prd.filePath,
         releaseLock: true,
         requireArtifacts: this.artifactAwareDependencies(),
+        ...(this.config.build?.trunkBranch !== undefined ? { baseBranch: this.config.build.trunkBranch } : {}),
       });
       this.completedPrdFinalizations.add(prd.id);
     } catch (err) {
@@ -944,6 +945,7 @@ export class QueueScheduler {
         status,
         releaseLock: true,
         requireArtifacts: this.artifactAwareDependencies(),
+        ...(this.config.build?.trunkBranch !== undefined ? { baseBranch: this.config.build.trunkBranch } : {}),
       });
     } catch (err) {
       this.completedPrdFinalizations.delete(prdId);

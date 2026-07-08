@@ -90,6 +90,57 @@ describe('planning shared brief and evidence ownership', () => {
     expect(ownership?.shared).toBe(false);
   });
 
+  it('uniquifies shared evidence section ids when truncated paths collide', () => {
+    const first = 'scripts/fixtures/ca-sample/test-cases/mismatch-members.csv';
+    const second = 'scripts/fixtures/ca-sample/test-cases/mismatch-memberships.csv';
+    const { graph } = fixture([
+      `import validates ${first} and ${second} for mismatch handling.`,
+      `import reconciles ${first} and ${second} for mismatch reporting.`,
+    ]);
+
+    const brief = deriveSharedPlanningBrief({ graph });
+    const sectionIds = brief.sections.filter((section) => section.kind === 'evidence').map((section) => section.sectionId);
+
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+    expect(sectionIds).toHaveLength(2);
+    expect(new Set(sectionIds).size).toBe(2);
+    // Structural assertions (shared stem, distinct 8-hex suffixes) instead of
+    // hard-coding the implementation's truncation constants.
+    expect(sectionIds.every((id) => id.startsWith('shared-evidence-'))).toBe(true);
+    const stems = sectionIds.map((id) => id.slice(0, id.lastIndexOf('-')));
+    const suffixes = sectionIds.map((id) => id.slice(id.lastIndexOf('-') + 1));
+    expect(new Set(stems).size).toBe(1);
+    expect(suffixes.every((suffix) => /^[0-9a-f]{8}$/.test(suffix))).toBe(true);
+    expect(new Set(suffixes).size).toBe(2);
+  });
+
+  it('uniquifies shared interface section ids when truncated keys collide', () => {
+    const { graph } = fixture();
+    const atomIds = graph.atoms.map((atom) => atom.atomId);
+    const interfaceRecord = (suffix: string) => ({
+      needId: `interface-${suffix}`,
+      kind: 'interface' as const,
+      query: `interface contract ${'x'.repeat(40)} ${suffix}`,
+      status: 'resolved' as const,
+      candidateFiles: [],
+      confidence: 'high' as const,
+      reason: 'interface usage',
+      linkedCriterionIds: [],
+      linkedAspectIds: [],
+      assignedAtomIds: atomIds,
+      diagnostics: [],
+      budgetNotes: [],
+    });
+
+    const brief = deriveSharedPlanningBrief({ graph, sourceLocalizationBundle: { records: [interfaceRecord('alpha'), interfaceRecord('beta')], byAtomId: {}, diagnostics: [], limits: { maxIndexedFiles: 100, maxCandidateFilesPerNeed: 12, maxDirectoryExpansionFiles: 20, maxBytesPerScannedFile: 10_000, maxTotalScannedBytes: 100_000 }, indexDiagnostics: [] } });
+    const collided = brief.sections.filter((section) => section.kind === 'interface' && section.sectionId.startsWith('shared-interface-interface-contract-x')).map((section) => section.sectionId);
+
+    expect(validateSharedPlanningBrief(brief, graph)).toEqual({ ok: true, errors: [] });
+    expect(collided).toHaveLength(2);
+    expect(new Set(collided).size).toBe(2);
+    expect(collided.every((id) => /-[0-9a-f]{8}$/.test(id))).toBe(true);
+  });
+
   it('truncates oversized sections to the exact section byte budget', () => {
     const { graph } = fixture();
 

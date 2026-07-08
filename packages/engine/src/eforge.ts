@@ -26,6 +26,7 @@ import type {
 } from './events.js';
 import { loadQueue, resolveQueueOrder, enqueuePrd, inferTitle, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, QueueExecExitCode, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getCompiledResumeFrontmatter } from './prd-queue.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
+import { resolveTrunkBranch } from './branch-policy.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { projectRecoverySidecarResumeEvidence } from './recovery/resume-sidecar.js';
@@ -1246,6 +1247,7 @@ export class EforgeEngine {
               filePath,
               releaseLock: shouldRelease,
               propagateDependents: false,
+              ...(config.build?.trunkBranch !== undefined ? { baseBranch: config.build.trunkBranch } : {}),
               writeFailedEvidence: async (failedFilePath) => {
             // Run recovery inline, synthesizing from monitor DB and git.
             const setName = prdId;
@@ -1260,7 +1262,9 @@ export class EforgeEngine {
                 prdId,
                 setName,
                 featureBranch: `eforge/${setName}`,
-                baseBranch: '',
+                // Resolve via git HEAD (never throws) so master-trunk repos
+                // get a real base branch, matching buildFailureSummary.
+                baseBranch: await resolveTrunkBranch(config, cwd),
                 plans: [],
                 failingPlan: { planId: 'unknown' },
                 landedCommits: [],

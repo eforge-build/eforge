@@ -6,6 +6,7 @@ import { cleanupCompletedPrd, loadQueue, movePrdToSubdir, propagateSkip, release
 import { loadArtifactRegistry } from '../artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion, upsertCompletion } from '../artifacts/completions.js';
 import { writeRecoverySidecar } from '../recovery/sidecar.js';
+import { resolveTrunkBranch } from '../branch-policy.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 
 export type QueueFinalizerStatus = 'completed' | 'failed' | 'skipped';
@@ -20,6 +21,7 @@ export interface FinalizeQueuedPrdOptions {
   requireArtifacts?: boolean;
   writeFailedEvidence?: (filePath: string) => Promise<void>;
   propagateDependents?: boolean;
+  baseBranch?: string;
 }
 
 export interface FinalizeQueuedPrdResult {
@@ -81,7 +83,7 @@ async function finalizeQueuedPrdOnce(options: FinalizeQueuedPrdOptions): Promise
       terminalTransition = 'completed-cleanup';
     } else if (options.status === 'failed') {
       if (filePath !== undefined) await finalizeFailedFile(options, filePath);
-      else await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed completion replay without PRD file');
+      else await writeDegradedRecoveryEvidence(options, 'failed completion replay without PRD file');
       if (options.propagateDependents !== false) dependentPropagation = () => propagateSkip(options.queueDir, options.cwd, options.prdId, 'failed');
       terminalTransition = filePath === undefined ? 'missing' : 'failed';
     } else {
@@ -112,7 +114,7 @@ async function finalizeQueuedPrdOnce(options: FinalizeQueuedPrdOptions): Promise
 async function finalizeFailedFile(options: FinalizeQueuedPrdOptions, filePath: string): Promise<void> {
   const location = classifyQueuePath(options, filePath);
   if (location === 'failed') {
-    await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed PRD was already terminal without recovery evidence');
+    await writeDegradedRecoveryEvidence(options, 'failed PRD was already terminal without recovery evidence');
     return;
   }
 
@@ -120,16 +122,16 @@ async function finalizeFailedFile(options: FinalizeQueuedPrdOptions, filePath: s
     try {
       await options.writeFailedEvidence(filePath);
       if (!await hasRecoveryEvidence(options.cwd, options.queueDir, options.prdId)) {
-        await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed evidence writer completed without recovery evidence');
+        await writeDegradedRecoveryEvidence(options, 'failed evidence writer completed without recovery evidence');
       }
     } catch {
       await moveTerminalAware(options, filePath, 'failed');
-      await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed evidence writer threw');
+      await writeDegradedRecoveryEvidence(options, 'failed evidence writer threw');
     }
     return;
   }
   await moveTerminalAware(options, filePath, 'failed');
-  await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'shared finalizer replay without build evidence');
+  await writeDegradedRecoveryEvidence(options, 'shared finalizer replay without build evidence');
 }
 
 async function propagateExistingTerminalDependents(options: FinalizeQueuedPrdOptions, status: QueueFinalizerStatus, artifactAvailable: boolean): Promise<void> {
@@ -248,16 +250,17 @@ async function moveTerminalAware(options: FinalizeQueuedPrdOptions, filePath: st
   }
 }
 
-async function writeDegradedRecoveryEvidence(cwd: string, queueDir: string, prdId: string, reason: string): Promise<void> {
-  const failedDir = resolve(cwd, queueDir, 'failed');
-  const existingJson = resolve(failedDir, `${prdId}.recovery.json`);
+async function writeDegradedRecoveryEvidence(options: FinalizeQueuedPrdOptions, reason: string): Promise<void> {
+  const failedDir = resolve(options.cwd, options.queueDir, 'failed');
+  const existingJson = resolve(failedDir, `${options.prdId}.recovery.json`);
   if (await exists(existingJson)) return;
   const now = new Date().toISOString();
+  const baseBranch = await degradedEvidenceBaseBranch(options);
   const summary: BuildFailureSummary = {
-    prdId,
-    setName: prdId,
-    featureBranch: `eforge/${prdId}`,
-    baseBranch: '',
+    prdId: options.prdId,
+    setName: options.prdId,
+    featureBranch: `eforge/${options.prdId}`,
+    baseBranch,
     plans: [],
     failingPlan: { planId: 'unknown' },
     landedCommits: [],
@@ -276,5 +279,12 @@ async function writeDegradedRecoveryEvidence(cwd: string, queueDir: string, prdI
     remainingWork: ['Inspect persisted queue completion and build logs.'],
     risks: ['Recovery evidence was reconstructed after the worker exited.'],
   };
-  await writeRecoverySidecar({ failedPrdDir: failedDir, prdId: basename(prdId), summary, verdict });
+  await writeRecoverySidecar({ failedPrdDir: failedDir, prdId: basename(options.prdId), summary, verdict });
+}
+
+async function degradedEvidenceBaseBranch(options: Pick<FinalizeQueuedPrdOptions, 'baseBranch' | 'cwd'>): Promise<string> {
+  const configured = options.baseBranch?.trim();
+  if (configured) return configured;
+  // resolveTrunkBranch never throws: it falls back to 'main' internally.
+  return resolveTrunkBranch(undefined, options.cwd);
 }

@@ -19,6 +19,7 @@ export interface AdoptedQueueWorkerMonitorOptions {
   queueDir: string;
   locks: AdoptedQueueLock[];
   autoBuildController: Pick<AutoBuildController, 'notifyQueueMutation'>;
+  baseBranch?: string;
   afterCursor?: number;
   pollIntervalMs?: number;
 }
@@ -76,7 +77,7 @@ async function tryFinalizeLock(options: AdoptedQueueWorkerMonitorOptions, lock: 
     if (currentLock.pid !== lock.pid) return true;
 
     const status = await determineFinalStatus(options, lock);
-    await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: lock.prdId, status, releaseLock: true });
+    await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: lock.prdId, status, releaseLock: true, ...(options.baseBranch !== undefined ? { baseBranch: options.baseBranch } : {}) });
     options.autoBuildController.notifyQueueMutation('external');
     return true;
   } catch {

@@ -17,7 +17,7 @@ export interface ReconciliationReport {
 }
 
 /** Reconcile dead runs and queue locks on daemon startup; emits no events directly. */
-export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options?: { queueDir?: string }): Promise<ReconciliationReport> {
+export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options?: { queueDir?: string; baseBranch?: string }): Promise<ReconciliationReport> {
   const startedAt = Date.now();
   const runsFailed: ReconciliationReport['runsFailed'] = [];
   const locksRemoved: ReconciliationReport['locksRemoved'] = [];
@@ -35,7 +35,7 @@ export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options
         if (queueLockProblem !== undefined) adoptionBlockedPrdIds.add(run.planSet);
         const terminal = await queuedRunTerminalRecovery(db, cwd, run, reason);
         try {
-          await finalizeQueuedPrd({ cwd, queueDir: options?.queueDir ?? '.eforge/queue', prdId: run.planSet, status: terminal.status, releaseLock: true });
+          await finalizeQueuedPrd({ cwd, queueDir: options?.queueDir ?? '.eforge/queue', prdId: run.planSet, status: terminal.status, releaseLock: true, ...(options?.baseBranch !== undefined ? { baseBranch: options.baseBranch } : {}) });
           db.updateRunStatus(run.id, terminal.runStatus, now);
           buildAndPersistRunUpsert(db, run.id, run.id);
           try {
@@ -93,7 +93,7 @@ export async function replayPersistedOrphanQueueCompletions(
   db: MonitorDB,
   autoBuildController: DaemonState['autoBuildController'],
   beforeStartupCursor: number,
-  options?: { cwd: string; queueDir: string; daemonSessionId?: string },
+  options?: { cwd: string; queueDir: string; daemonSessionId?: string; baseBranch?: string },
 ): Promise<number> {
   const orphanCompletions = findPersistedQueueCompletionsSinceLastCleanShutdown(db, beforeStartupCursor);
   let successfulReplays = 0;
@@ -101,7 +101,7 @@ export async function replayPersistedOrphanQueueCompletions(
   if (options !== undefined) {
     for (const completion of orphanCompletions) {
       try {
-        await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: completion.prdId, status: completion.status, releaseLock: true });
+        await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: completion.prdId, status: completion.status, releaseLock: true, ...(options.baseBranch !== undefined ? { baseBranch: options.baseBranch } : {}) });
         successfulReplays++;
       } catch (err) {
         replayFailures.push(`${completion.prdId}: ${err instanceof Error ? err.message : String(err)}`);
