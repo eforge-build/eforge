@@ -5,6 +5,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 
 import type { MonitorDB } from './db.js';
 import type { DaemonState } from './server.js';
+import { writeDaemonEvent } from './daemon-events.js';
 import { buildAndPersistRunUpsert } from './recorder.js';
 
 export interface ReconciliationReport {
@@ -83,24 +84,35 @@ export async function replayPersistedOrphanQueueCompletions(
   db: MonitorDB,
   autoBuildController: DaemonState['autoBuildController'],
   beforeStartupCursor: number,
-  options?: { cwd: string; queueDir: string },
+  options?: { cwd: string; queueDir: string; daemonSessionId?: string },
 ): Promise<number> {
   let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
   try { rows = db.getDaemonEventsAfter(0).filter((row) => row.id <= beforeStartupCursor); } catch { return 0; }
   const lastCleanShutdownId = [...rows].reverse().find((row) => row.type === 'daemon:lifecycle:shutdown:start' || row.type === 'daemon:lifecycle:shutdown:complete')?.id ?? 0;
   const orphanCompletions = rows.filter((row) => row.id > lastCleanShutdownId && row.type === 'queue:prd:complete');
+  let successfulReplays = 0;
+  const replayFailures: string[] = [];
   if (options !== undefined) {
     for (const row of orphanCompletions) {
       const completion = parsePersistedQueueCompletion(row.data);
       if (completion === undefined) continue;
       try {
         await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: completion.prdId, status: completion.status, releaseLock: true });
-      } catch {
-        // Best-effort startup replay: one stale/corrupt row must not abort daemon startup.
+        successfulReplays++;
+      } catch (err) {
+        replayFailures.push(`${completion.prdId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    if (replayFailures.length > 0 && options.daemonSessionId !== undefined) {
+      writeDaemonEvent(db, {
+        type: 'daemon:warning',
+        source: 'startup-reconciliation',
+        message: `Startup queue completion replay failed for ${replayFailures.length} item(s): ${replayFailures.join('; ')}`,
+      }, options.daemonSessionId);
+    }
   }
-  if (orphanCompletions.length > 0) autoBuildController.notifyQueueMutation('external');
+  const shouldWake = options === undefined ? orphanCompletions.length > 0 : successfulReplays > 0;
+  if (shouldWake) autoBuildController.notifyQueueMutation('external');
   return orphanCompletions.length;
 }
 

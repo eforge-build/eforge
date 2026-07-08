@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { openDatabase } from '@eforge-build/monitor/db';
+import { loadQueueItemsForCwdSync } from '@eforge-build/monitor/projections/queue-items';
 import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, writeDaemonEvent } from '@eforge-build/monitor/server-main';
+import { loadArtifactRegistry, loadCompletionRegistry, upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
 import { useTempDir } from './test-tmpdir';
 import { makeDeadPid } from './process-helpers';
+import { createTestEnv, makeQueuedPrd, waitForSpawnCallCount, writeQueuedPrdFile } from './queue-scheduler-helpers';
 
 const DEAD_PID = makeDeadPid();
 const makeTempDir = useTempDir('eforge-startup-adoption-');
@@ -205,6 +209,79 @@ describe('startup queued-build adoption reconciliation', () => {
 
     expect(replayed).toBe(1);
     expect(wakeReasons).toEqual(['external']);
+    db.close();
+  });
+
+  it('preserves successful adopted root artifacts and completion state while unblocking dependents without rerunning root', async () => {
+    const { cwd, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const db = openTempDb(cwd);
+    const queueDir = 'eforge/queue';
+    const rootPath = await writeQueuedPrdFile(cwd, 'adopted-root');
+    const transientChildPath = await writeQueuedPrdFile(cwd, 'dependent-child', ['adopted-root']);
+    mkdirSync(join(cwd, queueDir, 'waiting'), { recursive: true });
+    await writeFile(join(cwd, queueDir, 'waiting', 'dependent-child.md'), readFileSync(transientChildPath, 'utf-8'), 'utf-8');
+    await rm(transientChildPath, { force: true });
+    const lockPath = writeLock(cwd, 'adopted-root', String(DEAD_PID));
+    const recordedAt = '2025-01-01T00:00:00.000Z';
+    await upsertArtifact(cwd, {
+      prdId: 'adopted-root',
+      artifactBranch: 'eforge/adopted-root',
+      commitSha: 'abc123',
+      resolvedBase: 'main',
+      landingAction: 'pr',
+      status: 'built',
+      recordedAt,
+      updatedAt: recordedAt,
+    });
+    await upsertCompletion(cwd, {
+      prdId: 'adopted-root',
+      status: 'completed',
+      artifactAvailable: true,
+      artifactBranch: 'eforge/adopted-root',
+      completedAt: recordedAt,
+      updatedAt: recordedAt,
+    });
+    db.insertRun({
+      id: 'run-adopted-root',
+      sessionId: 'session-adoption',
+      planSet: 'adopted-root',
+      command: 'eforge queue exec adopted-root',
+      status: 'completed',
+      startedAt: recordedAt,
+      cwd,
+      pid: DEAD_PID,
+    });
+    const artifactBefore = await loadArtifactRegistry(cwd);
+    const completionBefore = await loadCompletionRegistry(cwd);
+    const wakeReasons: string[] = [];
+    const autoBuildController = {
+      notifyQueueMutation(reason: string) {
+        wakeReasons.push(reason);
+      },
+    };
+
+    writeDaemonEvent(db, { type: 'queue:prd:complete', prdId: 'adopted-root', status: 'completed' }, 'daemon-test');
+    const startupCursor = db.getMaxDaemonEventId();
+
+    const replayed = await replayPersistedOrphanQueueCompletions(db, autoBuildController as never, startupCursor, { cwd, queueDir });
+
+    expect(replayed).toBe(1);
+    expect(wakeReasons).toEqual(['external']);
+    expect(existsSync(rootPath)).toBe(false);
+    expect(existsSync(lockPath)).toBe(false);
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'dependent-child.md'))).toBe(false);
+    expect(existsSync(join(cwd, queueDir, 'dependent-child.md'))).toBe(true);
+    expect(await loadArtifactRegistry(cwd)).toEqual(artifactBefore);
+    expect(await loadCompletionRegistry(cwd)).toEqual(completionBefore);
+    expect(db.getRun('run-adopted-root')).toMatchObject({ planSet: 'adopted-root', sessionId: 'session-adoption', status: 'completed' });
+    const projectedQueue = loadQueueItemsForCwdSync(cwd, queueDir);
+    expect(projectedQueue.find((item) => item.id === 'adopted-root')).toBeUndefined();
+    expect(projectedQueue.find((item) => item.id === 'dependent-child')).toMatchObject({ id: 'dependent-child', status: 'pending' });
+
+    const scheduler = makeScheduler([makeQueuedPrd('dependent-child', ['adopted-root'], join(cwd, queueDir, 'dependent-child.md'))]);
+    await scheduler.start();
+    await waitForSpawnCallCount(spawnPrdChild, 1);
+    expect(spawnPrdChild.mock.calls.map(([prd]) => prd.id)).toEqual(['dependent-child']);
     db.close();
   });
 

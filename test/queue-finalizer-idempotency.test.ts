@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
-import { loadCompletionRegistry } from '@eforge-build/engine/artifacts/completions';
+import { loadCompletionRegistry, upsertCompletion } from '@eforge-build/engine/artifacts/completions';
 import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import type { SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
 import { createTestEnv, makeQueuedPrd, waitForSpawnCallCount, writeQueuedPrdFile } from './queue-scheduler-helpers';
@@ -50,6 +50,64 @@ describe('shared queued PRD finalizer', () => {
     await expect(finalizeQueuedPrd({ cwd, queueDir, prdId: 'parent', status: 'failed' })).resolves.toMatchObject({ finalized: false });
   });
 
+  it('propagates already-terminal completed replay with missing root PRD to waiting dependents', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir, 'waiting'), { recursive: true });
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'waiting', 'child.md'), 'Child', ['root']);
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'root.lock'), String(process.pid), 'utf-8');
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, {
+      prdId: 'root',
+      artifactBranch: 'eforge/root',
+      commitSha: 'abc123',
+      resolvedBase: 'main',
+      landingAction: 'pr',
+      status: 'built',
+      recordedAt: now,
+      updatedAt: now,
+    });
+    await upsertCompletion(cwd, { prdId: 'root', status: 'completed', artifactAvailable: true, artifactBranch: 'eforge/root', completedAt: now, updatedAt: now });
+
+    const result = await finalizeQueuedPrd({ cwd, queueDir, prdId: 'root', status: 'completed' });
+
+    expect(result).toMatchObject({ finalized: false, lockReleased: true, terminalTransition: 'already-terminal' });
+    expect(existsSync(join(cwd, queueDir, 'child.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'child.md'))).toBe(false);
+    expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'root.lock'))).toBe(false);
+  });
+
+  it('propagates already-terminal failed replay with missing root PRD to waiting dependents', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir, 'waiting'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'waiting', 'child.md'), 'Child', ['root']);
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, { prdId: 'root', status: 'failed', artifactAvailable: false, completedAt: now, updatedAt: now });
+
+    const result = await finalizeQueuedPrd({ cwd, queueDir, prdId: 'root', status: 'failed' });
+
+    expect(result).toMatchObject({ finalized: false, terminalTransition: 'already-terminal' });
+    expect(existsSync(join(cwd, queueDir, 'skipped', 'child.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'child.md'))).toBe(false);
+  });
+
+  it('propagates already-terminal skipped replay with missing root PRD to waiting dependents', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir, 'waiting'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'waiting', 'child.md'), 'Child', ['root']);
+    const now = new Date().toISOString();
+    await upsertCompletion(cwd, { prdId: 'root', status: 'skipped', artifactAvailable: false, completedAt: now, updatedAt: now });
+
+    const result = await finalizeQueuedPrd({ cwd, queueDir, prdId: 'root', status: 'skipped' });
+
+    expect(result).toMatchObject({ finalized: false, terminalTransition: 'already-terminal' });
+    expect(existsSync(join(cwd, queueDir, 'skipped', 'child.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'waiting', 'child.md'))).toBe(false);
+  });
+
   it('writes normal failed-build evidence exactly once under duplicate finalization', async () => {
     const cwd = makeTempDir();
     const queueDir = 'eforge/queue';
@@ -80,6 +138,57 @@ describe('shared queued PRD finalizer', () => {
     const evidence = JSON.parse(await readFile(join(cwd, queueDir, 'failed', 'normal-fail.recovery.json'), 'utf-8')) as { verdict: { recommendationSource?: string } };
     expect(evidence.verdict.recommendationSource).toBe('normal-writer');
     expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'normal-fail.lock'))).toBe(false);
+  });
+
+  it('writes degraded evidence when writeFailedEvidence throws', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir), { recursive: true });
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'writer-throws.md'), 'Writer Throws');
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'writer-throws.lock'), String(process.pid), 'utf-8');
+
+    const result = await finalizeQueuedPrd({
+      cwd,
+      queueDir,
+      prdId: 'writer-throws',
+      status: 'failed',
+      writeFailedEvidence: async () => { throw new Error('writer failed'); },
+    });
+
+    expect(result).toMatchObject({ finalized: true, lockReleased: true, terminalTransition: 'failed' });
+    expect(existsSync(join(cwd, queueDir, 'failed', 'writer-throws.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'failed', 'writer-throws.recovery.json'))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'writer-throws.lock'))).toBe(false);
+    const registry = await loadCompletionRegistry(cwd);
+    expect(registry.completions['writer-throws']).toMatchObject({ status: 'failed' });
+  });
+
+  it('writes degraded evidence when writeFailedEvidence omits sidecars', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir), { recursive: true });
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'writer-omits.md'), 'Writer Omits');
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'writer-omits.lock'), String(process.pid), 'utf-8');
+
+    const result = await finalizeQueuedPrd({
+      cwd,
+      queueDir,
+      prdId: 'writer-omits',
+      status: 'failed',
+      writeFailedEvidence: async (filePath) => {
+        await mkdir(join(cwd, queueDir, 'failed'), { recursive: true });
+        await rename(filePath, join(cwd, queueDir, 'failed', 'writer-omits.md'));
+      },
+    });
+
+    expect(result).toMatchObject({ finalized: true, lockReleased: true, terminalTransition: 'failed' });
+    expect(existsSync(join(cwd, queueDir, 'failed', 'writer-omits.md'))).toBe(true);
+    expect(existsSync(join(cwd, queueDir, 'failed', 'writer-omits.recovery.json'))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'writer-omits.lock'))).toBe(false);
+    const registry = await loadCompletionRegistry(cwd);
+    expect(registry.completions['writer-omits']).toMatchObject({ status: 'failed' });
   });
 
   it('writes degraded evidence when a failed PRD was already moved without sidecars', async () => {

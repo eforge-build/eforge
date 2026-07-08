@@ -32,6 +32,7 @@ import { resolve } from 'node:path';
 import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-supervisor.js';
 import { evaluateGuardedRecoveryAutoResume } from './recovery-auto-resume.js';
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
+import { readPrdLockStatus } from '@eforge-build/engine/prd-queue';
 import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, type ReconciliationReport } from './startup-reconciliation.js';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
@@ -798,7 +799,7 @@ async function main(): Promise<void> {
   if (persistent && daemonState && config) {
     if (config.prdQueue.autoBuild) {
       daemonState.autoBuildController.enable('startup config');
-      await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir });
+      await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
     }
     // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
     if (config.daemon.idleShutdownMs > 0) {
@@ -818,7 +819,17 @@ async function main(): Promise<void> {
             const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${run.planSet}.lock`);
             if (config && isSafeQueuedPrdId(run.planSet) && existsSync(lockPath)) {
               try {
-                await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: 'failed', releaseLock: true });
+                const lock = await readPrdLockStatus(run.planSet, cwd);
+                if (lock.state === 'stale' && lock.pid === run.pid) {
+                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: 'failed', releaseLock: true });
+                } else {
+                  const lockDescription = lock.state === 'live' || lock.state === 'stale' ? `${lock.state} pid ${lock.pid}` : lock.state;
+                  writeDaemonEvent(db, {
+                    type: 'daemon:warning',
+                    source: 'orphan-reaper',
+                    message: `Skipped queued PRD finalization for orphaned worker ${run.planSet}: lock ownership was not verified (run pid ${run.pid}, lock ${lockDescription}).`,
+                  }, daemonSessionId);
+                }
               } catch (err) {
                 writeDaemonEvent(db, {
                   type: 'daemon:warning',

@@ -543,16 +543,25 @@ export class QueueScheduler {
       planId: prd.id,
       error: message,
     } as EforgeEvent);
-    await finalizeQueuedPrd({
-      cwd: this.cwd,
-      queueDir: this.queueDir,
-      prdId: prd.id,
-      status: 'failed',
-      filePath: prd.filePath,
-      releaseLock: true,
-      requireArtifacts: this.artifactAwareDependencies(),
-    });
-    this.completedPrdFinalizations.add(prd.id);
+    try {
+      await finalizeQueuedPrd({
+        cwd: this.cwd,
+        queueDir: this.queueDir,
+        prdId: prd.id,
+        status: 'failed',
+        filePath: prd.filePath,
+        releaseLock: true,
+        requireArtifacts: this.artifactAwareDependencies(),
+      });
+      this.completedPrdFinalizations.add(prd.id);
+    } catch (err) {
+      this.eventQueue.push({
+        type: 'daemon:error',
+        source: 'scheduler:fail-dispatch-finalizer',
+        message: `Failed to finalize dispatch failure for ${prd.id}: ${err instanceof Error ? err.message : String(err)}`,
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent);
+    }
     this._processed++;
     const state = this.prdState.get(prd.id);
     if (state) state.status = 'failed';

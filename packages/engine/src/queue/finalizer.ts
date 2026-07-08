@@ -48,8 +48,10 @@ export async function finalizeQueuedPrd(options: FinalizeQueuedPrdOptions): Prom
 async function finalizeQueuedPrdOnce(options: FinalizeQueuedPrdOptions): Promise<FinalizeQueuedPrdResult> {
   const filePath = options.filePath ?? await resolveCurrentPrdPath(options.cwd, options.queueDir, options.prdId);
   let lockReleased = false;
-  if (await hasTerminalCompletion(options.cwd, options.prdId)) {
+  const existingCompletion = await getTerminalCompletion(options.cwd, options.prdId);
+  if (existingCompletion !== undefined) {
     const releaseAlreadyTerminalLock = async (): Promise<FinalizeQueuedPrdResult> => {
+      await propagateExistingTerminalDependents(options, existingCompletion.status, existingCompletion.artifactAvailable);
       if (options.releaseLock !== false) {
         await releasePrd(options.prdId, options.cwd);
         lockReleased = true;
@@ -60,6 +62,9 @@ async function finalizeQueuedPrdOnce(options: FinalizeQueuedPrdOptions): Promise
       return releaseAlreadyTerminalLock();
     }
     const location = classifyQueuePath(options, filePath);
+    if (options.status === 'completed' && existingCompletion.status === 'completed' && location === 'root') {
+      return finalizeAdoptedCompletedPrd(options, filePath);
+    }
     if (location === 'skipped' || (location === 'failed' && await hasRecoveryEvidence(options.cwd, options.queueDir, options.prdId))) {
       return releaseAlreadyTerminalLock();
     }
@@ -127,6 +132,20 @@ async function finalizeFailedFile(options: FinalizeQueuedPrdOptions, filePath: s
   await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'shared finalizer replay without build evidence');
 }
 
+async function propagateExistingTerminalDependents(options: FinalizeQueuedPrdOptions, status: QueueFinalizerStatus, artifactAvailable: boolean): Promise<void> {
+  try {
+    if (status === 'completed') {
+      if (artifactAvailable || options.requireArtifacts === false) {
+        await unblockWaiting(options.queueDir, options.cwd, options.prdId, { requireArtifacts: options.requireArtifacts ?? true });
+      }
+    } else if (options.propagateDependents !== false) {
+      await propagateSkip(options.queueDir, options.cwd, options.prdId, status === 'failed' ? 'failed' : 'cancelled');
+    }
+  } catch {
+    // Best-effort dependent propagation mirrors first-time finalization.
+  }
+}
+
 async function recordCompletion(options: FinalizeQueuedPrdOptions): Promise<void> {
   const now = new Date().toISOString();
   let artifactAvailable = false;
@@ -147,9 +166,33 @@ async function recordCompletion(options: FinalizeQueuedPrdOptions): Promise<void
   });
 }
 
-async function hasTerminalCompletion(cwd: string, prdId: string): Promise<boolean> {
+async function getTerminalCompletion(cwd: string, prdId: string): Promise<ReturnType<typeof lookupCompletion> | undefined> {
   const registry = await loadCompletionRegistry(cwd).catch(() => undefined);
-  return registry !== undefined && lookupCompletion(registry, prdId) !== undefined;
+  return registry === undefined ? undefined : lookupCompletion(registry, prdId);
+}
+
+async function finalizeAdoptedCompletedPrd(options: FinalizeQueuedPrdOptions, filePath: string): Promise<FinalizeQueuedPrdResult> {
+  let lockReleased = false;
+  let primaryError: unknown;
+  try {
+    await cleanupCompletedPrd(filePath, options.queueDir, options.cwd);
+    try {
+      await unblockWaiting(options.queueDir, options.cwd, options.prdId, { requireArtifacts: options.requireArtifacts ?? true });
+    } catch { /* best-effort dependent propagation */ }
+  } catch (err) {
+    primaryError = err;
+  } finally {
+    if (options.releaseLock !== false) {
+      try {
+        await releasePrd(options.prdId, options.cwd);
+        lockReleased = true;
+      } catch (releaseErr) {
+        if (primaryError === undefined) primaryError = releaseErr;
+      }
+    }
+  }
+  if (primaryError !== undefined) throw primaryError;
+  return { finalized: true, lockReleased, terminalTransition: 'completed-cleanup' };
 }
 
 async function resolveCurrentPrdPath(cwd: string, queueDir: string, prdId: string): Promise<string | undefined> {
