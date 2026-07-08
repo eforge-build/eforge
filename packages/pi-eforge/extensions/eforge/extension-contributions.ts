@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
@@ -5,6 +8,7 @@ import type { SelectItem } from '@earendil-works/pi-tui';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
   apiGetExtensionContributionManifestIfRunning,
+  appendExtensionErrorVersionHint,
   createExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionDetail,
   formatExtensionContributionDetailText,
@@ -28,6 +32,7 @@ import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { formatInvocationPanel, prepareContributionInput } from './extension-contribution-ux.js';
 import { showInfoPanel, showSearchableSelectPanel, withLoader, type UIContext } from './ui-helpers.js';
 
+const PI_EFORGE_VERSION = readPiEforgeVersion();
 const TOOL_ACTIONS = ['list', 'show', 'invoke'] as const;
 const TOOL_KINDS = [...EXTENSION_HOST_CONTRIBUTION_KINDS, 'all'] as const;
 const TOOL_OUTPUT_PROFILES = ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich'] as const;
@@ -76,43 +81,47 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
       input: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: 'JSON object input for invocation' })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (params.action === 'list') {
-        const result = await listEforgeExtensionContributionsIfRunning({
+      try {
+        if (params.action === 'list') {
+          const result = await listEforgeExtensionContributionsIfRunning({
+            cwd: ctx.cwd,
+            ...listOptionsFromParams(params),
+          });
+          if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+          return textResult(formatExtensionContributionList(result));
+        }
+        if (!params.id) throw new Error(`"id" is required when action is "${params.action}"`);
+        if (params.kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
+        if (params.action === 'show') {
+          const detail = await showContributionIfRunning(ctx.cwd, {
+            id: params.id,
+            kind: params.kind as ExtensionHostContributionKind | undefined,
+            includeInputSchema: params.includeInputSchema,
+            includeDiagnostics: params.includeDiagnostics,
+            projection: projectionFromFullFlag(params.full),
+          });
+          if (detail === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+          return textResult(formatExtensionContributionDetail(detail));
+        }
+        const result = await invokeEforgeExtensionContributionIfRunning({
           cwd: ctx.cwd,
-          ...listOptionsFromParams(params),
+          kind: params.kind as ExtensionHostContributionKind | undefined,
+          id: params.id,
+          input: normalizeInput(params.input) as ExtensionJsonObject,
+          requestedBy: { host: 'pi' },
         });
         if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return textResult(formatExtensionContributionList(result));
+        if (!result.response.ok) {
+          const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
+          return textResult(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelope(failureEnvelope) : result.response.error.message);
+        }
+        return textResult(
+          formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
+          [`Invocation: ${result.response.invocationId}`, `Target: ${result.target.kind}:${result.target.id}`, `Action: ${result.target.actionId}`],
+        );
+      } catch (err) {
+        throw await appendContributionErrorVersionHint(err, ctx.cwd);
       }
-      if (!params.id) throw new Error(`"id" is required when action is "${params.action}"`);
-      if (params.kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
-      if (params.action === 'show') {
-        const detail = await showContributionIfRunning(ctx.cwd, {
-          id: params.id,
-          kind: params.kind as ExtensionHostContributionKind | undefined,
-          includeInputSchema: params.includeInputSchema,
-          includeDiagnostics: params.includeDiagnostics,
-          projection: projectionFromFullFlag(params.full),
-        });
-        if (detail === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return textResult(formatExtensionContributionDetail(detail));
-      }
-      const result = await invokeEforgeExtensionContributionIfRunning({
-        cwd: ctx.cwd,
-        kind: params.kind as ExtensionHostContributionKind | undefined,
-        id: params.id,
-        input: normalizeInput(params.input) as ExtensionJsonObject,
-        requestedBy: { host: 'pi' },
-      });
-      if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-      if (!result.response.ok) {
-        const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
-        return textResult(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelope(failureEnvelope) : result.response.error.message);
-      }
-      return textResult(
-        formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
-        [`Invocation: ${result.response.invocationId}`, `Target: ${result.target.kind}:${result.target.id}`, `Action: ${result.target.actionId}`],
-      );
     },
   });
 }
@@ -167,7 +176,8 @@ async function listFromArgs(ctx: UIContext, rest: string): Promise<void> {
   try {
     await showList(ctx, options);
   } catch (err) {
-    await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
+    const enriched = await appendContributionErrorVersionHint(err, ctx.cwd);
+    await showInfoPanel(ctx, 'eforge extensions - Error', enriched.message);
   }
 }
 
@@ -182,7 +192,8 @@ async function showFromArgs(ctx: UIContext, rest: string): Promise<void> {
   try {
     await showDetail(ctx, options);
   } catch (err) {
-    await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
+    const enriched = await appendContributionErrorVersionHint(err, ctx.cwd);
+    await showInfoPanel(ctx, 'eforge extensions - Error', enriched.message);
   }
 }
 
@@ -302,7 +313,8 @@ async function invokeAndShow(
     const panel = formatInvocationPanel(result);
     await showInfoPanel(ctx, panel.title, panel.content);
   } catch (err) {
-    await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
+    const enriched = await appendContributionErrorVersionHint(err, ctx.cwd);
+    await showInfoPanel(ctx, 'eforge extensions - Error', enriched.message);
   }
 }
 // --- eforge:endregion contribution-command ---
@@ -311,6 +323,20 @@ async function invokeAndShow(
 async function showContributionIfRunning(cwd: string, options: ContributionShowOptions): Promise<ExtensionHostContributionDetailResponse | null> {
   const manifest = await apiGetExtensionContributionManifestIfRunning({ cwd });
   return manifest ? showExtensionContributionManifestEntry(manifest, options) : null;
+}
+
+async function appendContributionErrorVersionHint(err: unknown, cwd: string): Promise<Error> {
+  return appendExtensionErrorVersionHint(err, { cwd, callerVersion: PI_EFORGE_VERSION });
+}
+
+function readPiEforgeVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', '..', 'package.json'), 'utf-8')) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function listOptionsFromParams(params: {

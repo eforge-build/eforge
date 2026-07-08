@@ -208,16 +208,23 @@ describe('extension contribution host dispatcher projection', () => {
       'deep-link:shared',
     ]);
     expect(summary.entries.some((entry) => entry.id === 'ext.console')).toBe(false);
-    expect(summary.entries.find((entry) => entry.id === 'ext.url')).toMatchObject({ kind: 'deep-link', actionBacked: false, urlTemplate: 'https://example.invalid/{id}' });
+    expect(summary.entries.find((entry) => entry.id === 'ext.url')).toMatchObject({ kind: 'deep-link', localId: 'url', label: 'External URL', actionBacked: false, urlTemplate: 'https://example.invalid/{id}' });
     expect(summary.entries.find((entry) => entry.id === 'ext.command')).toMatchObject({
       kind: 'command',
+      id: 'ext.command',
+      localId: 'command',
+      label: 'Run command',
       actionId: 'ext.run',
+      actionLocalId: 'run',
       actionBacked: true,
       sideEffects: ['daemon-state'],
       outputProfile: 'agent-compact',
       hasInputSchema: true,
       inputDefaultKeys: ['fromDefault', 'override'],
     });
+    expect(summary.entries.find((entry) => entry.kind === 'action' && entry.id === 'ext.run')).toMatchObject({ id: 'ext.run', localId: 'run', label: 'Run action', actionLocalId: 'run', outputProfile: 'agent-compact' });
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'shared')).toMatchObject({ localId: 'shared-command', actionId: 'ext.run', actionLocalId: 'run' });
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.deep')).toMatchObject({ localId: 'deep', actionId: 'ext.run', actionLocalId: 'run' });
   });
 
   it('omits full input schemas by default while preserving compact input metadata', () => {

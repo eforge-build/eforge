@@ -93,9 +93,29 @@ describe('extension management compact output projections', () => {
     });
     expect(projection.registrationTotal).toBeGreaterThan(0);
     expect(projection.diagnostics).toMatchObject({ count: 20, omitted: 17 });
-    expect(projection.details.actionDetails).toMatchObject({ count: 80, omitted: 77 });
+    expect(projection.details.actionDetails).toMatchObject({ count: 80, omitted: 0 });
+    expect(JSON.stringify(projection)).toContain('giant-extension:action-79');
+    expect(JSON.stringify(projection)).toContain('Action 79');
+    expect(JSON.stringify(projection)).toContain('debug-rich');
     expect(JSON.stringify(projection)).not.toContain('field_0_200');
     expect(projection.nextSteps.length).toBeGreaterThan(0);
+  });
+
+  it('preserves every compact action id, label, and output profile while omitting schemas', () => {
+    const extension = makeExtension('all-actions');
+    const projection = projectCompactExtensionEntry(extension);
+    const actionDetails = projection.details.actionDetails;
+
+    expect(actionDetails?.count).toBe(extension.actionDetails?.length);
+    expect(actionDetails?.omitted).toBe(0);
+    const serialized = JSON.stringify(actionDetails);
+    for (let index = 0; index < 80; index += 1) {
+      expect(serialized).toContain(`all-actions:action-${index}`);
+      expect(serialized).toContain(`Action ${index}`);
+    }
+    expect(serialized.match(/debug-rich/g)?.length).toBe(80);
+    expect(serialized).toContain('"inputSchema":{"keys":2,"omittedKeys":2}');
+    expect(serialized).not.toContain('field_0_200');
   });
 
   it('projects list/show/validate/reload/test/install responses within the host budget', () => {

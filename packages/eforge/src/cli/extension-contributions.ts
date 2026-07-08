@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
   apiGetExtensionContributionManifest,
+  appendExtensionErrorVersionHint,
   createExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionDetailText,
   formatExtensionContributionFailedInvocationEnvelopeText,
@@ -19,6 +20,8 @@ import {
   type ExtensionJsonObject,
 } from '@eforge-build/client';
 import { formatCliError } from './errors.js';
+
+declare const EFORGE_VERSION: string;
 
 const OUTPUT_PROFILES = ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich'] as const;
 
@@ -91,7 +94,7 @@ export function registerExtensionContributionCommands(extension: Command): void 
         }
         console.log(formatExtensionContributionListText(result));
       } catch (err) {
-        renderCliError(err);
+        renderCliError(await appendContributionErrorVersionHint(err));
       }
     });
 
@@ -112,7 +115,7 @@ export function registerExtensionContributionCommands(extension: Command): void 
         }
         console.log(formatExtensionContributionDetailText(result));
       } catch (err) {
-        renderCliError(err);
+        renderCliError(await appendContributionErrorVersionHint(err));
       }
     });
 
@@ -141,7 +144,7 @@ export function registerExtensionContributionCommands(extension: Command): void 
         renderInvokeResult(result);
         if (!result.response.ok) process.exit(1);
       } catch (err) {
-        renderCliError(err);
+        renderCliError(await appendContributionErrorVersionHint(err));
       }
     });
 }
@@ -223,6 +226,10 @@ function validateNonNegativeInteger(value: string): number {
 
 function isJsonObject(value: unknown): value is ExtensionJsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function appendContributionErrorVersionHint(err: unknown): Promise<Error> {
+  return appendExtensionErrorVersionHint(err, { cwd: process.cwd(), callerVersion: EFORGE_VERSION });
 }
 
 function renderCliError(err: unknown): never {

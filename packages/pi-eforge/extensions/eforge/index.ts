@@ -59,6 +59,7 @@ import {
   apiRemoveQueueItemIfRunning,
   // --- eforge:endregion host-queue-controls ---
   dispatchEforgeExtensionAction,
+  appendExtensionErrorVersionHint,
   hostOutputMetadataDetail,
   projectExtensionManagementResponse,
   renderHostOutput,
@@ -945,7 +946,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_extension",
     label: "eforge extension",
     description:
-      'Manage native eforge extensions with compact host-safe output by default; use CLI --json or daemon/client HTTP surfaces for raw schemas, diagnostics, and detail arrays. Actions: "list" returns compact extension entries with status/provenance/diagnostic counts; "show" returns one compact extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
+      'Manage native eforge extensions with compact host-safe output by default. For extension-authored actions, page through eforge_extension_contribution list results and use eforge_extension_contribution show for selected detail before falling back to CLI --json or daemon/client HTTP diagnostics. Actions: "list" returns compact extension entries with status/provenance/diagnostic counts; "show" returns one compact extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "validate", "test", "new", "reload", "trust", "untrust", "install", "update", "remove", "promote", "demote"] as const, {
         description: "Extension operation to perform",
@@ -1000,13 +1001,17 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const result = await dispatchEforgeExtensionAction({
-        cwd: ctx.cwd,
-        params,
-        helpers: piExtensionActionHelpers,
-      });
-      if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-      return jsonResult(projectExtensionManagementResponse(params.action, result.data));
+      try {
+        const result = await dispatchEforgeExtensionAction({
+          cwd: ctx.cwd,
+          params,
+          helpers: piExtensionActionHelpers,
+        });
+        if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(projectExtensionManagementResponse(params.action, result.data));
+      } catch (err) {
+        throw await appendExtensionErrorVersionHint(err, { cwd: ctx.cwd, callerVersion: PI_EFORGE_VERSION });
+      }
     },
   });
 

@@ -226,6 +226,29 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(block).not.toContain('"/api/');
   });
 
+  it('MCP and Pi extension tools prefer contribution list/show guidance and enrich domain errors with version hints', () => {
+    const expectedGuidance = 'page through eforge_extension_contribution list results and use eforge_extension_contribution show for selected detail';
+
+    for (const [label, source, block] of [
+      ['MCP', mcpSource, mcpExtensionBlock()],
+      ['Pi', piSource, piExtensionBlock()],
+    ] as const) {
+      expect(block, `${label} list/show guidance`).toContain(expectedGuidance);
+      expect(block, `${label} fallback wording`).toContain('before falling back to CLI --json or daemon/client HTTP diagnostics');
+      expect(source, `${label} imports stale-daemon hint helper`).toContain('appendExtensionErrorVersionHint');
+      expect(block, `${label} wraps extension domain errors`).toContain('appendExtensionErrorVersionHint');
+      expect(block, `${label} passes caller version`).toMatch(/callerVersion:\s*(EFORGE_VERSION|PI_EFORGE_VERSION)/);
+    }
+
+    for (const skillPath of ['eforge-plugin/skills/extend/extend.md', 'packages/pi-eforge/skills/eforge-extend/SKILL.md']) {
+      const normalized = readRepoFile(skillPath).replace(/mcp__eforge__eforge_extension_contribution/g, 'eforge_extension_contribution').replace(/\s+/g, ' ');
+      expect(normalized, `${skillPath} list first`).toMatch(/page through `?eforge_extension_contribution`? list results/);
+      expect(normalized, `${skillPath} show details`).toContain('then call show for selected contribution details');
+      expect(normalized, `${skillPath} raw fallback`).toMatch(/raw (CLI\/HTTP|HTTP\/CLI)/);
+      expect(normalized, `${skillPath} fallback bounded`).toContain('fallback');
+    }
+  });
+
   it('MCP and Pi eforge_extension schemas expose the full shared parameter set', () => {
     const requiredParams = ['name', 'path', 'fixture', 'run', 'event', 'scope', 'template', 'force', 'trustedBy', 'source', 'trust', 'version'];
     for (const [label, block] of [['MCP', mcpExtensionBlock()], ['Pi', piExtensionBlock()]] as const) {
