@@ -1,4 +1,5 @@
 import { isPidAlive } from '@eforge-build/client';
+import { consumeQueuePrdCancellation } from '@eforge-build/engine/queue/cancellation';
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
 import { basename, relative, resolve, sep } from 'node:path';
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from 'node:fs';
@@ -21,6 +22,7 @@ export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options
   const runsFailed: ReconciliationReport['runsFailed'] = [];
   const locksRemoved: ReconciliationReport['locksRemoved'] = [];
   const locksAdopted: ReconciliationReport['locksAdopted'] = [];
+  const adoptionBlockedPrdIds = new Set<string>();
 
   try {
     const runningRuns = db.getRunningRuns();
@@ -30,19 +32,21 @@ export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options
       const queueLockProblem = queueContext.queued ? runningRunQueueLockProblem(cwd, run, queueContext) : undefined;
       if (queueContext.queued && ((run.pid && !isPidAlive(run.pid)) || queueLockProblem !== undefined)) {
         const reason = queueLockProblem ?? 'reconciled: process not alive at daemon startup';
+        if (queueLockProblem !== undefined) adoptionBlockedPrdIds.add(run.planSet);
+        const terminal = await queuedRunTerminalRecovery(db, cwd, run, reason);
         try {
-          await finalizeQueuedPrd({ cwd, queueDir: options?.queueDir ?? '.eforge/queue', prdId: run.planSet, status: 'failed', releaseLock: true });
-          db.updateRunStatus(run.id, 'failed', now);
+          await finalizeQueuedPrd({ cwd, queueDir: options?.queueDir ?? '.eforge/queue', prdId: run.planSet, status: terminal.status, releaseLock: true });
+          db.updateRunStatus(run.id, terminal.runStatus, now);
           buildAndPersistRunUpsert(db, run.id, run.id);
           try {
             db.insertEvent({
               runId: run.id,
               type: 'phase:end',
-              data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: reason }, timestamp: now }),
+              data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: terminal.phaseStatus, summary: terminal.reason }, timestamp: now }),
               timestamp: now,
             });
           } catch { /* best-effort */ }
-          runsFailed.push({ runId: run.id, sessionId: run.sessionId ?? run.id, planSet: run.planSet, reason });
+          if (terminal.status === 'failed') runsFailed.push({ runId: run.id, sessionId: run.sessionId ?? run.id, planSet: run.planSet, reason: terminal.reason });
         } catch { /* leave running so a later reconciliation can retry finalization */ }
       }
     }
@@ -77,7 +81,8 @@ export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options
     if (!isPidAlive(pid)) {
       try { unlinkSync(lockPath); locksRemoved.push({ path: lockPath, pid, reason: 'dead-pid' }); } catch { /* ignore */ }
     } else {
-      locksAdopted.push({ path: lockPath, pid, prdId: basename(file, '.lock') });
+      const prdId = basename(file, '.lock');
+      if (!adoptionBlockedPrdIds.has(prdId)) locksAdopted.push({ path: lockPath, pid, prdId });
     }
   }
 
@@ -118,6 +123,52 @@ export async function replayPersistedOrphanQueueCompletions(
   const shouldWake = options === undefined ? orphanCompletions.length > 0 : successfulReplays > 0;
   if (shouldWake) autoBuildController.notifyQueueMutation('external');
   return orphanCompletions.length;
+}
+
+async function queuedRunTerminalRecovery(
+  db: MonitorDB,
+  cwd: string,
+  run: ReturnType<MonitorDB['getRunningRuns']>[number],
+  fallbackReason: string,
+): Promise<{ status: 'completed' | 'failed' | 'skipped'; runStatus: string; phaseStatus: 'completed' | 'failed' | 'skipped'; reason: string }> {
+  const persisted = latestPersistedQueueCompletion(db, run.planSet);
+  if (persisted?.status === 'completed' || persisted?.status === 'skipped') {
+    return {
+      status: persisted.status,
+      runStatus: persisted.status,
+      phaseStatus: persisted.status,
+      reason: `reconciled: preserved persisted queue completion (${persisted.status})`,
+    };
+  }
+
+  const cancellation = await consumeQueuePrdCancellation({
+    cwd,
+    prdId: run.planSet,
+    ...(run.sessionId !== undefined ? { expectedSessionId: run.sessionId } : {}),
+    expectedRunId: run.id,
+    ...(run.pid !== undefined ? { expectedPid: run.pid } : {}),
+  });
+  if (cancellation !== null) {
+    return {
+      status: 'skipped',
+      runStatus: 'skipped',
+      phaseStatus: 'skipped',
+      reason: cancellation.reason ?? 'reconciled: queued build cancellation requested before daemon restart',
+    };
+  }
+
+  return { status: 'failed', runStatus: 'failed', phaseStatus: 'failed', reason: fallbackReason };
+}
+
+function latestPersistedQueueCompletion(db: MonitorDB, prdId: string): { status: 'completed' | 'failed' | 'skipped' } | undefined {
+  let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
+  try { rows = db.getDaemonEventsAfter(0); } catch { return undefined; }
+  for (const row of [...rows].reverse()) {
+    if (row.type !== 'queue:prd:complete') continue;
+    const completion = parsePersistedQueueCompletion(row.data);
+    if (completion?.prdId === prdId) return { status: completion.status };
+  }
+  return undefined;
 }
 
 interface RunningQueueContext {

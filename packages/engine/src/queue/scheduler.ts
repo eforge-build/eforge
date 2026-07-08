@@ -16,7 +16,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   getCompiledResumeFrontmatter,
@@ -41,7 +41,7 @@ import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 import { applyStackedDispatchValidation } from './dispatch-validation.js';
-import { readRawAppliedAction } from '../recovery/applied-sidecar.js';
+import { hasAutoResumeAttempt, readRawAppliedAction } from '../recovery/applied-sidecar.js';
 import { finalizeQueuedPrd } from './finalizer.js';
 import type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
 export { SCHEDULER_INPUT_TYPES } from './scheduler-events.js';
@@ -999,14 +999,5 @@ export class QueueScheduler {
   /** Handles `queue:mutation` injected by HTTP routes. */
   private async onMutation(_event: SchedulerInputEvent): Promise<void> {
     await this.tick();
-  }
-}
-
-async function hasAutoResumeAttempt(sidecarPath: string): Promise<boolean> {
-  try {
-    const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { autoResume?: { attempts?: unknown } };
-    return typeof parsed.autoResume?.attempts === 'number' && Number.isInteger(parsed.autoResume.attempts) && parsed.autoResume.attempts > 0;
-  } catch {
-    return false;
   }
 }

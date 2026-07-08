@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { safeParseEforgeEvent } from '@eforge-build/client';
 import { openDatabase } from '../db.js';
 import { reconcileOrphanedState, writeDaemonEvent, type ReconciliationReport } from '../server-main.js';
 
@@ -185,9 +186,11 @@ describe('caller emission sequence', () => {
     const lockPath1 = join(lockDir, 'prd-a.lock');
     const lockPath2 = join(lockDir, 'prd-b.lock');
     const liveLockPath = join(lockDir, 'prd-live.lock');
+    const corruptLockPath = join(lockDir, 'prd-corrupt.lock');
     writeFileSync(lockPath1, String(DEAD_PID));
     writeFileSync(lockPath2, String(DEAD_PID));
     writeFileSync(liveLockPath, String(process.pid));
+    writeFileSync(corruptLockPath, 'not-a-pid');
 
     const daemonSessionId = `daemon-test-${Date.now()}`;
 
@@ -204,11 +207,19 @@ describe('caller emission sequence', () => {
       }, daemonSessionId);
     }
     for (const lock of report.locksRemoved) {
-      writeDaemonEvent(db, {
-        type: 'daemon:recovery:lock-removed',
-        path: lock.path,
-        pid: lock.pid,
-      }, daemonSessionId);
+      if (lock.pid !== undefined) {
+        writeDaemonEvent(db, {
+          type: 'daemon:recovery:lock-removed',
+          path: lock.path,
+          pid: lock.pid,
+        }, daemonSessionId);
+      } else {
+        writeDaemonEvent(db, {
+          type: 'daemon:warning',
+          source: 'startup-reconciliation',
+          message: `Removed corrupt queue lock: ${lock.path}`,
+        }, daemonSessionId);
+      }
     }
     for (const lock of report.locksAdopted) {
       writeDaemonEvent(db, {
@@ -241,6 +252,7 @@ describe('caller emission sequence', () => {
     const locksAdopted = daemonEvents.filter((e) => e.type === 'daemon:recovery:lock-adopted');
     expect(markedFailed).toHaveLength(2);
     expect(locksRemoved).toHaveLength(2);
+    expect(locksRemoved.map((event) => JSON.parse(event.data).path)).not.toContain(corruptLockPath);
     expect(locksAdopted).toHaveLength(1);
     expect(locksAdopted[0].origin).toBe('daemon');
     expect(JSON.parse(locksAdopted[0].data)).toMatchObject({ path: liveLockPath, pid: process.pid, prdId: 'prd-live', sessionId: daemonSessionId });
@@ -249,7 +261,7 @@ describe('caller emission sequence', () => {
     const completeEvent = daemonEvents[daemonEvents.length - 1];
     const completePayload = JSON.parse(completeEvent.data) as { runsFailed: number; locksRemoved: number; durationMs: number };
     expect(completePayload.runsFailed).toBe(2);
-    expect(completePayload.locksRemoved).toBe(2);
+    expect(completePayload.locksRemoved).toBe(3);
     expect(typeof completePayload.durationMs).toBe('number');
 
     // All events are daemon-owned (runId=null, origin='daemon').
@@ -260,6 +272,7 @@ describe('caller emission sequence', () => {
       expect(event.origin).toBe('daemon');
       // Verify the daemonSessionId is preserved in the JSON payload
       const payload = JSON.parse(event.data) as { sessionId?: string };
+      expect(safeParseEforgeEvent(payload).success).toBe(true);
       expect(payload.sessionId).toBe(daemonSessionId);
     }
 

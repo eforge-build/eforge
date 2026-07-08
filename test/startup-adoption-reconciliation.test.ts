@@ -93,10 +93,11 @@ describe('startup queued-build adoption reconciliation', () => {
   });
 
   it.each([
-    { name: 'matching live', payload: String(process.pid), status: 'running', reason: undefined, removed: [], adopted: true },
-    { name: 'corrupt', payload: 'bad-pid', status: 'failed', reason: 'reconciled: running queued build has corrupt queue lock at daemon startup', removed: [], adopted: false },
-    { name: 'dead', payload: String(DEAD_PID), status: 'failed', reason: 'reconciled: running queued build queue lock PID is not alive at daemon startup', removed: [], adopted: false },
-  ])('reconciles running queued projection with $name lock', async ({ payload, status, reason, removed, adopted }) => {
+    { name: 'matching live', payload: String(process.pid), runPid: process.pid, status: 'running', reason: undefined, removed: [], adopted: true },
+    { name: 'pid mismatch', payload: String(process.pid), runPid: DEAD_PID, status: 'failed', reason: 'reconciled: running queued build queue lock PID does not match run PID at daemon startup', removed: [], adopted: false },
+    { name: 'corrupt', payload: 'bad-pid', runPid: process.pid, status: 'failed', reason: 'reconciled: running queued build has corrupt queue lock at daemon startup', removed: [], adopted: false },
+    { name: 'dead', payload: String(DEAD_PID), runPid: process.pid, status: 'failed', reason: 'reconciled: running queued build queue lock PID is not alive at daemon startup', removed: [], adopted: false },
+  ])('reconciles running queued projection with $name lock', async ({ payload, runPid, status, reason, removed, adopted }) => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
     mkdirSync(join(cwd, '.eforge', 'queue'), { recursive: true });
@@ -110,7 +111,7 @@ describe('startup queued-build adoption reconciliation', () => {
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
-      pid: process.pid,
+      pid: runPid,
     });
 
     const report = await reconcileOrphanedState(db, cwd);

@@ -1245,6 +1245,7 @@ export class EforgeEngine {
               status: 'failed',
               filePath,
               releaseLock: shouldRelease,
+              propagateDependents: false,
               writeFailedEvidence: async (failedFilePath) => {
             // Run recovery inline, synthesizing from monitor DB and git.
             const setName = prdId;

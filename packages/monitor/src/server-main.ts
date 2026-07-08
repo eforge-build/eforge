@@ -31,6 +31,7 @@ import { existsSync, openSync, closeSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-supervisor.js';
 import { evaluateGuardedRecoveryAutoResume } from './recovery-auto-resume.js';
+import { consumeQueuePrdCancellation } from '@eforge-build/engine/queue/cancellation';
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
 import { readPrdLockStatus } from '@eforge-build/engine/prd-queue';
 import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, type ReconciliationReport } from './startup-reconciliation.js';
@@ -738,9 +739,13 @@ async function main(): Promise<void> {
   // Register in global port registry
   registerPort(cwd, server.port, process.pid);
 
+  if (daemonState && config) {
+    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
+  }
+
   // One-shot reconciliation for state left behind by a previous crash or
-  // hard-kill. Runs after we own the lockfile so no other daemon instance
-  // can be touching the same files.
+  // hard-kill. Runs after persisted terminal queue completions are replayed so
+  // stale running rows do not overwrite authoritative completed/skipped state.
   writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
   const reconcileReport = await reconcileOrphanedState(db, cwd, config ? { queueDir: config.prdQueue.dir } : undefined);
   for (const run of reconcileReport.runsFailed) {
@@ -797,7 +802,6 @@ async function main(): Promise<void> {
 
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
   if (persistent && daemonState && config) {
-    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
     if (config.prdQueue.autoBuild) {
       daemonState.autoBuildController.enable('startup config');
     }
@@ -810,18 +814,30 @@ async function main(): Promise<void> {
   // Orphan detection loop: mark dead PRD build subprocesses as killed.
   // The in-process watcher doesn't need a health check — if it dies, the
   // daemon dies with it, and the next startup's reconciler cleans up.
+  let orphanSweepInProgress = false;
   const orphanTimer = setInterval(() => {
+    if (orphanSweepInProgress) return;
+    orphanSweepInProgress = true;
     void (async () => {
       try {
         const runningRuns = db.getRunningRuns();
         for (const run of runningRuns) {
           if (run.pid && !isPidAlive(run.pid)) {
             const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${run.planSet}.lock`);
+            let orphanFinalStatus: 'failed' | 'skipped' = 'failed';
             if (config && isSafeQueuedPrdId(run.planSet) && existsSync(lockPath)) {
               try {
                 const lock = await readPrdLockStatus(run.planSet, cwd);
                 if (lock.state === 'stale' && lock.pid === run.pid) {
-                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: 'failed', releaseLock: true });
+                  const cancellation = await consumeQueuePrdCancellation({
+                    cwd,
+                    prdId: run.planSet,
+                    ...(run.sessionId !== undefined ? { expectedSessionId: run.sessionId } : {}),
+                    expectedRunId: run.id,
+                    expectedPid: run.pid,
+                  });
+                  orphanFinalStatus = cancellation ? 'skipped' : 'failed';
+                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: orphanFinalStatus, releaseLock: true });
                 } else {
                   const lockDescription = lock.state === 'live' || lock.state === 'stale' ? `${lock.state} pid ${lock.pid}` : lock.state;
                   writeDaemonEvent(db, {
@@ -839,14 +855,14 @@ async function main(): Promise<void> {
               }
             }
             const now = new Date().toISOString();
-            db.updateRunStatus(run.id, 'killed', now);
+            db.updateRunStatus(run.id, orphanFinalStatus === 'skipped' ? 'skipped' : 'killed', now);
             db.insertEvent({
               runId: run.id,
               type: 'phase:end',
               data: JSON.stringify({
                 type: 'phase:end',
                 runId: run.id,
-                result: { status: 'failed', summary: 'Orphaned worker process is no longer alive' },
+                result: { status: orphanFinalStatus, summary: orphanFinalStatus === 'skipped' ? 'Orphaned worker cancellation was requested' : 'Orphaned worker process is no longer alive' },
                 timestamp: now,
               }),
               timestamp: now,
@@ -864,6 +880,8 @@ async function main(): Promise<void> {
         }
       } catch {
         // DB might be closed during shutdown
+      } finally {
+        orphanSweepInProgress = false;
       }
     })();
   }, ORPHAN_CHECK_INTERVAL_MS);
