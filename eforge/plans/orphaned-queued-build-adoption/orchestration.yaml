@@ -1,0 +1,151 @@
+name: orphaned-queued-build-adoption
+description: Bounded planner compiler artifacts for orphaned-queued-build-adoption
+base_branch: main
+validate: []
+plans:
+  - id: mod-idempotent-queue-finalizer
+    name: Shared idempotent queued-build finalizer
+    depends_on: []
+    branch: orphaned-queued-build-adoption/mod-idempotent-queue-finalizer
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: mod-startup-adoption-reconciliation
+    name: Startup adoption and lock reconciliation
+    depends_on:
+      - mod-idempotent-queue-finalizer
+    branch: orphaned-queued-build-adoption/mod-startup-adoption-reconciliation
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: mod-adopt-success-state-artifact-preservation
+    name: Adopted successful build state/artifact preservation
+    depends_on:
+      - mod-idempotent-queue-finalizer
+      - mod-startup-adoption-reconciliation
+    branch: orphaned-queued-build-adoption/mod-adopt-success-state-artifact-preservation
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: mod-adopted-failure-cancel-control
+    name: Adopted failure and cancellation control
+    depends_on:
+      - mod-idempotent-queue-finalizer
+      - mod-startup-adoption-reconciliation
+    branch: orphaned-queued-build-adoption/mod-adopted-failure-cancel-control
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: mod-ac008-regression-coverage
+    name: AC-008 adoption/reconciliation regression coverage
+    depends_on:
+      - mod-adopt-success-state-artifact-preservation
+      - mod-adopted-failure-cancel-control
+      - mod-idempotent-queue-finalizer
+      - mod-startup-adoption-reconciliation
+    branch: orphaned-queued-build-adoption/mod-ac008-regression-coverage
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings derived deterministically from compiler risk
+    signals.
+
+    Set-level defaults follow the highest plan risk score (4).
+
+    - mod-ac008-regression-coverage: risk score 1 (low-confidence-localization);
+    declared docs work none, test work author-new; derived build implement ->
+    test-write -> test-cycle -> review-cycle and auto review with perspectives
+    code, test, 1 round(s), standard evaluation
+
+    - mod-adopt-success-state-artifact-preservation: risk score 1
+    (dependency-root); declared docs work none, test work author-new; derived
+    build implement -> test-write -> test-cycle -> review-cycle and auto review
+    with perspectives code, test, 1 round(s), standard evaluation
+
+    - mod-adopted-failure-cancel-control: risk score 1 (dependency-root);
+    declared docs work none, test work author-new; derived build implement ->
+    test-write -> test-cycle -> review-cycle and auto review with perspectives
+    code, test, 1 round(s), standard evaluation
+
+    - mod-idempotent-queue-finalizer: risk score 4 (large-plan,
+    low-confidence-localization, multi-subsystem, dependency-root); declared
+    docs work none, test work author-new; derived build implement -> test-write
+    -> test-cycle -> review-cycle and parallel review with perspectives code,
+    security, test, verify, 2 round(s), strict evaluation
+
+    - mod-startup-adoption-reconciliation: risk score 4 (large-plan,
+    low-confidence-localization, multi-subsystem, dependency-root); declared
+    docs work none, test work author-new; derived build implement -> test-write
+    -> test-cycle -> review-cycle and parallel review with perspectives code,
+    security, test, verify, 2 round(s), strict evaluation
