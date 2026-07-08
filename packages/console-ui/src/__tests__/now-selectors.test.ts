@@ -658,7 +658,7 @@ describe('selectNowActiveBuildCards', () => {
     expect(cards[0].transientNotice).toBeNull();
   });
 
-  it('derives gap-close lifecycle after PRD validation discovers gaps', () => {
+  it('derives gap-close phase progress after PRD validation discovers gaps', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
     const events: EforgeEvent[] = [
       { type: 'planning:complete', plans: [{ id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: '' }] } as unknown as EforgeEvent,
@@ -673,9 +673,9 @@ describe('selectNowActiveBuildCards', () => {
     });
     const detail = makeActiveDetail('s1', { runState: rs });
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
-    expect(cards[0].lifecycle.phase).toBe('gap-close');
-    expect(cards[0].lifecycle.prdValidationComplete).toBe(true);
-    expect(cards[0].lifecycle.gapCloseObserved).toBe(true);
+    // Gaps found is the expected first-round outcome: the check reads passed
+    // and the follow-up work renders as gap-close running.
+    expect(cards[0].phaseProgress).toEqual({ prd: 'passed', plans: 'passed', prdValidation: 'passed', gapClose: 'running', finalValidation: 'pending', landing: 'pending' });
   });
 
   it('preserves a card when active detail is missing (streamStatus: connecting)', () => {

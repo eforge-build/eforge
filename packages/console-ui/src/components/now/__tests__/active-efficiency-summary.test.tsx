@@ -6,7 +6,7 @@ import type { NowActiveBuildCard } from '@/lib/selectors/now';
 function card(overrides: Partial<NowActiveBuildCard> = {}): NowActiveBuildCard {
   return {
     sessionId: 's1', runId: 'r1', planSet: 'Plan', command: 'build', status: 'running', startedAt: '2024-01-01T00:00:00.000Z', durationMs: 60_000, cwd: '/x', profile: null, planCount: null, streamStatus: 'connected', currentPhase: null, latestAgent: null, latestProgress: null, latestError: null, transientNotice: null,
-    lifecycle: { phase: 'plans', prdValidationComplete: false, gapCloseComplete: false, finalValidationComplete: false, gapCloseObserved: false },
+    phaseProgress: { prd: 'passed', plans: 'running', prdValidation: 'pending', gapClose: 'pending', finalValidation: 'pending', landing: 'pending' },
     planProgress: { pending: 0, running: 1, complete: 0, failed: 0, total: 1 }, tokens: 0, cost: 0, cachePercent: 0, efficiency: null, href: '#', miniGanttRows: [], planLanes: [], planning: { agents: [], running: false }, hasPlanningRow: false,
     ...overrides,
   };

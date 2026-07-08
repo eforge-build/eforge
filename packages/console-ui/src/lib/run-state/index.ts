@@ -44,6 +44,8 @@ export type {
 export { getSummaryStats } from './selectors/summary-stats';
 export { selectRunEfficiencyMetrics } from './selectors/efficiency';
 export type { EfficiencyAvailability, EfficiencyMetric, EfficiencySampleCounts, RunEfficiencyMetrics } from './selectors/efficiency';
+export { selectBuildPhaseProgress, EMPTY_BUILD_PHASE_PROGRESS } from './selectors/phase-progress';
+export type { BuildPhaseProgress, PhaseProgressStatus } from './selectors/phase-progress';
 export {
   selectPlanStatusCounts,
   selectCurrentStageForPlan,

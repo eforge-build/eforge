@@ -22,12 +22,13 @@ function card(overrides: Partial<NowActiveBuildCard> = {}): NowActiveBuildCard {
     latestProgress: null,
     latestError: null,
     transientNotice: null,
-    lifecycle: {
-      phase: 'build',
-      prdValidationComplete: false,
-      gapCloseComplete: false,
-      finalValidationComplete: false,
-      gapCloseObserved: false,
+    phaseProgress: {
+      prd: 'passed',
+      plans: 'running',
+      prdValidation: 'pending',
+      gapClose: 'pending',
+      finalValidation: 'pending',
+      landing: 'pending',
     },
     planProgress: { total: 1, complete: 0, running: 1, pending: 0, failed: 0 },
     tokens: 12_500,
@@ -44,6 +45,77 @@ function card(overrides: Partial<NowActiveBuildCard> = {}): NowActiveBuildCard {
 }
 
 describe('ActiveBuildCard', () => {
+  it('renders shared phase-progress status in the rail', () => {
+    const { container } = render(<ActiveBuildCard card={card({
+      phaseProgress: {
+        prd: 'running',
+        plans: 'pending',
+        prdValidation: 'pending',
+        gapClose: 'pending',
+        finalValidation: 'pending',
+        landing: 'pending',
+      },
+      hasPlanningRow: true,
+    })} />);
+
+    expect(container.querySelector('[title="PRD: active"]')).toBeTruthy();
+    expect(container.querySelector('[title="PRD: done"]')).toBeNull();
+  });
+
+  it('maps every phase-progress status onto the rail (skipped/passed → done, failed → failed, pending → pending)', () => {
+    const { container } = render(<ActiveBuildCard card={card({
+      phaseProgress: {
+        prd: 'skipped',
+        plans: 'failed',
+        prdValidation: 'passed',
+        gapClose: 'pending',
+        finalValidation: 'pending',
+        landing: 'pending',
+      },
+    })} />);
+
+    // 'skipped' and 'passed' both collapse to the rail's 'done'.
+    expect(container.querySelector('[title="PRD: done"]')).toBeTruthy();
+    expect(container.querySelector('[title="PRD check: done"]')).toBeTruthy();
+    expect(container.querySelector('[title="Plans: failed"]')).toBeTruthy();
+    expect(container.querySelector('[title="Gap close: pending"]')).toBeTruthy();
+    expect(container.querySelector('[title="Final check: pending"]')).toBeTruthy();
+    expect(container.querySelector('[title="Land: pending"]')).toBeTruthy();
+    // Nothing reads as active when no phase is running.
+    expect(container.querySelector('[title$=": active"]')).toBeNull();
+  });
+
+  it('uses the blue live pulse when a lifecycle phase is running', () => {
+    // Default fixture: plans is 'running', no active mini-gantt plan rows, no
+    // error — the pulse must derive liveness from phaseProgress alone.
+    const { container } = render(<ActiveBuildCard card={card({ miniGanttRows: [] })} />);
+
+    const pulse = container.querySelector('.pointer-events-none.absolute.inset-0');
+    expect(pulse).toBeTruthy();
+    expect(pulse?.className).toContain('bg-blue/5');
+    expect(pulse?.className).not.toContain('bg-muted/10');
+  });
+
+  it('uses the muted pulse when no lifecycle phase is running', () => {
+    const { container } = render(<ActiveBuildCard card={card({
+      phaseProgress: {
+        prd: 'passed',
+        plans: 'passed',
+        prdValidation: 'passed',
+        gapClose: 'pending',
+        finalValidation: 'pending',
+        landing: 'pending',
+      },
+      latestError: null,
+      miniGanttRows: [],
+    })} />);
+
+    const pulse = container.querySelector('.pointer-events-none.absolute.inset-0');
+    expect(pulse).toBeTruthy();
+    expect(pulse?.className).toContain('bg-muted/10');
+    expect(pulse?.className).not.toContain('bg-blue/5');
+  });
+
   it('renders explicit live labels and navigates from the title', () => {
     const onNavigate = vi.fn();
     render(<ActiveBuildCard card={card()} onNavigate={onNavigate} />);

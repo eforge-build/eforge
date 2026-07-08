@@ -18,8 +18,8 @@ import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { isTerminalStatus } from '@/lib/selectors/active-builds';
 import { toConsolePath } from '@/lib/navigation';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
-import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows, selectPlanLanes, selectPlanningLane, selectRunEfficiencyMetrics } from '@/lib/run-state';
-import type { RunState, PlanStatusCounts, MiniGanttRow, PlanLane, PlanningLane, RunEfficiencyMetrics } from '@/lib/run-state';
+import { selectPlanStatusCounts, getSummaryStats, selectMiniGanttRows, selectPlanLanes, selectPlanningLane, selectRunEfficiencyMetrics, selectBuildPhaseProgress, EMPTY_BUILD_PHASE_PROGRESS } from '@/lib/run-state';
+import type { RunState, PlanStatusCounts, MiniGanttRow, PlanLane, PlanningLane, RunEfficiencyMetrics, BuildPhaseProgress } from '@/lib/run-state';
 import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
 import type { NowQueueStack } from './queue-stacks';
 import { selectNowQueueSummary } from './queue-summary';
@@ -74,23 +74,6 @@ export interface NowAttentionItem {
   failedEnqueue?: FailedEnqueueInfo;
 }
 
-export type NowBuildLifecyclePhase =
-  | 'prd'
-  | 'plans'
-  | 'prd-validation'
-  | 'gap-close'
-  | 'final-validation'
-  | 'landing'
-  | 'idle';
-
-export interface NowBuildLifecycle {
-  phase: NowBuildLifecyclePhase;
-  prdValidationComplete: boolean;
-  gapCloseComplete: boolean;
-  finalValidationComplete: boolean;
-  gapCloseObserved: boolean;
-}
-
 export interface NowActiveBuildCard {
   sessionId: string;
   runId: string;
@@ -119,8 +102,12 @@ export interface NowActiveBuildCard {
    * build is progressing normally or has already recovered.
    */
   transientNotice: string | null;
-  /** High-level build lifecycle derived from plan, PRD validation, and gap-close events. */
-  lifecycle: NowBuildLifecycle;
+  /**
+   * Shared lifecycle-phase statuses (PRD through landing) from
+   * selectBuildPhaseProgress; EMPTY_BUILD_PHASE_PROGRESS until the session
+   * detail stream connects.
+   */
+  phaseProgress: BuildPhaseProgress;
   /** Plan status counts derived from reduced RunState. */
   planProgress: PlanStatusCounts;
   /** Total input tokens accumulated across all agent:result events (including live overlay). */
@@ -132,11 +119,8 @@ export interface NowActiveBuildCard {
   /** Live efficiency metrics derived from reduced run state, null until detail connects. */
   efficiency: RunEfficiencyMetrics | null;
   href: string;
-  /** Mini-Gantt rows derived from RunState for the pipeline strip. */
   miniGanttRows: MiniGanttRow[];
-  /** Per-plan lanes (stage track + live agents) for the mini swimlane. */
   planLanes: PlanLane[];
-  /** Planning-phase lane summary (global planner/plan-reviewer agents). */
   planning: PlanningLane;
   /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
   hasPlanningRow: boolean;
@@ -591,69 +575,6 @@ function extractTransientNotice(runState: RunState): string | null {
   return null;
 }
 
-const EMPTY_LIFECYCLE: NowBuildLifecycle = {
-  phase: 'idle',
-  prdValidationComplete: false,
-  gapCloseComplete: false,
-  finalValidationComplete: false,
-  gapCloseObserved: false,
-};
-
-function extractBuildLifecycle(runState: RunState): NowBuildLifecycle {
-  let phase: NowBuildLifecyclePhase = 'idle';
-  let prdValidationComplete = false;
-  let gapCloseComplete = false;
-  let finalValidationComplete = false;
-  let gapCloseObserved = false;
-  let afterGapClose = false;
-
-  if (runState.earlyOrchestration || runState.events.some((e) => e.event.type.startsWith('planning:'))) {
-    phase = 'prd';
-  }
-
-  if (Object.keys(runState.planStatuses).length > 0) {
-    phase = 'plans';
-  }
-
-  for (const { event } of runState.events) {
-    switch (event.type) {
-      case 'prd_validation:start':
-        phase = afterGapClose ? 'final-validation' : 'prd-validation';
-        break;
-      case 'prd_validation:complete':
-        if (afterGapClose) {
-          finalValidationComplete = true;
-          phase = 'landing';
-        } else {
-          prdValidationComplete = true;
-          phase = 'prd-validation';
-        }
-        break;
-      case 'gap_close:start':
-      case 'gap_close:plan_ready':
-        gapCloseObserved = true;
-        phase = 'gap-close';
-        break;
-      case 'gap_close:complete':
-        gapCloseObserved = true;
-        gapCloseComplete = true;
-        afterGapClose = true;
-        phase = 'final-validation';
-        break;
-      default:
-        break;
-    }
-  }
-
-  return {
-    phase,
-    prdValidationComplete,
-    gapCloseComplete,
-    finalValidationComplete,
-    gapCloseObserved,
-  };
-}
-
 export function selectNowActiveBuildCards(
   runs: RunInfo[],
   sessionMetadata: Record<string, { planCount: number | null; baseProfile: string | null }>,
@@ -699,14 +620,13 @@ export function selectNowActiveBuildCards(
     let latestProgress: string | null = null;
     let latestError: string | null = null;
     let transientNotice: string | null = null;
-    let lifecycle: NowBuildLifecycle = EMPTY_LIFECYCLE;
+    let phaseProgress: BuildPhaseProgress = EMPTY_BUILD_PHASE_PROGRESS;
     let planProgress: PlanStatusCounts = EMPTY_PLAN_PROGRESS;
     let tokens = 0;
     let cost = 0;
     let cachePercent = 0;
     let efficiency: RunEfficiencyMetrics | null = null;
-    let miniGanttRows: MiniGanttRow[] = [];
-    let planLanes: PlanLane[] = [];
+    let miniGanttRows: MiniGanttRow[] = [], planLanes: PlanLane[] = [];
     let planning: PlanningLane = EMPTY_PLANNING_LANE;
     let hasPlanningRow = false;
 
@@ -718,7 +638,7 @@ export function selectNowActiveBuildCards(
       latestProgress = extractLatestProgressFromRunState(rs);
       latestError = extractTerminalErrorFromRunState(rs);
       transientNotice = latestError ? null : extractTransientNotice(rs);
-      lifecycle = extractBuildLifecycle(rs);
+      phaseProgress = selectBuildPhaseProgress(rs);
       planProgress = selectPlanStatusCounts(rs);
       const stats = getSummaryStats(rs);
       tokens = stats.tokensIn;
@@ -751,7 +671,7 @@ export function selectNowActiveBuildCards(
       latestProgress,
       latestError,
       transientNotice,
-      lifecycle,
+      phaseProgress,
       planProgress,
       tokens,
       cost,
