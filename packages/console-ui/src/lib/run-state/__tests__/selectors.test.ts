@@ -379,6 +379,33 @@ describe('selectPlanLanes', () => {
     ]);
   });
 
+  it('surfaces a feature-branch base-sync lane present only via live merge-resolver threads', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          {
+            id: 'plan-01',
+            name: 'Plan One',
+            dependsOn: [],
+            build: ['implement'],
+            review: { strategy: 'auto', maxRounds: 1 },
+          },
+        ],
+      },
+      agentThreads: [
+        { planId: 'eforge/feature-x', agent: 'merge-conflict-resolver', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 1_000 },
+      ] as RunState['agentThreads'],
+    });
+
+    const lanes = selectPlanLanes(state);
+    expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'eforge/feature-x']);
+    expect(lanes[1].planName).toBe('Feature branch: eforge/feature-x');
+    expect(lanes[1].agents).toEqual([{ agent: 'merge-conflict-resolver', tokens: 1_000, running: true }]);
+  });
+
   it('surfaces a gap-close lane present only via live threads (no status yet)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },

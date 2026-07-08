@@ -23,7 +23,6 @@ import { eforgeReducer, createInitialRunState } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
 // Fixtures
-
 function makeQueue(overrides: Partial<QueueItem>[] = []): QueueItem[] {
   return overrides.map((o, i) => ({
     id: `q-${i}`,
@@ -587,6 +586,7 @@ describe('selectNowActiveBuildCards', () => {
     const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
     expect(cards[0].latestProgress).toBe('Implementing feature X');
   });
+
 
   it('derives latest error from plan:build:failed', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];

@@ -312,8 +312,8 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
   // planStatuses entries always win. A lane whose last outcome is a
   // failed/timed-out validation command never derives completion: everything
   // has ended, but the phase terminally failed rather than finished.
-  const derivedPhaseComplete = (planId: string, stage: PipelineStage | undefined): boolean => {
-    if (stage !== undefined || !isRegisteredPhaseLane(planId)) return false;
+  const derivedLaneComplete = (planId: string, stage: PipelineStage | undefined): boolean => {
+    if (stage !== undefined || (!isRegisteredPhaseLane(planId) && !/^eforge\//.test(planId))) return false;
     const threads = threadsByPlan.get(planId) ?? [];
     const spans = validationSpansByLane.get(planId) ?? [];
     if (threads.length === 0 && spans.length === 0) return false;
@@ -328,7 +328,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
       planName,
       stage,
       buildStages: buildByPlan.get(planId) ?? [],
-      isComplete: stage === 'complete' || derivedPhaseComplete(planId, stage),
+      isComplete: stage === 'complete' || derivedLaneComplete(planId, stage),
       isFailed: stage === 'failed',
       agents: aggregateLaneAgents(threadsByPlan.get(planId) ?? []),
     };
@@ -352,7 +352,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     if (isRegisteredPhaseLane(id) && phaseLaneHasContent(id)) extras.add(id);
   }
   for (const id of threadsByPlan.keys()) {
-    if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);
+    if (!known.has(id) && (isRegisteredPhaseLane(id) || /^eforge\//.test(id))) extras.add(id);
   }
   for (const id of validationSpansByLane.keys()) {
     if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);

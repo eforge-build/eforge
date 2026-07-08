@@ -407,6 +407,7 @@ export { DAEMON_API_VERSION } from './api-version-const.js';
 
 export type {
   EforgeEvent,
+  BaseSyncEvent,
   AgentRole,
   AgentResultData,
   EforgeResult,

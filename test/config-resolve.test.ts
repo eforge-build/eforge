@@ -338,6 +338,18 @@ describe('mergePartialConfigs', () => {
     expect(merged.extensions?.policyGateTimeoutMs).toBe(2000);
     expect(merged.extensions?.policyGateFailurePolicy).toBe('fail-closed');
   });
+
+  it('landing nested config is preserved across layers', () => {
+    const merged = mergePartialConfigs(
+      { landing: { pr: { autoMerge: 'always' }, directPrBaseSync: { conflictAttempts: 7 } } },
+      { landing: { action: 'pr' } },
+    );
+    expect(merged.landing).toEqual({
+      action: 'pr',
+      pr: { autoMerge: 'always' },
+      directPrBaseSync: { conflictAttempts: 7 },
+    });
+  });
 });
 
 describe('findConfigFile', () => {

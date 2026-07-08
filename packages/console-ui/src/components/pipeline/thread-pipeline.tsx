@@ -154,8 +154,9 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     const validationCommandIds = validationCommandLaneIds(validationCommands, events);
     const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id);
     const isMapReduceLane = (id: string) => mapReduce?.laneIds.has(id) === true;
+    const isFeatureBranchLane = (id: string) => /^eforge\//.test(id) && threadsByPlan.has(id);
     const addPlanStatusLane = (id: string) => {
-      if (!hasArtifactContext || realPlanIds.has(id) || isMapReduceLane(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
+      if (!hasArtifactContext || realPlanIds.has(id) || isMapReduceLane(id) || isFeatureBranchLane(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
         add(id);
       }
     };

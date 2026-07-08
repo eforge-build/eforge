@@ -9,6 +9,10 @@ describe('laneLabel', () => {
     expect(laneLabel('planning')).toBe('Planning');
   });
 
+  it('returns "Direct Base Sync" for base-sync', () => {
+    expect(laneLabel('base-sync')).toBe('Direct Base Sync');
+  });
+
   it('returns "Validation" for validation', () => {
     expect(laneLabel('validation')).toBe('Validation');
   });
@@ -49,16 +53,20 @@ describe('laneOrder', () => {
     expect(laneOrder('plan-99-feature')).toBe(1);
   });
 
-  it('returns 2 for validation', () => {
-    expect(laneOrder('validation')).toBe(2);
+  it('returns 2 for base-sync', () => {
+    expect(laneOrder('base-sync')).toBe(2);
   });
 
-  it('returns 3 for gap-close', () => {
-    expect(laneOrder('gap-close')).toBe(3);
+  it('returns 3 for validation', () => {
+    expect(laneOrder('validation')).toBe(3);
   });
 
-  it('returns 4 for final-validation', () => {
-    expect(laneOrder('final-validation')).toBe(4);
+  it('returns 4 for gap-close', () => {
+    expect(laneOrder('gap-close')).toBe(4);
+  });
+
+  it('returns 5 for final-validation', () => {
+    expect(laneOrder('final-validation')).toBe(5);
   });
 
   it('returns 1 (plan tier) for unknown lane keys', () => {
@@ -68,6 +76,7 @@ describe('laneOrder', () => {
 
 describe('isRegisteredPhaseLane', () => {
   it('returns true for registered phase lanes', () => {
+    expect(isRegisteredPhaseLane('base-sync')).toBe(true);
     expect(isRegisteredPhaseLane('validation')).toBe(true);
     expect(isRegisteredPhaseLane('gap-close')).toBe(true);
     expect(isRegisteredPhaseLane('final-validation')).toBe(true);
@@ -82,7 +91,7 @@ describe('isRegisteredPhaseLane', () => {
 describe('LANE_REGISTRY', () => {
   it('contains all known phase lanes in order', () => {
     const ids = LANE_REGISTRY.map((e) => e.id);
-    expect(ids).toEqual(['planning', 'satisfaction-gate', 'repository-exploration', 'validation', 'gap-close', 'final-validation']);
+    expect(ids).toEqual(['planning', 'satisfaction-gate', 'repository-exploration', 'base-sync', 'validation', 'gap-close', 'final-validation']);
   });
 
   it('all entries have kind "phase"', () => {

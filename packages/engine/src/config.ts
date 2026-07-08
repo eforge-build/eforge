@@ -1446,7 +1446,18 @@ export function mergePartialConfigs(
     };
   }
   if (global.landing || project.landing) {
-    result.landing = { ...global.landing, ...project.landing };
+    const mergedPr = (global.landing?.pr || project.landing?.pr)
+      ? { ...global.landing?.pr, ...project.landing?.pr }
+      : undefined;
+    const mergedDirectPrBaseSync = (global.landing?.directPrBaseSync || project.landing?.directPrBaseSync)
+      ? { ...global.landing?.directPrBaseSync, ...project.landing?.directPrBaseSync }
+      : undefined;
+    result.landing = {
+      ...global.landing,
+      ...project.landing,
+      ...(mergedPr !== undefined ? { pr: mergedPr } : {}),
+      ...(mergedDirectPrBaseSync !== undefined ? { directPrBaseSync: mergedDirectPrBaseSync } : {}),
+    };
   }
 
   return result;

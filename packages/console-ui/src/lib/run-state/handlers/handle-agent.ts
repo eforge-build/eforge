@@ -15,7 +15,7 @@
  * Private helpers:
  *   updateThread — finds and immutably patches a thread in the array.
  */
-import type { AgentThread, AgentActivityFacts } from '../types';
+import type { AgentThread, AgentActivityFacts, RunState } from '../types';
 import type { EventHandler } from './handler-types';
 import { formatThinking } from '../format';
 
@@ -71,12 +71,26 @@ function updateThread(
 // Handlers
 // ---------------------------------------------------------------------------
 
-function agentThreadPlanId(event: AgentStartEvent): string | undefined {
+function latestOpenBaseSyncFeatureBranch(state: Readonly<RunState>): string | undefined {
+  for (let i = state.events.length - 1; i >= 0; i--) {
+    const event = state.events[i].event;
+    if (event.type === 'base-sync:resolver:complete' || event.type === 'base-sync:success' || event.type === 'base-sync:budget:exhausted') {
+      return undefined;
+    }
+    if (event.type === 'base-sync:resolver:start' || event.type === 'base-sync:conflict:attempt' || event.type === 'base-sync:start') {
+      return event.featureBranch;
+    }
+  }
+  return undefined;
+}
+
+function agentThreadPlanId(event: AgentStartEvent, state: Readonly<RunState>): string | undefined {
   if (event.planId !== undefined) return event.planId;
   // Compatibility for older/current runs: gap-closer was emitted without a
   // planId during its plan-generation pass, which caused it to render in the
   // synthetic Compile/global lane instead of the Gap Close phase lane.
   if (event.agent === 'gap-closer') return 'gap-close';
+  if (event.agent === 'merge-conflict-resolver') return latestOpenBaseSyncFeatureBranch(state);
   return undefined;
 }
 
@@ -84,7 +98,7 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
   const thread: AgentThread = {
     agentId: event.agentId,
     agent: event.agent,
-    planId: agentThreadPlanId(event),
+    planId: agentThreadPlanId(event, state),
     startedAt: event.timestamp,
     endedAt: null,
     durationMs: null,

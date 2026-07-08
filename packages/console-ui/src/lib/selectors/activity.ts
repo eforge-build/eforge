@@ -64,6 +64,7 @@ export type ActivityGroupCounts = Record<ActivityFamily, number>;
  * these prefixes are classified as the 'session' family.
  */
 const SESSION_PREFIXES = [
+  'base-sync:',
   'session:',
   'phase:',
   'planning:',
@@ -171,6 +172,9 @@ const IDENTIFIER_FIELDS: Array<[string, string]> = [
   ['planId', 'Plan'],
   ['prdId', 'PRD'],
   ['planSet', 'Plan Set'],
+  ['featureBranch', 'Feature Branch'],
+  ['baseBranch', 'Base Branch'],
+  ['remote', 'Remote'],
   ['queueId', 'Queue'],
   ['id', 'ID'],
   ['agent', 'Agent'],
@@ -191,6 +195,8 @@ export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; v
         // Preserve the raw slug so identifier searches against the original
         // value (e.g. "add-mcp-server-support") still match the row.
         identifiers.push({ label, value: displayValue, rawValue: val });
+      } else if (field === 'planId' && /^eforge\//.test(val)) {
+        identifiers.push({ label: 'Feature Branch', value: val });
       } else {
         identifiers.push({ label, value: val });
       }
