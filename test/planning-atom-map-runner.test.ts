@@ -47,7 +47,7 @@ describe('planning atom map runner', () => {
     const harness = new PrefixedSubmitHarness([{ toolCalls: [{ tool: 'submit_atom_output', toolUseId: 'submit-invalid', input: { atomId: task.atomId }, output: 'unused' }] }]);
     const events: unknown[] = [];
 
-    await expect(runPlanningAtomPlanner({ task, sourceContent: data.content, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } })).rejects.toThrow('Atom planner did not call mcp__eforge_engine__submit_atom_output');
+    await expect(runPlanningAtomPlanner({ task, sourceContent: data.content, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } })).rejects.toThrow('Call mcp__eforge_engine__submit_atom_output again with a schema-valid payload.');
 
     const toolResult = events.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result') as { output?: string } | undefined;
     expect(toolResult?.output).toContain('Call mcp__eforge_engine__submit_atom_output again with a schema-valid payload.');
@@ -99,8 +99,8 @@ describe('planning atom map runner', () => {
 
     expect(result.mapComplete).toBe(false);
     expect(result.failedAtomIds).toEqual([task.atomId]);
-    expect(result.validationErrors).toContain('unknown aspect:ac-999:evidence:missing');
-    expect(result.validationErrors).toContain(`atom output missing aspect update:${task.atomId}:${task.aspectIds[0]}`);
+    expect(result.validationErrors.join('\n')).toContain('Submission rejected: atom output missing aspect update');
+    expect(result.validationErrors.join('\n')).toContain('unknown aspect:ac-999:evidence:missing');
     expect(result.coverage.incompleteCriteria).toEqual(['ac-001']);
   });
 
@@ -113,7 +113,7 @@ describe('planning atom map runner', () => {
 
     expect(result.mapComplete).toBe(false);
     expect(result.failedAtomIds).toEqual([task.atomId]);
-    expect(result.validationErrors).toContain(`resolved aspect must cite producing atom:${task.atomId}:${task.aspectIds[0]}`);
+    expect(result.validationErrors.join('\n')).toContain(`Submission rejected: resolved aspect must cite producing atom:${task.atomId}:${task.aspectIds[0]}`);
     expect(result.coverage.completeCriteria).toEqual([]);
     expect(result.coverage.incompleteCriteria).toEqual(['ac-001']);
     expect(result.outputs[0].aspectUpdates).toEqual([]);

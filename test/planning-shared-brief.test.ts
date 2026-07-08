@@ -190,6 +190,28 @@ describe('planning shared brief and evidence ownership', () => {
     expect(harness.prompts[1]).toContain('sharedInterfaceRefs');
     expect(harness.prompts[1]).toContain('Event schema variants share the same discriminant contract.');
   });
+
+  it('rejects unowned shared interface findings at submit time', async () => {
+    const data = fixture(['engine updates the event schema contract for one aspect.', 'engine validates the event schema contract for another aspect.']);
+    const primaryTask = data.tasks.find((task) => task.sharedBrief?.ownedInterfaceKeys.includes('schema-contract'))!;
+    const consumerTask = data.tasks.find((task) => task.sharedBrief?.sharedInterfaceRefs.some((ref) => ref.key === 'schema-contract'))!;
+    const consumerFinding = { findingId: 'finding-consumer-schema', sourceAtomId: consumerTask.atomId, interfaceKey: 'schema-contract', aspectIds: consumerTask.aspectIds, summary: 'Consumer tried to publish the shared schema finding.', byteLength: 52 };
+    const live: unknown[] = [];
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(primaryTask)),
+      atomSubmission(completedOutput(consumerTask, { sharedFindings: [consumerFinding] })),
+    ]);
+
+    const result = await runPlanningAtomMap({ graph: data.graph, inventory: data.inventory, sharedBrief: data.brief, sourceContent: data.content, cwd: process.cwd(), harness, parallelism: 2, onEvent: (event) => live.push(event) });
+
+    expect(result.mapComplete).toBe(false);
+    expect(result.completedAtomIds).toEqual([primaryTask.atomId]);
+    expect(result.failedAtomIds).toEqual([consumerTask.atomId]);
+    expect(result.validationErrors.join('\n')).toContain('Submission rejected: shared finding references unowned interface:finding-consumer-schema:schema-contract');
+    expect(result.sharedFindings).toEqual([]);
+    const toolResult = live.find((event): event is { type: 'agent:tool_result'; planId?: string; output: string } => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result' && (event as { planId?: string }).planId === consumerTask.atomId);
+    expect(toolResult?.output).toContain('Call submit_atom_output again with a semantically valid atom output.');
+  });
 });
 
 function atomSubmission(output: PlanningAtomOutput) {

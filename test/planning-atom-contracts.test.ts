@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { safeParseWithSchema } from '@eforge-build/client';
-import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, PlanningAtomModuleCandidateSchema, summarizePlanningAtomOutputs, validatePlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSourceInventory, PlanningAtomModuleCandidateSchema, summarizePlanningAtomOutputs, validatePlanningAtomOutput, validatePlanningAtomOutputForTask, type PlanningAtomOutput, type PlanningAtomTask, type PlanningCriterionAspect } from '@eforge-build/engine/planner-compiler';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const hash = (value: string) => `h${value.length}`.padEnd(64, '0');
@@ -76,6 +76,18 @@ describe('planning atom map contracts', () => {
     } });
 
     expect(invalid).toEqual({ ok: false, errors: [`resolved aspect cites non-owner atom:${task.atomId}:ac-001:evidence:packages-engine-src-config-ts:other-atom`, `resolved aspect must cite producing atom:${task.atomId}:ac-001:evidence:packages-engine-src-config-ts`, 'unknown aspect:ac-999:evidence:missing'] });
+  });
+
+  it('submit-time task validation accepts resolved aspects that cite co-owner atoms', () => {
+    const { graph, inventory } = graphFrom(['engine updates `packages/engine/src/config.ts`.', 'client CLI updates `packages/client/src/events.ts` after ac-001.']);
+    const ownerAtomIds = graph.atoms.map((atom) => atom.atomId).sort();
+    const sharedAspect: PlanningCriterionAspect = { aspectId: 'ac-001:general:shared', criterionId: 'ac-001', label: 'general: shared', source: { kind: 'general', value: 'shared' }, required: true, atomIds: ownerAtomIds };
+    const [task] = buildPlanningAtomTasks({ graph, inventory, aspects: [sharedAspect] });
+    const output: PlanningAtomOutput = { atomId: task.atomId, status: 'completed', aspectUpdates: [{ aspectId: sharedAspect.aspectId, status: 'resolved', completedByAtomIds: ownerAtomIds }] };
+
+    expect(task.aspects).toEqual([sharedAspect]);
+    expect(validatePlanningAtomOutputForTask({ task, output })).toEqual({ ok: true, errors: [] });
+    expect(validatePlanningAtomOutput({ graph, inventory, aspects: [sharedAspect], task, output })).toEqual({ ok: true, errors: [] });
   });
 
   it('rejects vague represented outputs and over-budget compact handoffs', () => {

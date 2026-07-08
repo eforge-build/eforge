@@ -17,6 +17,7 @@ import {
 } from "@eforge-build/client";
 import { DAEMON_NOT_RUNNING_GUIDANCE, piDaemonRequest } from "./daemon-requests.js";
 import { formatDuration } from "./pure-helpers.js";
+import { getPiDaemonVersionMismatch } from "./version-compat.js";
 import { showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 
 interface ProfileShowData {
@@ -185,9 +186,7 @@ async function loadStatusSnapshot(cwd: string, piExtensionVersion: string): Prom
   }
 
   const daemonVersion = versionResult.data.eforgeVersion ?? "unknown (pre-version-aware daemon)";
-  const versionMismatch = versionResult.data.eforgeVersion !== undefined && daemonVersion !== piExtensionVersion
-    ? "Daemon was built from a different version than the installed Pi extension. Restart the daemon (or update the Pi extension) so they match."
-    : undefined;
+  const versionMismatch = getPiDaemonVersionMismatch(versionResult.data.eforgeVersion, piExtensionVersion);
 
   const [profileResult, configResult, queueResult, summariesResult] = await Promise.all([
     piDaemonRequest<ProfileShowData>(cwd, "GET", API_ROUTES.profileShow).catch(() => null),
