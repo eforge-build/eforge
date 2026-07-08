@@ -389,7 +389,7 @@ const landingConfigSchema = z.object({
   }).optional(),
   directPrBaseSync: z.object({
     conflictAttempts: clampedPositiveIntegerConfigSchema.optional().describe('Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.'),
-  }).optional(),
+  }).strict().optional(),
 }).describe(
   'Publication action taken after all plans complete and validation passes.',
 );

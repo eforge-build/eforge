@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { initDisplay, renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
+import { consumeSpinnerEffectsForTesting, initDisplay, renderEvent, stopAllSpinners } from '../packages/eforge/src/cli/display.js';
 import type { CompileScopeContextFailure, EforgeEvent, PlannerInspectionSummary } from '@eforge-build/client';
 
 function captureConsoleLogs(run: () => void): string[] {
@@ -21,6 +21,7 @@ function stripAnsi(value: string): string {
 
 afterEach(() => {
   stopAllSpinners();
+  consumeSpinnerEffectsForTesting();
   initDisplay();
 });
 
@@ -149,6 +150,44 @@ describe('renderEvent', () => {
     expect(lines.join('\n')).toContain('attempt 1/2');
   });
 
+
+  it('renders direct PR base-sync success progress events through the top-level dispatcher', () => {
+    renderEvent({ type: 'base-sync:start', timestamp: '2025-01-01T00:00:00.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', maxAttempts: 2 });
+    renderEvent({ type: 'base-sync:conflict:attempt', timestamp: '2025-01-01T00:00:01.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', attempt: 1, maxAttempts: 2, conflictedFiles: ['src/a.ts'] });
+    renderEvent({ type: 'base-sync:resolver:start', timestamp: '2025-01-01T00:00:02.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', attempt: 1, maxAttempts: 2 });
+    renderEvent({ type: 'base-sync:resolver:complete', timestamp: '2025-01-01T00:00:03.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', attempt: 1, maxAttempts: 2, resolved: true, remainingConflicts: 0 });
+    renderEvent({ type: 'base-sync:rebase:continue', timestamp: '2025-01-01T00:00:04.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', attempt: 1, maxAttempts: 2 });
+    renderEvent({ type: 'base-sync:success', timestamp: '2025-01-01T00:00:05.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', baseSha: 'abc123', featureSha: 'def456', rebased: true });
+
+    expect(consumeSpinnerEffectsForTesting()).toEqual([
+      { action: 'start', key: 'base-sync', text: 'Syncing direct PR base origin/main...' },
+      { action: 'text', key: 'base-sync', text: 'Direct PR base sync conflict attempt 1/2 (1 file(s))...' },
+      { action: 'text', key: 'base-sync', text: 'Resolving direct PR base sync conflicts (1/2)...' },
+      { action: 'text', key: 'base-sync', text: 'Resolved direct PR base sync conflicts (1/2)...' },
+      { action: 'text', key: 'base-sync', text: 'Continuing direct PR base rebase (1/2)...' },
+      { action: 'succeed', key: 'base-sync', text: 'Direct PR base sync rebased onto origin/main' },
+    ]);
+  });
+
+  it('renders direct PR base-sync exhausted budget with an active spinner', () => {
+    renderEvent({ type: 'base-sync:start', timestamp: '2025-01-01T00:00:00.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', maxAttempts: 2 });
+    renderEvent({ type: 'base-sync:budget:exhausted', timestamp: '2025-01-01T00:00:06.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', attempts: 2, maxAttempts: 2, conflictedFiles: ['src/a.ts'] });
+
+    expect(consumeSpinnerEffectsForTesting()).toEqual([
+      { action: 'start', key: 'base-sync', text: 'Syncing direct PR base origin/main...' },
+      { action: 'fail', key: 'base-sync', text: 'Direct PR base sync exhausted 2/2 conflict attempts' },
+    ]);
+  });
+
+  it('fails an active direct PR base-sync spinner when landing is skipped for sync failure', () => {
+    renderEvent({ type: 'base-sync:start', timestamp: '2025-01-01T00:00:00.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/test', maxAttempts: 2 });
+    renderEvent({ type: 'landing:skipped', timestamp: '2025-01-01T00:00:01.000Z', action: 'pr', featureBranch: 'eforge/test', baseBranch: 'main', reason: "Direct PR base sync failed for baseBranch 'main': fetch failed" });
+
+    expect(consumeSpinnerEffectsForTesting()).toEqual([
+      { action: 'start', key: 'base-sync', text: 'Syncing direct PR base origin/main...' },
+      { action: 'fail', key: 'base-sync', text: "Direct PR base sync failed for baseBranch 'main': fetch failed" },
+    ]);
+  });
 
   it('falls back to the client event summary for unhandled event domains', () => {
     const lines = captureConsoleLogs(() => {

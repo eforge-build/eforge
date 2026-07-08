@@ -158,6 +158,7 @@ export type {
   AutoBuildRuntimeMode,
   AutoBuildSchedulerState,
   AutoBuildTransitionDetail,
+  BaseSyncEvent,
   BuildFailureSummary,
   BuildResumeArtifactPlan,
   BuildResumeArtifactSource,

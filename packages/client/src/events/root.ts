@@ -171,3 +171,4 @@ export type LandingPublicationAction = Static<typeof LandingPublicationActionSch
 export type StackLayerStatus = Static<typeof StackLayerStatusSchema>;
 export type StackArtifactRef = Static<typeof StackArtifactRefSchema>;
 export type StackLayerWire = Static<typeof StackLayerWireSchema>;
+export type BaseSyncEvent = Extract<EforgeEvent, { type: `base-sync:${string}` }>;

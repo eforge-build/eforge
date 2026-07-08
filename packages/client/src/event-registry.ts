@@ -1740,6 +1740,48 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Stack sync skipped: ${e.reason}`,
   },
+
+  'base-sync:start': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync started: ${e.remote}/${e.baseBranch}`,
+  },
+
+  'base-sync:conflict:attempt': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync conflict attempt ${e.attempt}/${e.maxAttempts}`,
+  },
+
+  'base-sync:resolver:start': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync resolver started (${e.attempt}/${e.maxAttempts})`,
+  },
+
+  'base-sync:resolver:complete': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync resolver ${e.resolved ? 'completed' : 'failed'} (${e.attempt}/${e.maxAttempts})`,
+  },
+
+  'base-sync:rebase:continue': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync continuing rebase (${e.attempt}/${e.maxAttempts})`,
+  },
+
+  'base-sync:success': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync ${e.rebased ? 'rebased' : 'already current'}: ${e.remote}/${e.baseBranch}`,
+  },
+
+  'base-sync:budget:exhausted': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Direct PR base sync exhausted ${e.attempts}/${e.maxAttempts} conflict attempts`,
+  },
 } satisfies EventRegistryShape;
 
 // ---------------------------------------------------------------------------

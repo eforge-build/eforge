@@ -5014,7 +5014,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 234
+Total variants: 241
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -5246,6 +5246,13 @@ Total variants: 234
 | `stack:sync:failed` | `dryRun`, `error`, `outcome`, `reason`, `syncId`, `trigger` |
 | `stack:sync:deferred` | `excludedCandidates`, `reason`, `syncId`, `trigger` |
 | `stack:sync:skipped` | `dryRun`, `excludedCandidates`, `reason`, `restackCandidates`, `syncId`, `trigger` |
+| `base-sync:start` | `baseBranch`, `featureBranch`, `maxAttempts`, `remote` |
+| `base-sync:conflict:attempt` | `attempt`, `baseBranch`, `conflictedFiles`, `featureBranch`, `maxAttempts`, `remote` |
+| `base-sync:resolver:start` | `attempt`, `baseBranch`, `featureBranch`, `maxAttempts`, `remote` |
+| `base-sync:resolver:complete` | `attempt`, `baseBranch`, `featureBranch`, `maxAttempts`, `remainingConflicts`, `remote`, `resolved` |
+| `base-sync:rebase:continue` | `attempt`, `baseBranch`, `featureBranch`, `maxAttempts`, `remote` |
+| `base-sync:success` | `baseBranch`, `baseSha`, `featureBranch`, `featureSha`, `rebased`, `remote` |
+| `base-sync:budget:exhausted` | `attempts`, `baseBranch`, `conflictedFiles`, `featureBranch`, `maxAttempts`, `remote` |
 | `build:terminal-failure` | `failure`, `runId` |
 | `build:resume:start` | `featureBranch`, `prdId`, `setName` |
 | `build:resume:state` | `diffStat`, `featureBranch`, `landedCommitCount`, `seededMerged`, `seededPending` |

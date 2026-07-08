@@ -9,6 +9,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import type { BaseSyncEvent, EforgeEvent } from '@eforge-build/client';
 import type { MergeConflictInfo, MergeResolver } from './worktree-ops.js';
 import { isRegisteredRemote, validateBranchName, validateRemoteName } from './trunk-sync.js';
 
@@ -65,6 +66,8 @@ export type DirectPrFreshnessCheckResult =
   | { kind: 'base-advanced'; remote: string; baseBranch: string; validatedBaseSha: string; fetchedBaseSha: string }
   | { kind: 'failed'; remote: string; baseBranch: string; reason: string };
 
+type EventInput<T extends { timestamp: string }> = T extends unknown ? Omit<T, 'timestamp'> : never;
+
 export interface SyncDirectPrBaseOptions {
   cwd: string;
   featureBranch: string;
@@ -72,6 +75,7 @@ export interface SyncDirectPrBaseOptions {
   remote?: string;
   mergeResolver?: MergeResolver;
   conflictAttempts?: number;
+  onEvent?: (event: EforgeEvent) => void;
 }
 
 export interface CheckDirectPrBaseFreshnessOptions {
@@ -99,6 +103,13 @@ function failure(
   baseBranch: string,
 ): DirectPrBaseSyncResult {
   return { ok: false, reason, message, remote, baseBranch };
+}
+
+function emitBaseSyncEvent(
+  onEvent: SyncDirectPrBaseOptions['onEvent'] | undefined,
+  event: EventInput<BaseSyncEvent>,
+): void {
+  onEvent?.({ ...event, timestamp: new Date().toISOString() } as EforgeEvent);
 }
 
 async function resolveCommitSha(cwd: string, ref: string): Promise<string | undefined> {
@@ -170,12 +181,16 @@ async function finishConflictedRebase({
   baseBranch,
   mergeResolver,
   maxAttempts,
+  remote,
+  onEvent,
 }: {
   cwd: string;
   featureBranch: string;
   baseBranch: string;
   mergeResolver?: MergeResolver;
   maxAttempts: number;
+  remote: string;
+  onEvent?: SyncDirectPrBaseOptions['onEvent'];
 }): Promise<{ ok: true } | { ok: false; reason: DirectPrBaseSyncFailureReason; message: string }> {
   let attempts = 0;
 
@@ -198,6 +213,7 @@ async function finishConflictedRebase({
     }
 
     if (attempts >= maxAttempts) {
+      emitBaseSyncEvent(onEvent, { type: 'base-sync:budget:exhausted', remote, baseBranch, featureBranch, attempts, maxAttempts, conflictedFiles });
       return {
         ok: false,
         reason: 'conflict-attempts-exhausted',
@@ -206,6 +222,7 @@ async function finishConflictedRebase({
     }
 
     attempts += 1;
+    emitBaseSyncEvent(onEvent, { type: 'base-sync:conflict:attempt', remote, baseBranch, featureBranch, attempt: attempts, maxAttempts, conflictedFiles });
     const conflict: MergeConflictInfo = {
       branch: featureBranch,
       baseBranch,
@@ -213,8 +230,10 @@ async function finishConflictedRebase({
       conflictDiff: await getConflictDiff(cwd),
     };
 
+    emitBaseSyncEvent(onEvent, { type: 'base-sync:resolver:start', remote, baseBranch, featureBranch, attempt: attempts, maxAttempts });
     const resolved = await mergeResolver(cwd, conflict).catch(() => false);
     if (!resolved) {
+      emitBaseSyncEvent(onEvent, { type: 'base-sync:resolver:complete', remote, baseBranch, featureBranch, attempt: attempts, maxAttempts, resolved: false, remainingConflicts: conflictedFiles.length });
       return {
         ok: false,
         reason: 'conflict-resolution-failed',
@@ -223,6 +242,7 @@ async function finishConflictedRebase({
     }
 
     const remaining = await getUnmergedPaths(cwd);
+    emitBaseSyncEvent(onEvent, { type: 'base-sync:resolver:complete', remote, baseBranch, featureBranch, attempt: attempts, maxAttempts, resolved: remaining.length === 0, remainingConflicts: remaining.length });
     if (remaining.length > 0) {
       return {
         ok: false,
@@ -232,6 +252,7 @@ async function finishConflictedRebase({
     }
 
     try {
+      emitBaseSyncEvent(onEvent, { type: 'base-sync:rebase:continue', remote, baseBranch, featureBranch, attempt: attempts, maxAttempts });
       await exec('git', ['rebase', '--continue'], { cwd, env: gitEnv() });
       return { ok: true };
     } catch {
@@ -267,6 +288,12 @@ export async function syncDirectPrBase(options: SyncDirectPrBaseOptions): Promis
     const reason = remoteNameErr || validationErr.startsWith('Remote ') ? 'invalid-remote' : 'invalid-branch';
     return failure(reason, validationErr, remote, options.baseBranch);
   }
+  const featureBranchErr = await validateBranchName(options.featureBranch, options.cwd);
+  if (featureBranchErr) {
+    return failure('invalid-branch', featureBranchErr, remote, options.baseBranch);
+  }
+
+  emitBaseSyncEvent(options.onEvent, { type: 'base-sync:start', remote, baseBranch: options.baseBranch, featureBranch: options.featureBranch, maxAttempts });
 
   try {
     await exec('git', ['checkout', options.featureBranch], { cwd: options.cwd, env: gitEnv() });
@@ -306,6 +333,7 @@ export async function syncDirectPrBase(options: SyncDirectPrBaseOptions): Promis
   }
 
   if (await isAncestor(options.cwd, fetchedBaseSha, headSha)) {
+    emitBaseSyncEvent(options.onEvent, { type: 'base-sync:success', remote, baseBranch: options.baseBranch, featureBranch: options.featureBranch, baseSha: fetchedBaseSha, featureSha: headSha, rebased: false });
     return {
       ok: true,
       point: { remote, baseBranch: options.baseBranch, baseSha: fetchedBaseSha, featureSha: headSha, rebased: false },
@@ -321,6 +349,8 @@ export async function syncDirectPrBase(options: SyncDirectPrBaseOptions): Promis
       baseBranch: options.baseBranch,
       mergeResolver: options.mergeResolver,
       maxAttempts,
+      remote,
+      onEvent: options.onEvent,
     });
     if (!rebaseResult.ok) {
       await abortRebase(options.cwd);
@@ -334,6 +364,7 @@ export async function syncDirectPrBase(options: SyncDirectPrBaseOptions): Promis
     return failure('rebase-failed', `Direct PR base sync could not resolve feature branch HEAD after rebase`, remote, options.baseBranch);
   }
 
+  emitBaseSyncEvent(options.onEvent, { type: 'base-sync:success', remote, baseBranch: options.baseBranch, featureBranch: options.featureBranch, baseSha: fetchedBaseSha, featureSha, rebased: true });
   return {
     ok: true,
     point: { remote, baseBranch: options.baseBranch, baseSha: fetchedBaseSha, featureSha, rebased: true },

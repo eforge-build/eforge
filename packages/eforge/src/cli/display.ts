@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
-import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
+import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/client';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { getEventSummary } from '@eforge-build/client';
@@ -9,6 +9,7 @@ import { renderPlanningDecompositionEventModel } from './planning-decomposition-
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
+const spinnerEffects: Array<{ action: 'start' | 'text' | 'succeed' | 'fail'; key: string; text?: string }> = [];
 let verbose = false;
 let startTime = Date.now();
 
@@ -78,7 +79,16 @@ export function stopAllSpinners(): void {
   spinners.clear();
 }
 
+export function consumeSpinnerEffectsForTesting(): Array<{ action: 'start' | 'text' | 'succeed' | 'fail'; key: string; text?: string }> {
+  return spinnerEffects.splice(0);
+}
+
+function recordSpinnerEffect(effect: { action: 'start' | 'text' | 'succeed' | 'fail'; key: string; text?: string }): void {
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) spinnerEffects.push(effect);
+}
+
 function startSpinner(key: string, text: string): void {
+  recordSpinnerEffect({ action: 'start', key, text });
   const existing = spinners.get(key);
   if (existing) existing.stop();
   const spinner = ora(text).start();
@@ -86,6 +96,7 @@ function startSpinner(key: string, text: string): void {
 }
 
 function succeedSpinner(key: string, text?: string): void {
+  recordSpinnerEffect({ action: 'succeed', key, text });
   const spinner = spinners.get(key);
   if (spinner) {
     spinner.succeed(text);
@@ -94,6 +105,7 @@ function succeedSpinner(key: string, text?: string): void {
 }
 
 function failSpinner(key: string, text?: string): void {
+  recordSpinnerEffect({ action: 'fail', key, text });
   const spinner = spinners.get(key);
   if (spinner) {
     spinner.fail(text);
@@ -123,6 +135,7 @@ function elapsed(): string {
 // --- eforge:region cli-event-rendering ---
 type EventOf<T extends EforgeEvent['type']> = Extract<EforgeEvent, { type: T }>;
 function setSpinnerText(key: string, text: string): void {
+  recordSpinnerEffect({ action: 'text', key, text });
   const spinner = spinners.get(key);
   if (spinner) spinner.text = text;
 }
@@ -475,6 +488,9 @@ function renderOrchestrationEvent(event: EforgeEvent): boolean {
       startSpinner('landing', `Landing (${event.action}): ${chalk.cyan(event.featureBranch)} → ${chalk.cyan(event.baseBranch)}...`);
       return true;
     case 'landing:skipped':
+      if (event.reason.startsWith('Direct PR base sync failed') && spinners.has('base-sync')) {
+        failSpinner('base-sync', event.reason);
+      }
       console.log(chalk.dim(`  ⏭ Landing (${event.action}) skipped: ${event.reason}`));
       return true;
     default:
@@ -519,6 +535,31 @@ function renderStackEvent(event: EforgeEvent): boolean {
       }
       return true;
     }
+    case 'base-sync:start':
+      startSpinner('base-sync', `Syncing direct PR base ${chalk.cyan(`${event.remote}/${event.baseBranch}`)}...`);
+      return true;
+    case 'base-sync:conflict:attempt':
+      setSpinnerText('base-sync', `Direct PR base sync conflict attempt ${event.attempt}/${event.maxAttempts} (${event.conflictedFiles.length} file(s))...`);
+      return true;
+    case 'base-sync:resolver:start':
+      setSpinnerText('base-sync', `Resolving direct PR base sync conflicts (${event.attempt}/${event.maxAttempts})...`);
+      return true;
+    case 'base-sync:resolver:complete':
+      if (event.resolved) {
+        setSpinnerText('base-sync', `Resolved direct PR base sync conflicts (${event.attempt}/${event.maxAttempts})...`);
+      } else {
+        failSpinner('base-sync', `Direct PR base sync resolver failed (${event.attempt}/${event.maxAttempts})`);
+      }
+      return true;
+    case 'base-sync:rebase:continue':
+      setSpinnerText('base-sync', `Continuing direct PR base rebase (${event.attempt}/${event.maxAttempts})...`);
+      return true;
+    case 'base-sync:success':
+      succeedSpinner('base-sync', `Direct PR base sync ${event.rebased ? 'rebased onto' : 'already contained'} ${chalk.cyan(`${event.remote}/${event.baseBranch}`)}`);
+      return true;
+    case 'base-sync:budget:exhausted':
+      failSpinner('base-sync', `Direct PR base sync exhausted ${event.attempts}/${event.maxAttempts} conflict attempts`);
+      return true;
     default:
       return false;
   }

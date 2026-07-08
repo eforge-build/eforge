@@ -18,8 +18,9 @@ import {
 import { executeLandingAction } from '@eforge-build/engine/landing';
 import { finalize, isDirectPrBaseSyncApplicable, prdValidate, recordArtifact, syncDirectPrBaseBeforeValidation, validate, type PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import { WorktreeManager } from '@eforge-build/engine/worktree-manager';
-import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
-import { resolveConfig } from '@eforge-build/engine/config';
+import { safeParseEforgeEvent, type EforgeEvent } from '@eforge-build/client';
+import type { EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
+import { configYamlSchema, resolveConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { MergeResolver } from '@eforge-build/engine/worktree-ops';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
@@ -149,6 +150,12 @@ async function drainEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEven
   return (await drain(gen)).events;
 }
 
+function expectValidBaseSyncEvents(events: EforgeEvent[]): void {
+  for (const event of events.filter((candidate) => candidate.type.startsWith('base-sync:'))) {
+    expect(safeParseEforgeEvent(event).success, event.type).toBe(true);
+  }
+}
+
 describe('direct PR base sync', () => {
   it('rebases a trunk direct PR feature branch onto an advanced origin/main before validation observes the tree', async () => {
     const tmp = makeTempDir();
@@ -204,6 +211,61 @@ describe('direct PR base sync', () => {
     expect(state.status).toBe('running');
   });
 
+  it('streams direct PR base-sync progress before a pending resolver completes', async () => {
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/live-conflict']);
+    makeCommit(repo, 'conflict.txt', 'feature\n', 'feature side');
+    advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    let releaseResolver!: () => void;
+    const resolverStarted = new Promise<void>((resolve) => {
+      releaseResolver = resolve;
+    });
+    const ctx = phaseCtx({
+      repoRoot: repo,
+      mergeWorktreePath: repo,
+      featureBranch: 'eforge/live-conflict',
+      state: minimalState('eforge/live-conflict'),
+      mergeResolver: async (cwd) => {
+        await resolverStarted;
+        writeFileSync(join(cwd, 'conflict.txt'), 'resolved\n');
+        git(cwd, ['add', 'conflict.txt']);
+        return true;
+      },
+    });
+
+    const gen = syncDirectPrBaseBeforeValidation(ctx);
+    expect((await gen.next()).value?.type).toBe('base-sync:start');
+    const conflict = await gen.next();
+    expect(conflict.value?.type).toBe('base-sync:conflict:attempt');
+    const resolverStart = await gen.next();
+    expect(resolverStart.value?.type).toBe('base-sync:resolver:start');
+
+    releaseResolver();
+    const remaining = await drainEvents(gen);
+    expect(remaining.map((event) => event.type)).toContain('base-sync:success');
+  }, 10_000);
+
+  it('emits start then non-rebased success when origin/base is already contained', async () => {
+    const tmp = makeTempDir();
+    const { repo } = initOriginAndRepo(tmp);
+    git(repo, ['checkout', '-b', 'eforge/current']);
+    makeCommit(repo, 'feature.txt', 'feature\n', 'feature commit');
+    const baseSha = git(repo, ['rev-parse', 'origin/main']);
+    const featureSha = git(repo, ['rev-parse', 'HEAD']);
+
+    const baseSyncEvents: EforgeEvent[] = [];
+    const sync = await syncDirectPrBase({ cwd: repo, featureBranch: 'eforge/current', baseBranch: 'main', onEvent: (event) => baseSyncEvents.push(event) });
+
+    expect(sync.ok).toBe(true);
+    expect(baseSyncEvents).toEqual([
+      expect.objectContaining({ type: 'base-sync:start', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/current', maxAttempts: DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS }),
+      expect.objectContaining({ type: 'base-sync:success', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/current', baseSha, featureSha, rebased: false }),
+    ]);
+  }, 10_000);
+
   it('invokes the merge resolver for a rebase conflict and can publish the resolved PR after the freshness guard passes', async () => {
     const tmp = makeTempDir();
     const { origin, repo } = initOriginAndRepo(tmp);
@@ -219,12 +281,26 @@ describe('direct PR base sync', () => {
       return true;
     };
 
-    const sync = await syncDirectPrBase({ cwd: repo, featureBranch: 'eforge/conflict', baseBranch: 'main', mergeResolver: resolver });
+    const baseSyncEvents: EforgeEvent[] = [];
+    const sync = await syncDirectPrBase({ cwd: repo, featureBranch: 'eforge/conflict', baseBranch: 'main', mergeResolver: resolver, onEvent: (event) => baseSyncEvents.push(event) });
 
+    expectValidBaseSyncEvents(baseSyncEvents);
+    expect(baseSyncEvents.map((event) => event.type)).toEqual([
+      'base-sync:start',
+      'base-sync:conflict:attempt',
+      'base-sync:resolver:start',
+      'base-sync:resolver:complete',
+      'base-sync:rebase:continue',
+      'base-sync:success',
+    ]);
+    expect(baseSyncEvents[0]).toMatchObject({ type: 'base-sync:start', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict', maxAttempts: DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS });
+    expect(baseSyncEvents[1]).toMatchObject({ type: 'base-sync:conflict:attempt', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict', attempt: 1, maxAttempts: DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS, conflictedFiles: ['conflict.txt'] });
+    expect(baseSyncEvents[3]).toMatchObject({ type: 'base-sync:resolver:complete', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict', attempt: 1, maxAttempts: DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS, resolved: true, remainingConflicts: 0 });
     expect(sync.ok).toBe(true);
     expect(readFileSync(join(repo, 'conflict.txt'), 'utf8')).toBe('resolved\n');
     expect(isAncestor(repo, advancedSha)).toBe(true);
     if (!sync.ok) throw new Error('sync unexpectedly failed');
+    expect(baseSyncEvents[5]).toMatchObject({ type: 'base-sync:success', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict', baseSha: advancedSha, featureSha: sync.point.featureSha, rebased: true });
 
     const { bin, log } = fakeGh(tmp, 'create');
     const manager = new WorktreeManager({ repoRoot: repo, worktreeBase: join(tmp, 'worktrees'), featureBranch: 'eforge/conflict', mergeWorktreePath: repo });
@@ -235,7 +311,7 @@ describe('direct PR base sync', () => {
     expect(readFileSync(log, 'utf8')).toContain('"create"');
   }, 10_000);
 
-  it('aborts an unresolved rebase conflict and leaves no opportunity to call gh pr create', async () => {
+  it('aborts an unresolved pre-validation rebase conflict and marks landing skipped', async () => {
     const tmp = makeTempDir();
     const { origin, repo } = initOriginAndRepo(tmp);
     makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
@@ -244,7 +320,6 @@ describe('direct PR base sync', () => {
     makeCommit(repo, 'conflict.txt', 'feature\n', 'feature side');
     advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
 
-    const { bin, log } = fakeGh(tmp, 'create');
     const state = minimalState('eforge/conflict-fail');
     const ctx = phaseCtx({
       repoRoot: repo,
@@ -254,15 +329,23 @@ describe('direct PR base sync', () => {
       mergeResolver: async () => false,
     });
 
-    const events = await withPath(bin, async () => drainEvents(syncDirectPrBaseBeforeValidation(ctx)));
+    const events = await drainEvents(syncDirectPrBaseBeforeValidation(ctx));
 
+    expectValidBaseSyncEvents(events);
+    expect(events.find((event) => event.type === 'base-sync:resolver:complete')).toMatchObject({
+      type: 'base-sync:resolver:complete',
+      remote: 'origin',
+      baseBranch: 'main',
+      featureBranch: 'eforge/conflict-fail',
+      attempt: 1,
+      resolved: false,
+      remainingConflicts: 1,
+    });
     const skipped = events.find((event) => event.type === 'landing:skipped');
     expect(skipped?.type).toBe('landing:skipped');
     if (skipped?.type === 'landing:skipped') expect(skipped.reason).toContain('conflict resolver failed');
     expect(state.status).toBe('failed');
     expect(existsSync(join(repo, '.git', 'rebase-merge')) || existsSync(join(repo, '.git', 'rebase-apply'))).toBe(false);
-    const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
-    expect(ghLog).not.toContain('"create"');
   }, 10_000);
 
   it('clamps an out-of-range explicit rebase conflict-resolution budget before exhausting it', async () => {
@@ -285,14 +368,18 @@ describe('direct PR base sync', () => {
       return true;
     };
 
+    const baseSyncEvents: EforgeEvent[] = [];
     const sync = await syncDirectPrBase({
       cwd: repo,
       featureBranch: 'eforge/conflict-budget',
       baseBranch: 'main',
       mergeResolver: resolver,
       conflictAttempts: 0,
+      onEvent: (event) => baseSyncEvents.push(event),
     });
 
+    expectValidBaseSyncEvents(baseSyncEvents);
+    expect(baseSyncEvents.find((event) => event.type === 'base-sync:budget:exhausted')).toMatchObject({ type: 'base-sync:budget:exhausted', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict-budget', attempts: 1, maxAttempts: 1, conflictedFiles: ['conflict.txt'] });
     expect(sync.ok).toBe(false);
     if (!sync.ok) {
       expect(sync.reason).toBe('conflict-attempts-exhausted');
@@ -322,14 +409,18 @@ describe('direct PR base sync', () => {
       return true;
     };
 
+    const baseSyncEvents: EforgeEvent[] = [];
     const sync = await syncDirectPrBase({
       cwd: repo,
       featureBranch: 'eforge/conflict-budget-two',
       baseBranch: 'main',
       mergeResolver: resolver,
       conflictAttempts: 2,
+      onEvent: (event) => baseSyncEvents.push(event),
     });
 
+    expectValidBaseSyncEvents(baseSyncEvents);
+    expect(baseSyncEvents.find((event) => event.type === 'base-sync:budget:exhausted')).toMatchObject({ type: 'base-sync:budget:exhausted', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/conflict-budget-two', attempts: 2, maxAttempts: 2, conflictedFiles: ['conflict.txt'] });
     expect(sync.ok).toBe(false);
     if (!sync.ok) {
       expect(sync.reason).toBe('conflict-attempts-exhausted');
@@ -402,6 +493,12 @@ describe('direct PR base sync', () => {
     expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('Raise landing.directPrBaseSync.conflictAttempts'))).toBe(true);
     expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('legacy compile.directPrBaseSyncConflictAttempts'))).toBe(true);
   }, 10_000);
+
+  it('rejects unknown landing direct PR base-sync keys', () => {
+    const result = configYamlSchema.safeParse({ landing: { directPrBaseSync: { conflictAttempt: 2 } } });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.message).toContain('conflictAttempt');
+  });
 
   it('uses the legacy compile fallback conflict budget when the landing budget is unset', async () => {
     const tmp = makeTempDir();

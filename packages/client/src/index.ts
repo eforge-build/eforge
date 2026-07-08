@@ -487,6 +487,7 @@ export type {
   StackLayerStatus,
   StackArtifactRef,
   StackLayerWire,
+  BaseSyncEvent,
   TerminalFailureScope,
   TerminalFailureEnvelope,
   BuildResumeStartEvent,

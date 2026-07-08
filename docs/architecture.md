@@ -157,6 +157,7 @@ Prefixes carry scope unambiguously:
 | `plan:*` | Per-plan artifact lifecycle (`planId`) | Per-plan build (`plan:build:*`), per-plan merge (`plan:merge:*`), per-plan schedule readiness (`plan:schedule:ready`) |
 | `build:resume:*` | Continue-repair session lifecycle | Continue-and-repair eligibility, seeded state, recovered artifact projection (`build:resume:artifacts`), and completion. The artifact projection is persisted as session-scoped metadata so monitors can render recovered source and plan rows without duplicating historical planning, agent, token, or cost activity. |
 | `merge:finalize:*` | Run-wide feature-branch finalization | Final merge of the feature branch to the base branch (`merge:finalize:start`, `merge:finalize:complete`, `merge:finalize:skipped`) |
+| `base-sync:*` | Run-wide direct PR publication gate | Direct non-stacked PR base synchronization progress (`base-sync:start`, conflict attempts, resolver activity, rebase continuation, success, and exhausted retry budget) |
 | `schedule:start` | Run-wide (session-scoped, `planIds: string[]`) | Orchestration kickoff |
 | `agent:*` | Per-agent invocation (`agentId`) | Agent lifecycle and streaming |
 | `validation:*` | Run-wide | Post-merge validation |
@@ -374,7 +375,7 @@ When `stacking.enabled: true`, the artifact branches form a linear chain. Each a
 
 The web monitor tracks cost, token usage, efficiency metrics, and progress in real time. Each project's preferred port is deterministically derived from a hash of the project directory within the 4567-4667 range. If that port is already claimed by another running eforge monitor (per the registry at `~/.config/eforge/monitors.json`), the allocator scans the range from the preferred port for the next free port. The actual chosen port is written to the daemon lockfile.
 
-**Recording** is decoupled from the dashboard. Every `EforgeEvent` is written to SQLite regardless of whether the web server is running. This means event history is always available for inspection and historical efficiency analytics.
+**Recording** is decoupled from the dashboard. Persisted `EforgeEvent`s are written to SQLite regardless of whether the web server is running; progress-only events such as direct PR `base-sync:*` lifecycle updates are live-stream/CLI activity rather than durable history. This means durable event history is available for inspection and historical efficiency analytics.
 
 The **web server** runs as a detached process that survives CLI exit. It polls SQLite for new events and pushes them to the dashboard via Server-Sent Events (SSE). The server stays alive after the last active session ends so browser users can inspect results before it exits.
 
