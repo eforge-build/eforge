@@ -46,27 +46,21 @@ import { finalizeQueuedPrd } from './finalizer.js';
 import type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
 export { SCHEDULER_INPUT_TYPES } from './scheduler-events.js';
 export type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
-
 // ---------------------------------------------------------------------------
 // Internal state types
 // ---------------------------------------------------------------------------
-
 type PrdRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'blocked';
-
 interface PrdRunState {
   status: PrdRunStatus;
   dependsOn: string[];
 }
-
 type ConfigProfile = {
   name: string | null;
   source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override';
   scope: 'local' | 'project' | 'user' | null;
   config: unknown | null;
 };
-
 type SchedulerExtensionRegistry = Partial<Pick<NativeExtensionRegistry, 'profileRouters' | 'policyGates'>>;
-
 // ---------------------------------------------------------------------------
 // Constructor options
 // ---------------------------------------------------------------------------
@@ -561,6 +555,7 @@ export class QueueScheduler {
         message: `Failed to finalize dispatch failure for ${prd.id}: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: new Date().toISOString(),
       } as EforgeEvent);
+      return;
     }
     this._processed++;
     const state = this.prdState.get(prd.id);
@@ -920,9 +915,11 @@ export class QueueScheduler {
 
     const finalState = this.prdState.get(prdId);
     if (this.completedPrdFinalizations.has(prdId)) {
-      await this.discoverNewPrds();
-      if (status === 'failed' || status === 'skipped') this.propagateBlocked(prdId);
-      await this.startReadyPrds();
+      if (status === 'failed' || status === 'skipped') {
+        await this.discoverNewPrds();
+        this.propagateBlocked(prdId);
+        await this.startReadyPrds();
+      }
       return;
     }
     if (finalState?.status === 'completed' || finalState?.status === 'failed' || finalState?.status === 'skipped') {

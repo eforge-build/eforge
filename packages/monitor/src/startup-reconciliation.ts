@@ -16,7 +16,7 @@ export interface ReconciliationReport {
 }
 
 /** Reconcile dead runs and queue locks on daemon startup; emits no events directly. */
-export function reconcileOrphanedState(db: MonitorDB, cwd: string): ReconciliationReport {
+export async function reconcileOrphanedState(db: MonitorDB, cwd: string, options?: { queueDir?: string }): Promise<ReconciliationReport> {
   const startedAt = Date.now();
   const runsFailed: ReconciliationReport['runsFailed'] = [];
   const locksRemoved: ReconciliationReport['locksRemoved'] = [];
@@ -26,20 +26,24 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): Reconciliati
     const runningRuns = db.getRunningRuns();
     const now = new Date().toISOString();
     for (const run of runningRuns) {
-      const queueLockProblem = runningRunQueueLockProblem(cwd, run);
-      if ((run.pid && !isPidAlive(run.pid)) || queueLockProblem !== undefined) {
+      const queueContext = runningRunQueueContext(cwd, run, options?.queueDir ?? '.eforge/queue');
+      const queueLockProblem = queueContext.queued ? runningRunQueueLockProblem(cwd, run, queueContext) : undefined;
+      if (queueContext.queued && ((run.pid && !isPidAlive(run.pid)) || queueLockProblem !== undefined)) {
         const reason = queueLockProblem ?? 'reconciled: process not alive at daemon startup';
-        db.updateRunStatus(run.id, 'failed', now);
-        buildAndPersistRunUpsert(db, run.id, run.id);
         try {
-          db.insertEvent({
-            runId: run.id,
-            type: 'phase:end',
-            data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: reason }, timestamp: now }),
-            timestamp: now,
-          });
-        } catch { /* best-effort */ }
-        runsFailed.push({ runId: run.id, sessionId: run.sessionId ?? run.id, planSet: run.planSet, reason });
+          await finalizeQueuedPrd({ cwd, queueDir: options?.queueDir ?? '.eforge/queue', prdId: run.planSet, status: 'failed', releaseLock: true });
+          db.updateRunStatus(run.id, 'failed', now);
+          buildAndPersistRunUpsert(db, run.id, run.id);
+          try {
+            db.insertEvent({
+              runId: run.id,
+              type: 'phase:end',
+              data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: reason }, timestamp: now }),
+              timestamp: now,
+            });
+          } catch { /* best-effort */ }
+          runsFailed.push({ runId: run.id, sessionId: run.sessionId ?? run.id, planSet: run.planSet, reason });
+        } catch { /* leave running so a later reconciliation can retry finalization */ }
       }
     }
   } catch { /* best-effort */ }
@@ -88,7 +92,7 @@ export async function replayPersistedOrphanQueueCompletions(
 ): Promise<number> {
   let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
   try { rows = db.getDaemonEventsAfter(0).filter((row) => row.id <= beforeStartupCursor); } catch { return 0; }
-  const lastCleanShutdownId = [...rows].reverse().find((row) => row.type === 'daemon:lifecycle:shutdown:start' || row.type === 'daemon:lifecycle:shutdown:complete')?.id ?? 0;
+  const lastCleanShutdownId = [...rows].reverse().find((row) => row.type === 'daemon:lifecycle:shutdown:complete')?.id ?? 0;
   const orphanCompletions = rows.filter((row) => row.id > lastCleanShutdownId && row.type === 'queue:prd:complete');
   let successfulReplays = 0;
   const replayFailures: string[] = [];
@@ -116,16 +120,29 @@ export async function replayPersistedOrphanQueueCompletions(
   return orphanCompletions.length;
 }
 
-function runningRunQueueLockProblem(cwd: string, run: ReturnType<MonitorDB['getRunningRuns']>[number]): string | undefined {
+interface RunningQueueContext {
+  queued: boolean;
+  queueExecRun: boolean;
+  queuePrdExists: boolean;
+  lockExists: boolean;
+  lockPath: string;
+}
+
+function runningRunQueueContext(cwd: string, run: ReturnType<MonitorDB['getRunningRuns']>[number], queueDir: string): RunningQueueContext {
   const queueExecRun = /\bqueue\s+exec\b/.test(run.command);
-  if (!isSafeQueuedPrdId(run.planSet)) return queueExecRun ? 'reconciled: running queued build has unsafe PRD id at daemon startup' : undefined;
+  const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${run.planSet}.lock`);
+  const queuePrdExists = isSafeQueuedPrdId(run.planSet) && hasQueuePrdContext(cwd, queueDir, run.planSet);
+  const lockExists = isSafeQueuedPrdId(run.planSet) && existsSync(lockPath);
+  return { queued: queueExecRun || queuePrdExists || lockExists, queueExecRun, queuePrdExists, lockExists, lockPath };
+}
+
+function runningRunQueueLockProblem(cwd: string, run: ReturnType<MonitorDB['getRunningRuns']>[number], context: RunningQueueContext): string | undefined {
+  if (!isSafeQueuedPrdId(run.planSet)) return context.queueExecRun ? 'reconciled: running queued build has unsafe PRD id at daemon startup' : undefined;
   const lockDir = resolve(cwd, '.eforge', 'queue-locks');
   let realLockDir: string;
   try { realLockDir = realpathSync(lockDir); } catch { realLockDir = lockDir; }
-  const lockPath = resolve(lockDir, `${run.planSet}.lock`);
-  const queuePrdExists = hasQueuePrdContext(cwd, '.eforge/queue', run.planSet);
-  const lockExists = existsSync(lockPath);
-  if (!queueExecRun && !queuePrdExists && !lockExists) return undefined;
+  const lockPath = context.lockPath;
+  const lockExists = context.lockExists;
   if (!lockExists) return 'reconciled: running queued build has no queue lock at daemon startup';
   if (!safeRegularLockFile(lockPath, realLockDir)) return 'reconciled: running queued build has unsafe queue lock at daemon startup';
   let rawPayload: string;

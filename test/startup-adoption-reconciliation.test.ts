@@ -28,12 +28,12 @@ function writeLock(cwd: string, prdId: string, payload: string): string {
 }
 
 describe('startup queued-build adoption reconciliation', () => {
-  it('adopts live prior-generation queue locks without deleting or redispatching them', () => {
+  it('adopts live prior-generation queue locks without deleting or redispatching them', async () => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
     const lockPath = writeLock(cwd, 'live-root', String(process.pid));
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.locksAdopted).toEqual([{ path: lockPath, pid: process.pid, prdId: 'live-root' }]);
     expect(report.locksRemoved).toEqual([]);
@@ -42,14 +42,14 @@ describe('startup queued-build adoption reconciliation', () => {
     db.close();
   });
 
-  it('reconciles dead and corrupt locks with exact diagnostics and removes only invalid locks', () => {
+  it('reconciles dead and corrupt locks with exact diagnostics and removes only invalid locks', async () => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
     const deadLock = writeLock(cwd, 'dead-root', String(DEAD_PID));
     const corruptLock = writeLock(cwd, 'corrupt-root', '{not-json-or-pid}');
     const liveLock = writeLock(cwd, 'live-root', String(process.pid));
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.locksRemoved).toEqual(expect.arrayContaining([
       { path: deadLock, pid: DEAD_PID, reason: 'dead-pid' },
@@ -63,7 +63,7 @@ describe('startup queued-build adoption reconciliation', () => {
     db.close();
   });
 
-  it('degrades absent queue-lock state for a running queued build projection', () => {
+  it('degrades absent queue-lock state for a running queued build projection', async () => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
     db.insertRun({
@@ -77,7 +77,7 @@ describe('startup queued-build adoption reconciliation', () => {
       pid: process.pid,
     });
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.runsFailed).toEqual([{ 
       runId: 'run-missing-lock',
@@ -94,9 +94,9 @@ describe('startup queued-build adoption reconciliation', () => {
 
   it.each([
     { name: 'matching live', payload: String(process.pid), status: 'running', reason: undefined, removed: [], adopted: true },
-    { name: 'corrupt', payload: 'bad-pid', status: 'failed', reason: 'reconciled: running queued build has corrupt queue lock at daemon startup', removed: [{ reason: 'corrupt-payload' as const }], adopted: false },
-    { name: 'dead', payload: String(DEAD_PID), status: 'failed', reason: 'reconciled: running queued build queue lock PID is not alive at daemon startup', removed: [{ reason: 'dead-pid' as const, pid: DEAD_PID }], adopted: false },
-  ])('reconciles running queued projection with $name lock', ({ payload, status, reason, removed, adopted }) => {
+    { name: 'corrupt', payload: 'bad-pid', status: 'failed', reason: 'reconciled: running queued build has corrupt queue lock at daemon startup', removed: [], adopted: false },
+    { name: 'dead', payload: String(DEAD_PID), status: 'failed', reason: 'reconciled: running queued build queue lock PID is not alive at daemon startup', removed: [], adopted: false },
+  ])('reconciles running queued projection with $name lock', async ({ payload, status, reason, removed, adopted }) => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
     mkdirSync(join(cwd, '.eforge', 'queue'), { recursive: true });
@@ -113,7 +113,7 @@ describe('startup queued-build adoption reconciliation', () => {
       pid: process.pid,
     });
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(db.getRun('run-matrix-root')?.status).toBe(status);
     if (reason) {
@@ -128,9 +128,48 @@ describe('startup queued-build adoption reconciliation', () => {
     db.close();
   });
 
-  it('marks dead running projections failed with exact startup reconciliation diagnostics', () => {
+  it('finalizes proven dead adopted queued runs through the shared failed finalizer', async () => {
     const cwd = makeTempDir();
     const db = openTempDb(cwd);
+    const queueDir = '.eforge/queue';
+    mkdirSync(join(cwd, queueDir, 'waiting'), { recursive: true });
+    writeFileSync(join(cwd, queueDir, 'dead-root.md'), '---\ntitle: Dead Root\n---\n# Dead Root\n', 'utf-8');
+    writeFileSync(join(cwd, queueDir, 'waiting', 'dependent.md'), '---\ntitle: Dependent\ndepends_on: ["dead-root"]\n---\n# Dependent\n', 'utf-8');
+    const lockPath = writeLock(cwd, 'dead-root', String(DEAD_PID));
+    db.insertRun({
+      id: 'run-dead-root-finalizer',
+      sessionId: 'session-dead-root-finalizer',
+      planSet: 'dead-root',
+      command: 'build',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      cwd,
+      pid: DEAD_PID,
+    });
+
+    const report = await reconcileOrphanedState(db, cwd, { queueDir });
+
+    expect(report.runsFailed).toEqual([{ 
+      runId: 'run-dead-root-finalizer',
+      sessionId: 'session-dead-root-finalizer',
+      planSet: 'dead-root',
+      reason: 'reconciled: running queued build queue lock PID is not alive at daemon startup',
+    }]);
+    expect(existsSync(join(cwd, queueDir, 'failed', 'dead-root.md'))).toBe(true);
+    const recovery = JSON.parse(readFileSync(join(cwd, queueDir, 'failed', 'dead-root.recovery.json'), 'utf-8')) as { verdict: { verdict: string; rationale: string } };
+    expect(recovery.verdict).toMatchObject({ verdict: 'manual' });
+    expect(recovery.verdict.rationale).toContain('shared finalizer replay without build evidence');
+    expect(existsSync(lockPath)).toBe(false);
+    expect((await loadCompletionRegistry(cwd)).completions['dead-root']).toMatchObject({ status: 'failed' });
+    expect(existsSync(join(cwd, queueDir, 'skipped', 'dependent.md'))).toBe(true);
+    db.close();
+  });
+
+  it('marks dead queued running projections failed with missing-lock startup reconciliation diagnostics', async () => {
+    const cwd = makeTempDir();
+    const db = openTempDb(cwd);
+    mkdirSync(join(cwd, '.eforge', 'queue'), { recursive: true });
+    writeFileSync(join(cwd, '.eforge', 'queue', 'dead-root.md'), '---\ntitle: Dead Root\n---\n# Dead Root\n', 'utf-8');
     db.insertRun({
       id: 'run-dead-root',
       sessionId: 'session-dead-root',
@@ -142,20 +181,42 @@ describe('startup queued-build adoption reconciliation', () => {
       pid: DEAD_PID,
     });
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.runsFailed).toEqual([{ 
       runId: 'run-dead-root',
       sessionId: 'session-dead-root',
       planSet: 'dead-root',
-      reason: 'reconciled: process not alive at daemon startup',
+      reason: 'reconciled: running queued build has no queue lock at daemon startup',
     }]);
     expect(db.getRun('run-dead-root')?.status).toBe('failed');
     const phaseEnd = db.getEventsByType('run-dead-root', 'phase:end');
     expect(phaseEnd).toHaveLength(1);
     expect(JSON.parse(phaseEnd[0].data)).toMatchObject({
-      result: { status: 'failed', summary: 'reconciled: process not alive at daemon startup' },
+      result: { status: 'failed', summary: 'reconciled: running queued build has no queue lock at daemon startup' },
     });
+    db.close();
+  });
+
+  it('does not fail dead startup runs without queued command, PRD file, or lock context', async () => {
+    const cwd = makeTempDir();
+    const db = openTempDb(cwd);
+    db.insertRun({
+      id: 'run-dead-nonqueued',
+      sessionId: 'session-dead-nonqueued',
+      planSet: 'dead-nonqueued',
+      command: 'build',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      cwd,
+      pid: DEAD_PID,
+    });
+
+    const report = await reconcileOrphanedState(db, cwd);
+
+    expect(report.runsFailed).toEqual([]);
+    expect(db.getRun('run-dead-nonqueued')?.status).toBe('running');
+    expect(db.getEventsByType('run-dead-nonqueued', 'phase:end')).toHaveLength(0);
     db.close();
   });
 
@@ -296,7 +357,7 @@ describe('startup queued-build adoption reconciliation', () => {
     };
 
     writeDaemonEvent(db, { type: 'queue:prd:complete', prdId: 'already-handled', status: 'completed' }, 'daemon-test');
-    writeDaemonEvent(db, { type: 'daemon:lifecycle:shutdown:start' }, 'daemon-test');
+    writeDaemonEvent(db, { type: 'daemon:lifecycle:shutdown:complete' }, 'daemon-test');
     const startupCursor = db.getMaxDaemonEventId();
 
     const replayed = await replayPersistedOrphanQueueCompletions(db, autoBuildController as never, startupCursor);

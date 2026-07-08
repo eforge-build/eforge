@@ -21,13 +21,13 @@ function makeTmpCwd(): string {
 const DEAD_PID = 999999;
 
 describe('reconcileOrphanedState', () => {
-  it('marks DB runs as failed when their PID is not alive', () => {
+  it('marks queued DB runs as failed when their PID is not alive', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
     db.insertRun({
       id: 'run-dead',
-      planSet: 'test',
+      planSet: 'dead-test',
       command: 'build',
       status: 'running',
       startedAt: new Date().toISOString(),
@@ -36,15 +36,19 @@ describe('reconcileOrphanedState', () => {
     });
     db.insertRun({
       id: 'run-alive',
-      planSet: 'test',
+      planSet: 'alive-test',
       command: 'build',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
       pid: process.pid,
     });
+    const lockDir = join(cwd, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'dead-test.lock'), String(DEAD_PID));
+    writeFileSync(join(lockDir, 'alive-test.lock'), String(process.pid));
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     const dead = db.getRun('run-dead');
     const alive = db.getRun('run-alive');
@@ -53,21 +57,21 @@ describe('reconcileOrphanedState', () => {
     db.close();
   });
 
-  it('inserts a phase:end event explaining why the run was reconciled', () => {
+  it('inserts a phase:end event explaining why a queued run was reconciled', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
     db.insertRun({
       id: 'run-dead',
       planSet: 'test',
-      command: 'build',
+      command: 'eforge queue exec test',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
       pid: DEAD_PID,
     });
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     const events = db.getEventsByType('run-dead', 'phase:end');
     expect(events.length).toBeGreaterThan(0);
@@ -77,7 +81,7 @@ describe('reconcileOrphanedState', () => {
     db.close();
   });
 
-  it('deletes lock files whose PID is not alive', () => {
+  it('deletes lock files whose PID is not alive', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const lockDir = join(cwd, '.eforge', 'queue-locks');
@@ -88,7 +92,7 @@ describe('reconcileOrphanedState', () => {
     writeFileSync(staleLock, String(DEAD_PID));
     writeFileSync(liveLock, String(process.pid));
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     expect(existsSync(staleLock)).toBe(false);
     expect(existsSync(liveLock)).toBe(true);
@@ -96,7 +100,7 @@ describe('reconcileOrphanedState', () => {
     db.close();
   });
 
-  it('deletes lock files with corrupt content', () => {
+  it('deletes lock files with corrupt content', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const lockDir = join(cwd, '.eforge', 'queue-locks');
@@ -105,22 +109,22 @@ describe('reconcileOrphanedState', () => {
     const corruptLock = join(lockDir, 'prd-corrupt.lock');
     writeFileSync(corruptLock, 'not-a-pid');
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     expect(existsSync(corruptLock)).toBe(false);
     db.close();
   });
 
-  it('tolerates a missing queue-locks directory', () => {
+  it('tolerates a missing queue-locks directory', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
     // No queue-locks dir created — should not throw
-    expect(() => reconcileOrphanedState(db, cwd)).not.toThrow();
+    await expect(reconcileOrphanedState(db, cwd)).resolves.toBeDefined();
     db.close();
   });
 
-  it('leaves PRD files in queue/ root (does not move to queue/failed/)', () => {
+  it('leaves PRD files in queue/ root (does not move to queue/failed/)', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const queueDir = join(cwd, 'eforge', 'queue');
@@ -132,7 +136,7 @@ describe('reconcileOrphanedState', () => {
     mkdirSync(lockDir, { recursive: true });
     writeFileSync(join(lockDir, 'prd-orphan.lock'), String(DEAD_PID));
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     // PRD file stays in queue/ root so the next scheduling pass can re-claim it
     expect(existsSync(prdPath)).toBe(true);

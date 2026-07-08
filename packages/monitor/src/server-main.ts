@@ -742,7 +742,7 @@ async function main(): Promise<void> {
   // hard-kill. Runs after we own the lockfile so no other daemon instance
   // can be touching the same files.
   writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
-  const reconcileReport = reconcileOrphanedState(db, cwd);
+  const reconcileReport = await reconcileOrphanedState(db, cwd, config ? { queueDir: config.prdQueue.dir } : undefined);
   for (const run of reconcileReport.runsFailed) {
     // Emit the daemon-scoped failure event alongside the backward-compatible
     // phase:end that reconcileOrphanedState already inserted per run.
@@ -797,9 +797,9 @@ async function main(): Promise<void> {
 
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
   if (persistent && daemonState && config) {
+    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
     if (config.prdQueue.autoBuild) {
       daemonState.autoBuildController.enable('startup config');
-      await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
     }
     // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
     if (config.daemon.idleShutdownMs > 0) {
