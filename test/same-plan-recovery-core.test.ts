@@ -183,8 +183,67 @@ describe('same-plan recovery orchestrator', () => {
     ]);
   });
 
+  it.each([
+    ['cross-plan-blocker', [issue({ metadata: { planId: 'plan-other' } })]],
+    ['upstream-or-base-owned', [issue({ metadata: { planId: 'plan-active', owner: 'upstream' } })]],
+    ['upstream-or-base-owned', [issue({ metadata: { planId: 'plan-active', baseOwned: true } })]],
+  ] as const)('skips same-plan recovery for %s blockers without changing terminal behavior', async (reason, issues) => {
+    let fixes = 0;
+    let blockingChecks = 0;
+    const { result, events } = await collectRecoveryRun({
+      ctx: context(),
+      blockerKind: 'review',
+      issues,
+      maxAttempts: 2,
+      ...safeRecoveryGate,
+      callbacks: {
+        runFix: async function* () { fixes += 1; },
+        runBlockingCheck: async function* () { blockingChecks += 1; },
+        hasBlockers: () => true,
+      },
+    });
+
+    expect(result).toBe(false);
+    expect(fixes).toBe(0);
+    expect(blockingChecks).toBe(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan:build:recovery:skip', reason, attemptsRemaining: 2 });
+    expect(events.some((event) => event.type === 'plan:build:failed' || event.type === 'plan:build:complete')).toBe(false);
+    expect(safeParseEforgeEvent(events[0]).success).toBe(true);
+  });
+
+  it.each([
+    ['cross-plan-blocker', [issue({ metadata: { planId: 'plan-active' } })], [issue({ metadata: { planId: 'plan-other' } })]],
+    ['upstream-or-base-owned', [issue({ metadata: { planId: 'plan-active' } })], [issue({ metadata: { planId: 'plan-active', owner: 'base' } })]],
+    ['upstream-or-base-owned', [issue({ metadata: { planId: 'plan-active' } })], [issue({ metadata: { planId: 'plan-active', upstreamOwned: true } })]],
+  ] as const)('refuses %s blockers discovered between recovery attempts without changing terminal behavior', async (reason, initialIssues, refusedIssues) => {
+    const fixAttempts: number[] = [];
+    let currentIssues = initialIssues;
+    const { result, events } = await collectRecoveryRun({
+      ctx: context(),
+      blockerKind: 'test',
+      issues: initialIssues,
+      maxAttempts: 2,
+      ...safeRecoveryGate,
+      callbacks: {
+        runFix: async function* (attempt) { fixAttempts.push(attempt); },
+        runBlockingCheck: async function* () { currentIssues = refusedIssues; },
+        hasBlockers: () => true,
+        currentIssues: () => currentIssues,
+      },
+    });
+
+    expect(result).toBe(false);
+    expect(fixAttempts).toEqual([1]);
+    expect(events.filter((event) => event.type === 'plan:build:recovery:attempt:start')).toHaveLength(1);
+    expect(events.at(-1)).toMatchObject({ type: 'plan:build:recovery:skip', reason, attemptsRemaining: 1 });
+    expect(events.some((event) => event.type === 'plan:build:failed' || event.type === 'plan:build:complete')).toBe(false);
+    expect(safeParseEforgeEvent(events.at(-1)).success).toBe(true);
+  });
+
   it('skips ineligible recovery before invoking callbacks', async () => {
     let fixes = 0;
+    let blockingChecks = 0;
     const { result, events } = await collectRecoveryRun({
       ctx: context(),
       blockerKind: 'review',
@@ -193,13 +252,14 @@ describe('same-plan recovery orchestrator', () => {
       ...safeRecoveryGate,
       callbacks: {
         runFix: async function* () { fixes += 1; },
-        runBlockingCheck: async function* () {},
+        runBlockingCheck: async function* () { blockingChecks += 1; },
         hasBlockers: () => true,
       },
     });
 
     expect(result).toBe(false);
     expect(fixes).toBe(0);
+    expect(blockingChecks).toBe(0);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan:build:recovery:skip', reason: 'human-review-gate', attemptsRemaining: 1 });
     expect(safeParseEforgeEvent(events[0]).success).toBe(true);

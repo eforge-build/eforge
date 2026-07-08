@@ -74,6 +74,44 @@ describe('buildReviewCycleDetail', () => {
     expect(detail.rounds[1].evaluator.accepted).toBe(2);
   });
 
+  it('preserves recovery attempt discriminator and original budget in review projections', () => {
+    const detail = buildReviewCycleDetail([
+      stored('recovery-start', { type: 'plan:build:recovery:start', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, blockerKind: 'review', issueCount: 1, maxAttempts: 2, attemptsRemaining: 2 }),
+      stored('attempt-start', { type: 'plan:build:recovery:attempt:start', timestamp: '2025-01-01T00:01:30.000Z', planId: PLAN_ID, blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 2 }),
+      stored('attempt-result', { type: 'plan:build:recovery:attempt:result', timestamp: '2025-01-01T00:02:00.000Z', planId: PLAN_ID, blockerKind: 'review', attempt: 1, maxAttempts: 2, blockersCleared: false, attemptsRemaining: 1 }),
+      stored('skip', { type: 'plan:build:recovery:skip', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, blockerKind: 'review', reason: 'upstream-or-base-owned', details: 'owned by base', attemptsRemaining: 1 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].recoveryAttempts).toEqual([
+      { status: 'started', blockerKind: 'review', issueCount: 1, maxAttempts: 2, attemptsRemaining: 2 },
+      { status: 'running', blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 2 },
+      { status: 'blocked', blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 1 },
+      { status: 'skipped', blockerKind: 'review', maxAttempts: 2, attemptsRemaining: 1, reason: 'upstream-or-base-owned', details: 'owned by base' },
+    ]);
+  });
+
+  it('falls back to skip attemptsRemaining when no prior recovery budget exists', () => {
+    const detail = buildReviewCycleDetail([
+      stored('skip', { type: 'plan:build:recovery:skip', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, blockerKind: 'review', reason: 'cross-plan-blocker', details: 'other plan', attemptsRemaining: 1 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds[0].recoveryAttempts).toEqual([
+      { status: 'skipped', blockerKind: 'review', maxAttempts: 1, attemptsRemaining: 1, reason: 'cross-plan-blocker', details: 'other plan' },
+    ]);
+  });
+
+  it('assigns schema-shaped recovery events after later explicit events to the surrounding round', () => {
+    const detail = buildReviewCycleDetail([
+      stored('r0-eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, accepted: 0, rejected: 1, verdicts: [], round: 0 }),
+      stored('r1-eval', { type: 'plan:build:evaluate:complete', timestamp: '2025-01-01T00:02:00.000Z', planId: PLAN_ID, accepted: 0, rejected: 1, verdicts: [], round: 1 }),
+      stored('skip', { type: 'plan:build:recovery:skip', timestamp: '2025-01-01T00:03:00.000Z', planId: PLAN_ID, blockerKind: 'review', reason: 'cross-plan-blocker', details: 'other plan', attemptsRemaining: 1 }),
+    ], [], PLAN_ID, []);
+
+    expect(detail.rounds).toHaveLength(2);
+    expect(detail.rounds[0].recoveryAttempts).toEqual([]);
+    expect(detail.rounds[1].recoveryAttempts[0]).toMatchObject({ status: 'skipped', reason: 'cross-plan-blocker' });
+  });
+
   it('links reviewer issue, fixer reference, and evaluator verdict by issue id', () => {
     const detail = buildReviewCycleDetail([
       stored('review', { type: 'plan:build:review:parallel:perspective:complete', timestamp: '2025-01-01T00:01:00.000Z', planId: PLAN_ID, perspective: 'code', issues: [issue('src/linked.ts', 'Linked issue', 'review-issue-1')], round: 0 }),

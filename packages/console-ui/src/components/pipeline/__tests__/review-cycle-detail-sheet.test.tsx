@@ -117,6 +117,24 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.queryByText('plan-01 · review-cycle')).toBeNull();
   });
 
+  it('flows recovery events through ThreadPipeline into the review-cycle sheet', () => {
+    renderPipeline({
+      events: [
+        ...events,
+        stored('recovery-start', { type: 'plan:build:recovery:start', timestamp: '2025-01-01T00:04:20.000Z', planId: 'plan-01', blockerKind: 'review', issueCount: 1, maxAttempts: 2, attemptsRemaining: 2, round: 0 }),
+        stored('recovery-attempt', { type: 'plan:build:recovery:attempt:start', timestamp: '2025-01-01T00:04:30.000Z', planId: 'plan-01', blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 2, round: 0 }),
+        stored('recovery-skip', { type: 'plan:build:recovery:skip', timestamp: '2025-01-01T00:04:40.000Z', planId: 'plan-01', blockerKind: 'review', reason: 'cross-plan-blocker', details: 'Issue belongs to plan-02.', attemptsRemaining: 1, round: 0 }),
+      ],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /plan plan-01/i }));
+
+    expect(screen.getByText('Same-plan recovery')).toBeTruthy();
+    expect(screen.getByText('review recovery running attempt 1/2 · 2 remaining')).toBeTruthy();
+    expect(screen.getByText('review recovery skipped · 1 remaining · cross-plan-blocker')).toBeTruthy();
+    expect(screen.getByText('Issue belongs to plan-02.')).toBeTruthy();
+  });
+
   it('renders reviewer, fixer, evaluator, perspective error, and empty-state details', () => {
     const detail: ReviewCycleDetail = {
       planId: 'plan-01',
@@ -126,6 +144,7 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 0,
           roundLabel: 'Round 1',
+          recoveryAttempts: [],
           linkedTraces: [],
           unlinkedFixerReferences: [{ issueId: '', status: 'deferred', note: 'No issue id supplied' }],
           reviewers: [
@@ -152,6 +171,7 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 1,
           roundLabel: 'Round 2',
+          recoveryAttempts: [],
           linkedTraces: [],
           unlinkedFixerReferences: [],
           reviewers: [],
@@ -192,6 +212,37 @@ describe('ReviewCycleDetailSheet integration', () => {
     expect(screen.getByText('No unlinked evaluator verdicts were recorded for this round.')).toBeTruthy();
   });
 
+  it('renders same-plan recovery state in the review-cycle sheet', () => {
+    const detail: ReviewCycleDetail = {
+      planId: 'plan-01',
+      roundsInferred: false,
+      summary: {},
+      rounds: [
+        {
+          round: 0,
+          roundLabel: 'Round 1',
+          recoveryAttempts: [
+            { status: 'running', blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 2 },
+            { status: 'skipped', blockerKind: 'review', maxAttempts: 2, attemptsRemaining: 1, reason: 'cross-plan-blocker', details: 'Issue belongs to plan-02.' },
+          ],
+          linkedTraces: [],
+          unlinkedFixerReferences: [],
+          reviewers: [],
+          perspectiveErrors: [],
+          reviewFix: { ran: false, continuations: [] },
+          evaluator: { ran: false, verdicts: [] },
+        },
+      ],
+    };
+
+    render(<ReviewCycleDetailSheet detail={detail} open onClose={() => {}} onOpenAgent={() => {}} />);
+
+    expect(screen.getByText('Same-plan recovery')).toBeTruthy();
+    expect(screen.getByText('review recovery running attempt 1/2 · 2 remaining')).toBeTruthy();
+    expect(screen.getByText('review recovery skipped · 1 remaining · cross-plan-blocker')).toBeTruthy();
+    expect(screen.getByText('Issue belongs to plan-02.')).toBeTruthy();
+  });
+
   it('renders linked trace labels and fixer statuses before legacy lane headings', () => {
     const detail: ReviewCycleDetail = {
       planId: 'plan-01',
@@ -201,6 +252,7 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 0,
           roundLabel: 'Round 1',
+          recoveryAttempts: [],
           linkedTraces: [
             {
               issueId: 'review-issue-1',
@@ -247,6 +299,7 @@ describe('ReviewCycleDetailSheet integration', () => {
         {
           round: 0,
           roundLabel: 'Round 1',
+          recoveryAttempts: [],
           linkedTraces: [
             {
               issueId: 'unknown-review-issue',

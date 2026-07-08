@@ -203,9 +203,9 @@ describe('client contract public exports', () => {
   });
 
   it('feature-gates the daemon API version for the latest breaking client contract', () => {
-    expect(client.DAEMON_API_VERSION).toBe(82);
-    expect(browser.DAEMON_API_VERSION).toBe(82);
+    expect(client.DAEMON_API_VERSION).toBe(83);
+    expect(browser.DAEMON_API_VERSION).toBe(83);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('v82: scorched-earth planning wire-surface deletion');
+    expect(source).toContain('v83: same-plan recovery lifecycle event variants');
   });
 });

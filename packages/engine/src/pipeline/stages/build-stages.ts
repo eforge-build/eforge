@@ -44,10 +44,7 @@ import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from 
 import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
-import {
-  runValidationProviderRecoveryStage,
-  type ValidationRecoveryRepairContext,
-} from './validation-provider-recovery.js';
+import { runValidationProviderRecoveryStage, type ValidationRecoveryRepairContext } from './validation-provider-recovery.js';
 import { resolveAgentRuntimeForInvocationWithExtensions, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
 import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { runSamePlanRecovery, type SamePlanRecoveryBlockerKind } from '../same-plan-recovery.js';
