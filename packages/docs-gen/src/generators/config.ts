@@ -101,7 +101,7 @@ export async function generateConfig(opts: {
   lines.push('');
   lines.push('## Compile');
   lines.push('');
-  lines.push('`compile` tunes context-managed planning units for overflow-risk compile inputs. Ordinary direct planning does not use these limits. All `compile.planningUnit*` values are positive integers capped by documented operational maxima.');
+  lines.push('`compile` tunes context-managed planning units for overflow-risk compile inputs and the direct PR base-sync conflict-attempt budget. All `compile.planningUnit*` values are positive integers capped by documented operational maxima; `compile.directPrBaseSyncConflictAttempts` is clamped after config/override precedence resolution.');
   lines.push('');
   lines.push('| Field | Default | Max | Description |');
   lines.push('|-------|---------|-----|-------------|');
@@ -116,6 +116,7 @@ export async function generateConfig(opts: {
   lines.push(`| \`compile.planningUnitMaxCriteriaPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxCriteriaPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxCriteriaPerUnit}\` | Maximum acceptance criteria assigned to one planning unit. |`);
   lines.push(`| \`compile.planningUnitMaxSubsystemsPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxSubsystemsPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxSubsystemsPerUnit}\` | Maximum subsystems assigned to one planning unit. |`);
   lines.push(`| \`compile.planningUnitMaxSplitAttemptsPerUnit\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.planningUnitMaxSplitAttemptsPerUnit}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.planningUnitMaxSplitAttemptsPerUnit}\` | Maximum split retries attempted for one planning unit. |`);
+  lines.push(`| \`compile.directPrBaseSyncConflictAttempts\` | \`${DEFAULT_PLANNING_DECOMPOSITION_CONFIG.directPrBaseSyncConflictAttempts}\` | \`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.directPrBaseSyncConflictAttempts}\` | Conflict-resolution attempt budget for direct non-stacked PR base sync. Explicit per-call overrides take precedence over config; the selected value is clamped to \`1\`-\`${PLANNING_DECOMPOSITION_CONFIG_MAXIMA.directPrBaseSyncConflictAttempts}\`. |`);
   lines.push('');
   lines.push('## Recovery auto-resume');
   lines.push('');

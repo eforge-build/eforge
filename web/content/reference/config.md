@@ -15,7 +15,7 @@ eforge merges configuration from three tiers (highest precedence first):
 |-------|-------------|
 | `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
 | `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
-| `compile` | Context-managed compile planning-unit limits |
+| `compile` | Compile planning-unit limits and direct PR base-sync budgets |
 | `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
 | `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |
@@ -32,7 +32,7 @@ eforge merges configuration from three tiers (highest precedence first):
 
 ## Compile
 
-`compile` tunes context-managed planning units for overflow-risk compile inputs. Ordinary direct planning does not use these limits. All `compile.planningUnit*` values are positive integers capped by documented operational maxima.
+`compile` tunes context-managed planning units for overflow-risk compile inputs and the direct PR base-sync conflict-attempt budget. All `compile.planningUnit*` values are positive integers capped by documented operational maxima; `compile.directPrBaseSyncConflictAttempts` is clamped after config/override precedence resolution.
 
 | Field | Default | Max | Description |
 |-------|---------|-----|-------------|
@@ -47,6 +47,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | `64` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
+| `compile.directPrBaseSyncConflictAttempts` | `12` | `100` | Conflict-resolution attempt budget for direct non-stacked PR base sync. Explicit per-call overrides take precedence over config; the selected value is clamped to `1`-`100`. |
 
 ## Recovery auto-resume
 

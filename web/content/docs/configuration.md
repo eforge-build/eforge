@@ -407,7 +407,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 
 ## Compile Planning Limits
 
-The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning. These values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
+The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning, plus the direct PR base-sync conflict-resolution attempt budget. The `planningUnit*` values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
 
 ```yaml
 compile:
@@ -422,9 +422,10 @@ compile:
   planningUnitMaxCriteriaPerUnit: 20
   planningUnitMaxSubsystemsPerUnit: 2
   planningUnitMaxSplitAttemptsPerUnit: 2
+  directPrBaseSyncConflictAttempts: 12  # Direct PR base-sync conflict attempts (clamped 1-100)
 ```
 
-All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit.
+All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining `planningUnit*` keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit. `directPrBaseSyncConflictAttempts` is clamped to `1`-`100` after config/override precedence is resolved.
 
 ## Landing Action
 

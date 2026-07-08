@@ -25,6 +25,7 @@ import {
   DIRECT_PR_REMOTE,
   checkDirectPrBaseFreshness,
   describeDirectPrBaseSyncPoint,
+  resolveDirectPrBaseSyncConflictAttempts,
   syncDirectPrBase,
   type DirectPrBaseSyncPoint,
 } from '../direct-pr-base-sync.js';
@@ -102,8 +103,8 @@ export interface PhaseContext {
   policyGateTimeoutMs?: number;
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
-  /** EforgeConfig subset for trunk policy resolution in executeLandingAction. */
-  engineConfig?: Pick<EforgeConfig, 'build'>;
+  /** EforgeConfig subset for trunk policy resolution and direct PR base sync budget resolution. */
+  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile'>>;
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
@@ -210,13 +211,13 @@ export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean {
 
 export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   if (!isDirectPrBaseSyncApplicable(ctx)) return;
-
   const result = await syncDirectPrBase({
     cwd: ctx.mergeWorktreePath,
     featureBranch: ctx.featureBranch,
     baseBranch: ctx.config.baseBranch,
     remote: DIRECT_PR_REMOTE,
     mergeResolver: ctx.mergeResolver,
+    conflictAttempts: resolveDirectPrBaseSyncConflictAttempts(ctx.engineConfig?.compile?.directPrBaseSyncConflictAttempts),
   });
 
   if (result.ok) {
@@ -228,7 +229,6 @@ export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): Asyn
     } as EforgeEvent;
     return;
   }
-
   const reason = `Direct PR base sync failed for baseBranch '${ctx.config.baseBranch}': ${result.message}`;
   yield {
     timestamp: new Date().toISOString(),

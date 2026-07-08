@@ -16,7 +16,23 @@ const exec = promisify(execFile);
 
 export const DIRECT_PR_REMOTE = 'origin';
 export const DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS = 12;
+export const MIN_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS = 1;
+export const MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS = 100;
 export const DEFAULT_DIRECT_PR_FRESHNESS_RETRIES = 2;
+
+export function resolveDirectPrBaseSyncConflictAttempts(
+  configValue?: number,
+  overrideValue?: number,
+): number {
+  const selected = overrideValue ?? configValue ?? DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS;
+  if (!Number.isFinite(selected) || !Number.isInteger(selected)) {
+    throw new RangeError('compile.directPrBaseSyncConflictAttempts must be a finite integer');
+  }
+  return Math.max(
+    MIN_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
+    Math.min(selected, MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS),
+  );
+}
 
 export interface DirectPrBaseSyncPoint {
   remote: string;
@@ -27,6 +43,7 @@ export interface DirectPrBaseSyncPoint {
 }
 
 export type DirectPrBaseSyncFailureReason =
+  | 'invalid-conflict-attempts'
   | 'invalid-remote'
   | 'invalid-branch'
   | 'remote-unregistered'
@@ -184,7 +201,7 @@ async function finishConflictedRebase({
       return {
         ok: false,
         reason: 'conflict-attempts-exhausted',
-        message: `Direct PR base sync exhausted ${maxAttempts} conflict-resolution attempt(s) for '${baseBranch}'`,
+        message: `Direct PR base sync exhausted ${maxAttempts} conflict-resolution attempt(s) for '${baseBranch}'. Raise compile.directPrBaseSyncConflictAttempts or complete the rebase manually.`,
       };
     }
 
@@ -232,7 +249,17 @@ async function finishConflictedRebase({
 
 export async function syncDirectPrBase(options: SyncDirectPrBaseOptions): Promise<DirectPrBaseSyncResult> {
   const remote = options.remote ?? DIRECT_PR_REMOTE;
-  const maxAttempts = options.conflictAttempts ?? DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS;
+  let maxAttempts: number;
+  try {
+    maxAttempts = resolveDirectPrBaseSyncConflictAttempts(undefined, options.conflictAttempts);
+  } catch (err) {
+    return failure(
+      'invalid-conflict-attempts',
+      `Invalid direct PR base sync conflict attempt budget: ${(err as Error).message}`,
+      remote,
+      options.baseBranch,
+    );
+  }
 
   const validationErr = await validateRemoteAndBranch(options.cwd, remote, options.baseBranch);
   if (validationErr) {

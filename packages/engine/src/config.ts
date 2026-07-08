@@ -20,6 +20,7 @@ import {
 } from '@eforge-build/scopes';
 import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime.js';
 import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA } from './compile-resilience/planning-decomposition-limits.js';
+import { resolveDirectPrBaseSyncConflictAttempts } from './direct-pr-base-sync.js';
 import type { PlanningDecompositionConfig } from './compile-resilience/planning-decomposition-limits.js';
 export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
 export { ADAPTIVE_RESCOPE_LIMITS_MAXIMA, DEFAULT_ADAPTIVE_RESCOPE_LIMITS, DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA, resolveAdaptiveRescopeLimits, resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits, type AdaptiveRescopeLimits } from './compile-resilience/planning-decomposition-limits.js';
@@ -58,6 +59,7 @@ export const DEFAULT_TIER_MAX_TURNS: Record<AgentTier, number> = Object.freeze({
 });
 const toolPresetConfigSchema = z.enum(['coding', 'read-only', 'none']);
 const boundedPositiveIntegerConfigSchema = (key: keyof PlanningDecompositionConfig) => z.number().int().positive().max(PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]!, `${key} must be <= ${PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key]}`);
+const clampedPositiveIntegerConfigSchema = z.number().int().positive();
 const RECOVERY_AUTO_RESUME_MAX_ATTEMPTS = 3;
 const compileConfigSchema = z.object({
   planningUnitParallelism: boundedPositiveIntegerConfigSchema('planningUnitParallelism').optional(),
@@ -74,7 +76,8 @@ const compileConfigSchema = z.object({
   planningSharedBriefMaxTotalBytes: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxTotalBytes').optional(),
   planningSharedBriefMaxSectionBytes: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxSectionBytes').optional(),
   planningSharedBriefMaxSectionsPerAtom: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxSectionsPerAtom').optional(),
-}).strict().describe('Context-managed compile planning-unit limits');
+  directPrBaseSyncConflictAttempts: clampedPositiveIntegerConfigSchema.optional().describe('Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.'),
+}).strict().describe('Compile planning-unit limits and direct PR base-sync budgets');
 // ---------------------------------------------------------------------------
 // Toolbelt Schemas
 // ---------------------------------------------------------------------------
@@ -1070,6 +1073,7 @@ export function resolveConfig(
     compile: Object.freeze({
       ...DEFAULT_CONFIG.compile,
       ...fileConfig.compile,
+      directPrBaseSyncConflictAttempts: resolveDirectPrBaseSyncConflictAttempts(fileConfig.compile?.directPrBaseSyncConflictAttempts),
     }),
     agents: Object.freeze({
       maxTurns: fileConfig.agents?.maxTurns ?? DEFAULT_CONFIG.agents.maxTurns,

@@ -125,6 +125,7 @@ compile:
   planningUnitMaxCriteriaPerUnit: 20
   planningUnitMaxSubsystemsPerUnit: 2
   planningUnitMaxSplitAttemptsPerUnit: 2
+  directPrBaseSyncConflictAttempts: 12  # Direct PR base-sync conflict-resolution attempt budget (clamped 1-100)
 
 # Landing action
 # landing:
@@ -213,9 +214,9 @@ Each command in `postMergeCommands`, queued PRD `postMerge` metadata, and the pl
 
 ## Compile planning limits
 
-The top-level `compile` block controls budgets for context-managed planning when overflow-risk compile inputs receive a bounded-decomposition recommendation. These limits do not change normal direct planning; they only bound decomposition into planning units for that context-managed path.
+The top-level `compile` block controls budgets for context-managed planning when overflow-risk compile inputs receive a bounded-decomposition recommendation, plus the direct PR base-sync conflict-resolution attempt budget. The `planningUnit*` limits do not change normal direct planning; they only bound decomposition into planning units for that context-managed path.
 
-All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default.
+All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default. `directPrBaseSyncConflictAttempts` is clamped to the supported `1`-`100` range after config/override precedence is resolved.
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -230,6 +231,7 @@ All numeric values must be positive integers. `planningUnitMaxObservedTurns` is 
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | Maximum subsystem hints assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | Maximum split attempts for one planning unit before exhaustion. |
+| `compile.directPrBaseSyncConflictAttempts` | `12` | Conflict-resolution attempt budget for direct non-stacked PR base sync. Explicit per-call overrides take precedence over this config value; the selected value is clamped to `1`-`100`. When exhausted, eforge reports the configured count and suggests raising this config key or completing the rebase manually. |
 
 ## Workflow Presets
 
