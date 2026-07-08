@@ -932,7 +932,6 @@ registerBuildStage({
     let anyShardFailed = false;
     // Track the last builder agentId seen per shard for agent:activity emission
     const shardAgentIds = new Map<string, string>();
-
     const tasks = shards.map((shard) => ({
       id: shard.id,
       run: (): AsyncGenerator<EforgeEvent> => {
