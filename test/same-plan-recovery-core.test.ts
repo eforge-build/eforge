@@ -358,7 +358,7 @@ describe('same-plan recovery orchestrator', () => {
 });
 
 describe('same-plan recovery fixer context', () => {
-  it('renders rejected and unresolved verifier issue groups with deterministic labels, identifiers, summaries, and reasons', () => {
+  it('renders rejected, unresolved, final verdict, changed-file, diff, and prior-attempt groups with deterministic labels, identifiers, summaries, and reasons', () => {
     const feedback: ReviewCycleFeedback = {
       blockingRetryGuidance: [
         { file: 'src/z.ts', hunk: 2, action: 'accept', reason: 'Still missing observable behavior.', issueOutcome: 'unresolved_blocking', issueIds: ['UNRES-2'], retryGuidance: 'Add the missing assertion.' },
@@ -377,20 +377,36 @@ describe('same-plan recovery fixer context', () => {
       blockerKind: 'review',
       issues: [issue({ issueId: 'B-2', file: 'b.ts' }), issue({ issueId: 'A-1', file: 'a.ts' })],
       feedback,
+      finalVerdicts: [
+        { file: 'src/z.ts', action: 'accept', reason: 'Recovered.', issueOutcome: 'resolved', issueIds: ['DONE-2'] },
+        { file: 'src/a.ts', hunk: 1, action: 'accept', reason: 'Still unresolved.', issueOutcome: 'unresolved_blocking', issueIds: ['DONE-1'], retryGuidance: 'Narrow the fix.' },
+      ],
+      changedFiles: ['src/z.ts', 'src/a.ts'],
+      diffContext: 'diff --git a/src/a.ts b/src/a.ts\n+value = 3',
+      priorRepairAttempts: ['round 1: attempted repair for 2 issue(s); evaluation accepted 1, rejected 0, blocking outcomes 1.'],
     });
 
     expect(rendered).toContain('## Rejected verifier issues\n\n- REJ-1 — src/a.ts hunk 1 — unresolved: Broad rewrite regressed neighboring behavior. Retry guidance: Use a smaller patch.');
     expect(rendered).toContain('## Unresolved verifier issues\n\n- UNRES-1 — src/y.ts hunk 3 — unresolved_blocking: Another unresolved issue.');
+    expect(rendered).toContain('## Final verifier/test verdicts\n\n- src/a.ts hunk 1 — action=accept, issueOutcome=unresolved_blocking. Issue IDs: DONE-1. Reason: Still unresolved. Retry guidance: Narrow the fix.');
+    expect(rendered).toContain('## Changed files\n\n- src/a.ts\n- src/z.ts');
+    expect(rendered).toContain('## Diff context\n\n```diff\ndiff --git a/src/a.ts b/src/a.ts\n+value = 3\n```');
+    expect(rendered).toContain('## Prior repair attempts\n\n- Attempt 1: round 1: attempted repair for 2 issue(s); evaluation accepted 1, rejected 0, blocking outcomes 1.');
     expect(rendered.indexOf('- A-1 — a.ts')).toBeLessThan(rendered.indexOf('- B-2 — b.ts'));
     expect(rendered.indexOf('- REJ-1 — src/a.ts')).toBeLessThan(rendered.indexOf('- REJ-2 — src/b.ts'));
     expect(rendered.indexOf('- UNRES-1 — src/y.ts')).toBeLessThan(rendered.indexOf('- UNRES-2 — src/z.ts'));
+    expect(rendered.indexOf('- src/a.ts hunk 1')).toBeLessThan(rendered.indexOf('- src/z.ts — action=accept'));
   });
 
-  it('renders defined empty states for rejected and unresolved verifier issue groups', () => {
+  it('renders defined empty states for rejected, unresolved, verdict, changed-file, diff, and prior-attempt groups', () => {
     const rendered = renderSamePlanRecoveryFixerContext({ planId: 'plan-active', blockerKind: 'test', issues: [] });
 
     expect(rendered).toContain('- No active blockers were supplied.');
     expect(rendered).toContain('## Rejected verifier issues\n\n- No rejected verifier issues.');
     expect(rendered).toContain('## Unresolved verifier issues\n\n- No unresolved verifier issues.');
+    expect(rendered).toContain('## Final verifier/test verdicts\n\n- No final verifier/test verdicts were captured.');
+    expect(rendered).toContain('## Changed files\n\n- No changed files were captured.');
+    expect(rendered).toContain('## Diff context\n\nNo diff context was captured.');
+    expect(rendered).toContain('## Prior repair attempts\n\n- No prior repair attempts were captured.');
   });
 });

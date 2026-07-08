@@ -527,7 +527,22 @@ export function parseTestIssues(text: string): TestIssue[] {
  * Convert a TestIssue to a ReviewIssue for the evaluate stage.
  * Maps test-specific fields to the review issue structure.
  */
+const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
+
+function boundedReviewIssueMetadataString(value: string): { value: string; truncated: boolean; originalLength?: number } {
+  if (value.length <= MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH) return { value, truncated: false };
+  const marker = `\n... [truncated from ${value.length} chars]`;
+  return {
+    value: value.slice(0, Math.max(0, MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH - marker.length)) + marker,
+    truncated: true,
+    originalLength: value.length,
+  };
+}
+
 export function testIssueToReviewIssue(issue: TestIssue): ReviewIssue {
+  const boundedTestOutput = issue.testOutput !== undefined
+    ? boundedReviewIssueMetadataString(issue.testOutput)
+    : undefined;
   return {
     severity: issue.severity,
     category: issue.category,
@@ -536,7 +551,8 @@ export function testIssueToReviewIssue(issue: TestIssue): ReviewIssue {
     fix: issue.fix,
     metadata: {
       testFile: issue.testFile,
-      ...(issue.testOutput !== undefined && { testOutput: issue.testOutput }),
+      ...(boundedTestOutput !== undefined && { testOutput: boundedTestOutput.value }),
+      ...(boundedTestOutput?.truncated === true && { testOutputTruncated: true, originalTestOutputLength: boundedTestOutput.originalLength }),
     },
   };
 }

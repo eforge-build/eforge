@@ -91,6 +91,14 @@ describe('same-plan recovery build-stage orchestration', () => {
 
     const events = await collectEvents(getBuildStage('review-cycle')(ctx));
 
+    const recoveryFixerPrompt = harness.prompts.filter((_, index) => harness.calls[index]?.stage === 'review-fix').at(-1) ?? '';
+    expect(recoveryFixerPrompt).toContain('## Final verifier/test verdicts');
+    expect(recoveryFixerPrompt).toContain('Still unresolved.');
+    expect(recoveryFixerPrompt).toContain('## Changed files\n\n- src/app.ts');
+    expect(recoveryFixerPrompt).toContain('## Diff context');
+    expect(recoveryFixerPrompt).toContain('diff --git a/src/app.ts b/src/app.ts');
+    expect(recoveryFixerPrompt).toContain('## Prior repair attempts');
+    expect(recoveryFixerPrompt).toContain('round 1: attempted repair for 1 issue(s); evaluation accepted 1, rejected 0, blocking outcomes 1.');
     expect(filterEvents(events, 'plan:build:recovery:attempt:start')).toHaveLength(1);
     expect(filterEvents(events, 'plan:build:evaluate:start')).toHaveLength(2);
     expect(filterEvents(events, 'plan:build:recovery:attempt:result').at(-1)).toMatchObject({ blockersCleared: true });

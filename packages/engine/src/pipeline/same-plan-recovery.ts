@@ -41,11 +41,25 @@ export interface SamePlanRecoveryAttemptCallbacks {
   currentFeedback?: () => ReviewCycleFeedback | undefined;
 }
 
+export interface SamePlanRecoveryVerdictSummary {
+  file: string;
+  action: string;
+  reason: string;
+  hunk?: number;
+  issueOutcome?: string;
+  issueIds?: string[];
+  retryGuidance?: string;
+}
+
 export interface SamePlanRecoveryRunOptions {
   ctx: BuildStageContext;
   blockerKind: SamePlanRecoveryBlockerKind;
   issues: ReviewIssue[];
   feedback?: ReviewCycleFeedback;
+  finalVerdicts?: SamePlanRecoveryVerdictSummary[];
+  changedFiles?: string[];
+  diffContext?: string;
+  priorRepairAttempts?: string[];
   maxAttempts: number;
   activePlanId: string;
   confidence: number;
@@ -133,7 +147,16 @@ export async function* runSamePlanRecovery(options: SamePlanRecoveryRunOptions):
     const attemptsRemainingBefore = maxAttempts - attempt + 1;
     yield { timestamp: ts(), type: 'plan:build:recovery:attempt:start', planId: ctx.planId, blockerKind, attempt, maxAttempts, attemptsRemaining: attemptsRemainingBefore } as EforgeEvent;
     try {
-      for await (const event of callbacks.runFix(attempt, renderSamePlanRecoveryFixerContext({ planId: ctx.planId, blockerKind, issues, feedback }))) {
+      for await (const event of callbacks.runFix(attempt, renderSamePlanRecoveryFixerContext({
+        planId: ctx.planId,
+        blockerKind,
+        issues,
+        feedback,
+        finalVerdicts: options.finalVerdicts,
+        changedFiles: options.changedFiles,
+        diffContext: options.diffContext,
+        priorRepairAttempts: options.priorRepairAttempts,
+      }))) {
         yield event;
         if (ctx.buildFailed) {
           yield recoveryAttemptResultEvent(ctx.planId, blockerKind, attempt, maxAttempts, false);
@@ -163,7 +186,16 @@ export async function* runSamePlanRecovery(options: SamePlanRecoveryRunOptions):
   return false;
 }
 
-export function renderSamePlanRecoveryFixerContext(input: { planId: string; blockerKind: SamePlanRecoveryBlockerKind; issues: ReviewIssue[]; feedback?: ReviewCycleFeedback }): string {
+export function renderSamePlanRecoveryFixerContext(input: {
+  planId: string;
+  blockerKind: SamePlanRecoveryBlockerKind;
+  issues: ReviewIssue[];
+  feedback?: ReviewCycleFeedback;
+  finalVerdicts?: SamePlanRecoveryVerdictSummary[];
+  changedFiles?: string[];
+  diffContext?: string;
+  priorRepairAttempts?: string[];
+}): string {
   const sortedIssues = [...input.issues].sort((a, b) => (a.issueId ?? `${a.file}:${a.line ?? 0}:${a.description}`).localeCompare(b.issueId ?? `${b.file}:${b.line ?? 0}:${b.description}`));
   const lines = [
     '# Same-plan Recovery Context',
@@ -181,6 +213,10 @@ export function renderSamePlanRecoveryFixerContext(input: { planId: string; bloc
   const unresolved = input.feedback?.blockingRetryGuidance.filter(item => item.action !== 'reject') ?? [];
   lines.push('', '## Rejected verifier issues', '', ...formatFeedbackGroup(rejected, 'No rejected verifier issues.'));
   lines.push('', '## Unresolved verifier issues', '', ...formatFeedbackGroup(unresolved, 'No unresolved verifier issues.'));
+  lines.push('', '## Final verifier/test verdicts', '', ...formatVerdictGroup(input.finalVerdicts ?? [], 'No final verifier/test verdicts were captured.'));
+  lines.push('', '## Changed files', '', ...formatChangedFiles(input.changedFiles ?? []));
+  lines.push('', '## Diff context', '', ...formatDiffContext(input.diffContext));
+  lines.push('', '## Prior repair attempts', '', ...formatPriorRepairAttempts(input.priorRepairAttempts ?? []));
   return lines.join('\n');
 }
 
@@ -215,6 +251,34 @@ function formatFeedbackGroup(items: NonNullable<ReviewCycleFeedback['blockingRet
       const outcome = item.issueOutcome ?? (item.action === 'accept' ? 'resolved' : 'unresolved');
       return `- ${ids} — ${location} — ${outcome}: ${item.reason}${item.retryGuidance ? ` Retry guidance: ${item.retryGuidance}` : ''}`;
     });
+}
+
+function formatVerdictGroup(verdicts: SamePlanRecoveryVerdictSummary[], empty: string): string[] {
+  if (verdicts.length === 0) return [`- ${empty}`];
+  return [...verdicts]
+    .sort((a, b) => `${a.file}:${a.hunk ?? 0}:${a.reason}`.localeCompare(`${b.file}:${b.hunk ?? 0}:${b.reason}`))
+    .map(verdict => {
+      const ids = verdict.issueIds && verdict.issueIds.length > 0 ? ` Issue IDs: ${verdict.issueIds.join(', ')}.` : '';
+      const location = verdict.hunk !== undefined ? `${verdict.file} hunk ${verdict.hunk}` : verdict.file;
+      const outcome = verdict.issueOutcome ?? (verdict.action === 'accept' ? 'resolved' : 'unresolved');
+      return `- ${location} — action=${verdict.action}, issueOutcome=${outcome}.${ids} Reason: ${verdict.reason}${verdict.retryGuidance ? ` Retry guidance: ${verdict.retryGuidance}` : ''}`;
+    });
+}
+
+function formatChangedFiles(files: string[]): string[] {
+  if (files.length === 0) return ['- No changed files were captured.'];
+  return [...files].sort((a, b) => a.localeCompare(b)).map(file => `- ${file}`);
+}
+
+function formatDiffContext(diffContext: string | undefined): string[] {
+  const trimmed = diffContext?.trim();
+  if (!trimmed) return ['No diff context was captured.'];
+  return ['```diff', trimmed, '```'];
+}
+
+function formatPriorRepairAttempts(attempts: string[]): string[] {
+  if (attempts.length === 0) return ['- No prior repair attempts were captured.'];
+  return attempts.map((attempt, index) => `- Attempt ${index + 1}: ${attempt}`);
 }
 
 function ts(): string {
