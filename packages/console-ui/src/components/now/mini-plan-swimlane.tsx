@@ -19,7 +19,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { compactTokens } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { PlanLane, PlanLaneAgent, PlanningLane, PipelineStage } from '@/lib/run-state';
+import type { PhaseProgressStatus, PlanLane, PlanLaneAgent, PlanningLane, PipelineStage } from '@/lib/run-state';
 import { STAGE_STATUS_STYLES } from '@/components/pipeline/pipeline-colors';
 import { Chevron } from '@/components/pipeline/stage-overview';
 import { getBuildStageStatuses, buildStageName, type StageStatus } from '@/components/pipeline/agent-stage-map';
@@ -285,15 +285,27 @@ function PlanLaneRow({ lane, maxTokens }: { lane: PlanLane; maxTokens: number })
 // PRD (planning) lane
 // ---------------------------------------------------------------------------
 
-function PrdLaneRow({ planning, maxTokens }: { planning: PlanningLane; maxTokens: number }) {
-  const { open, toggle } = useLaneDisclosure(planning.running);
+function prdStatusLabel(status: PhaseProgressStatus | undefined, running: boolean): React.ReactNode {
+  if (status === 'failed') return <span className="shrink-0 text-xs text-destructive">failed</span>;
+  if (running) return null;
+  if (status === 'pending') return <span className="shrink-0 text-xs text-muted-foreground">waiting</span>;
+  return <span className="shrink-0 text-xs text-primary">✓ done</span>;
+}
+
+function PrdLaneRow({ planning, maxTokens, status }: { planning: PlanningLane; maxTokens: number; status?: PhaseProgressStatus }) {
+  // A failed phase wins over lingering thread activity: planning:error can
+  // arrive while an agent thread has not yet emitted its stop event, and the
+  // lane must not render as live-blue when the rail already shows it failed.
+  const failed = status === 'failed';
+  const running = !failed && (planning.running || status === 'running');
+  const { open, toggle } = useLaneDisclosure(running || failed);
   const tokens = totalTokens(planning.agents);
 
   return (
     <LaneShell
       open={open}
       onToggle={toggle}
-      className={cn(planning.running && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10')}
+      className={cn(running && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10', failed && 'border-destructive/35 bg-destructive/5')}
       header={
         <>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -305,7 +317,7 @@ function PrdLaneRow({ planning, maxTokens }: { planning: PlanningLane; maxTokens
           </span>
           <span className="flex shrink-0 items-center gap-2">
             {!open && <TokenSummary tokens={tokens} />}
-            {!planning.running && <span className="shrink-0 text-xs text-primary">✓ done</span>}
+            {prdStatusLabel(status, running)}
           </span>
         </>
       }
@@ -330,9 +342,11 @@ export interface MiniPlanSwimlaneProps {
   planning: PlanningLane;
   /** True when planning events exist in the run state (shows the PRD lane). */
   hasPlanningRow: boolean;
+  /** Shared phase status for planning/compile, when available from run-state. */
+  planningStatus?: PhaseProgressStatus;
 }
 
-export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow }: MiniPlanSwimlaneProps) {
+export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow, planningStatus }: MiniPlanSwimlaneProps) {
   if (lanes.length === 0 && !hasPlanningRow) return null;
 
   // Normalize token bars across every agent on the card (planning + plans) so a
@@ -345,7 +359,7 @@ export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow }: MiniPlanSw
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-1.5 border-t border-border pt-2" data-testid="mini-plan-swimlane">
-        {hasPlanningRow && <PrdLaneRow planning={planning} maxTokens={maxTokens} />}
+        {hasPlanningRow && <PrdLaneRow planning={planning} maxTokens={maxTokens} status={planningStatus} />}
         {lanes.map((lane) => (
           <PlanLaneRow key={lane.planId} lane={lane} maxTokens={maxTokens} />
         ))}

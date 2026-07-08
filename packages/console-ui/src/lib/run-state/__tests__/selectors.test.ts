@@ -16,6 +16,7 @@ import {
 } from '../selectors/plan-progress';
 import { LANE_REGISTRY } from '../lane-registry';
 import { selectStackLayersForRun } from '../selectors/stack-layers';
+import { selectBuildPhaseProgress } from '../selectors/phase-progress';
 import { createInitialRunState, initialRunState, reduce } from '../reducer';
 import type { RunState, EforgeEvent } from '../types';
 import type { StackLayerWire } from '@eforge-build/client/browser';
@@ -26,6 +27,18 @@ function makeRunState(overrides: Partial<RunState> = {}): RunState {
 
 function makeStoredEvent(event: unknown, eventId = 'evt-1'): { event: EforgeEvent; eventId: string } {
   return { event: event as EforgeEvent, eventId };
+}
+
+type OrchestrationConfig = NonNullable<RunState['earlyOrchestration']>;
+
+function makeOrchestration(
+  plans: Array<{ id: string; name: string } & Partial<OrchestrationConfig['plans'][number]>> = [],
+): OrchestrationConfig {
+  return {
+    mode: 'compile',
+    pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+    plans: plans.map((plan) => ({ dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 }, ...plan })),
+  };
 }
 
 function makeLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire {
@@ -102,11 +115,7 @@ describe('getSummaryStats', () => {
   it('ignores stale synthetic statuses when orchestration identifies real plans', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [{ id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } }],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
     });
 
     expect(getSummaryStats(state).plansTotal).toBe(1);
@@ -128,11 +137,7 @@ describe('getSummaryStats', () => {
   it('does not fall back to stale statuses when orchestration context is present but empty', () => {
     const state = makeRunState({
       planStatuses: { 'acceptance-validation': 'plan' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [],
-      },
+      earlyOrchestration: makeOrchestration(),
     });
 
     expect(getSummaryStats(state).plansTotal).toBe(0);
@@ -170,14 +175,10 @@ describe('selectPlanStatusCounts', () => {
 
   it('includes plans from earlyOrchestration not yet in planStatuses', () => {
     const state = makeRunState({
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-          { id: 'plan-02', name: 'Plan Two', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One' },
+        { id: 'plan-02', name: 'Plan Two' },
+      ]),
     });
     const counts = selectPlanStatusCounts(state);
     expect(counts.total).toBe(2);
@@ -210,14 +211,10 @@ describe('selectMiniGanttRows', () => {
   it('returns rows ordered by earlyOrchestration plans when present', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'plan-02': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-          { id: 'plan-02', name: 'Plan Two', dependsOn: ['plan-01'], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One' },
+        { id: 'plan-02', name: 'Plan Two', dependsOn: ['plan-01'] },
+      ]),
     });
     const rows = selectMiniGanttRows(state);
     expect(rows).toHaveLength(2);
@@ -276,26 +273,10 @@ describe('selectPlanLanes', () => {
   it('carries build-stage sequence and every plan agent (running and done) in start order', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'review', 'plan-02': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          {
-            id: 'plan-01',
-            name: 'Plan One',
-            dependsOn: [],
-            build: ['implement', 'test-cycle', 'review-cycle'],
-            review: { strategy: 'auto', maxRounds: 1 },
-          },
-          {
-            id: 'plan-02',
-            name: 'Plan Two',
-            dependsOn: ['plan-01'],
-            build: ['implement'],
-            review: { strategy: 'auto', maxRounds: 1 },
-          },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One', build: ['implement', 'test-cycle', 'review-cycle'] },
+        { id: 'plan-02', name: 'Plan Two', dependsOn: ['plan-01'], build: ['implement'] },
+      ]),
       agentThreads: [
         // builder finished, reviewer still running — both must appear, builder first.
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 1_700_000 },
@@ -347,19 +328,9 @@ describe('selectPlanLanes', () => {
   it('appends a dynamically-added gap-close lane after the orchestration plans', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'gap-close': 'review' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          {
-            id: 'plan-01',
-            name: 'Plan One',
-            dependsOn: [],
-            build: ['implement', 'review-cycle'],
-            review: { strategy: 'auto', maxRounds: 1 },
-          },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One', build: ['implement', 'review-cycle'] },
+      ]),
       agentThreads: [
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
         { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 200_000 },
@@ -382,19 +353,9 @@ describe('selectPlanLanes', () => {
   it('surfaces a feature-branch base-sync lane present only via live merge-resolver threads', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          {
-            id: 'plan-01',
-            name: 'Plan One',
-            dependsOn: [],
-            build: ['implement'],
-            review: { strategy: 'auto', maxRounds: 1 },
-          },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One', build: ['implement'] },
+      ]),
       agentThreads: [
         { planId: 'eforge/feature-x', agent: 'merge-conflict-resolver', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 1_000 },
       ] as RunState['agentThreads'],
@@ -409,19 +370,9 @@ describe('selectPlanLanes', () => {
   it('surfaces a gap-close lane present only via live threads (no status yet)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          {
-            id: 'plan-01',
-            name: 'Plan One',
-            dependsOn: [],
-            build: ['implement'],
-            review: { strategy: 'auto', maxRounds: 1 },
-          },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One', build: ['implement'] },
+      ]),
       agentThreads: [
         { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 1_000 },
       ] as RunState['agentThreads'],
@@ -429,6 +380,274 @@ describe('selectPlanLanes', () => {
     const lanes = selectPlanLanes(state);
     expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'gap-close']);
     expect(lanes[1].planName).toBe('Gap Close');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectBuildPhaseProgress
+// ---------------------------------------------------------------------------
+describe('selectBuildPhaseProgress', () => {
+  it('keeps planning running while map/reduce reduce work is queued or running', () => {
+    const state = makeRunState({
+      events: [
+        makeStoredEvent({
+          type: 'planning:map-reduce:atoms',
+          timestamp: '2026-05-24T10:00:00.000Z',
+          graphId: 'graph-1',
+          atomCount: 1,
+          edgeCount: 0,
+          atoms: [{ atomId: 'atom-a', title: 'Atom A', reason: 'subsystem', criterionIds: [], dependencyAtomIds: [] }],
+          edges: [],
+        }),
+      ],
+      mapReduce: {
+        graphId: 'graph-1',
+        atomCount: 1,
+        edgeCount: 0,
+        edges: [],
+        atoms: { 'atom-a': { atomId: 'atom-a', title: 'Atom A', reason: 'subsystem', criterionIds: [], dependencyAtomIds: [], status: 'completed' } },
+        atomOrder: ['atom-a'],
+        maxDepth: 1,
+        nodeCount: 2,
+        reduceNodes: {
+          'reduce-000': { nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-a'], inputNodeIds: [], status: 'running' },
+          'reduce-001': { nodeId: 'reduce-001', depth: 1, inputAtomIds: [], inputNodeIds: ['reduce-000'], status: 'queued' },
+        },
+        reduceOrder: ['reduce-000', 'reduce-001'],
+      },
+      agentThreads: [
+        // The reduce-000 thread has ended, so ONLY the queued/running node
+        // statuses can drive the running verdict here.
+        { planId: 'reduce-000', agent: 'planner', agentId: 'agent-1', startedAt: '2026-05-24T10:01:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', durationMs: null, durationApiMs: null, inputTokens: null, outputTokens: null, totalTokens: null, cacheRead: null, cacheCreation: null, costUsd: null, numTurns: null, model: 'test' },
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state).prd).toBe('running');
+    // The same state must be safe for the planning lane, which iterates the
+    // atoms event payload, and it must agree planning is still live.
+    expect(selectPlanningLane(state).running).toBe(true);
+  });
+
+  it('keeps planning running via a live map/reduce member thread when node statuses are already terminal', () => {
+    const state = makeRunState({
+      mapReduce: {
+        graphId: 'graph-1',
+        atomCount: 1,
+        edgeCount: 0,
+        edges: [],
+        atoms: { 'atom-a': { atomId: 'atom-a', title: 'Atom A', reason: 'subsystem', criterionIds: [], dependencyAtomIds: [], status: 'completed' } },
+        atomOrder: ['atom-a'],
+        maxDepth: 0,
+        nodeCount: 1,
+        reduceNodes: {
+          'reduce-000': { nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-a'], inputNodeIds: [], status: 'completed' },
+        },
+        reduceOrder: ['reduce-000'],
+      },
+      agentThreads: [
+        { planId: 'reduce-000', agent: 'planner', agentId: 'agent-1', startedAt: '2026-05-24T10:01:00.000Z', endedAt: null, durationMs: null, durationApiMs: null, inputTokens: null, outputTokens: null, totalTokens: null, cacheRead: null, cacheCreation: null, costUsd: null, numTurns: null, model: 'test' },
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state).prd).toBe('running');
+  });
+
+  it('treats command validation as PRD-check work before prd_validation starts', () => {
+    const state = makeRunState({
+      earlyOrchestration: makeOrchestration(),
+      validationCommands: [
+        { command: 'pnpm test', startedAt: '2026-05-24T10:00:00.000Z', endedAt: null, status: 'running', exitCode: null },
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state).prdValidation).toBe('running');
+  });
+
+  it('marks completed PRD validation done instead of active', () => {
+    const state = makeRunState({
+      events: [
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T10:00:00.000Z' }, '1'),
+        makeStoredEvent({ type: 'prd_validation:complete', timestamp: '2026-05-24T10:01:00.000Z', passed: true, gaps: [], completionPercent: 100 }, '2'),
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state).prdValidation).toBe('passed');
+  });
+
+  it('does not mark failed gap close as done', () => {
+    const state = makeRunState({
+      events: [
+        makeStoredEvent({ type: 'gap_close:start', timestamp: '2026-05-24T10:00:00.000Z', gapCount: 1 }, '1'),
+        makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T10:01:00.000Z', passed: false }, '2'),
+      ],
+    });
+
+    const progress = selectBuildPhaseProgress(state);
+    expect(progress.gapClose).toBe('failed');
+    expect(progress.finalValidation).toBe('pending');
+  });
+
+  it('fails planning immediately on planning:error even with a live planning thread', () => {
+    const state = makeRunState({
+      events: [makeStoredEvent({ type: 'planning:error', timestamp: '2026-05-24T09:05:00.000Z', message: 'compiler crashed' })],
+      agentThreads: [
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: null, totalTokens: 1_000 },
+      ] as RunState['agentThreads'],
+    });
+
+    expect(selectBuildPhaseProgress(state).prd).toBe('failed');
+  });
+
+  it('marks planning skipped on planning:skip and passed on planning:complete', () => {
+    const skipped = makeRunState({
+      events: [makeStoredEvent({ type: 'planning:skip', timestamp: '2026-05-24T09:00:00.000Z', reason: 'compiled plan supplied' })],
+    });
+    const completed = makeRunState({
+      events: [makeStoredEvent({ type: 'planning:complete', timestamp: '2026-05-24T09:00:00.000Z', plans: [] })],
+    });
+
+    expect(selectBuildPhaseProgress(skipped).prd).toBe('skipped');
+    expect(selectBuildPhaseProgress(completed).prd).toBe('passed');
+  });
+
+  it('keeps planning running after planning:complete while a planning thread is still live', () => {
+    const state = makeRunState({
+      events: [makeStoredEvent({ type: 'planning:complete', timestamp: '2026-05-24T09:05:00.000Z', plans: [] })],
+      agentThreads: [
+        { planId: 'planning', agent: 'plan-reviewer', startedAt: '2026-05-24T09:04:00.000Z', endedAt: null, totalTokens: 500 },
+      ] as RunState['agentThreads'],
+    });
+
+    expect(selectBuildPhaseProgress(state).prd).toBe('running');
+  });
+
+  it('keeps plans running when some plans are complete and none are currently active', () => {
+    // 3 plans, 2 complete, 1 not started: the phase already showed progress,
+    // so it must not fall back to pending while the next plan waits.
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'plan-02': 'complete' },
+      earlyOrchestration: makeOrchestration([
+        { id: 'plan-01', name: 'Plan One' },
+        { id: 'plan-02', name: 'Plan Two' },
+        { id: 'plan-03', name: 'Plan Three', dependsOn: ['plan-02'] },
+      ]),
+    });
+
+    expect(selectBuildPhaseProgress(state).plans).toBe('running');
+  });
+
+  it('partitions validation activity around the earliest gap_close:complete regardless of its outcome', () => {
+    const state = makeRunState({
+      events: [
+        // First-round check: completed with gaps (passed:false) still reads as
+        // passed — the follow-up work renders as the gap-close phase.
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T10:01:00.000Z' }, '1'),
+        makeStoredEvent({ type: 'prd_validation:complete', timestamp: '2026-05-24T10:02:00.000Z', passed: false, gaps: [{ id: 'gap-1' }], completionPercent: 80 }, '2'),
+        // Boundary: earliest gap_close:complete of ANY outcome, here a failure.
+        makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:00:00.000Z', passed: false }, '3'),
+        // Final check: honors the event verdict — passed:false means failed.
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T11:06:00.000Z' }, '4'),
+        makeStoredEvent({ type: 'prd_validation:complete', timestamp: '2026-05-24T11:07:00.000Z', passed: false, gaps: [{ id: 'gap-1' }], completionPercent: 90 }, '5'),
+      ],
+      validationCommands: [
+        { command: 'pnpm test', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:00:30.000Z', status: 'passed', exitCode: 0 },
+        // Starts exactly at the gap-close boundary: at/after counts as final validation.
+        { command: 'pnpm test', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', status: 'passed', exitCode: 0 },
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state)).toEqual({
+      prd: 'pending',
+      plans: 'pending',
+      prdValidation: 'passed',
+      gapClose: 'failed',
+      finalValidation: 'failed',
+      landing: 'pending',
+    });
+  });
+
+  it('lets a later passing final prd_validation:complete supersede an earlier failing one', () => {
+    const state = makeRunState({
+      events: [
+        makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:00:00.000Z', passed: true }, '1'),
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T11:06:00.000Z' }, '2'),
+        makeStoredEvent({ type: 'prd_validation:complete', timestamp: '2026-05-24T11:07:00.000Z', passed: false, gaps: [{ id: 'gap-1' }], completionPercent: 90 }, '3'),
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T11:10:00.000Z' }, '4'),
+        makeStoredEvent({ type: 'prd_validation:complete', timestamp: '2026-05-24T11:12:00.000Z', passed: true, gaps: [], completionPercent: 100 }, '5'),
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state).finalValidation).toBe('passed');
+  });
+
+  it('maps landing lifecycle events to landing status with the last event winning', () => {
+    const landingFor = (events: unknown[]) =>
+      selectBuildPhaseProgress(makeRunState({
+        events: events.map((event, index) => makeStoredEvent(event, `evt-${index}`)),
+      })).landing;
+
+    expect(landingFor([{ type: 'landing:start', timestamp: '2026-05-24T11:00:00.000Z' }])).toBe('running');
+    expect(landingFor([{ type: 'landing:auto-merge:start', timestamp: '2026-05-24T11:00:00.000Z' }])).toBe('running');
+    expect(landingFor([
+      { type: 'landing:start', timestamp: '2026-05-24T11:00:00.000Z' },
+      { type: 'landing:complete', timestamp: '2026-05-24T11:05:00.000Z' },
+    ])).toBe('passed');
+    expect(landingFor([
+      { type: 'landing:auto-merge:start', timestamp: '2026-05-24T11:00:00.000Z' },
+      { type: 'landing:auto-merge:complete', timestamp: '2026-05-24T11:05:00.000Z' },
+    ])).toBe('passed');
+    expect(landingFor([{ type: 'landing:skipped', timestamp: '2026-05-24T11:00:00.000Z' }])).toBe('skipped');
+    expect(landingFor([{ type: 'landing:auto-merge:skipped', timestamp: '2026-05-24T11:00:00.000Z' }])).toBe('skipped');
+    expect(landingFor([{ type: 'stack:landing:update', timestamp: '2026-05-24T11:00:00.000Z', status: 'started' }])).toBe('running');
+    expect(landingFor([
+      { type: 'stack:landing:update', timestamp: '2026-05-24T11:00:00.000Z', status: 'started' },
+      { type: 'stack:landing:update', timestamp: '2026-05-24T11:05:00.000Z', status: 'complete' },
+    ])).toBe('passed');
+    expect(landingFor([{ type: 'stack:landing:update', timestamp: '2026-05-24T11:00:00.000Z', status: 'skipped' }])).toBe('skipped');
+  });
+
+  it('backfills earlier phases when landing starts, preserving skipped prd and pending gap phases', () => {
+    const state = makeRunState({
+      // One plan mid-flight: plans reads 'running' before backfill.
+      planStatuses: { 'plan-01': 'complete', 'plan-02': 'implement' },
+      events: [
+        makeStoredEvent({ type: 'planning:skip', timestamp: '2026-05-24T09:00:00.000Z', reason: 'compiled plan supplied' }, '1'),
+        // prd_validation started with no complete: 'running' before backfill.
+        makeStoredEvent({ type: 'prd_validation:start', timestamp: '2026-05-24T10:00:00.000Z' }, '2'),
+        makeStoredEvent({ type: 'landing:start', timestamp: '2026-05-24T11:00:00.000Z' }, '3'),
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state)).toEqual({
+      // planning:skip is preserved — no phantom green check from the backfill.
+      prd: 'skipped',
+      plans: 'passed',
+      prdValidation: 'passed',
+      // Gap-free builds never ran these: pending is preserved.
+      gapClose: 'pending',
+      finalValidation: 'pending',
+      landing: 'running',
+    });
+  });
+
+  it('reports landing failed on stack:landing:update failed while backfilling earlier phases', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      events: [
+        makeStoredEvent({ type: 'planning:complete', timestamp: '2026-05-24T09:00:00.000Z', plans: [] }, '1'),
+        makeStoredEvent({ type: 'stack:landing:update', timestamp: '2026-05-24T11:00:00.000Z', status: 'started' }, '2'),
+        makeStoredEvent({ type: 'stack:landing:update', timestamp: '2026-05-24T11:05:00.000Z', status: 'failed' }, '3'),
+      ],
+    });
+
+    expect(selectBuildPhaseProgress(state)).toEqual({
+      prd: 'passed',
+      plans: 'passed',
+      prdValidation: 'passed',
+      gapClose: 'pending',
+      finalValidation: 'pending',
+      landing: 'failed',
+    });
   });
 });
 
@@ -502,6 +721,44 @@ describe('selectPlanningLane', () => {
     expect(lane.running).toBe(true);
   });
 
+  it('adds compact map/reduce groups to the planning lane', () => {
+    const state = makeRunState({
+      mapReduce: {
+        graphId: 'graph-1',
+        atomCount: 2,
+        edgeCount: 0,
+        edges: [],
+        atoms: {
+          'atom-a': { atomId: 'atom-a', title: 'Atom A', reason: 'subsystem', criterionIds: [], dependencyAtomIds: [], status: 'completed' },
+          'atom-b': { atomId: 'atom-b', title: 'Atom B', reason: 'subsystem', criterionIds: [], dependencyAtomIds: [], status: 'completed' },
+        },
+        atomOrder: ['atom-a', 'atom-b'],
+        maxDepth: 1,
+        nodeCount: 1,
+        reduceNodes: {
+          'reduce-000': { nodeId: 'reduce-000', depth: 0, inputAtomIds: ['atom-a', 'atom-b'], inputNodeIds: [], status: 'running' },
+        },
+        reduceOrder: ['reduce-000'],
+      },
+      agentThreads: [
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:01:00.000Z', totalTokens: 100 },
+        { planId: 'atom-a', agent: 'planner', startedAt: '2026-05-24T09:01:00.000Z', endedAt: '2026-05-24T09:02:00.000Z', totalTokens: 1_000 },
+        { planId: 'atom-b', agent: 'planner', startedAt: '2026-05-24T09:01:00.000Z', endedAt: '2026-05-24T09:02:00.000Z', totalTokens: 2_000 },
+        { planId: 'reduce-000', agent: 'planner', startedAt: '2026-05-24T09:02:00.000Z', endedAt: null, totalTokens: 500 },
+        { planId: 'planning', agent: 'plan-reviewer', startedAt: '2026-05-24T09:03:00.000Z', endedAt: null, totalTokens: 200 },
+      ] as RunState['agentThreads'],
+    });
+
+    const lane = selectPlanningLane(state);
+    expect(lane.agents).toEqual([
+      { agent: 'planner', tokens: 100, running: false },
+      { agent: 'map atoms (2)', tokens: 3_000, running: false },
+      { agent: 'reduce L1 (1)', tokens: 500, running: true },
+      { agent: 'plan-reviewer', tokens: 200, running: true },
+    ]);
+    expect(lane.running).toBe(true);
+  });
+
   it('excludes plan-less threads (no planId) from the planning lane', () => {
     const state = makeRunState({
       agentThreads: [
@@ -538,13 +795,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('orders extras as plans, then validation, then gap-close, then final-validation', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
         { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
@@ -559,13 +810,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('omits gap-close and final-validation lanes when no threads carry those lane ids', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
         { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
@@ -581,13 +826,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('does NOT emit a planning lane, but DOES emit validation/gap-close/final-validation when their threads exist', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:05:00.000Z', totalTokens: 100_000 },
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
@@ -607,13 +846,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('labels backed phase lanes via the lane registry', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement', 'validation': 'implement', 'final-validation': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
       validationCommands: [
         { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
@@ -635,13 +868,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('excludes unbacked synthetic resume seed ids while retaining backed phase lanes', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan', 'gap-close': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
       ] as RunState['agentThreads'],
@@ -654,13 +881,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('excludes thread-only synthetic resume seed ids while retaining real plans and backed phase lanes', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'acceptance-validation', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
         { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
@@ -674,13 +895,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('excludes unbacked registered phase statuses', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', validation: 'implement', 'gap-close': 'implement', 'final-validation': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
     });
 
     expect(selectPlanLanes(state).map((lane) => lane.planId)).toEqual(['plan-01']);
@@ -689,13 +904,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('creates validation and final-validation lanes from validation command spans without plan statuses', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
       validationCommands: [
         { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
@@ -709,13 +918,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('never emits separate lanes for pre-planning phases (they fold into the planning row)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'satisfaction-gate', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:02:00.000Z', totalTokens: 899_000 },
         { planId: 'repository-exploration', agent: 'planner', startedAt: '2026-05-24T09:02:00.000Z', endedAt: '2026-05-24T09:05:00.000Z', totalTokens: 404_200 },
@@ -729,13 +932,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('derives completion for phase lanes whose threads have all ended (no plan:status:change ever arrives)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 50_000 },
         { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:06:00.000Z', endedAt: null, totalTokens: 60_000 },
@@ -753,13 +950,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('derives completion from ended validation command spans (command-only lanes)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       validationCommands: [
         { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
       ],
@@ -771,13 +962,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('does not derive completion when the last final-validation command failed (run aborted on the failure)', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
       validationCommands: [
         // Pre-gap-close validation passed → validation lane still derives done.
@@ -797,13 +982,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('does not derive completion when the last validation command timed out', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       validationCommands: [
         { command: 'pnpm test', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:20:00.000Z', status: 'timeout', exitCode: null },
       ],
@@ -815,13 +994,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('derives completion again when a later command run supersedes an earlier failure', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       validationCommands: [
         { command: 'pnpm test', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'failed', exitCode: 1 },
         { command: 'pnpm test', startedAt: '2026-05-24T11:05:00.000Z', endedAt: '2026-05-24T11:06:00.000Z', status: 'passed', exitCode: 0 },
@@ -836,13 +1009,7 @@ describe('selectPlanLanes - lane registry', () => {
     // again, not complete.
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 50_000 },
         { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:06:00.000Z', endedAt: null, totalTokens: 1_000 },
@@ -855,13 +1022,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('does not derive completion when an explicit stage exists or for real plans without status', () => {
     const state = makeRunState({
       planStatuses: { 'gap-close': 'implement' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [
-          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        ],
-      },
+      earlyOrchestration: makeOrchestration([{ id: 'plan-01', name: 'Plan One' }]),
       agentThreads: [
         // Real plan with ended threads but no status entry: stays not-complete.
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
@@ -877,11 +1038,7 @@ describe('selectPlanLanes - lane registry', () => {
   it('does not fall back to stale statuses when selecting lanes with empty orchestration context', () => {
     const state = makeRunState({
       planStatuses: { 'acceptance-validation': 'plan' },
-      earlyOrchestration: {
-        mode: 'compile',
-        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
-        plans: [],
-      },
+      earlyOrchestration: makeOrchestration(),
     });
 
     expect(selectPlanLanes(state)).toEqual([]);

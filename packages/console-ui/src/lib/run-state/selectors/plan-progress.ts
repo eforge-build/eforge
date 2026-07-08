@@ -161,7 +161,7 @@ export interface PlanLane {
 export interface PlanningLane {
   /** Aggregated planning agents (one entry per role), in start order. */
   agents: PlanLaneAgent[];
-  /** True while any planning agent is still running. */
+  /** True while any planning/map-reduce planning work is still running. */
   running: boolean;
 }
 
@@ -169,12 +169,14 @@ function laneAgentTokens(thread: RunState['agentThreads'][number]): number {
   return thread.totalTokens ?? 0;
 }
 
+type OrderedPlanLaneAgent = PlanLaneAgent & { startedAt: string };
+
 /**
  * Aggregates a set of agent threads into one entry per agent role: tokens are
  * summed across the role's threads (e.g. multiple review rounds), `running` is
  * true if any thread is still live, and entries are ordered by first start.
  */
-function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[] {
+function aggregateLaneAgentsWithStart(threads: RunState['agentThreads']): OrderedPlanLaneAgent[] {
   const order: string[] = [];
   const byAgent = new Map<string, { tokens: number; running: boolean; startedAt: string }>();
   for (const thread of threads) {
@@ -185,17 +187,20 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
       if (thread.startedAt < existing.startedAt) existing.startedAt = thread.startedAt;
     } else {
       order.push(thread.agent);
-      byAgent.set(thread.agent, {
-        tokens: laneAgentTokens(thread),
-        running: thread.endedAt === null,
-        startedAt: thread.startedAt,
-      });
+      byAgent.set(thread.agent, { tokens: laneAgentTokens(thread), running: thread.endedAt === null, startedAt: thread.startedAt });
     }
   }
   return order
     .map((agent) => ({ agent, ...byAgent.get(agent)! }))
-    .sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0))
-    .map(({ agent, tokens, running }) => ({ agent, tokens, running }));
+    .sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0));
+}
+
+function stripAgentStart(agents: OrderedPlanLaneAgent[]): PlanLaneAgent[] {
+  return agents.map(({ agent, tokens, running }) => ({ agent, tokens, running }));
+}
+
+function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[] {
+  return stripAgentStart(aggregateLaneAgentsWithStart(threads));
 }
 
 // Lane labels and ordering are now sourced from the single lane registry
@@ -205,8 +210,13 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
  * Earliest `gap_close:complete` timestamp in the run (ms since epoch), or null
  * when gap close has not completed. Computed once per selection so span
  * classification is O(spans + events) instead of O(spans x events).
+ *
+ * This is the single split point between first-round PRD validation and final
+ * validation: every consumer that partitions validation activity around gap
+ * close (plan lanes, phase progress, run-detail pipeline) must use it so the
+ * surfaces cannot disagree about which side a span belongs to.
  */
-function earliestGapCloseCompleteMs(events: RunState['events']): number | null {
+export function earliestGapCloseCompleteMs(events: RunState['events']): number | null {
   let earliest: number | null = null;
   for (const { event } of events) {
     if (event.type !== 'gap_close:complete') continue;
@@ -389,6 +399,79 @@ export const PRE_PLANNING_AGENT_LABELS: Record<string, string> = {
 };
 
 /**
+ * Aggregates map/reduce planning work into synthetic lane agents: one entry
+ * for the map atoms and one per reduce depth, each summing member-thread
+ * tokens and flagged running while any member is queued/running.
+ */
+function mapReducePlanningAgents(state: RunState): OrderedPlanLaneAgent[] {
+  const mr = state.mapReduce;
+  if (!mr) return [];
+
+  const memberThreads = new Map<string, RunState['agentThreads']>();
+  for (const thread of state.agentThreads) {
+    if (!thread.planId) continue;
+    const arr = memberThreads.get(thread.planId);
+    if (arr) arr.push(thread);
+    else memberThreads.set(thread.planId, [thread]);
+  }
+
+  const firstEventByMember = new Map<string, string>();
+  const noteTime = (id: string, timestamp: string) => {
+    const existing = firstEventByMember.get(id);
+    if (existing === undefined || timestamp < existing) firstEventByMember.set(id, timestamp);
+  };
+  for (const { event } of state.events) {
+    if (event.type === 'planning:map-reduce:atoms') for (const atom of event.atoms) noteTime(atom.atomId, event.timestamp);
+    else if (event.type === 'planning:map-reduce:reduce-tree') for (const node of event.nodes) noteTime(node.nodeId, event.timestamp);
+    else if (event.type === 'planning:map-reduce:atom:status') noteTime(event.atomId, event.timestamp);
+    else if (event.type === 'planning:map-reduce:reduce:status') noteTime(event.nodeId, event.timestamp);
+  }
+
+  const memberAgent = (label: string, ids: string[], runningByStatus: boolean): OrderedPlanLaneAgent => {
+    const threads = ids.flatMap((id) => memberThreads.get(id) ?? []);
+    const startedAt = ids.reduce((earliest, id) => {
+      const eventTime = firstEventByMember.get(id) ?? '';
+      const threadTime = (memberThreads.get(id) ?? []).reduce((first, thread) => (first === '' || thread.startedAt < first ? thread.startedAt : first), '');
+      const time = [eventTime, threadTime].filter(Boolean).sort()[0] ?? '';
+      return earliest === '' || (time !== '' && time < earliest) ? time : earliest;
+    }, '');
+    return {
+      agent: label,
+      tokens: threads.reduce((sum, thread) => sum + laneAgentTokens(thread), 0),
+      running: runningByStatus || threads.some((thread) => thread.endedAt === null),
+      startedAt,
+    };
+  };
+
+  const agents: OrderedPlanLaneAgent[] = [];
+  if (mr.atomOrder.length > 0) {
+    agents.push(memberAgent(
+      `map atoms (${mr.atomOrder.length})`,
+      mr.atomOrder,
+      mr.atomOrder.some((id) => {
+        const status = mr.atoms[id]?.status;
+        return status === 'queued' || status === 'running';
+      }),
+    ));
+  }
+
+  const depths = [...new Set(mr.reduceOrder.map((id) => mr.reduceNodes[id]?.depth).filter((depth): depth is number => typeof depth === 'number'))].sort((a, b) => a - b);
+  for (const depth of depths) {
+    const ids = mr.reduceOrder.filter((id) => mr.reduceNodes[id]?.depth === depth);
+    agents.push(memberAgent(
+      `reduce L${depth + 1} (${ids.length})`,
+      ids,
+      ids.some((id) => {
+        const status = mr.reduceNodes[id]?.status;
+        return status === 'queued' || status === 'running';
+      }),
+    ));
+  }
+
+  return agents;
+}
+
+/**
  * Returns the planning-phase lane summary built from planning agents plus the
  * pre-planning compiler phases (PRD-satisfaction gate and repository
  * exploration), aggregating tokens per agent role.
@@ -403,7 +486,9 @@ export function selectPlanningLane(state: RunState): PlanningLane {
   const threads = state.agentThreads
     .filter((t) => t.planId === 'planning' || (t.planId != null && Object.hasOwn(PRE_PLANNING_AGENT_LABELS, t.planId)))
     .map((t) => (t.planId === 'planning' ? t : { ...t, agent: PRE_PLANNING_AGENT_LABELS[t.planId!] }));
-  const agents = aggregateLaneAgents(threads);
+  const orderedAgents = [...aggregateLaneAgentsWithStart(threads), ...mapReducePlanningAgents(state)]
+    .sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0));
+  const agents = stripAgentStart(orderedAgents);
   return { agents, running: agents.some((a) => a.running) };
 }
 
