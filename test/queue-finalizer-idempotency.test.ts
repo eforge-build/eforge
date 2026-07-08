@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
+import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 import { loadCompletionRegistry, upsertCompletion } from '@eforge-build/engine/artifacts/completions';
 import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import type { SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
@@ -40,9 +43,15 @@ describe('shared queued PRD finalizer', () => {
     expect((await readdir(join(cwd, queueDir, 'failed'))).filter((name) => name === 'parent.md')).toHaveLength(1);
     expect((await readdir(join(cwd, queueDir, 'skipped'))).filter((name) => name === 'child.md')).toHaveLength(1);
 
-    const evidence = JSON.parse(await readFile(join(cwd, queueDir, 'failed', 'parent.recovery.json'), 'utf-8')) as { schemaVersion: number; verdict: { recommendationSource?: string } };
+    const evidenceRaw = await readFile(join(cwd, queueDir, 'failed', 'parent.recovery.json'), 'utf-8');
+    const evidence = parseRecoverySidecarPayload(evidenceRaw, 'parent');
     expect(evidence.schemaVersion).toBe(3);
     expect(evidence.verdict.recommendationSource).toBe('manual-fallback');
+    expect(evidence.boundedEvidence.identity.baseBranch).toBe('main');
+    // Assert on the raw JSON too: the parser's legacy fallback maps '' to
+    // 'main', so only the on-disk value pins the write-side fix.
+    const rawIdentity = (JSON.parse(evidenceRaw) as { boundedEvidence: { identity: { baseBranch: string } } }).boundedEvidence.identity;
+    expect(rawIdentity.baseBranch).toBe('main');
 
     const registry = await loadCompletionRegistry(cwd);
     expect(registry.completions.parent).toMatchObject({ status: 'failed' });
@@ -140,7 +149,7 @@ describe('shared queued PRD finalizer', () => {
     expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'normal-fail.lock'))).toBe(false);
   });
 
-  it('writes degraded evidence when writeFailedEvidence throws', async () => {
+  it('writes degraded evidence with explicit base branch when writeFailedEvidence throws', async () => {
     const cwd = makeTempDir();
     const queueDir = 'eforge/queue';
     await mkdir(join(cwd, queueDir), { recursive: true });
@@ -153,6 +162,7 @@ describe('shared queued PRD finalizer', () => {
       queueDir,
       prdId: 'writer-throws',
       status: 'failed',
+      baseBranch: 'develop',
       writeFailedEvidence: async () => { throw new Error('writer failed'); },
     });
 
@@ -160,8 +170,37 @@ describe('shared queued PRD finalizer', () => {
     expect(existsSync(join(cwd, queueDir, 'failed', 'writer-throws.md'))).toBe(true);
     expect(existsSync(join(cwd, queueDir, 'failed', 'writer-throws.recovery.json'))).toBe(true);
     expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'writer-throws.lock'))).toBe(false);
+    const evidence = parseRecoverySidecarPayload(await readFile(join(cwd, queueDir, 'failed', 'writer-throws.recovery.json'), 'utf-8'), 'writer-throws');
+    expect(evidence.boundedEvidence.identity.baseBranch).toBe('develop');
     const registry = await loadCompletionRegistry(cwd);
     expect(registry.completions['writer-throws']).toMatchObject({ status: 'failed' });
+  });
+
+  it('resolves degraded evidence base branch from git remote HEAD when none is provided', async () => {
+    const cwd = makeTempDir();
+    const exec = promisify(execFile);
+    await exec('git', ['init'], { cwd });
+    // Point origin/HEAD at a non-main trunk. The sidecar reader's legacy
+    // fallback also yields 'main', so only real git resolution in
+    // degradedEvidenceBaseBranch can produce 'trunk' here.
+    await exec('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'], { cwd });
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir), { recursive: true });
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'git-trunk.md'), 'Git Trunk');
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'git-trunk.lock'), String(process.pid), 'utf-8');
+
+    const result = await finalizeQueuedPrd({
+      cwd,
+      queueDir,
+      prdId: 'git-trunk',
+      status: 'failed',
+      writeFailedEvidence: async () => { throw new Error('writer failed'); },
+    });
+
+    expect(result).toMatchObject({ finalized: true, terminalTransition: 'failed' });
+    const raw = await readFile(join(cwd, queueDir, 'failed', 'git-trunk.recovery.json'), 'utf-8');
+    expect(parseRecoverySidecarPayload(raw, 'git-trunk').boundedEvidence.identity.baseBranch).toBe('trunk');
   });
 
   it('writes degraded evidence when writeFailedEvidence omits sidecars', async () => {

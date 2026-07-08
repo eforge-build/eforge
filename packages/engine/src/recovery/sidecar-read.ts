@@ -168,13 +168,14 @@ function validateReport(value: unknown, prdId?: string): RecoveryVerdictSidecar[
 function validateBoundedEvidence(value: unknown, prdId?: string): RecoveryVerdictSidecar['boundedEvidence'] {
   const obj = requireRecord(value, `Recovery sidecar boundedEvidence is invalid${suffix(prdId)}`);
   const identityObj = requireRecord(obj.identity, `Recovery sidecar boundedEvidence.identity is invalid${suffix(prdId)}`);
+  const partial = typeof identityObj.partial === 'boolean' ? identityObj.partial : undefined;
   const identity = {
     prdId: requireString(identityObj.prdId, 'boundedEvidence.identity.prdId', prdId),
     setName: requireString(identityObj.setName, 'boundedEvidence.identity.setName', prdId),
     featureBranch: requireString(identityObj.featureBranch, 'boundedEvidence.identity.featureBranch', prdId),
-    baseBranch: requireString(identityObj.baseBranch, 'boundedEvidence.identity.baseBranch', prdId),
+    baseBranch: requireBaseBranch(identityObj.baseBranch, partial, prdId),
     failedAt: requireString(identityObj.failedAt, 'boundedEvidence.identity.failedAt', prdId),
-    ...(typeof identityObj.partial === 'boolean' ? { partial: identityObj.partial } : {}),
+    ...(partial !== undefined ? { partial } : {}),
   };
   return {
     identity,
@@ -417,6 +418,16 @@ function requireStringArray(value: unknown, label: string, prdId?: string): stri
 function requireString(value: unknown, label: string, prdId?: string): string {
   if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
+}
+
+function requireBaseBranch(value: unknown, partial: boolean | undefined, prdId?: string): string {
+  if (typeof value === 'string' && value.length > 0) return value;
+  // Legacy contract: degraded sidecars written before base-branch resolution
+  // existed persisted baseBranch: '' and always set partial: true. Tolerate
+  // exactly that shape with a synthesized 'main' - this parser is pure (no
+  // repo context), so it cannot resolve the real trunk here.
+  if (value === '' && partial === true) return 'main';
+  throw new Error(`boundedEvidence.identity.baseBranch is invalid${suffix(prdId)}`);
 }
 
 function requireStringAllowEmpty(value: unknown, label: string, prdId?: string): string {
