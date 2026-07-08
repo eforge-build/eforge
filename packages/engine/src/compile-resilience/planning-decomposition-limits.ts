@@ -1,6 +1,10 @@
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { EforgeConfig } from '../config.js';
 import type { SharedPlanningBriefLimits } from '../planner-compiler/shared-brief-contracts.js';
+import {
+  DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
+  MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
+} from '../direct-pr-base-sync.js';
 
 export interface PlanningDecompositionConfig {
   planningUnitParallelism: number;
@@ -17,6 +21,7 @@ export interface PlanningDecompositionConfig {
   planningSharedBriefMaxTotalBytes: number;
   planningSharedBriefMaxSectionBytes: number;
   planningSharedBriefMaxSectionsPerAtom: number;
+  directPrBaseSyncConflictAttempts: number;
 }
 
 export const PLANNING_DECOMPOSITION_CONFIG_MAXIMA: Readonly<PlanningDecompositionConfig> = Object.freeze({
@@ -34,6 +39,7 @@ export const PLANNING_DECOMPOSITION_CONFIG_MAXIMA: Readonly<PlanningDecompositio
   planningSharedBriefMaxTotalBytes: 200_000,
   planningSharedBriefMaxSectionBytes: 50_000,
   planningSharedBriefMaxSectionsPerAtom: 64,
+  directPrBaseSyncConflictAttempts: MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
 });
 
 export const DEFAULT_PLANNING_DECOMPOSITION_CONFIG: Readonly<PlanningDecompositionConfig> = Object.freeze({
@@ -51,6 +57,7 @@ export const DEFAULT_PLANNING_DECOMPOSITION_CONFIG: Readonly<PlanningDecompositi
   planningSharedBriefMaxTotalBytes: 12_000,
   planningSharedBriefMaxSectionBytes: 1_500,
   planningSharedBriefMaxSectionsPerAtom: 8,
+  directPrBaseSyncConflictAttempts: DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
 });
 
 export function resolvePlanningDecompositionLimits(config: Pick<EforgeConfig, 'compile'>): PlanningDecompositionLimits {

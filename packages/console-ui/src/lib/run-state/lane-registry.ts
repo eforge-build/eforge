@@ -33,9 +33,10 @@ export const LANE_REGISTRY: readonly LaneEntry[] = [
   { id: 'repository-exploration', label: 'Repo Exploration',       order: 0, kind: 'phase' },
   // map/reduce group lanes (map-atoms, reduce-level-N) also sort at order 0,
   // assigned dynamically in thread-pipeline; plan lanes occupy order 1.
-  { id: 'validation',             label: 'Validation',             order: 2, kind: 'phase' },
-  { id: 'gap-close',              label: 'Gap Close',              order: 3, kind: 'phase' },
-  { id: 'final-validation',       label: 'Final Validation',       order: 4, kind: 'phase' },
+  { id: 'base-sync',              label: 'Direct Base Sync',       order: 2, kind: 'phase' },
+  { id: 'validation',             label: 'Validation',             order: 3, kind: 'phase' },
+  { id: 'gap-close',              label: 'Gap Close',              order: 4, kind: 'phase' },
+  { id: 'final-validation',       label: 'Final Validation',       order: 5, kind: 'phase' },
 ] as const;
 
 const registryById = new Map<string, LaneEntry>(
@@ -44,6 +45,10 @@ const registryById = new Map<string, LaneEntry>(
 
 export function isRegisteredPhaseLane(id: string): boolean {
   return registryById.get(id)?.kind === 'phase';
+}
+
+export function isFeatureBranchLane(id: string): boolean {
+  return /^eforge\//.test(id);
 }
 
 /**
@@ -57,6 +62,7 @@ export function laneLabel(id: string): string {
   if (entry) return entry.label;
   const match = id.match(/^plan-(\d+)/);
   if (match) return `Plan ${match[1]}`;
+  if (isFeatureBranchLane(id)) return `Feature branch: ${id}`;
   return id;
 }
 

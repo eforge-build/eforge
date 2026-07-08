@@ -221,6 +221,36 @@ describe('ThreadPipeline lane ordering', () => {
     expect(screen.queryByText('Final Validation')).toBeNull();
   });
 
+  it('renders direct base-sync merge-resolver threads under their feature branch label', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      agentThreads: [makeThread({ planId: 'eforge/feature-x', agent: 'merge-conflict-resolver', startedAt: '2025-01-01T00:06:00.000Z' })],
+    });
+
+    expect(screen.getByText('Feature branch: eforge/feature-x')).toBeTruthy();
+    expect(screen.getByText(/merge-conflict-resolver/)).toBeTruthy();
+  });
+
+  it('renders direct base-sync phase lane between plan and validation lanes', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete', 'base-sync': 'implement', validation: 'implement' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      agentThreads: [
+        makeThread({ planId: 'base-sync', agent: 'merge-conflict-resolver', startedAt: '2025-01-01T00:05:00.000Z' }),
+        makeThread({ planId: 'validation', agent: 'validation-fixer', startedAt: '2025-01-01T00:06:00.000Z' }),
+      ],
+    });
+
+    const plan = screen.getByText('Plan 01');
+    const baseSync = screen.getByText('Direct Base Sync');
+    const validation = screen.getByText('Validation');
+    expect(plan.compareDocumentPosition(baseSync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(baseSync.compareDocumentPosition(validation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('renders the Gap Close lane when backed by gap-close agent threads', () => {
     renderPipeline({
       orchestration,

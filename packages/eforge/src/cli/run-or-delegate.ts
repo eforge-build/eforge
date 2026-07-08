@@ -30,7 +30,7 @@ import {
   validateRuntimeReadiness,
 } from '@eforge-build/engine/plan';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
-import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { EforgeEvent } from '@eforge-build/client';
 import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';

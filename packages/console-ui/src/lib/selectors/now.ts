@@ -527,10 +527,10 @@ function extractLatestProgressFromRunState(runState: RunState): string | null {
       const pe = e as Extract<EforgeEvent, { type: 'plan:build:progress' }>;
       return pe.message;
     }
+    if (e.type.startsWith('base-sync:')) return getEventSummary(e) ?? `Event ${e.type}`;
   }
   return null;
 }
-
 /**
  * Terminal build failure, if any. Only a `plan:build:failed` event counts as a
  * hard error here. Trailing `agent:stop` errors are deliberately ignored: a

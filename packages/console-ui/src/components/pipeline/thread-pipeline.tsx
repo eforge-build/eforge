@@ -5,7 +5,7 @@ import type { AgentThread, StoredEvent, DecisionPoint, Decision, MapReduceTimeli
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
-import { isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
+import { isFeatureBranchLane, isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -39,6 +39,34 @@ function validationCommandsForLane(lane: string, validationCommands: ValidationC
 function validationCommandLaneIds(validationCommands: ValidationCommandSpan[] | undefined, events: StoredEvent[]): string[] {
   if (!validationCommands || validationCommands.length === 0) return [];
   return Array.from(new Set(validationCommands.map((span) => validationLaneForStart(span.startedAt, events))));
+}
+
+const BASE_SYNC_LANE_ID = 'base-sync';
+
+function baseSyncCommandsFromEvents(events: StoredEvent[]): ValidationCommandSpan[] | undefined {
+  let startedAt: string | null = null;
+  let endedAt: string | null = null;
+  let status: ValidationCommandSpan['status'] = 'running';
+
+  for (const { event } of events) {
+    if (event.type === 'base-sync:start') {
+      startedAt = event.timestamp;
+      endedAt = null;
+      status = 'running';
+      continue;
+    }
+    if (startedAt === null) continue;
+    if (event.type === 'base-sync:success') {
+      endedAt = event.timestamp;
+      status = 'passed';
+    } else if (event.type === 'base-sync:budget:exhausted') {
+      endedAt = event.timestamp;
+      status = 'failed';
+    }
+  }
+
+  if (startedAt === null) return undefined;
+  return [{ command: 'Direct base sync', startedAt, endedAt, status, exitCode: null }];
 }
 
 interface ThreadPipelineProps {
@@ -139,6 +167,8 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     return map;
   }, [orchestration]);
 
+  const baseSyncCommands = useMemo(() => baseSyncCommandsFromEvents(events), [events]);
+
   const orderedPlanIds = useMemo(() => {
     const ids: string[] = [];
     const seen = new Set<string>();
@@ -152,10 +182,12 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     for (const plan of planArtifacts ?? []) realPlanIds.add(plan.id);
     const hasArtifactContext = (orchestration !== null && orchestration !== undefined) || (planArtifacts?.length ?? 0) > 0;
     const validationCommandIds = validationCommandLaneIds(validationCommands, events);
-    const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id);
+    const directBaseSyncLaneIds = baseSyncCommands ? [BASE_SYNC_LANE_ID] : [];
+    const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id) || directBaseSyncLaneIds.includes(id);
     const isMapReduceLane = (id: string) => mapReduce?.laneIds.has(id) === true;
+    const hasFeatureBranchThreads = (id: string) => isFeatureBranchLane(id) && threadsByPlan.has(id);
     const addPlanStatusLane = (id: string) => {
-      if (!hasArtifactContext || realPlanIds.has(id) || isMapReduceLane(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
+      if (!hasArtifactContext || realPlanIds.has(id) || isMapReduceLane(id) || hasFeatureBranchThreads(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
         add(id);
       }
     };
@@ -169,6 +201,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     for (const id of Object.keys(planStatuses)) addPlanStatusLane(id);
     for (const id of threadsByPlan.keys()) addPlanStatusLane(id);
     for (const id of validationCommandIds) addPlanStatusLane(id);
+    for (const id of directBaseSyncLaneIds) addPlanStatusLane(id);
 
     // Sort the full set by lane registry order; map/reduce group lanes join the
     // planning tier (order 0) so the compile phase reads chronologically. Within
@@ -183,7 +216,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, mapReduce]);
+  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, mapReduce, baseSyncCommands]);
 
   const mapReduceLaneById = useMemo(
     () => new Map((mapReduce?.lanes ?? []).map((lane) => [lane.id, lane])),
@@ -344,7 +377,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
                 decisions={decisions?.[planId]}
-                validationCommands={validationCommandsForLane(planId, validationCommands, events)}
+                validationCommands={planId === BASE_SYNC_LANE_ID ? baseSyncCommands : validationCommandsForLane(planId, validationCommands, events)}
                 prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
                 laneDisplay={mapReduceLaneById.get(planId)}
                 threadDisplay={mapReduce?.displayByAgentId}

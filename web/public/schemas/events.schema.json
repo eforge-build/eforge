@@ -16972,6 +16972,264 @@
           "type": "object",
           "required": [
             "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:start",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "attempt",
+            "maxAttempts",
+            "conflictedFiles"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:conflict:attempt",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "conflictedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:resolver:start",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "attempt",
+            "maxAttempts",
+            "resolved",
+            "remainingConflicts"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:resolver:complete",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "resolved": {
+              "type": "boolean"
+            },
+            "remainingConflicts": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:rebase:continue",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "attempt": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "baseSha",
+            "featureSha",
+            "rebased"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:success",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseSha": {
+              "type": "string"
+            },
+            "featureSha": {
+              "type": "string"
+            },
+            "rebased": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "remote",
+            "baseBranch",
+            "featureBranch",
+            "attempts",
+            "maxAttempts",
+            "conflictedFiles"
+          ],
+          "properties": {
+            "type": {
+              "const": "base-sync:budget:exhausted",
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "attempts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxAttempts": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "conflictedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "runId",
             "failure"
           ],
@@ -34985,6 +35243,264 @@
                             }
                           },
                           "excludedCandidates": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:start",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "attempt",
+                          "maxAttempts",
+                          "conflictedFiles"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:conflict:attempt",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "conflictedFiles": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:resolver:start",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "attempt",
+                          "maxAttempts",
+                          "resolved",
+                          "remainingConflicts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:resolver:complete",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "resolved": {
+                            "type": "boolean"
+                          },
+                          "remainingConflicts": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "attempt",
+                          "maxAttempts"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:rebase:continue",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "attempt": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "baseSha",
+                          "featureSha",
+                          "rebased"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:success",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "baseSha": {
+                            "type": "string"
+                          },
+                          "featureSha": {
+                            "type": "string"
+                          },
+                          "rebased": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "remote",
+                          "baseBranch",
+                          "featureBranch",
+                          "attempts",
+                          "maxAttempts",
+                          "conflictedFiles"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "base-sync:budget:exhausted",
+                            "type": "string"
+                          },
+                          "remote": {
+                            "type": "string"
+                          },
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "featureBranch": {
+                            "type": "string"
+                          },
+                          "attempts": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "maxAttempts": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "conflictedFiles": {
                             "type": "array",
                             "items": {
                               "type": "string"

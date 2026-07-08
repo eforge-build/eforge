@@ -25,13 +25,13 @@ import {
   DIRECT_PR_REMOTE,
   checkDirectPrBaseFreshness,
   describeDirectPrBaseSyncPoint,
+  resolveDirectPrBaseSyncConflictAttempts,
   syncDirectPrBase,
   type DirectPrBaseSyncPoint,
 } from '../direct-pr-base-sync.js';
 import { renderPullRequestMetadata } from '../pr-metadata.js';
 import { collectBuildArtifactProvenance } from '../provenance.js';
-import type { EforgeConfig, LandingConfig } from '../config.js';
-import type { ValidationConfig } from '../config.js';
+import type { EforgeConfig, LandingConfig, ValidationConfig } from '../config.js';
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
 import { type AcceptanceValidationEvent } from '../validation/acceptance-unknown-resolution.js';
 import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unknown-resolution-runner.js';
@@ -40,13 +40,11 @@ import { detectValidationDirtyWorktree } from './validation-dirty-worktree.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
-import { getRefSha } from '../worktree-ops.js';
-import { getWorktreeDirtyFiles } from '../worktree-ops.js';
+import { getRefSha, getWorktreeDirtyFiles } from '../worktree-ops.js';
 import { updateArtifactRecord } from '../artifacts/registry.js';
 import { executeStackLanding } from '../stacking/landing.js';
-import { updateStackLayerLanding } from '../stacking/state.js';
+import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from '../stacking/state.js';
 import type { StackProviderAdapter } from '../stacking/provider.js';
-import { updateStackLayerStatusAndLanding } from '../stacking/state.js';
 import {
   buildFinalMergePolicyGateContext,
   buildPlanMergePolicyGateContext,
@@ -102,8 +100,8 @@ export interface PhaseContext {
   policyGateTimeoutMs?: number;
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
-  /** EforgeConfig subset for trunk policy resolution in executeLandingAction. */
-  engineConfig?: Pick<EforgeConfig, 'build'>;
+  /** EforgeConfig subset for trunk policy resolution and direct PR base sync budget resolution. */
+  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile' | 'landing'>>;
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
@@ -204,42 +202,44 @@ function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge
   return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
 }
 
-export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean {
-  return ctx.landingAction === 'pr' && ctx.stackContext === undefined;
-}
-
+export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean { return ctx.landingAction === 'pr' && ctx.stackContext === undefined; }
 export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   if (!isDirectPrBaseSyncApplicable(ctx)) return;
-
-  const result = await syncDirectPrBase({
-    cwd: ctx.mergeWorktreePath,
-    featureBranch: ctx.featureBranch,
-    baseBranch: ctx.config.baseBranch,
-    remote: DIRECT_PR_REMOTE,
-    mergeResolver: ctx.mergeResolver,
+  const baseSyncEvents: EforgeEvent[] = [];
+  let notifyEvent: (() => void) | undefined;
+  const wake = (): void => { notifyEvent?.(); notifyEvent = undefined; };
+  const nextEvent = (): Promise<void> => new Promise((resolve) => { notifyEvent = resolve; });
+  const syncPromise = syncDirectPrBase({
+    cwd: ctx.mergeWorktreePath, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch,
+    remote: DIRECT_PR_REMOTE, mergeResolver: ctx.mergeResolver,
+    conflictAttempts: ctx.engineConfig?.landing?.directPrBaseSync.conflictAttempts ?? resolveDirectPrBaseSyncConflictAttempts(ctx.engineConfig?.compile?.directPrBaseSyncConflictAttempts),
+    onEvent: (event) => { baseSyncEvents.push(event); wake(); },
   });
 
-  if (result.ok) {
-    ctx.directPrBaseSync = result.point;
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'planning:progress',
-      message: describeDirectPrBaseSyncPoint(result.point),
-    } as EforgeEvent;
-    return;
-  }
+  let settled = false;
+  const markSettled = (): void => { settled = true; wake(); };
+  void syncPromise.then(markSettled, markSettled);
 
-  const reason = `Direct PR base sync failed for baseBranch '${ctx.config.baseBranch}': ${result.message}`;
-  yield {
-    timestamp: new Date().toISOString(),
-    type: 'landing:skipped',
-    action: ctx.landingAction,
-    featureBranch: ctx.featureBranch,
-    baseBranch: ctx.config.baseBranch,
-    reason,
-  } as EforgeEvent;
-  ctx.state.status = 'failed';
-  ctx.state.completedAt = new Date().toISOString();
+  let completed = false;
+  try {
+    for (let emitted = 0; !settled || emitted < baseSyncEvents.length;) {
+      while (emitted < baseSyncEvents.length) yield baseSyncEvents[emitted++]!;
+      if (!settled) await nextEvent();
+    }
+
+    const result = await syncPromise;
+    if (result.ok) {
+      ctx.directPrBaseSync = result.point;
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: describeDirectPrBaseSyncPoint(result.point) } as EforgeEvent;
+      completed = true;
+      return;
+    }
+    const reason = `Direct PR base sync failed for baseBranch '${ctx.config.baseBranch}': ${result.message}`;
+    yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action: ctx.landingAction, featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason } as EforgeEvent;
+    ctx.state.status = 'failed';
+    ctx.state.completedAt = new Date().toISOString();
+    completed = true;
+  } finally { if (!completed) await syncPromise.catch(() => undefined); }
 }
 
 /**

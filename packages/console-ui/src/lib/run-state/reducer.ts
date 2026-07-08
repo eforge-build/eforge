@@ -94,12 +94,14 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         events: [],
       };
 
-      for (const { event } of action.events) {
+      const replayEvents: RunState['events'] = [];
+      for (const stored of action.events) {
+        const { event } = stored;
         const handler = (handlerRegistry as Record<string, ((e: never, s: Readonly<RunState>) => Partial<RunState> | undefined) | undefined>)[event.type];
-        const delta = handler ? handler(event as never, acc) : undefined;
-        if (delta) {
-          acc = { ...acc, ...delta };
-        }
+        const replayState = acc.events === replayEvents ? acc : { ...acc, events: replayEvents };
+        const delta = handler ? handler(event as never, replayState) : undefined;
+        acc = delta ? { ...replayState, ...delta } : replayState;
+        replayEvents.push(stored);
       }
 
       // Apply server status as authoritative override when events are incomplete

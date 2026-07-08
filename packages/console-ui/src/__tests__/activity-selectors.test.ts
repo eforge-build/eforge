@@ -169,6 +169,23 @@ describe('selectActivityRows – identifier normalization', () => {
     const rows = selectActivityRows(activity, FIXED_NOW);
     expect(rows[0].rawJson).toContain(rawPlanSet);
   });
+
+  it('labels feature-branch planIds explicitly without normalizing the branch', () => {
+    const activity = [makeEntry('e1', 'agent:start', { agent: 'merge-conflict-resolver', planId: 'eforge/feature-x' }, 1001)];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    expect(rows[0].identifiers).toContainEqual({ label: 'Feature Branch', value: 'eforge/feature-x' });
+  });
+
+  it('adds explicit direct base-sync branch identifiers', () => {
+    const activity = [makeEntry('e1', 'base-sync:resolver:start', { remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/feature-x', attempt: 1, maxAttempts: 3 }, 1001)];
+    const rows = selectActivityRows(activity, FIXED_NOW);
+    expect(rows[0].family).toBe('session');
+    expect(rows[0].identifiers).toEqual(expect.arrayContaining([
+      { label: 'Feature Branch', value: 'eforge/feature-x' },
+      { label: 'Base Branch', value: 'main' },
+      { label: 'Remote', value: 'origin' },
+    ]));
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,10 @@ function makeEvent<T extends EforgeEvent['type']>(
   return { type, timestamp: '2024-01-15T10:00:00.000Z', sessionId: 's1', ...extra } as unknown as Extract<EforgeEvent, { type: T }>;
 }
 
+function makeStoredEvent(event: unknown, eventId = 'evt-1') {
+  return { event: event as EforgeEvent, eventId };
+}
+
 function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
   return {
     agentId: 'a1',
@@ -107,6 +111,26 @@ describe('handle-agent', () => {
       });
       const delta = handleAgentStart(event, initialRunState);
       expect(delta?.agentThreads?.[0]?.planId).toBe('gap-close');
+    });
+
+    it('associates plan-less merge resolvers with an open direct base-sync feature branch', () => {
+      const state = {
+        ...initialRunState,
+        events: [
+          makeStoredEvent({ type: 'base-sync:resolver:start', timestamp: '2024-01-15T09:59:00.000Z', remote: 'origin', baseBranch: 'main', featureBranch: 'eforge/feature-x', attempt: 1, maxAttempts: 3 }, 'base-sync'),
+        ],
+      };
+      const event = makeEvent('agent:start', {
+        agentId: 'resolver1',
+        agent: 'merge-conflict-resolver',
+        model: 'gpt-5.5',
+        harness: 'pi',
+        harnessSource: 'tier',
+        tier: 'planning',
+        tierSource: 'tier',
+      });
+      const delta = handleAgentStart(event, state);
+      expect(delta?.agentThreads?.[0]?.planId).toBe('eforge/feature-x');
     });
 
     it('appends to existing agentThreads (does not replace)', () => {
