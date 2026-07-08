@@ -2,7 +2,7 @@ import type { EforgeEvent } from '../events.js';
 import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
-import { PlanningAtomOutputSchema, type PlanningAtomTask, type PlanningAtomOutput } from './atom-planning-contracts.js';
+import { PlanningAtomOutputSchema, validatePlanningAtomOutputForTask, type PlanningAtomTask, type PlanningAtomOutput } from './atom-planning-contracts.js';
 import { DEFAULT_PLANNING_REDUCE_LIMITS } from './reduce-contracts.js';
 import { deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
@@ -28,6 +28,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
   for (let attempt = 1; attempt <= PLANNER_COMPILER_AGENT_MAX_ATTEMPTS; attempt += 1) {
     const attemptEvents: EforgeEvent[] = [];
     let submittedOutput: PlanningAtomOutput | undefined;
+    let submissionRejection: string | undefined;
     let streamedText = '';
     let resultText = '';
     try {
@@ -41,7 +42,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
           if (submittedOutput) return false;
           submittedOutput = output;
           return true;
-        })],
+        }, (message) => { submissionRejection = message; })],
         abortSignal: input.abortSignal,
         phase: 'compile',
         stage: 'planner',
@@ -54,7 +55,7 @@ export async function runPlanningAtomPlanner(input: RunPlanningAtomPlannerInput)
       }
 
       candidate = resultText.trim() ? resultText : streamedText;
-      if (!submittedOutput) throw new Error(`Atom planner did not call ${submitToolName}`);
+      if (!submittedOutput) throw new Error(submissionRejection ?? `Atom planner did not call ${submitToolName}`);
       return { output: submittedOutput, events, resultText: candidate, materialization };
     } catch (err) {
       candidate = resultText.trim() ? resultText : streamedText;
@@ -123,7 +124,7 @@ Call ${submitToolName} with an object matching its schema.
 - ${PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE}
 - reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
 - reduceDigest's formatted prompt JSON must fit within ${atomReduceDigestPromptByteLimit(task)} bytes (assigned by the map/reduce budget planner); prefer fewer fragments/modules with concise intent/purpose over long prose.
-- Emit sharedFindings only for shared evidence this atom owns; consumer atoms should use accepted findings instead of repeating exploration.
+- Emit sharedFindings only for entries in ownedEvidencePaths or ownedInterfaceKeys from this atom's shared planning brief; consumer sharedEvidenceRefs/sharedInterfaceRefs are read-only context, and consumer atoms should use accepted findings instead of repeating exploration.
 - Treat source evidence records as the repo-grounded source of truth; records without contentExcerpt are references/status only and must not be invented from.
 `;
 }
@@ -138,19 +139,22 @@ function assertFeasibleReduceDigestBudget(task: PlanningAtomTask): void {
   if (assigned < minimum) throw new Error(`reduce digest prompt budget impossible:${task.atomId}:minimum ${minimum} > assigned ${assigned}`);
 }
 
-function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAtomTask, onSubmit: (output: PlanningAtomOutput) => boolean): CustomTool {
+function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAtomTask, onSubmit: (output: PlanningAtomOutput) => boolean, onReject?: (message: string) => void): CustomTool {
   return {
     name: SUBMIT_ATOM_OUTPUT_TOOL,
     description: 'Submit the structured bounded planner atom output. This is the only way to complete an atom-planner turn.',
     inputSchema: PlanningAtomOutputSchema,
     handler: async (input: unknown) => {
+      const reject = (message: string): string => { onReject?.(message); return message; };
       const parsed = safeParseWithSchema(PlanningAtomOutputSchema, input);
-      if (!parsed.success) return `Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`;
+      if (!parsed.success) return reject(`Submission rejected: ${parsed.error.message}\nCall ${submitToolName} again with a schema-valid payload.`);
       const output = parsed.data as PlanningAtomOutput;
       if (output.reduceDigest) {
         const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxPromptBytes: atomReduceDigestPromptByteLimit(task) });
-        if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
+        if (errors.length > 0) return reject(`Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`);
       }
+      const validation = validatePlanningAtomOutputForTask({ task, output });
+      if (!validation.ok) return reject(`Submission rejected: ${validation.errors.join('; ')}\nCall ${submitToolName} again with a semantically valid atom output.`);
       if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one atom output submission is allowed.`;
       return 'Atom output submitted successfully.';
     },
