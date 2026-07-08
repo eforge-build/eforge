@@ -176,9 +176,9 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     await recordArtifact(cwd, 'foundation');
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await waitForSpawnIds(spawnPrdChild, ['foundation', 'feature']);
 
-    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation', 'feature']);
+    await Promise.resolve();
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation']);
     eventQueue.removeProducer();
   });
 

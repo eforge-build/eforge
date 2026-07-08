@@ -22,12 +22,10 @@ import {
   getCompiledResumeFrontmatter,
   loadQueue,
   movePrdToSubdir,
-  propagateSkip,
   readPrdLockStatus,
   releasePrd,
   resolveQueueOrder,
   setQueuedPrdProfile,
-  unblockWaiting,
 } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
@@ -36,7 +34,7 @@ import type { QueuedPrd } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
 import { loadArtifactRegistry, hasUsableArtifact } from '../artifacts/registry.js';
 import type { ArtifactRegistry } from '../artifacts/registry.js';
-import { loadCompletionRegistry, upsertCompletion, lookupCompletion } from '../artifacts/completions.js';
+import { loadCompletionRegistry, lookupCompletion } from '../artifacts/completions.js';
 import type { CompletionRegistry } from '../artifacts/completions.js';
 import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
@@ -44,6 +42,7 @@ import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 import { applyStackedDispatchValidation } from './dispatch-validation.js';
 import { readRawAppliedAction } from '../recovery/applied-sidecar.js';
+import { finalizeQueuedPrd } from './finalizer.js';
 import type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
 export { SCHEDULER_INPUT_TYPES } from './scheduler-events.js';
 export type { QueueSchedulerChildStatus, SchedulerInputEvent } from './scheduler-events.js';
@@ -130,6 +129,7 @@ export class QueueScheduler {
   private _processed = 0;
   private _skipped = 0;
   private suspended = false;
+  private readonly completedPrdFinalizations = new Set<string>();
 
   constructor(opts: QueueSchedulerOptions) {
     this.bus = opts.bus;
@@ -450,6 +450,7 @@ export class QueueScheduler {
     const freshOrdered = resolveQueueOrder(freshPrds);
     for (const prd of freshOrdered) {
       if (!this.prdState.has(prd.id)) {
+        this.completedPrdFinalizations.delete(prd.id);
         const deps = prd.frontmatter.depends_on ?? [];
         this.prdState.set(prd.id, { status: 'pending', dependsOn: deps });
         this.orderedPrds.push(prd);
@@ -461,8 +462,9 @@ export class QueueScheduler {
         } as EforgeEvent);
       } else {
         const existing = this.prdState.get(prd.id)!;
-        if (existing.status === 'failed' || existing.status === 'blocked' || existing.status === 'skipped') {
+        if (existing.status === 'completed' || existing.status === 'failed' || existing.status === 'blocked' || existing.status === 'skipped') {
           // Re-queued PRD: reset state to pending.
+          this.completedPrdFinalizations.delete(prd.id);
           const deps = prd.frontmatter.depends_on ?? [];
           existing.status = 'pending';
           existing.dependsOn = deps;
@@ -541,11 +543,20 @@ export class QueueScheduler {
       planId: prd.id,
       error: message,
     } as EforgeEvent);
-    try {
-      await movePrdToSubdir(prd.filePath, 'failed', this.cwd);
-    } catch {
-      // Best-effort queue file transition; scheduler completion propagation still runs.
-    }
+    await finalizeQueuedPrd({
+      cwd: this.cwd,
+      queueDir: this.queueDir,
+      prdId: prd.id,
+      status: 'failed',
+      filePath: prd.filePath,
+      releaseLock: true,
+      requireArtifacts: this.artifactAwareDependencies(),
+    });
+    this.completedPrdFinalizations.add(prd.id);
+    this._processed++;
+    const state = this.prdState.get(prd.id);
+    if (state) state.status = 'failed';
+    this.propagateBlocked(prd.id);
     this.eventQueue.push({
       timestamp: new Date().toISOString(),
       type: 'queue:prd:complete',
@@ -884,8 +895,8 @@ export class QueueScheduler {
    * this listener is invoked immediately — `onComplete`'s synchronous prologue
    * (counter increments, prdState updates) runs before the outer generator
    * yields the completion event to downstream consumers. Only the continuation
-   * after `onComplete`'s first `await propagateSkip(...)` is deferred via a
-   * microtask. Any `session:start` / spawn events that `onComplete` pushes onto
+   * after `onComplete`'s first cleanup await is deferred via a microtask. Any
+   * `session:start` / spawn events that `onComplete` pushes onto
    * `eventQueue` are therefore enqueued asynchronously and still appear AFTER
    * the completion event in the outer consumer's stream.
    */
@@ -898,54 +909,52 @@ export class QueueScheduler {
       return;
     }
 
-    // Update counters synchronously before any awaits.
+    const finalState = this.prdState.get(prdId);
+    if (this.completedPrdFinalizations.has(prdId) || finalState?.status === 'completed' || finalState?.status === 'failed' || finalState?.status === 'skipped') {
+      return;
+    }
+    if (!finalState || finalState.status === 'pending' || finalState.status === 'blocked') {
+      this.eventQueue.push({
+        timestamp: new Date().toISOString(),
+        type: 'daemon:warning',
+        source: 'queue-scheduler',
+        message: `Ignoring unverified queue completion for ${prdId}`,
+      } as EforgeEvent);
+      return;
+    }
+    this.completedPrdFinalizations.add(prdId);
+
+    try {
+      await finalizeQueuedPrd({
+        cwd: this.cwd,
+        queueDir: this.queueDir,
+        prdId,
+        status,
+        releaseLock: true,
+        requireArtifacts: this.artifactAwareDependencies(),
+      });
+    } catch (err) {
+      this.completedPrdFinalizations.delete(prdId);
+      this.eventQueue.push({
+        timestamp: new Date().toISOString(),
+        type: 'daemon:error',
+        source: 'queue-scheduler',
+        message: `Queue finalization failed for ${prdId}: ${err instanceof Error ? err.message : String(err)}`,
+        ...(err instanceof Error && err.stack !== undefined ? { stack: err.stack } : {}),
+      } as EforgeEvent);
+      return;
+    }
+
+    // Update counters after cleanup succeeds or no-ops. This keeps replayed
+    // orphan queue:prd:complete handling gated behind the shared finalizer.
     if (status === 'skipped') {
       this._skipped++;
     } else {
       this._processed++;
     }
 
-    // Record terminal completion in the completion index before unblocking waiting
-    // PRDs or propagating skips. This ensures the index is current when dependents
-    // are evaluated.
-    try {
-      const now = new Date().toISOString();
-      // For completed status, check artifact registry to determine artifactAvailable.
-      let artifactAvailable = false;
-      let artifactBranch: string | undefined;
-      if (status === 'completed') {
-        try {
-          const artifactRegistry = await loadArtifactRegistry(this.cwd);
-          const record = artifactRegistry.builds.find((b) => b.prdId === prdId);
-          artifactAvailable = record?.status === 'built';
-          artifactBranch = record?.artifactBranch;
-        } catch {
-          // Best-effort: if registry can't be read, artifactAvailable stays false.
-        }
-      }
-      await upsertCompletion(this.cwd, {
-        prdId,
-        status,
-        artifactAvailable,
-        ...(artifactBranch !== undefined && { artifactBranch }),
-        completedAt: now,
-        updatedAt: now,
-      });
-    } catch {
-      // Non-fatal: completion index recording failure must not block scheduling.
-    }
-
-    // Filesystem state transitions (preserving plan-05 semantics).
-    if (status === 'completed') {
-      try { await unblockWaiting(this.queueDir, this.cwd, prdId, { requireArtifacts: this.artifactAwareDependencies() }); } catch { /* non-fatal */ }
-    } else if (status === 'failed') {
-      try { await propagateSkip(this.queueDir, this.cwd, prdId, 'failed'); } catch { /* non-fatal */ }
-    } else if (status === 'skipped') {
-      try { await propagateSkip(this.queueDir, this.cwd, prdId, 'cancelled'); } catch { /* non-fatal */ }
-    }
-
-    // Update prdState synchronously — must happen before discoverNewPrds.
-    const finalState = this.prdState.get(prdId);
+    // Update prdState only after finalization so duplicate completion/PID-poll
+    // races see a terminal state and become no-ops.
     if (finalState && finalState.status === 'running') {
       finalState.status = status;
     }

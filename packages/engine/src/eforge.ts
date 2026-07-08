@@ -24,7 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, enqueuePrd, inferTitle, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getCompiledResumeFrontmatter } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, enqueuePrd, inferTitle, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, QueueExecExitCode, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getCompiledResumeFrontmatter } from './prd-queue.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
@@ -67,6 +67,7 @@ import { applyStackedDispatchValidation } from './queue/dispatch-validation.js';
 import { runQueuedPrdBuild } from './queue/build-single-prd.js';
 import { classifyQueueChildExit, consumeQueuePrdCancellation } from './queue/cancellation.js';
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
+import { finalizeQueuedPrd } from './queue/finalizer.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion, upsertCompletion } from './artifacts/completions.js';
@@ -1227,16 +1228,24 @@ export class EforgeEngine {
             return;
           }
 
-          if (shouldRelease) {
-            try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
-          }
           if (shouldCleanupCompleted) {
-            // Successful builds leave the committed provenance copy under
-            // `eforge/prds/` to the normal git cleanup path, but the runtime
-            // queue source under `.eforge/queue/` is gitignored and must be
-            // removed here so daemon restarts do not rediscover completed work.
-            try { await cleanupCompletedPrd(filePath, config.prdQueue.dir, cwd); } catch { /* best-effort */ }
-          } else if (moveTo === 'failed') {
+            await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId, status: 'completed', filePath, releaseLock: shouldRelease });
+          } else if (moveTo === 'skipped') {
+            await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId, status: 'skipped', filePath, releaseLock: shouldRelease });
+          } else if (moveTo !== 'failed') {
+            if (shouldRelease) {
+              try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
+            }
+          }
+          if (moveTo === 'failed') {
+            await finalizeQueuedPrd({
+              cwd,
+              queueDir: config.prdQueue.dir,
+              prdId,
+              status: 'failed',
+              filePath,
+              releaseLock: shouldRelease,
+              writeFailedEvidence: async (failedFilePath) => {
             // Run recovery inline, synthesizing from monitor DB and git.
             const setName = prdId;
             const dbPath = resolve(cwd, '.eforge', 'monitor.db');
@@ -1263,7 +1272,7 @@ export class EforgeEngine {
 
             // Read PRD content (best-effort — child just exited, file should exist)
             let prdContent = '';
-            try { prdContent = await readFile(filePath, 'utf-8'); } catch { /* ignore */ }
+            try { prdContent = await readFile(failedFilePath, 'utf-8'); } catch { /* ignore */ }
 
             const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
               cwd,
@@ -1330,30 +1339,34 @@ export class EforgeEngine {
 
             // Move PRD to failed/ and write sidecar files (filesystem-only)
             try {
-              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd, continueRepairEvidence);
+              await moveFailedWithSidecar(failedFilePath, summary, verdict!, recoveryModelTracker, cwd, continueRepairEvidence);
             } catch {
               // Fallback: plain move without sidecars
-              try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
+              try { await movePrdToSubdir(failedFilePath, 'failed', cwd); } catch { /* best-effort */ }
             }
-
-          } else if (moveTo) {
-            try {
-              await movePrdToSubdir(filePath, moveTo, cwd);
-            } catch {
-              // File may already be moved, deleted (completed), or missing.
-              // Best-effort — the startup reconciler is the backstop.
-            }
+              },
+            });
           }
         } finally {
           resolvePromise(status);
         }
       };
 
+      const reportFinalizeError = (err: unknown): void => {
+        pushEvent({
+          type: 'daemon:error',
+          source: 'queue-finalizer',
+          message: `Queue finalization failed for ${prdId}: ${err instanceof Error ? err.message : String(err)}`,
+          ...(err instanceof Error && err.stack !== undefined ? { stack: err.stack } : {}),
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent);
+      };
+
       child.on('exit', (code, signal) => {
-        void finalize(code, signal);
+        void finalize(code, signal).catch(reportFinalizeError);
       });
       child.on('error', () => {
-        void finalize(QueueExecExitCode.Failed, null);
+        void finalize(QueueExecExitCode.Failed, null).catch(reportFinalizeError);
       });
       };
 
