@@ -12,12 +12,7 @@ import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 import type { ShardScope } from './schemas.js';
 import { overlayEffectiveAgentRecipe, type EffectiveAgentRecipe } from './pipeline/runtime-choice.js';
-import {
-  resolveNamedSet,
-  resolveLayeredSingletons,
-  getScopeDirectory,
-  userEforgeConfigDir,
-} from '@eforge-build/scopes';
+import { resolveNamedSet, resolveLayeredSingletons, getScopeDirectory, userEforgeConfigDir } from '@eforge-build/scopes';
 import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime.js';
 import { DEFAULT_PLANNING_DECOMPOSITION_CONFIG, PLANNING_DECOMPOSITION_CONFIG_MAXIMA } from './compile-resilience/planning-decomposition-limits.js';
 import { resolveDirectPrBaseSyncConflictAttempts } from './direct-pr-base-sync.js';
@@ -30,18 +25,12 @@ export type { ShardScope } from './schemas.js';
 // (plan.ts, eforge.ts, pipeline.ts, compiler.ts, events.ts, agents/*) can keep
 // importing from this module. The client package is the single owner.
 export type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
-// ---------------------------------------------------------------------------
 // Zod Schemas — single source of truth for config types
-// ---------------------------------------------------------------------------
 /** Agent roles matching the AgentRole union in events.ts. */
 export const AGENT_ROLES = [
-  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator',
-  'plan-reviewer', 'plan-evaluator',
-  'validation-fixer', 'merge-conflict-resolver',
-  'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer',
-  'test-writer', 'tester', 'prd-validator', 'dependency-detector',
-  'gap-closer',
-  'recovery-analyst',
+  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'plan-reviewer', 'plan-evaluator',
+  'validation-fixer', 'merge-conflict-resolver', 'staleness-assessor', 'formatter', 'doc-author', 'doc-syncer',
+  'test-writer', 'tester', 'prd-validator', 'dependency-detector', 'gap-closer', 'recovery-analyst',
 ] as const;
 const agentRoleSchema = z.enum(AGENT_ROLES);
 /** Agent tiers group agent roles by workload type for batch configuration. */
@@ -76,11 +65,9 @@ const compileConfigSchema = z.object({
   planningSharedBriefMaxTotalBytes: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxTotalBytes').optional(),
   planningSharedBriefMaxSectionBytes: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxSectionBytes').optional(),
   planningSharedBriefMaxSectionsPerAtom: boundedPositiveIntegerConfigSchema('planningSharedBriefMaxSectionsPerAtom').optional(),
-  directPrBaseSyncConflictAttempts: clampedPositiveIntegerConfigSchema.optional().describe('Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.'),
-}).strict().describe('Compile planning-unit limits and direct PR base-sync budgets');
-// ---------------------------------------------------------------------------
+  directPrBaseSyncConflictAttempts: clampedPositiveIntegerConfigSchema.optional().describe('Compatibility fallback for the direct non-stacked PR base-sync conflict-resolution attempt budget; clamped after landing.directPrBaseSync.conflictAttempts precedence is resolved.'),
+}).strict().describe('Compile planning-unit limits; direct PR base-sync budget fallback remains available for compatibility');
 // Toolbelt Schemas
-// ---------------------------------------------------------------------------
 /** Reserved toolbelt names that users cannot declare in tools.toolbelts. */
 export const RESERVED_TOOLBELT_NAMES = new Set(['none']);
 /** Valid toolbelt name pattern: letters, digits, dot, underscore, or dash. */
@@ -110,9 +97,7 @@ const toolsConfigSchema = z.object({
     }
   }
 });
-// ---------------------------------------------------------------------------
 // ModelRef — model references
-// ---------------------------------------------------------------------------
 /** A model reference: id is always required. Resolver-only `provider` is spliced
  * in for Pi harness from `agents.tiers.<tier>.pi.provider`. Do not set `provider`
  * on config model refs. */
@@ -132,9 +117,7 @@ export const modelRefSchema = z.object({
     });
   }
 }).describe('Model reference (provider must not be set here; use tier pi.provider)');
-// ---------------------------------------------------------------------------
 // SDK Passthrough Config Schemas
-// ---------------------------------------------------------------------------
 export const thinkingConfigSchema = z.union([
   z.object({ type: z.literal('adaptive') }),
   z.object({ type: z.literal('enabled'), budgetTokens: z.number().int().positive().optional() }),
@@ -404,6 +387,9 @@ const landingConfigSchema = z.object({
       'GitHub PR auto-merge policy. "always": enable auto-merge on every PR unless the per-run landingAutoMerge flag is explicitly false. "ask": enable auto-merge only when the per-run landingAutoMerge flag is explicitly true. "never": never enable auto-merge and emit a skipped event. Default: "ask".',
     ),
   }).optional(),
+  directPrBaseSync: z.object({
+    conflictAttempts: clampedPositiveIntegerConfigSchema.optional().describe('Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.'),
+  }).optional(),
 }).describe(
   'Publication action taken after all plans complete and validation passes.',
 );
@@ -647,6 +633,10 @@ export interface LandingConfig {
   pr: {
     /** GitHub PR auto-merge policy. Default: 'ask'. */
     autoMerge: 'ask' | 'always' | 'never';
+  };
+  directPrBaseSync: {
+    /** Direct non-stacked PR base-sync conflict-resolution attempt budget. */
+    conflictAttempts: number;
   };
 }
 
@@ -997,6 +987,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   landing: Object.freeze({
     action: 'merge' as const,
     pr: Object.freeze({ autoMerge: 'ask' as const }),
+    directPrBaseSync: Object.freeze({ conflictAttempts: DEFAULT_PLANNING_DECOMPOSITION_CONFIG.directPrBaseSyncConflictAttempts }),
   }),
 });
 
@@ -1162,6 +1153,11 @@ export function resolveConfig(
       action: landingAction,
       pr: Object.freeze({
         autoMerge: fileConfig.landing?.pr?.autoMerge ?? DEFAULT_CONFIG.landing.pr.autoMerge,
+      }),
+      directPrBaseSync: Object.freeze({
+        conflictAttempts: resolveDirectPrBaseSyncConflictAttempts(
+          fileConfig.landing?.directPrBaseSync?.conflictAttempts ?? fileConfig.compile?.directPrBaseSyncConflictAttempts,
+        ),
       }),
     }),
   });

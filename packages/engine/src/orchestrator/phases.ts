@@ -104,7 +104,7 @@ export interface PhaseContext {
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
   /** EforgeConfig subset for trunk policy resolution and direct PR base sync budget resolution. */
-  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile'>>;
+  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile' | 'landing'>>;
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
@@ -217,7 +217,7 @@ export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): Asyn
     baseBranch: ctx.config.baseBranch,
     remote: DIRECT_PR_REMOTE,
     mergeResolver: ctx.mergeResolver,
-    conflictAttempts: resolveDirectPrBaseSyncConflictAttempts(ctx.engineConfig?.compile?.directPrBaseSyncConflictAttempts),
+    conflictAttempts: ctx.engineConfig?.landing?.directPrBaseSync.conflictAttempts ?? resolveDirectPrBaseSyncConflictAttempts(ctx.engineConfig?.compile?.directPrBaseSyncConflictAttempts),
   });
 
   if (result.ok) {

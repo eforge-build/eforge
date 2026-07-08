@@ -769,14 +769,14 @@
           "maximum": 64
         },
         "directPrBaseSyncConflictAttempts": {
-          "description": "Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.",
+          "description": "Compatibility fallback for the direct non-stacked PR base-sync conflict-resolution attempt budget; clamped after landing.directPrBaseSync.conflictAttempts precedence is resolved.",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,
-      "description": "Compile planning-unit limits and direct PR base-sync budgets"
+      "description": "Compile planning-unit limits; direct PR base-sync budget fallback remains available for compatibility"
     },
     "build": {
       "type": "object",
@@ -1179,6 +1179,18 @@
                 "always",
                 "never"
               ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "directPrBaseSync": {
+          "type": "object",
+          "properties": {
+            "conflictAttempts": {
+              "description": "Direct non-stacked PR base-sync conflict-resolution attempt budget; clamped to the supported range.",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "additionalProperties": false

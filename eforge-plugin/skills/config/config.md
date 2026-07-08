@@ -53,7 +53,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 **Sections to cover:**
 
 1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`, landing action: use `landing.action` (`pr` opens a PR from the artifact branch to the resolved base branch; direct non-stacked PRs fetch and rebase onto `origin/<baseBranch>` before validation and check freshness again immediately before PR creation; `merge` auto-merges the artifact/worktree branch into the base branch, `leave` exits without merging or opening a PR; default is `merge`; `pr` requires `gh` CLI). `landing.pr.autoMerge` (`ask` (default) | `always` | `never`) — GitHub PR auto-merge policy when `landing.action: pr`: `ask` enables auto-merge only when a per-run `landingAutoMerge: true` override is sent; `always` enables auto-merge on every PR unless `landingAutoMerge: false` is sent per-run; `never` skips auto-merge. This is a post-PR-creation option and is distinct from `landing.action: merge`, which merges the artifact branch directly without opening a PR. `trunkBranch` (trunk branch name; detected from `origin/HEAD` at init time; fallback `main`), `allowLocalMergeToTrunk` (default `false`; set to `true` only for solo/unprotected projects to allow direct merge to trunk without a PR), `trunkSync` (pre-compile trunk freshness gate for queued root builds; `enabled` default `true`, `remote` default `origin`, `strategy: fetchedRemoteRef`, `onDiverged`: `warn` (default, emit diagnostic + fall back to local trunk) | `fail` (fail before compile) | `use-remote` (use fetched SHA with diagnostic); set `enabled: false` for offline/local-only workflows)
-2. **Compile planning limits and direct PR base-sync budget** (opt-in - "Would you like to tune decomposition budgets for unusually large compile inputs or the direct PR base-sync conflict-attempt budget? Most users keep defaults.") - The `compile.planningUnit*` values only affect context-managed planning for overflow-risk compile inputs; ordinary direct planning does not use planning units. All `compile.planningUnit*` values are positive integers. `planningUnitParallelism` defaults to `2`; `planningUnitMaxObservedTurns` is optional and unset by default. `directPrBaseSyncConflictAttempts` defaults to `12` and is clamped to `1`-`100`.
+2. **Compile planning limits and direct PR base-sync budget** (opt-in - "Would you like to tune decomposition budgets for unusually large compile inputs or the direct PR base-sync conflict-attempt budget? Most users keep defaults.") - The `compile.planningUnit*` values only affect context-managed planning for overflow-risk compile inputs; ordinary direct planning does not use planning units. All `compile.planningUnit*` values are positive integers. `planningUnitParallelism` defaults to `2`; `planningUnitMaxObservedTurns` is optional and unset by default. The direct non-stacked PR base-sync budget is `landing.directPrBaseSync.conflictAttempts`; it defaults to `12`, is clamped to `1`-`100`, and is used as a fixed budget rather than scaling with branch size.
 3. **Global agent defaults** (opt-in - "Would you like to customize thinking or effort settings? Most users keep defaults.") - Global `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Resolution order (highest → lowest): plan override → per-role config → per-tier config (including built-in tier defaults) → global fallback. Harness and model selection live in the active profile's tier entries — do not configure them here. Whenever you need to suggest a specific model ID (for per-role `model` overrides), **call `mcp__eforge__eforge_models` first** with `{ action: "list", harness: "<resolved-harness>" }` (and `provider: "<profile-provider>"` for Pi) and pick from the returned list (newest-first). Never propose a model ID from memory.
 4. **Tier tuning** (opt-in - "Would you like to tune agents by group? eforge organises agents into four groups by what they do: **planning**, **implementation**, **review**, and **evaluation**. You can give each group its own effort level without touching individual roles.") - Group membership: **planning** — `planner`, `formatter`, `merge-conflict-resolver`, `gap-closer`; **implementation** — `builder`, `review-fixer`, `validation-fixer`, `doc-author`, `doc-syncer`, `test-writer`, `tester`, `recovery-analyst`, `dependency-detector`, `prd-validator`, `staleness-assessor`; **review** — `reviewer`, `plan-reviewer`; **evaluation** — `evaluator`, `plan-evaluator`. Built-in defaults: `implementation` defaults to `effort=medium`; `planning`, `review`, and `evaluation` default to `effort=high`. Harness and model selection come from the active profile's tier entries. Available per-tier knobs in config.yaml: `effort`, `model`, `thinking`, `maxTurns`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, and runtime-choice `choices`/`routing`. Set them under `agents.tiers.<tier>`; the existing tier recipe is the implicit `default` choice, named choices inherit from it, and routing rules run after role-to-tier resolution.
 5. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
@@ -142,8 +142,7 @@ build:
   #   onDiverged: warn                 # warn (default) | fail | use-remote
 
 
-# Compile settings: planning-unit limits plus the direct PR base-sync conflict-attempt budget.
-# Only planningUnit* keys are limited to overflow-risk context-managed planning.
+# Compile settings: planning-unit limits for overflow-risk context-managed planning.
 compile:
   planningUnitParallelism: 2            # Max planning units running at once
   planningUnitMaxDepth: 3               # Max recursive planning-unit split depth
@@ -156,7 +155,6 @@ compile:
   planningUnitMaxCriteriaPerUnit: 20
   planningUnitMaxSubsystemsPerUnit: 2
   planningUnitMaxSplitAttemptsPerUnit: 2
-  directPrBaseSyncConflictAttempts: 12  # Direct PR base-sync conflict attempts (clamped 1-100)
 
 # Landing action
 landing:
@@ -166,6 +164,8 @@ landing:
                                        #     and check freshness again immediately before PR creation.
                                        # merge: auto-merge the artifact branch into the base branch
                                        # leave: commit to artifact branch and exit without merging or opening a PR
+  directPrBaseSync:
+    conflictAttempts: 12               # Direct non-stacked PR base-sync conflict attempts (clamped 1-100)
   pr:
     # autoMerge: ask                   # ask (default) | always | never
                                        # Only applies when landing.action: pr

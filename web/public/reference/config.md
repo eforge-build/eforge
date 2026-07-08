@@ -15,7 +15,7 @@ eforge merges configuration from three tiers (highest precedence first):
 |-------|-------------|
 | `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
 | `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
-| `compile` | Compile planning-unit limits and direct PR base-sync budgets |
+| `compile` | Compile planning-unit limits; direct PR base-sync budget fallback remains available for compatibility |
 | `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
 | `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |
@@ -32,7 +32,7 @@ eforge merges configuration from three tiers (highest precedence first):
 
 ## Compile
 
-`compile` tunes context-managed planning units for overflow-risk compile inputs and the direct PR base-sync conflict-attempt budget. All `compile.planningUnit*` values are positive integers capped by documented operational maxima; `compile.directPrBaseSyncConflictAttempts` is clamped after config/override precedence resolution.
+`compile` tunes context-managed planning units for overflow-risk compile inputs. All `compile.planningUnit*` values are positive integers capped by documented operational maxima; `compile.directPrBaseSyncConflictAttempts` remains as a legacy compatibility fallback when `landing.directPrBaseSync.conflictAttempts` is unset.
 
 | Field | Default | Max | Description |
 |-------|---------|-----|-------------|
@@ -47,7 +47,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | `64` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | `32` | Maximum subsystems assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | `8` | Maximum split retries attempted for one planning unit. |
-| `compile.directPrBaseSyncConflictAttempts` | `12` | `100` | Conflict-resolution attempt budget for direct non-stacked PR base sync. Explicit per-call overrides take precedence over config; the selected value is clamped to `1`-`100`. |
+| `compile.directPrBaseSyncConflictAttempts` | `12` | `100` | Legacy compatibility fallback for direct non-stacked PR base sync. Prefer `landing.directPrBaseSync.conflictAttempts`; this value is used only when the landing key is unset. |
 
 ## Recovery auto-resume
 
@@ -198,6 +198,12 @@ Hook commands run asynchronously from the pipeline path. Use them for best-effor
 landing:
   action: pr    # pr | merge (default) | leave
 ```
+
+`landing.directPrBaseSync.conflictAttempts` controls the conflict-resolution attempt budget for direct non-stacked PR base sync. The selected value is clamped to the supported range; legacy `compile.directPrBaseSyncConflictAttempts` is used only when the landing key is unset.
+
+| Field | Default | Max | Description |
+|-------|---------|-----|-------------|
+| `landing.directPrBaseSync.conflictAttempts` | `12` | `100` | Primary conflict-resolution attempt budget for direct non-stacked PR base sync. |
 
 ## PR Auto-Merge
 

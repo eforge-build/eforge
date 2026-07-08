@@ -59,6 +59,7 @@ describe('planning decomposition compile config', () => {
     const config = resolveConfig({});
     expect(config.compile.planningUnitParallelism).toBe(2);
     expect(config.compile.directPrBaseSyncConflictAttempts).toBe(DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
+    expect(config.landing.directPrBaseSync.conflictAttempts).toBe(DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
     expect(config.compile).toEqual(DEFAULT_CONFIG.compile);
     expect(Object.isFrozen(config.compile)).toBe(true);
     expect(resolvePlanningDecompositionLimits(config)).toEqual(expectedDefaults);
@@ -83,6 +84,17 @@ describe('planning decomposition compile config', () => {
       const { config } = await loadConfig(projectDir);
       expect(config.compile.planningUnitParallelism).toBe(4);
       expect(config.compile.directPrBaseSyncConflictAttempts).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
+      expect(config.landing.directPrBaseSync.conflictAttempts).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
+    });
+  });
+
+  it('loads and clamps the primary landing direct PR base-sync budget', async () => {
+    expect(resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: 5 } } }).landing.directPrBaseSync.conflictAttempts).toBe(5);
+    expect(resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: 150 } } }).landing.directPrBaseSync.conflictAttempts).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
+
+    await withIsolatedProjectConfig('landing:\n  directPrBaseSync:\n    conflictAttempts: 6\n', async (projectDir) => {
+      const { config } = await loadConfig(projectDir);
+      expect(config.landing.directPrBaseSync.conflictAttempts).toBe(6);
     });
   });
 
@@ -104,6 +116,9 @@ describe('planning decomposition compile config', () => {
       expect(() => parseRawConfig({ compile: { directPrBaseSyncConflictAttempts: value } })).toThrow(ConfigValidationError);
       expect(() => parseRawConfig({ compile: { directPrBaseSyncConflictAttempts: value } })).toThrow(/compile\.directPrBaseSyncConflictAttempts/);
       expect(() => parseRawConfig({ compile: { directPrBaseSyncConflictAttempts: value } })).toThrow(value === 1.5 ? /expected int/ : /Too small/);
+      expect(() => parseRawConfig({ landing: { directPrBaseSync: { conflictAttempts: value } } })).toThrow(ConfigValidationError);
+      expect(() => parseRawConfig({ landing: { directPrBaseSync: { conflictAttempts: value } } })).toThrow(/landing\.directPrBaseSync\.conflictAttempts/);
+      expect(() => parseRawConfig({ landing: { directPrBaseSync: { conflictAttempts: value } } })).toThrow(value === 1.5 ? /expected int/ : /Too small/);
     }
 
     await withIsolatedProjectConfig('compile:\n  directPrBaseSyncConflictAttempts: 1.5\n', async (projectDir) => {
@@ -119,7 +134,9 @@ describe('planning decomposition compile config', () => {
       expect(configYamlSchema.safeParse({ compile: { [key]: PLANNING_DECOMPOSITION_CONFIG_MAXIMA[key] + 1 } }).success, `${key} rejects oversized values`).toBe(false);
     }
     expect(configYamlSchema.safeParse({ compile: { directPrBaseSyncConflictAttempts: MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 1 } }).success).toBe(true);
+    expect(configYamlSchema.safeParse({ landing: { directPrBaseSync: { conflictAttempts: MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 1 } } }).success).toBe(true);
     expect(resolveConfig({ compile: { directPrBaseSyncConflictAttempts: MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 1 } }).compile.directPrBaseSyncConflictAttempts).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
+    expect(resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 1 } } }).landing.directPrBaseSync.conflictAttempts).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
   });
 
   it('shallow-merges layered compile partials with project precedence', () => {
@@ -133,8 +150,8 @@ describe('planning decomposition compile config', () => {
     expect(resolveDirectPrBaseSyncConflictAttempts()).toBe(DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
     expect(resolveDirectPrBaseSyncConflictAttempts(7)).toBe(7);
     expect(resolveDirectPrBaseSyncConflictAttempts(7, 4)).toBe(4);
-    expect(() => resolveDirectPrBaseSyncConflictAttempts(7, 1.5)).toThrow(/compile\.directPrBaseSyncConflictAttempts must be a finite integer/);
-    expect(() => resolveDirectPrBaseSyncConflictAttempts(7, Number.NaN)).toThrow(/compile\.directPrBaseSyncConflictAttempts must be a finite integer/);
+    expect(() => resolveDirectPrBaseSyncConflictAttempts(7, 1.5)).toThrow(/landing\.directPrBaseSync\.conflictAttempts must be a finite integer/);
+    expect(() => resolveDirectPrBaseSyncConflictAttempts(7, Number.NaN)).toThrow(/landing\.directPrBaseSync\.conflictAttempts must be a finite integer/);
     expect(resolveDirectPrBaseSyncConflictAttempts(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 10, 4)).toBe(4);
     expect(resolveDirectPrBaseSyncConflictAttempts(7, 0)).toBe(MIN_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
     expect(resolveDirectPrBaseSyncConflictAttempts(7, MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS + 10)).toBe(MAX_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS);
@@ -165,11 +182,21 @@ describe('planning decomposition compile config', () => {
     expect(JSON.stringify(configSchema)).toContain('planningUnitParallelism');
     expect(JSON.stringify(configSchema)).toContain('planningUnitMaxPromptSourceBytes');
     const directPrConflictAttemptsSchema = (configSchema as {
-      properties?: { compile?: { properties?: Record<string, unknown> } };
+      properties?: { compile?: { properties?: Record<string, unknown> }; landing?: { properties?: { directPrBaseSync?: { properties?: Record<string, unknown> } } } };
     }).properties?.compile?.properties?.directPrBaseSyncConflictAttempts as
       | { type?: unknown; exclusiveMinimum?: unknown; maximum?: unknown; description?: unknown }
       | undefined;
+    const landingDirectPrConflictAttemptsSchema = (configSchema as {
+      properties?: { landing?: { properties?: { directPrBaseSync?: { properties?: Record<string, unknown> } } } };
+    }).properties?.landing?.properties?.directPrBaseSync?.properties?.conflictAttempts as
+      | { type?: unknown; exclusiveMinimum?: unknown; description?: unknown }
+      | undefined;
     expect(directPrConflictAttemptsSchema).toMatchObject({
+      type: 'integer',
+      exclusiveMinimum: 0,
+      description: expect.stringContaining('Compatibility fallback'),
+    });
+    expect(landingDirectPrConflictAttemptsSchema).toMatchObject({
       type: 'integer',
       exclusiveMinimum: 0,
       description: expect.stringContaining('clamped'),

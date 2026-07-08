@@ -334,7 +334,8 @@ describe('direct PR base sync', () => {
     if (!sync.ok) {
       expect(sync.reason).toBe('conflict-attempts-exhausted');
       expect(sync.message).toContain('exhausted 2 conflict-resolution attempt');
-      expect(sync.message).toContain('Raise compile.directPrBaseSyncConflictAttempts');
+      expect(sync.message).toContain('Raise landing.directPrBaseSync.conflictAttempts');
+      expect(sync.message).toContain('legacy compile.directPrBaseSyncConflictAttempts');
       expect(sync.message).toContain('complete the rebase manually');
     }
     expect(resolverCalls).toBe(2);
@@ -360,7 +361,8 @@ describe('direct PR base sync', () => {
       expect(sync.ok).toBe(false);
       if (!sync.ok) {
         expect(sync.reason).toBe('invalid-conflict-attempts');
-        expect(sync.message).toContain('compile.directPrBaseSyncConflictAttempts must be a finite integer');
+        expect(sync.message).toContain('landing.directPrBaseSync.conflictAttempts must be a finite integer');
+        expect(sync.message).toContain('legacy compile.directPrBaseSyncConflictAttempts');
       }
       expect(git(repo, ['branch', '--show-current'])).toBe('main');
       expect(existsSync(join(repo, '.git', 'FETCH_HEAD'))).toBe(false);
@@ -368,7 +370,7 @@ describe('direct PR base sync', () => {
     }
   });
 
-  it('uses the resolved config conflict budget for pre-validation direct PR base sync', async () => {
+  it('uses the resolved landing config conflict budget for pre-validation direct PR base sync', async () => {
     const tmp = makeTempDir();
     const { origin, repo } = initOriginAndRepo(tmp);
     makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
@@ -383,6 +385,39 @@ describe('direct PR base sync', () => {
       mergeWorktreePath: repo,
       featureBranch: 'eforge/config-budget',
       state: minimalState('eforge/config-budget'),
+      engineConfig: resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: 1 } } }),
+      mergeResolver: async (cwd) => {
+        resolverCalls += 1;
+        writeFileSync(join(cwd, 'conflict.txt'), `resolved ${resolverCalls}\n`);
+        git(cwd, ['add', 'conflict.txt']);
+        return true;
+      },
+    });
+
+    const events = await drainEvents(syncDirectPrBaseBeforeValidation(ctx));
+
+    expect(resolverCalls).toBe(1);
+    expect(ctx.state.status).toBe('failed');
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 1 conflict-resolution attempt'))).toBe(true);
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('Raise landing.directPrBaseSync.conflictAttempts'))).toBe(true);
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('legacy compile.directPrBaseSyncConflictAttempts'))).toBe(true);
+  }, 10_000);
+
+  it('uses the legacy compile fallback conflict budget when the landing budget is unset', async () => {
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/compile-budget']);
+    makeCommit(repo, 'conflict.txt', 'feature one\n', 'feature side one');
+    makeCommit(repo, 'conflict.txt', 'feature two\n', 'feature side two');
+    advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    let resolverCalls = 0;
+    const ctx = phaseCtx({
+      repoRoot: repo,
+      mergeWorktreePath: repo,
+      featureBranch: 'eforge/compile-budget',
+      state: minimalState('eforge/compile-budget'),
       engineConfig: resolveConfig({ compile: { directPrBaseSyncConflictAttempts: 1 } }),
       mergeResolver: async (cwd) => {
         resolverCalls += 1;
@@ -397,7 +432,75 @@ describe('direct PR base sync', () => {
     expect(resolverCalls).toBe(1);
     expect(ctx.state.status).toBe('failed');
     expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 1 conflict-resolution attempt'))).toBe(true);
-    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('Raise compile.directPrBaseSyncConflictAttempts'))).toBe(true);
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('legacy compile.directPrBaseSyncConflictAttempts'))).toBe(true);
+  }, 10_000);
+
+  it('prefers landing direct PR base-sync budget over the legacy compile fallback during pre-validation sync', async () => {
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/landing-budget-precedence']);
+    makeCommit(repo, 'conflict.txt', 'feature one\n', 'feature side one');
+    makeCommit(repo, 'conflict.txt', 'feature two\n', 'feature side two');
+    makeCommit(repo, 'conflict.txt', 'feature three\n', 'feature side three');
+    advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    let resolverCalls = 0;
+    const ctx = phaseCtx({
+      repoRoot: repo,
+      mergeWorktreePath: repo,
+      featureBranch: 'eforge/landing-budget-precedence',
+      state: minimalState('eforge/landing-budget-precedence'),
+      engineConfig: resolveConfig({
+        compile: { directPrBaseSyncConflictAttempts: 1 },
+        landing: { directPrBaseSync: { conflictAttempts: 2 } },
+      }),
+      mergeResolver: async (cwd) => {
+        resolverCalls += 1;
+        writeFileSync(join(cwd, 'conflict.txt'), `resolved ${resolverCalls}\n`);
+        git(cwd, ['add', 'conflict.txt']);
+        return true;
+      },
+    });
+
+    const events = await drainEvents(syncDirectPrBaseBeforeValidation(ctx));
+
+    expect(resolverCalls).toBe(2);
+    expect(ctx.state.status).toBe('failed');
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 2 conflict-resolution attempt'))).toBe(true);
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 1 conflict-resolution attempt'))).toBe(false);
+  }, 10_000);
+
+  it('keeps the resolved direct PR base-sync budget fixed instead of scaling with branch size', async () => {
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/fixed-budget']);
+    for (let i = 1; i <= 5; i += 1) {
+      makeCommit(repo, 'conflict.txt', `feature ${i}\n`, `feature side ${i}`);
+    }
+    advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    let resolverCalls = 0;
+    const ctx = phaseCtx({
+      repoRoot: repo,
+      mergeWorktreePath: repo,
+      featureBranch: 'eforge/fixed-budget',
+      state: minimalState('eforge/fixed-budget'),
+      engineConfig: resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: 2 } } }),
+      mergeResolver: async (cwd) => {
+        resolverCalls += 1;
+        writeFileSync(join(cwd, 'conflict.txt'), `resolved ${resolverCalls}\n`);
+        git(cwd, ['add', 'conflict.txt']);
+        return true;
+      },
+    });
+
+    const events = await drainEvents(syncDirectPrBaseBeforeValidation(ctx));
+
+    expect(resolverCalls).toBe(2);
+    expect(ctx.state.status).toBe('failed');
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 2 conflict-resolution attempt'))).toBe(true);
   }, 10_000);
 
   it('uses a default conflict budget large enough for multi-wave resumed branch rebases', async () => {
@@ -477,6 +580,44 @@ describe('direct PR base sync', () => {
     expect(registry.builds.find((build) => build.prdId === 'prd-1')?.landingStatus).toBe('complete');
     expect(readFileSync(log, 'utf8')).toContain('"create"');
     expect(ctx.state.status).toBe('completed');
+  }, 10_000);
+
+  it('uses the fixed direct PR base-sync budget when the final freshness retry rebase conflicts', async () => {
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/final-retry-budget']);
+    makeCommit(repo, 'conflict.txt', 'feature one\n', 'feature side one');
+    makeCommit(repo, 'conflict.txt', 'feature two\n', 'feature side two');
+    let resolverCalls = 0;
+    const ctx = phaseCtx({
+      repoRoot: repo,
+      mergeWorktreePath: repo,
+      featureBranch: 'eforge/final-retry-budget',
+      state: minimalState('eforge/final-retry-budget'),
+      worktreeManager: new WorktreeManager({ repoRoot: repo, worktreeBase: join(tmp, 'worktrees'), featureBranch: 'eforge/final-retry-budget', mergeWorktreePath: repo }),
+      engineConfig: resolveConfig({ landing: { directPrBaseSync: { conflictAttempts: 1 } } }),
+      mergeResolver: async (cwd) => {
+        resolverCalls += 1;
+        writeFileSync(join(cwd, 'conflict.txt'), `resolved ${resolverCalls}\n`);
+        git(cwd, ['add', 'conflict.txt']);
+        return true;
+      },
+    });
+
+    await drainEvents(syncDirectPrBaseBeforeValidation(ctx));
+    expect(ctx.state.status).toBe('running');
+    advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    const { bin, log } = fakeGh(tmp, 'create');
+    const events = await withPath(bin, async () => drainEvents(finalize(ctx)));
+
+    expect(resolverCalls).toBe(1);
+    expect(ctx.state.status).toBe('failed');
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('retrying base sync and validation'))).toBe(true);
+    expect(events.some((event) => event.type === 'landing:skipped' && event.reason.includes('exhausted 1 conflict-resolution attempt'))).toBe(true);
+    const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
+    expect(ghLog).not.toContain('"create"');
   }, 10_000);
 
   it('exhausts final freshness retries without creating a PR when the base keeps advancing', async () => {

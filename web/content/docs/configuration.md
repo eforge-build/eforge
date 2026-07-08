@@ -407,7 +407,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 
 ## Compile Planning Limits
 
-The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning, plus the direct PR base-sync conflict-resolution attempt budget. The `planningUnit*` values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
+The top-level `compile` block tunes context-managed planning for compile inputs that are too large or risky for direct planning. The `planningUnit*` values only affect that overflow-risk planning path; ordinary direct planning does not use planning units.
 
 ```yaml
 compile:
@@ -422,10 +422,9 @@ compile:
   planningUnitMaxCriteriaPerUnit: 20
   planningUnitMaxSubsystemsPerUnit: 2
   planningUnitMaxSplitAttemptsPerUnit: 2
-  directPrBaseSyncConflictAttempts: 12  # Direct PR base-sync conflict attempts (clamped 1-100)
 ```
 
-All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining `planningUnit*` keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit. `directPrBaseSyncConflictAttempts` is clamped to `1`-`100` after config/override precedence is resolved.
+All compile planning limits are positive integers. Increase `planningUnitParallelism` to allow more decomposed planning units to run at once, or lower it to reduce concurrent planning pressure. The remaining `planningUnit*` keys cap recursive splitting, prompt/source size, observed budget pressure, handoff size, local exploration, criteria assignment, subsystem assignment, and split retries per planning unit.
 
 ## Landing Action
 
@@ -440,6 +439,8 @@ All compile planning limits are positive integers. Increase `planningUnitParalle
 ```yaml
 landing:
   action: pr    # pr | merge (default) | leave
+  directPrBaseSync:
+    conflictAttempts: 12  # Direct PR base-sync conflict attempts (clamped 1-100)
 ```
 
 **`pr` prerequisite**: ensure `gh` is installed (`gh --version`) and authenticated (`gh auth status`). Builds configured with `landing.action: pr` will fail at the landing step if `gh` is unavailable.
@@ -563,7 +564,7 @@ build:
 
 `build.trunkSync` selects a fresh compile base before a build starts. It runs once, before the merge worktree is created, and does not affect the stack topology.
 
-Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
+Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. The fixed conflict-resolution attempt budget comes from `landing.directPrBaseSync.conflictAttempts` (default `12`, clamped to `1`-`100`); the older `compile.directPrBaseSyncConflictAttempts` key is still accepted as a compatibility fallback when the landing key is unset. The resolved budget is used as-is for the operation and is not scaled by branch size. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
 
 Stacked PR landing does not use the direct non-stacked PR base sync path. Instead, it stays behind the stack provider boundary: eforge runs provider repo sync, branch restack, and a remote-base freshness proof for the branch being submitted. Manual `eforge stack sync` remains the separate whole-stack maintenance path after trunk or parent branches move.
 

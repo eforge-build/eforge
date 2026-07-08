@@ -125,7 +125,6 @@ compile:
   planningUnitMaxCriteriaPerUnit: 20
   planningUnitMaxSubsystemsPerUnit: 2
   planningUnitMaxSplitAttemptsPerUnit: 2
-  directPrBaseSyncConflictAttempts: 12  # Direct PR base-sync conflict-resolution attempt budget (clamped 1-100)
 
 # Landing action
 # landing:
@@ -139,6 +138,8 @@ compile:
 #                             #       requires gh CLI
 #                             #   merge: auto-merge the artifact branch into the base branch
 #                             #   leave: commit to artifact branch and exit without merging or opening a PR
+#   directPrBaseSync:
+#     conflictAttempts: 12    # Direct non-stacked PR base-sync conflict-resolution attempt budget (clamped 1-100)
 #   pr:
 #     autoMerge: ask          # ask (default) | always | never
 #                             #   Only applies when landing.action: pr
@@ -214,9 +215,9 @@ Each command in `postMergeCommands`, queued PRD `postMerge` metadata, and the pl
 
 ## Compile planning limits
 
-The top-level `compile` block controls budgets for context-managed planning when overflow-risk compile inputs receive a bounded-decomposition recommendation, plus the direct PR base-sync conflict-resolution attempt budget. The `planningUnit*` limits do not change normal direct planning; they only bound decomposition into planning units for that context-managed path.
+The top-level `compile` block controls budgets for context-managed planning when overflow-risk compile inputs receive a bounded-decomposition recommendation. The `planningUnit*` limits do not change normal direct planning; they only bound decomposition into planning units for that context-managed path.
 
-All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default. `directPrBaseSyncConflictAttempts` is clamped to the supported `1`-`100` range after config/override precedence is resolved.
+All numeric values must be positive integers. `planningUnitMaxObservedTurns` is optional and omitted by default.
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -231,7 +232,6 @@ All numeric values must be positive integers. `planningUnitMaxObservedTurns` is 
 | `compile.planningUnitMaxCriteriaPerUnit` | `20` | Maximum acceptance criteria assigned to one planning unit. |
 | `compile.planningUnitMaxSubsystemsPerUnit` | `2` | Maximum subsystem hints assigned to one planning unit. |
 | `compile.planningUnitMaxSplitAttemptsPerUnit` | `2` | Maximum split attempts for one planning unit before exhaustion. |
-| `compile.directPrBaseSyncConflictAttempts` | `12` | Conflict-resolution attempt budget for direct non-stacked PR base sync. Explicit per-call overrides take precedence over this config value; the selected value is clamped to `1`-`100`. When exhausted, eforge reports the configured count and suggests raising this config key or completing the rebase manually. |
 
 ## Workflow Presets
 
@@ -307,7 +307,7 @@ build:
 
 `build.trunkSync` is a pre-compile freshness gate. It fetches the remote trunk and selects a fresh base before the merge worktree is created. It does not checkout, pull, reset, rebase, or move local branch refs or the working tree — only FETCH_HEAD is updated as part of the fetch.
 
-Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
+Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. The fixed conflict-resolution attempt budget comes from `landing.directPrBaseSync.conflictAttempts` (default `12`, clamped to `1`-`100`); the older `compile.directPrBaseSyncConflictAttempts` key is still accepted as a compatibility fallback when the landing key is unset. The resolved budget is used as-is for the operation and is not scaled by branch size. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
 
 `build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). Queued PRD `postMerge` metadata is appended after the configured commands for that build. These settings are independent.
 

@@ -26,7 +26,7 @@ export function resolveDirectPrBaseSyncConflictAttempts(
 ): number {
   const selected = overrideValue ?? configValue ?? DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS;
   if (!Number.isFinite(selected) || !Number.isInteger(selected)) {
-    throw new RangeError('compile.directPrBaseSyncConflictAttempts must be a finite integer');
+    throw new RangeError('landing.directPrBaseSync.conflictAttempts must be a finite integer (legacy compile.directPrBaseSyncConflictAttempts is used only when the landing key is unset)');
   }
   return Math.max(
     MIN_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
@@ -201,7 +201,7 @@ async function finishConflictedRebase({
       return {
         ok: false,
         reason: 'conflict-attempts-exhausted',
-        message: `Direct PR base sync exhausted ${maxAttempts} conflict-resolution attempt(s) for '${baseBranch}'. Raise compile.directPrBaseSyncConflictAttempts or complete the rebase manually.`,
+        message: `Direct PR base sync exhausted ${maxAttempts} conflict-resolution attempt(s) for '${baseBranch}'. Raise landing.directPrBaseSync.conflictAttempts (or legacy compile.directPrBaseSyncConflictAttempts when the landing key is unset) or complete the rebase manually.`,
       };
     }
 

@@ -114,7 +114,7 @@ export interface OrchestratorOptions {
   /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
   policyGateFailurePolicy?: PolicyGateFailurePolicy;
   /** EforgeConfig subset for trunk policy and direct PR base sync budget resolution. When omitted, trunk defaults to "main". */
-  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile'>>;
+  engineConfig?: Pick<EforgeConfig, 'build'> & Partial<Pick<EforgeConfig, 'compile' | 'landing'>>;
   /** Queued PRD id for stack artifact recording. */
   prdId?: string;
   /** Resolved stack context for queued stacked builds. */
