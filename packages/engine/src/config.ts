@@ -97,7 +97,6 @@ const toolsConfigSchema = z.object({
     }
   }
 });
-// ModelRef — model references
 /** A model reference: id is always required. Resolver-only `provider` is spliced
  * in for Pi harness from `agents.tiers.<tier>.pi.provider`. Do not set `provider`
  * on config model refs. */
@@ -578,13 +577,7 @@ function assertMergedRuntimeChoiceConfig(data: { agents?: { tiers?: Record<strin
 /** Exported schema. Cross-field validation is performed in tierConfigSchema; unknown runtime-choice references are validated after config layers are merged. */
 export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine(addRuntimeChoiceConfigIssues);
 
-// ---------------------------------------------------------------------------
-// Derived TypeScript types — from schemas, not hand-written
-// ---------------------------------------------------------------------------
-
 export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
-// `ReviewProfileConfig` and `BuildStageSpec` are owned by `@eforge-build/client`
-// and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
 export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {

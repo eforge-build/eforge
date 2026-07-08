@@ -70,5 +70,5 @@ export type {
 } from './selectors/map-reduce';
 
 // Lane registry
-export { LANE_REGISTRY, laneLabel, laneOrder, isRegisteredPhaseLane } from './lane-registry';
+export { LANE_REGISTRY, laneLabel, laneOrder, isRegisteredPhaseLane, isFeatureBranchLane } from './lane-registry';
 export type { LaneEntry } from './lane-registry';

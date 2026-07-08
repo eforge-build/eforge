@@ -47,6 +47,10 @@ export function isRegisteredPhaseLane(id: string): boolean {
   return registryById.get(id)?.kind === 'phase';
 }
 
+export function isFeatureBranchLane(id: string): boolean {
+  return /^eforge\//.test(id);
+}
+
 /**
  * Returns the human-readable display label for a lane key.
  *
@@ -58,7 +62,7 @@ export function laneLabel(id: string): string {
   if (entry) return entry.label;
   const match = id.match(/^plan-(\d+)/);
   if (match) return `Plan ${match[1]}`;
-  if (/^eforge\//.test(id)) return `Feature branch: ${id}`;
+  if (isFeatureBranchLane(id)) return `Feature branch: ${id}`;
   return id;
 }
 

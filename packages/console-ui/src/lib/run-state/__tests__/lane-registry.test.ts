@@ -2,7 +2,7 @@
  * Tests for the lane registry: labels, ordering, and plan-NN fallback.
  */
 import { describe, it, expect } from 'vitest';
-import { isRegisteredPhaseLane, laneLabel, laneOrder, LANE_REGISTRY } from '../lane-registry';
+import { isFeatureBranchLane, isRegisteredPhaseLane, laneLabel, laneOrder, LANE_REGISTRY } from '../lane-registry';
 
 describe('laneLabel', () => {
   it('returns "Planning" for planning', () => {
@@ -34,6 +34,10 @@ describe('laneLabel', () => {
     expect(laneLabel('plan-01')).toBe('Plan 01');
     expect(laneLabel('plan-01-some-feature')).toBe('Plan 01');
     expect(laneLabel('plan-12-multi-digit')).toBe('Plan 12');
+  });
+
+  it('returns feature branch labels for direct base-sync branch lane keys', () => {
+    expect(laneLabel('eforge/feature-x')).toBe('Feature branch: eforge/feature-x');
   });
 
   it('returns the raw id for unknown lane keys', () => {
@@ -85,6 +89,13 @@ describe('isRegisteredPhaseLane', () => {
   it('returns false for plan and unknown lane ids', () => {
     expect(isRegisteredPhaseLane('plan-01')).toBe(false);
     expect(isRegisteredPhaseLane('acceptance-validation')).toBe(false);
+  });
+});
+
+describe('isFeatureBranchLane', () => {
+  it('recognizes direct base-sync feature branch lane keys', () => {
+    expect(isFeatureBranchLane('eforge/feature-x')).toBe(true);
+    expect(isFeatureBranchLane('plan-01')).toBe(false);
   });
 });
 

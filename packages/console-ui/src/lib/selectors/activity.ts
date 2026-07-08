@@ -10,6 +10,7 @@ import { getEventSummary, eventRegistry } from '@eforge-build/client/browser';
 import type { EventScope } from '@eforge-build/client/browser';
 import type { ConsoleActivityEntry } from '@/lib/types';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
+import { isFeatureBranchLane } from '@/lib/run-state/lane-registry';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,7 +196,7 @@ export function extractIdentifiers(event: EforgeEvent): Array<{ label: string; v
         // Preserve the raw slug so identifier searches against the original
         // value (e.g. "add-mcp-server-support") still match the row.
         identifiers.push({ label, value: displayValue, rawValue: val });
-      } else if (field === 'planId' && /^eforge\//.test(val)) {
+      } else if (field === 'planId' && isFeatureBranchLane(val)) {
         identifiers.push({ label: 'Feature Branch', value: val });
       } else {
         identifiers.push({ label, value: val });
