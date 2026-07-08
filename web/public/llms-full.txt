@@ -230,7 +230,7 @@ Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave
 
 ## Validation
 
-During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. After all plans merge, eforge runs your configured `postMergeCommands` plus any queued PRD `postMerge` commands (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. Review and test cycles also have a bounded same-plan recovery pass for active-plan blockers that remain after normal rounds; it emits `plan:build:recovery:*` evidence events, reruns the blocking checks, and falls back to normal failure/recovery when blockers remain or classification is unsafe. After all plans merge, eforge runs your configured `postMergeCommands` plus any queued PRD `postMerge` commands (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
 
 ## Stacked PRs
 
@@ -5014,7 +5014,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 241
+Total variants: 246
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -5129,6 +5129,11 @@ Total variants: 241
 | `plan:build:test:start` | `planId` |
 | `plan:build:test:complete` | `failed`, `passed`, `planId`, `productionIssues`, `testBugsFixed` |
 | `plan:build:complete` | `planId` |
+| `plan:build:recovery:start` | `attemptsRemaining`, `blockerKind`, `issueCount`, `maxAttempts`, `planId` |
+| `plan:build:recovery:attempt:start` | `attempt`, `attemptsRemaining`, `blockerKind`, `maxAttempts`, `planId` |
+| `plan:build:recovery:attempt:result` | `attempt`, `attemptsRemaining`, `blockerKind`, `blockersCleared`, `maxAttempts`, `planId` |
+| `plan:build:recovery:skip` | `attemptsRemaining`, `blockerKind`, `details`, `planId`, `reason` |
+| `plan:build:recovery:exhausted` | `attemptsUsed`, `blockerKind`, `details`, `maxAttempts`, `planId` |
 | `plan:build:failed` | `error`, `planId`, `terminalSubtype` |
 | `plan:build:progress` | `message`, `planId` |
 | `plan:status:change` | `planId`, `status` |

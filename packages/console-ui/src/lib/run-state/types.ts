@@ -200,6 +200,18 @@ export interface MapReduceOrchestration {
   reduceOrder: string[];
 }
 
+export interface SamePlanRecoveryState {
+  status: 'started' | 'running' | 'cleared' | 'blocked' | 'skipped' | 'exhausted';
+  blockerKind: 'review' | 'test';
+  issueCount?: number;
+  attempt?: number;
+  maxAttempts: number;
+  attemptsRemaining?: number;
+  reason?: string;
+  details?: string;
+  timestamp: string;
+}
+
 export interface RunState {
   events: StoredEvent[];
   startTime: number | null;
@@ -233,6 +245,7 @@ export interface RunState {
   autoBuildPausedAt: string | null;
   perspectiveErrors: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective: Record<string, Record<string, import('@eforge-build/client/browser').ReviewIssue[]>>;
+  samePlanRecovery: Record<string, SamePlanRecoveryState>;
   /**
    * Decisions keyed by planId (for build-phase decisions) or by the sentinel
    * `'__run__'` for session-level planning-phase decisions not tied to a specific plan.

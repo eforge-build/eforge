@@ -103,6 +103,78 @@ export const handlePlanBuildReviewComplete: EventHandler<'plan:build:review:comp
 export const handlePlanBuildEvaluateStart: EventHandler<'plan:build:evaluate:start'> = (event, state) =>
   setStatus(state, event.planId, 'evaluate');
 
+export const handlePlanBuildRecoveryStart: EventHandler<'plan:build:recovery:start'> = (event, state) => ({
+  samePlanRecovery: {
+    ...state.samePlanRecovery,
+    [event.planId]: {
+      status: 'started',
+      blockerKind: event.blockerKind,
+      issueCount: event.issueCount,
+      maxAttempts: event.maxAttempts,
+      attemptsRemaining: event.attemptsRemaining,
+      timestamp: event.timestamp,
+    },
+  },
+});
+
+export const handlePlanBuildRecoveryAttemptStart: EventHandler<'plan:build:recovery:attempt:start'> = (event, state) => ({
+  samePlanRecovery: {
+    ...state.samePlanRecovery,
+    [event.planId]: {
+      status: 'running',
+      blockerKind: event.blockerKind,
+      attempt: event.attempt,
+      maxAttempts: event.maxAttempts,
+      attemptsRemaining: event.attemptsRemaining,
+      timestamp: event.timestamp,
+    },
+  },
+});
+
+export const handlePlanBuildRecoveryAttemptResult: EventHandler<'plan:build:recovery:attempt:result'> = (event, state) => ({
+  samePlanRecovery: {
+    ...state.samePlanRecovery,
+    [event.planId]: {
+      status: event.blockersCleared ? 'cleared' : 'blocked',
+      blockerKind: event.blockerKind,
+      attempt: event.attempt,
+      maxAttempts: event.maxAttempts,
+      attemptsRemaining: event.attemptsRemaining,
+      timestamp: event.timestamp,
+    },
+  },
+});
+
+export const handlePlanBuildRecoverySkip: EventHandler<'plan:build:recovery:skip'> = (event, state) => ({
+  samePlanRecovery: {
+    ...state.samePlanRecovery,
+    [event.planId]: {
+      status: 'skipped',
+      blockerKind: event.blockerKind,
+      maxAttempts: state.samePlanRecovery[event.planId]?.maxAttempts ?? event.attemptsRemaining,
+      attemptsRemaining: event.attemptsRemaining,
+      reason: event.reason,
+      details: event.details,
+      timestamp: event.timestamp,
+    },
+  },
+});
+
+export const handlePlanBuildRecoveryExhausted: EventHandler<'plan:build:recovery:exhausted'> = (event, state) => ({
+  samePlanRecovery: {
+    ...state.samePlanRecovery,
+    [event.planId]: {
+      status: 'exhausted',
+      blockerKind: event.blockerKind,
+      attempt: event.attemptsUsed,
+      maxAttempts: event.maxAttempts,
+      attemptsRemaining: 0,
+      details: event.details,
+      timestamp: event.timestamp,
+    },
+  },
+});
+
 /** plan:build:complete — status now driven by plan:status:change(completed); no-op here. */
 export const handlePlanBuildComplete: EventHandler<'plan:build:complete'> = (_event, _state) => undefined;
 

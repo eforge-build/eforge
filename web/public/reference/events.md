@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 241
+Total variants: 246
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -131,6 +131,11 @@ Total variants: 241
 | `plan:build:test:start` | `planId` |
 | `plan:build:test:complete` | `failed`, `passed`, `planId`, `productionIssues`, `testBugsFixed` |
 | `plan:build:complete` | `planId` |
+| `plan:build:recovery:start` | `attemptsRemaining`, `blockerKind`, `issueCount`, `maxAttempts`, `planId` |
+| `plan:build:recovery:attempt:start` | `attempt`, `attemptsRemaining`, `blockerKind`, `maxAttempts`, `planId` |
+| `plan:build:recovery:attempt:result` | `attempt`, `attemptsRemaining`, `blockerKind`, `blockersCleared`, `maxAttempts`, `planId` |
+| `plan:build:recovery:skip` | `attemptsRemaining`, `blockerKind`, `details`, `planId`, `reason` |
+| `plan:build:recovery:exhausted` | `attemptsUsed`, `blockerKind`, `details`, `maxAttempts`, `planId` |
 | `plan:build:failed` | `error`, `planId`, `terminalSubtype` |
 | `plan:build:progress` | `message`, `planId` |
 | `plan:status:change` | `planId`, `status` |

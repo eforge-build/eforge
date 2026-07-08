@@ -135,6 +135,29 @@ function ActivityList({ activity }: { activity?: AgentActivityFacts }) {
   );
 }
 
+function RecoveryAttemptList({ round }: { round: ReviewCycleRound }) {
+  if (round.recoveryAttempts.length === 0) return null;
+  return (
+    <div>
+      <SectionTitle>Same-plan recovery</SectionTitle>
+      <div className="space-y-1">
+        {round.recoveryAttempts.map((attempt, i) => {
+          const attemptLabel = attempt.attempt !== undefined ? ` attempt ${attempt.attempt}/${attempt.maxAttempts}` : '';
+          const remaining = attempt.attemptsRemaining !== undefined ? ` · ${attempt.attemptsRemaining} remaining` : '';
+          const reason = attempt.reason ? ` · ${attempt.reason}` : '';
+          return (
+            <div key={i} className="rounded border border-amber-900/40 bg-amber-950/20 p-2 text-10px">
+              <div className="font-medium text-amber-300">{attempt.blockerKind} recovery {attempt.status}{attemptLabel}{remaining}{reason}</div>
+              {attempt.issueCount !== undefined && <div className="text-text-dim">{attempt.issueCount} blocker issue(s)</div>}
+              {attempt.details && <div className="break-words text-text-dim">{attempt.details}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function EvaluatorLane({ round, onOpenAgent }: { round: ReviewCycleRound; onOpenAgent: (agentId: string) => void }) {
   return (
     <div className="space-y-2">
@@ -155,6 +178,7 @@ function RoundCard({ round, onOpenAgent }: { round: ReviewCycleRound; onOpenAgen
   return (
     <div className="rounded border border-border bg-bg-secondary/60 p-3 space-y-3">
       <div className="font-semibold text-sm">{round.roundLabel}</div>
+      <RecoveryAttemptList round={round} />
       {round.linkedTraces.length > 0 && (
         <div>
           <SectionTitle>Linked issue traces</SectionTitle>

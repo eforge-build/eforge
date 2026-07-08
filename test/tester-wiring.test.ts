@@ -93,7 +93,7 @@ describe('parseTestIssues', () => {
 // ---------------------------------------------------------------------------
 
 describe('testIssueToReviewIssue', () => {
-  it('converts TestIssue to ReviewIssue, dropping test-specific fields', () => {
+  it('converts TestIssue to ReviewIssue while preserving test context in metadata', () => {
     const testIssue: TestIssue = {
       severity: 'critical',
       category: 'production-bug',
@@ -111,8 +111,11 @@ describe('testIssueToReviewIssue', () => {
       file: 'src/handler.ts',
       description: 'Null pointer in handler',
       fix: 'Add null guard',
+      metadata: {
+        testFile: 'test/handler.test.ts',
+        testOutput: 'TypeError: cannot read property',
+      },
     });
-    // testFile and testOutput should not be present
     expect(reviewIssue).not.toHaveProperty('testFile');
     expect(reviewIssue).not.toHaveProperty('testOutput');
   });

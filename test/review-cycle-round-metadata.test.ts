@@ -175,6 +175,54 @@ describe('review-cycle round lifecycle metadata', () => {
     expect(evaluateCompletes[0].verdicts).toEqual([{ file: 'src/app.ts', action: 'reject', reason: 'Needs another attempt', issueIds: ['review-r0-code-1'] }]);
   });
 
+  it.each([
+    ['cross-plan blocker', { planId: 'plan-other' }, 'cross-plan-blocker'],
+    ['upstream/base-owned blocker', { planId: 'plan-01-round-metadata', owner: 'upstream' }, 'upstream-or-base-owned'],
+  ] as const)('preserves terminal review-cycle failure after same-plan recovery refuses a %s', async (_label, metadata, reason) => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    class MutatingFixerHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'review-fixer') {
+            await writeRepoFile(repo, 'src/app.ts', 'export const value = 3;\n');
+          }
+        }
+      }
+    }
+    const harness = new MutatingFixerHarness([
+      { text: issueXml('belongs outside the active plan') },
+      { text: 'No safe active-plan fix is available.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-0', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Still blocks outside active ownership.', issueOutcome: 'unresolved_blocking', issueIds: ['review-r0-code-1'] }] }, output: '' }] },
+    ] satisfies StubResponse[]);
+    const ctx = makeContext(repo, harness, preImplementCommit, {
+      strategy: 'parallel',
+      perspectives: ['code'],
+      maxRounds: 1,
+      evaluatorStrictness: 'standard',
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of getBuildStage('review-cycle')(ctx)) {
+      if (event.type === 'plan:build:review:complete') {
+        event.issues[0].metadata = metadata;
+        ctx.reviewIssues = event.issues;
+      }
+      events.push(event);
+    }
+
+    expect(events.some((event) => event.type === 'plan:build:recovery:skip' && event.reason === reason)).toBe(true);
+    expect(events.some((event) => event.type === 'plan:build:recovery:attempt:start')).toBe(false);
+    expect(events.at(-1)).toMatchObject({ type: 'plan:build:failed', planId: ctx.planId });
+    expect(ctx.buildFailed).toBe(true);
+  });
+
   it('assigns unique issue IDs to review-cycle synthetic reviewer failures', async () => {
     const repo = await initRepo(makeTempDir());
     await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');

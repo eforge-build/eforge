@@ -12,6 +12,11 @@ type ReviewFixStartEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:s
 type ReviewFixCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:complete' }>;
 type ReviewFixContinuationEvent = Extract<EforgeEvent, { type: 'plan:build:review:fix:continuation' }>;
 type EvaluateCompleteEvent = Extract<EforgeEvent, { type: 'plan:build:evaluate:complete' }>;
+type RecoveryStartEvent = Extract<EforgeEvent, { type: 'plan:build:recovery:start' }>;
+type RecoveryAttemptStartEvent = Extract<EforgeEvent, { type: 'plan:build:recovery:attempt:start' }>;
+type RecoveryAttemptResultEvent = Extract<EforgeEvent, { type: 'plan:build:recovery:attempt:result' }>;
+type RecoverySkipEvent = Extract<EforgeEvent, { type: 'plan:build:recovery:skip' }>;
+type RecoveryExhaustedEvent = Extract<EforgeEvent, { type: 'plan:build:recovery:exhausted' }>;
 type ReviewFixIssueReference = NonNullable<ReviewFixCompleteEvent['issueReferences']>[number];
 type EvaluatorVerdict = NonNullable<EvaluateCompleteEvent['verdicts']>[number];
 
@@ -35,9 +40,21 @@ export interface ReviewCycleIssueTrace {
   danglingReferenceSources: Array<'fixer' | 'evaluator'>;
 }
 
+export interface ReviewCycleRecoveryAttempt {
+  status: 'started' | 'running' | 'cleared' | 'blocked' | 'skipped' | 'exhausted';
+  blockerKind: 'review' | 'test';
+  attempt?: number;
+  maxAttempts: number;
+  attemptsRemaining?: number;
+  issueCount?: number;
+  reason?: string;
+  details?: string;
+}
+
 export interface ReviewCycleRound {
   round: number;
   roundLabel: string;
+  recoveryAttempts: ReviewCycleRecoveryAttempt[];
   reviewers: ReviewCycleReviewerDetail[];
   linkedTraces: ReviewCycleIssueTrace[];
   unlinkedFixerReferences: ReviewFixIssueReference[];
@@ -90,6 +107,11 @@ const REVIEW_EVENT_TYPES = new Set<string>([
   'plan:build:evaluate:start',
   'plan:build:evaluate:continuation',
   'plan:build:evaluate:complete',
+  'plan:build:recovery:start',
+  'plan:build:recovery:attempt:start',
+  'plan:build:recovery:attempt:result',
+  'plan:build:recovery:skip',
+  'plan:build:recovery:exhausted',
 ]);
 
 function eventPlanId(event: EforgeEvent): string | undefined {
@@ -109,6 +131,7 @@ function makeRound(round: number): RoundBucket {
   return {
     round,
     roundLabel: `Round ${round + 1}`,
+    recoveryAttempts: [],
     reviewers: [],
     linkedTraces: [],
     unlinkedFixerReferences: [],
@@ -129,9 +152,24 @@ function getRound(map: Map<number, RoundBucket>, round: number): RoundBucket {
 }
 
 function buildRoundResolver(planEvents: StoredEvent[], decisions: DecisionPoint[]) {
-  const hasExplicitRounds = planEvents.some(({ event }) => eventRound(event) !== undefined);
-  if (hasExplicitRounds) {
-    return { roundsInferred: false, resolveRound: (event: EforgeEvent) => eventRound(event) ?? 0 };
+  const explicitEventRounds = planEvents
+    .map(({ event }) => ({ time: timestampMs(event.timestamp), round: eventRound(event) }))
+    .filter((entry): entry is { time: number; round: number } => entry.round !== undefined)
+    .sort((a, b) => a.time - b.time);
+  if (explicitEventRounds.length > 0) {
+    return {
+      roundsInferred: false,
+      resolveRound: (event: EforgeEvent) => {
+        const explicit = eventRound(event);
+        if (explicit !== undefined) return explicit;
+        const time = timestampMs(event.timestamp);
+        let round = explicitEventRounds[0].round;
+        for (const boundary of explicitEventRounds) {
+          if (boundary.time <= time) round = boundary.round;
+        }
+        return round;
+      },
+    };
   }
 
   const boundaries = decisions
@@ -329,6 +367,32 @@ export function buildReviewCycleDetail(
         bucket.evaluator.accepted = complete.accepted;
         bucket.evaluator.rejected = complete.rejected;
         bucket.evaluator.verdicts.push(...(complete.verdicts ?? []));
+        break;
+      }
+      case 'plan:build:recovery:start': {
+        const recovery = event as RecoveryStartEvent;
+        bucket.recoveryAttempts.push({ status: 'started', blockerKind: recovery.blockerKind, issueCount: recovery.issueCount, maxAttempts: recovery.maxAttempts, attemptsRemaining: recovery.attemptsRemaining });
+        break;
+      }
+      case 'plan:build:recovery:attempt:start': {
+        const recovery = event as RecoveryAttemptStartEvent;
+        bucket.recoveryAttempts.push({ status: 'running', blockerKind: recovery.blockerKind, attempt: recovery.attempt, maxAttempts: recovery.maxAttempts, attemptsRemaining: recovery.attemptsRemaining });
+        break;
+      }
+      case 'plan:build:recovery:attempt:result': {
+        const recovery = event as RecoveryAttemptResultEvent;
+        bucket.recoveryAttempts.push({ status: recovery.blockersCleared ? 'cleared' : 'blocked', blockerKind: recovery.blockerKind, attempt: recovery.attempt, maxAttempts: recovery.maxAttempts, attemptsRemaining: recovery.attemptsRemaining });
+        break;
+      }
+      case 'plan:build:recovery:skip': {
+        const recovery = event as RecoverySkipEvent;
+        const latestRecovery = [...bucket.recoveryAttempts].reverse().find((attempt) => attempt.blockerKind === recovery.blockerKind);
+        bucket.recoveryAttempts.push({ status: 'skipped', blockerKind: recovery.blockerKind, maxAttempts: latestRecovery?.maxAttempts ?? recovery.attemptsRemaining, attemptsRemaining: recovery.attemptsRemaining, reason: recovery.reason, details: recovery.details });
+        break;
+      }
+      case 'plan:build:recovery:exhausted': {
+        const recovery = event as RecoveryExhaustedEvent;
+        bucket.recoveryAttempts.push({ status: 'exhausted', blockerKind: recovery.blockerKind, attempt: recovery.attemptsUsed, maxAttempts: recovery.maxAttempts, attemptsRemaining: 0, details: recovery.details });
         break;
       }
     }

@@ -15,6 +15,11 @@ import {
   handlePlanBuildReviewFixStart,
   handlePlanBuildReviewComplete,
   handlePlanBuildEvaluateStart,
+  handlePlanBuildRecoveryAttemptResult,
+  handlePlanBuildRecoveryAttemptStart,
+  handlePlanBuildRecoveryExhausted,
+  handlePlanBuildRecoverySkip,
+  handlePlanBuildRecoveryStart,
   handlePlanBuildComplete,
   handlePlanBuildFailed,
   handlePlanBuildFilesChanged,
@@ -23,7 +28,7 @@ import {
   handlePlanMergeComplete,
 } from '../handlers/handle-plan-build';
 import { handlerRegistry, IGNORED_EVENT_TYPES } from '../handlers';
-import { initialRunState } from '../reducer';
+import { eforgeReducer, initialRunState } from '../reducer';
 import type { EforgeEvent } from '../types';
 
 function makeEvent<T extends EforgeEvent['type']>(
@@ -135,6 +140,70 @@ describe('handle-plan-build — stage advancement rules', () => {
     const event = makeEvent('plan:build:evaluate:start', { planId: PLAN_ID });
     const delta = handlePlanBuildEvaluateStart(event, initialRunState);
     expect(delta?.planStatuses?.[PLAN_ID]).toBe('evaluate');
+  });
+
+  it('preserves same-plan recovery state in run projections', () => {
+    const start = handlePlanBuildRecoveryStart(makeEvent('plan:build:recovery:start', { planId: PLAN_ID, blockerKind: 'review', issueCount: 2, maxAttempts: 2, attemptsRemaining: 2 }), initialRunState);
+    expect(start?.samePlanRecovery?.[PLAN_ID]).toMatchObject({ status: 'started', blockerKind: 'review', issueCount: 2, maxAttempts: 2 });
+
+    const running = handlePlanBuildRecoveryAttemptStart(makeEvent('plan:build:recovery:attempt:start', { planId: PLAN_ID, blockerKind: 'review', attempt: 1, maxAttempts: 2, attemptsRemaining: 2 }), { ...initialRunState, ...start });
+    expect(running?.samePlanRecovery?.[PLAN_ID]).toMatchObject({ status: 'running', attempt: 1, attemptsRemaining: 2 });
+
+    const blocked = handlePlanBuildRecoveryAttemptResult(makeEvent('plan:build:recovery:attempt:result', { planId: PLAN_ID, blockerKind: 'review', attempt: 1, maxAttempts: 2, blockersCleared: false, attemptsRemaining: 1 }), { ...initialRunState, ...running });
+    expect(blocked?.samePlanRecovery?.[PLAN_ID]).toMatchObject({ status: 'blocked', attempt: 1, attemptsRemaining: 1 });
+
+    const skipped = handlePlanBuildRecoverySkip(makeEvent('plan:build:recovery:skip', { planId: PLAN_ID, blockerKind: 'review', reason: 'cross-plan-blocker', details: 'belongs to another plan', attemptsRemaining: 1 }), { ...initialRunState, ...blocked });
+    expect(skipped?.samePlanRecovery?.[PLAN_ID]).toMatchObject({ status: 'skipped', reason: 'cross-plan-blocker', details: 'belongs to another plan', maxAttempts: 2 });
+
+    const exhausted = handlePlanBuildRecoveryExhausted(makeEvent('plan:build:recovery:exhausted', { planId: PLAN_ID, blockerKind: 'test', attemptsUsed: 2, maxAttempts: 2, details: 'budget exhausted' }), { ...initialRunState, ...skipped });
+    expect(exhausted?.samePlanRecovery?.[PLAN_ID]).toMatchObject({ status: 'exhausted', blockerKind: 'test', attempt: 2, maxAttempts: 2, attemptsRemaining: 0 });
+  });
+
+  it('replays recovery events from stream snapshots into the same run projection discriminator', () => {
+    const events = [
+      makeEvent('plan:build:recovery:start', { planId: PLAN_ID, blockerKind: 'test', issueCount: 1, maxAttempts: 2, attemptsRemaining: 2 }),
+      makeEvent('plan:build:recovery:attempt:start', { planId: PLAN_ID, blockerKind: 'test', attempt: 1, maxAttempts: 2, attemptsRemaining: 2 }),
+      makeEvent('plan:build:recovery:attempt:result', { planId: PLAN_ID, blockerKind: 'test', attempt: 1, maxAttempts: 2, blockersCleared: false, attemptsRemaining: 1 }),
+      makeEvent('plan:build:recovery:skip', { planId: PLAN_ID, blockerKind: 'test', reason: 'upstream-or-base-owned', details: 'Issue is owned by base.', attemptsRemaining: 1 }),
+    ].map((event, index) => ({ event, eventId: `recovery-${index}` }));
+
+    const state = eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events });
+
+    expect(state.samePlanRecovery[PLAN_ID]).toMatchObject({
+      status: 'skipped',
+      blockerKind: 'test',
+      reason: 'upstream-or-base-owned',
+      details: 'Issue is owned by base.',
+      maxAttempts: 2,
+      attemptsRemaining: 1,
+    });
+  });
+
+  it.each([
+    ['cross-plan-blocker', 'Issue belongs to plan-02.'],
+    ['upstream-or-base-owned', 'Issue is owned by base.'],
+  ] as const)('replays standalone recovery skip refusals for %s', (reason, details) => {
+    const event = makeEvent('plan:build:recovery:skip', {
+      planId: PLAN_ID,
+      blockerKind: 'review',
+      reason,
+      details,
+      attemptsRemaining: 1,
+    });
+
+    const batchState = eforgeReducer(initialRunState, { type: 'BATCH_LOAD', events: [{ event, eventId: `skip-${reason}` }] });
+    expect(batchState.samePlanRecovery[PLAN_ID]).toEqual({
+      status: 'skipped',
+      blockerKind: 'review',
+      maxAttempts: 1,
+      attemptsRemaining: 1,
+      reason,
+      details,
+      timestamp: '2024-01-15T10:00:00.000Z',
+    });
+
+    const addState = eforgeReducer(initialRunState, { type: 'ADD_EVENT', event, eventId: `skip-add-${reason}` });
+    expect(addState.samePlanRecovery[PLAN_ID]).toEqual(batchState.samePlanRecovery[PLAN_ID]);
   });
 
   it('plan:build:complete → no-op (status now driven by plan:status:change)', () => {

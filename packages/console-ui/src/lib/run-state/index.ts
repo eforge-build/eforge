@@ -14,6 +14,7 @@ export type { RunAction } from './reducer';
 // Types
 export type {
   RunState,
+  SamePlanRecoveryState,
   AgentThread,
   AgentActivityFacts,
   Decision,

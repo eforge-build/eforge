@@ -37,6 +37,8 @@ export interface ReviewFixerOptions extends SdkPassthroughConfig {
   evaluatorFeedbackContext?: string;
   /** Validation-provider recovery context when validate-stage routing invokes the narrow review-fixer path. */
   validationRepairContext?: string;
+  /** Same-plan within-build recovery context for a bounded post-exhaustion fixer pass. */
+  samePlanRecoveryContext?: string;
   /** Zero-based review-cycle round for lifecycle event metadata. */
   round?: number;
 }
@@ -169,7 +171,7 @@ function renderContinuationContext(ctx: ReviewFixerContinuationContext | undefin
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext, validationRepairContext, round } = options;
+  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext, validationRepairContext, samePlanRecoveryContext, round } = options;
   const maxTurns = options.maxTurns ?? 80;
   const roundMetadata = round !== undefined ? { round } : {};
 
@@ -187,6 +189,7 @@ export async function* runReviewFixer(
     issues: issuesText,
     evaluator_feedback_context: evaluatorFeedbackContext ?? '',
     validation_repair_context: validationRepairContext ?? '',
+    same_plan_recovery_context: samePlanRecoveryContext ?? '',
     continuation_context: continuationText,
     submit_issue_references_tool: submitIssueReferencesTool,
     issue_reference_submission_schema: getReviewFixerIssueReferenceSubmissionSchemaYaml(),

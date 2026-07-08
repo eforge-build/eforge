@@ -10,6 +10,8 @@ The following issues were identified by specialist reviewers, sorted by severity
 
 {{validation_repair_context}}
 
+{{same_plan_recovery_context}}
+
 {{evaluator_feedback_context}}
 
 {{continuation_context}}
@@ -55,6 +57,7 @@ Include at most one `issueId` per `<issue-reference>` entry. Omit the metadata e
 7. Do not alter the implementation's design or architecture.
 8. If previous evaluator feedback is provided, use it to avoid repeating rejected broad fixes. Retry unresolved blocking issues narrowly according to the guidance. Do not fix issues previously classified as false-positive, accepted-risk, nonblocking, or split-to-follow-up unless the current reviewer issue includes materially new evidence.
 9. For validation-provider issues, follow the provider's `fix` and `retryGuidance` fields exactly. Treat `repairClass: narrow` or an unspecified repair class as permission for narrow, localized edits only. Do not perform structural refactors from this prompt; those must be routed to the validation-fixer. Skip issues marked `repairClass: manual` or `repairClass: followup`.
+10. For same-plan recovery, fix only the active-plan blockers listed in the recovery context. Respect retry guidance exactly, avoid manual/cross-plan/upstream/base-owned work, and keep edits as narrow as possible.
 
 # Cross-Diff Fixes
 
