@@ -1,0 +1,61 @@
+name: mcp-extension-action-listing-and-version-skew-diagnostics
+description: Bounded planner compiler artifacts for
+  mcp-extension-action-listing-and-version-skew-diagnostics
+base_branch: main
+validate:
+  - pnpm test
+  - pnpm type-check
+  - pnpm maintainability:check
+plans:
+  - id: module-extension-action-diagnostics
+    name: Extension action diagnostics surface
+    depends_on: []
+    branch: mcp-extension-action-listing-and-version-skew-diagnostics/module-extension-action-diagnostics
+    build:
+      - implement
+      - doc-sync
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings derived deterministically from compiler risk
+    signals.
+
+    Set-level defaults follow the highest plan risk score (3).
+
+    - module-extension-action-diagnostics: risk score 3 (large-plan,
+    low-confidence-localization, multi-subsystem); declared docs work
+    sync-existing, test work author-new; derived build implement -> doc-sync ->
+    test-write -> test-cycle -> review-cycle and parallel review with
+    perspectives code, security, test, verify, 2 round(s), strict evaluation
+diff_base_ref: 6a0d0865bab4eca346a5d5d109cad33658e9a406
