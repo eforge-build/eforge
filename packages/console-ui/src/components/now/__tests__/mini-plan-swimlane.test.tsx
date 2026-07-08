@@ -147,6 +147,84 @@ describe('MiniPlanSwimlane', () => {
     // phases" (run-state/__tests__/selectors.test.ts).
   });
 
+  // -------------------------------------------------------------------------
+  // PRD lane phase status (planningStatus prop)
+  // -------------------------------------------------------------------------
+
+  /** The PRD lane's collapsible shell: the element wrapping the header button. */
+  function prdLaneShell(container: HTMLElement): HTMLElement {
+    const button = container.querySelector('button[aria-expanded]');
+    if (!(button instanceof HTMLElement) || !(button.parentElement instanceof HTMLElement)) {
+      throw new Error('PRD lane header button not found');
+    }
+    return button.parentElement;
+  }
+
+  it('shows failed styling and stays expanded when planningStatus is failed despite lingering thread activity', () => {
+    // planning:error can arrive while an agent thread has not yet emitted its
+    // stop event (planning.running still true). The failed phase must win: no
+    // live-blue treatment, destructive styling, and the lane expanded so the
+    // failure detail is front-and-centre.
+    const planning: PlanningLane = {
+      running: true,
+      agents: [{ agent: 'planner', tokens: 1_200_000, running: true }],
+    };
+    const { container } = render(
+      <MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} planningStatus="failed" />,
+    );
+
+    expect(screen.getByText('failed')).toBeDefined();
+    expect(screen.queryByText('✓ done')).toBeNull();
+
+    const shell = prdLaneShell(container);
+    expect(shell.className).not.toContain('border-blue/35');
+    expect(shell.className).toContain('border-destructive/35');
+
+    // Expanded by default: header reports open and the agent detail is visible.
+    const header = container.querySelector('button[aria-expanded]');
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('planner')).toBeDefined();
+  });
+
+  it('shows a waiting label when planningStatus is pending and no thread is running', () => {
+    render(
+      <MiniPlanSwimlane lanes={[]} planning={emptyPlanning} hasPlanningRow={true} planningStatus="pending" />,
+    );
+    expect(screen.getByText('waiting')).toBeDefined();
+    expect(screen.queryByText('✓ done')).toBeNull();
+    expect(screen.queryByText('failed')).toBeNull();
+  });
+
+  it('treats planningStatus running as live even when no agent thread is running', () => {
+    // map/reduce orchestration can report the phase as running before (or
+    // between) agent thread activity — the lane must read as live, not done.
+    const planning: PlanningLane = {
+      running: false,
+      agents: [{ agent: 'planner', tokens: 900_000, running: false }],
+    };
+    const { container } = render(
+      <MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} planningStatus="running" />,
+    );
+
+    // Live lanes carry no status label at all.
+    expect(screen.queryByText('✓ done')).toBeNull();
+    expect(screen.queryByText('waiting')).toBeNull();
+    expect(screen.queryByText('failed')).toBeNull();
+
+    const shell = prdLaneShell(container);
+    expect(shell.className).toContain('border-blue/35');
+    expect(shell.className).not.toContain('border-destructive/35');
+  });
+
+  it('keeps the done marker when planningStatus is undefined and planning is not running', () => {
+    render(
+      <MiniPlanSwimlane lanes={[]} planning={emptyPlanning} hasPlanningRow={true} planningStatus={undefined} />,
+    );
+    expect(screen.getByText('✓ done')).toBeDefined();
+    expect(screen.queryByText('waiting')).toBeNull();
+    expect(screen.queryByText('failed')).toBeNull();
+  });
+
   it('expands active plan lanes by default and collapses completed ones', () => {
     const active = makeLane({ planId: 'plan-01', planName: 'Active' });
     const done = makeLane({

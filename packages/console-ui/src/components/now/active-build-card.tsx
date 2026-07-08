@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowActiveBuildCard as NowActiveBuildCardModel } from '@/lib/selectors/now';
-import type { MiniGanttRow } from '@/lib/run-state';
+import type { MiniGanttRow, PhaseProgressStatus } from '@/lib/run-state';
 import { formatDuration, truncateId, compactTokens } from '@/lib/format';
 import { MiniPlanSwimlane } from './mini-plan-swimlane';
 import { CancelBuildButton } from './cancel-build-button';
@@ -35,53 +35,26 @@ function isActivePlan(row: MiniGanttRow): boolean {
   return Boolean(row.stage && row.stage !== 'plan' && !row.isComplete && !row.isFailed);
 }
 
-function buildRailSteps(card: NowActiveBuildCardModel): RailStep[] {
-  const rows = card.miniGanttRows;
-  const phase = card.lifecycle.phase;
-  const hasPlans = rows.length > 0 || card.planProgress.total > 0;
-  const hasFailures = card.planProgress.failed > 0 || rows.some((row) => row.isFailed);
-  const plansComplete = card.planProgress.total > 0 && card.planProgress.complete === card.planProgress.total;
-  const planningDone = card.hasPlanningRow || hasPlans;
-  const plansDone = plansComplete || ['prd-validation', 'gap-close', 'final-validation', 'landing'].includes(phase);
-  const plansActive = hasPlans && !plansDone;
-  const prdValidationDone =
-    card.lifecycle.prdValidationComplete ||
-    card.lifecycle.gapCloseObserved ||
-    phase === 'final-validation' ||
-    phase === 'landing';
-  const gapCloseDone = card.lifecycle.gapCloseComplete || phase === 'final-validation' || phase === 'landing';
+function phaseStatusToRail(status: PhaseProgressStatus): RailStatus {
+  switch (status) {
+    case 'failed': return 'failed';
+    case 'running': return 'active';
+    case 'passed':
+    case 'skipped':
+      return 'done';
+    case 'pending': return 'pending';
+  }
+}
 
+function buildRailSteps(card: NowActiveBuildCardModel): RailStep[] {
+  const progress = card.phaseProgress;
   return [
-    {
-      key: 'prd',
-      label: 'PRD',
-      status: planningDone ? 'done' : 'active',
-    },
-    {
-      key: 'plans',
-      label: 'Plans',
-      status: hasFailures ? 'failed' : plansDone ? 'done' : plansActive ? 'active' : 'pending',
-    },
-    {
-      key: 'prd-validation',
-      label: 'PRD check',
-      status: phase === 'prd-validation' ? 'active' : prdValidationDone ? 'done' : 'pending',
-    },
-    {
-      key: 'gap-close',
-      label: 'Gap close',
-      status: phase === 'gap-close' ? 'active' : gapCloseDone ? 'done' : 'pending',
-    },
-    {
-      key: 'final-validation',
-      label: 'Final check',
-      status: phase === 'final-validation' ? 'active' : card.lifecycle.finalValidationComplete ? 'done' : 'pending',
-    },
-    {
-      key: 'land',
-      label: 'Land',
-      status: phase === 'landing' || card.lifecycle.finalValidationComplete ? 'active' : 'pending',
-    },
+    { key: 'prd', label: 'PRD', status: phaseStatusToRail(progress.prd) },
+    { key: 'plans', label: 'Plans', status: phaseStatusToRail(progress.plans) },
+    { key: 'prd-validation', label: 'PRD check', status: phaseStatusToRail(progress.prdValidation) },
+    { key: 'gap-close', label: 'Gap close', status: phaseStatusToRail(progress.gapClose) },
+    { key: 'final-validation', label: 'Final check', status: phaseStatusToRail(progress.finalValidation) },
+    { key: 'land', label: 'Land', status: phaseStatusToRail(progress.landing) },
   ];
 }
 
@@ -157,7 +130,7 @@ export function ActiveBuildCard({ card, onNavigate, onPreviewCascade, onApplyCas
 
   const railSteps = buildRailSteps(card);
   const hasActivePlan = card.miniGanttRows.some(isActivePlan);
-  const hasActiveLifecyclePhase = ['prd-validation', 'gap-close', 'final-validation', 'landing'].includes(card.lifecycle.phase);
+  const hasActiveLifecyclePhase = Object.values(card.phaseProgress).some((status) => status === 'running');
   // A terminal failure stops the pulse; a transient transport hiccup does not —
   // the build is still live and reconnecting.
   const showLivePulse = !card.latestError;
@@ -250,6 +223,7 @@ export function ActiveBuildCard({ card, onNavigate, onPreviewCascade, onApplyCas
           lanes={card.planLanes}
           planning={card.planning}
           hasPlanningRow={card.hasPlanningRow}
+          planningStatus={card.phaseProgress.prd}
         />
 
         {/* Consolidated live status: elapsed time + spend + throughput, plus the
