@@ -50,7 +50,9 @@ export interface ExtensionHostContributionEntry {
   description?: string;
   extensionName: string;
   extensionPath: string;
+  localId?: string;
   actionId?: string;
+  actionLocalId?: string;
   urlTemplate?: string;
   actionBacked: boolean;
   sideEffects?: ExtensionActionSideEffect[];

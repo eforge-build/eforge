@@ -100,7 +100,8 @@ export function formatExtensionContributionList(
   response: ExtensionHostContributionListResponse,
   options: FormatExtensionContributionHostTextOptions = {},
 ): FormattedExtensionContributionOutput {
-  return formatHostText(renderContributionList(response), options.maxChars);
+  const maxChars = Math.max(400, options.maxChars ?? DEFAULT_MAX_CHARS);
+  return formatHostText(renderContributionList(response, maxChars), maxChars);
 }
 
 export function formatExtensionContributionListText(
@@ -138,14 +139,34 @@ export function formatExtensionContributionFailedInvocationEnvelopeText(
   return formatExtensionContributionFailedInvocationEnvelope(envelope, options).text;
 }
 
-function renderContributionList(response: ExtensionHostContributionListResponse): string {
+function renderContributionList(response: ExtensionHostContributionListResponse, maxChars: number): string {
+  const selectedEntries: string[] = [];
+  let returned = 0;
+  for (const entry of response.entries) {
+    const renderedEntry = renderContributionListEntry(entry).join('\n');
+    selectedEntries.push(renderedEntry);
+    const candidate = renderContributionListWithEntries(response, selectedEntries, returned + 1);
+    if (candidate.length > maxChars) {
+      selectedEntries.pop();
+      break;
+    }
+    returned += 1;
+  }
+  return renderContributionListWithEntries(response, selectedEntries, returned);
+}
+
+function renderContributionListWithEntries(response: ExtensionHostContributionListResponse, entries: string[], returned: number): string {
+  const nextOffset = response.offset + returned;
+  const canContinue = returned > 0;
+  const hasMore = canContinue && nextOffset < response.total;
   const header = [
-    `Extension contributions: ${response.returned} returned of ${response.total} total`,
+    `Extension contributions: ${returned} returned of ${response.total} total`,
     `Generated: ${response.generatedAt}`,
     `Diagnostics: ${response.diagnosticCount}${response.diagnostics ? ' included' : ' hidden'}`,
-    `Page: offset ${response.offset}${response.limit !== undefined ? `, limit ${response.limit}` : ''}${response.hasMore ? `, nextOffset ${response.nextOffset}` : ', complete'}`,
+    `Page: offset ${response.offset}${response.limit !== undefined ? `, limit ${response.limit}` : ''}${hasMore ? `, nextOffset ${nextOffset}` : ', complete'}`,
+    ...(hasMore ? [`Continue: request the next page with offset ${nextOffset}.`] : []),
+    ...(returned === 0 && response.entries.length > 0 ? ['No entries fit within the host output budget; retry with a larger host budget or narrower filters.'] : []),
   ];
-  const entries = response.entries.flatMap(renderContributionListEntry);
   const diagnostics = response.diagnostics?.map((diagnostic) => `  - ${diagnostic.severity}: ${diagnostic.code}: ${diagnostic.message}`) ?? [];
   return [...header, ...entries, ...(diagnostics.length > 0 ? ['Diagnostics detail:', ...diagnostics] : [])].join('\n');
 }
@@ -202,7 +223,9 @@ function renderContributionEntrySummary(entry: ExtensionHostContributionEntry): 
     `${entry.kind}:${entry.id}`,
     `— ${entry.label}`,
     `[${entry.extensionName}]`,
+    entry.localId ? `local=${entry.localId}` : undefined,
     entry.actionId ? `action=${entry.actionId}` : 'action=none',
+    entry.actionLocalId ? `actionLocal=${entry.actionLocalId}` : undefined,
     entry.urlTemplate ? `url=${entry.urlTemplate}` : undefined,
     `actionBacked=${entry.actionBacked}`,
     entry.outputProfile ? `output=${entry.outputProfile}` : undefined,

@@ -199,6 +199,7 @@ export * from './host-output.js';
 export * from './extension-management-output.js';
 export * from './api/extension-contributions.js';
 export * from './api/extension-contribution-dispatch.js';
+export { appendExtensionErrorVersionHint, buildExtensionErrorVersionHint } from './api/extension-error-hints.js';
 export * from './extension-agent-tasks.js';
 export * from './api/extension-agent-tasks.js';
 export {

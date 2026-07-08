@@ -166,7 +166,9 @@ function sanitizeDiagnosticSample(diagnostic: ExtensionDiagnostic): CompactExten
 }
 
 function summarizeDetailArray(key: (typeof DETAIL_ARRAY_KEYS)[number], value: unknown, limit: number): Array<[string, CompactExtensionDetailArrayProjection]> {
-  return Array.isArray(value) ? [[key, summarizeRecords(value, limit)]] : [];
+  if (!Array.isArray(value)) return [];
+  const detailLimit = key === 'actionDetails' ? value.length : limit;
+  return [[key, summarizeRecords(value, detailLimit)]];
 }
 
 function summarizeRecords(values: unknown[], limit: number): CompactExtensionDetailArrayProjection {

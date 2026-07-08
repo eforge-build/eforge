@@ -170,6 +170,8 @@ This hashes the current extension source and writes a record to `.eforge/extensi
 
 If the extension source changes after trust, `extension:trust-changed` appears. Re-run `eforge extension trust <name>` after reviewing the diff to accept the new version.
 
+If an extension management or contribution request fails with a stale-daemon/version-skew hint, restart the eforge daemon first. If the daemon and caller still report different `eforgeVersion` values, update or rebuild both from the same eforge version; compatible API version skew is diagnostic context, not a separate failure by itself.
+
 ## Profile router selected an invalid profile
 
 When a registered profile router returns a profile name that does not exist in any scope, eforge emits `queue:profile:invalid-selection` and the build proceeds under the active profile or engine defaults.

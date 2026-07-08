@@ -54,6 +54,7 @@ import {
   type ContinueRepairRequest,
   apiStackSync,
   apiStackSyncIfRunning,
+  appendExtensionErrorVersionHint,
   apiContinueRepair,
   type StackSyncResponse,
   daemonRequestFromWorktree,
@@ -1022,9 +1023,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
         }
       } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
+        await renderExtensionCliError(err);
       }
     });
 
@@ -1041,9 +1040,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           renderExtensionDetail(data.extension);
         }
       } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
+        await renderExtensionCliError(err);
       }
     });
 
@@ -1788,6 +1785,13 @@ export function createProgram(abortController?: AbortController, version?: strin
   }
 
   return program;
+}
+
+async function renderExtensionCliError(err: unknown): Promise<never> {
+  const enriched = await appendExtensionErrorVersionHint(err, { cwd: process.cwd(), callerVersion: EFORGE_VERSION });
+  const { message, exitCode } = formatCliError(enriched);
+  console.error(chalk.red(`Error: ${message}`));
+  process.exit(exitCode);
 }
 
 export async function run(): Promise<void> {

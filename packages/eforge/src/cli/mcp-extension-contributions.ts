@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   apiGetExtensionContributionManifest,
+  appendExtensionErrorVersionHint,
   createExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionDetailText,
   formatExtensionContributionListText,
@@ -19,6 +20,8 @@ import {
   type ExtensionJsonObject,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, type McpToolResult } from './mcp-tool-factory.js';
+
+declare const EFORGE_VERSION: string;
 
 const OUTPUT_PROFILES = ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich'] as const;
 
@@ -48,56 +51,61 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
       input: z.record(z.string(), z.unknown()).optional().describe('JSON object input for invocation.'),
     },
     handler: async (params, { cwd: toolCwd }) => {
-      if (params.action === 'list') {
-        return {
-          action: params.action,
-          result: await listEforgeExtensionContributions({
-            cwd: toolCwd,
-            kind: params.kind as ExtensionHostContributionKind | 'all' | undefined,
-            extensionName: params.extensionName,
-            search: params.search,
-            idPrefix: params.idPrefix,
-            outputProfile: params.outputProfile as ExtensionActionOutputProfile | undefined,
-            limit: params.limit,
-            offset: params.offset,
-            includeInputSchema: params.includeInputSchema,
-            includeDiagnostics: params.includeDiagnostics,
-            projection: projectionFromFullFlag(params.full),
-          }),
-        } satisfies ContributionToolEnvelope;
-      }
-      if (!params.id) throw invalidContributionRequest(`"id" is required when action is "${params.action}"`);
-      if (params.kind === 'all') throw invalidContributionRequest('"kind: all" is only valid when action is "list"');
-      if (params.action === 'show') {
-        const manifest = await apiGetExtensionContributionManifest({ cwd: toolCwd });
-        try {
+      try {
+        if (params.action === 'list') {
           return {
             action: params.action,
-            result: showExtensionContributionManifestEntry(manifest, {
-              id: params.id,
-              kind: params.kind as ExtensionHostContributionKind | undefined,
+            result: await listEforgeExtensionContributions({
+              cwd: toolCwd,
+              kind: params.kind as ExtensionHostContributionKind | 'all' | undefined,
+              extensionName: params.extensionName,
+              search: params.search,
+              idPrefix: params.idPrefix,
+              outputProfile: params.outputProfile as ExtensionActionOutputProfile | undefined,
+              limit: params.limit,
+              offset: params.offset,
               includeInputSchema: params.includeInputSchema,
               includeDiagnostics: params.includeDiagnostics,
               projection: projectionFromFullFlag(params.full),
             }),
           } satisfies ContributionToolEnvelope;
-        } catch (err) {
-          throw invalidContributionRequest((err as Error).message);
         }
-      }
-      try {
-        const result = await invokeEforgeExtensionContribution({
-          cwd: toolCwd,
-          kind: params.kind as ExtensionHostContributionKind | undefined,
-          id: params.id,
-          input: params.input as ExtensionJsonObject | undefined,
-          requestedBy: { host: 'mcp' },
-        });
-        if (!result.response.ok) throw contributionInvocationFailed(result);
-        return { action: params.action, result } satisfies ContributionToolEnvelope;
+        if (!params.id) throw invalidContributionRequest(`"id" is required when action is "${params.action}"`);
+        if (params.kind === 'all') throw invalidContributionRequest('"kind: all" is only valid when action is "list"');
+        if (params.action === 'show') {
+          const manifest = await apiGetExtensionContributionManifest({ cwd: toolCwd });
+          try {
+            return {
+              action: params.action,
+              result: showExtensionContributionManifestEntry(manifest, {
+                id: params.id,
+                kind: params.kind as ExtensionHostContributionKind | undefined,
+                includeInputSchema: params.includeInputSchema,
+                includeDiagnostics: params.includeDiagnostics,
+                projection: projectionFromFullFlag(params.full),
+              }),
+            } satisfies ContributionToolEnvelope;
+          } catch (err) {
+            throw invalidContributionRequest((err as Error).message);
+          }
+        }
+        try {
+          const result = await invokeEforgeExtensionContribution({
+            cwd: toolCwd,
+            kind: params.kind as ExtensionHostContributionKind | undefined,
+            id: params.id,
+            input: params.input as ExtensionJsonObject | undefined,
+            requestedBy: { host: 'mcp' },
+          });
+          if (!result.response.ok) throw contributionInvocationFailed(result);
+          return { action: params.action, result } satisfies ContributionToolEnvelope;
+        } catch (err) {
+          if (isContributionRequestError(err)) throw invalidContributionRequest((err as Error).message);
+          throw err;
+        }
       } catch (err) {
-        if (isContributionRequestError(err)) throw invalidContributionRequest((err as Error).message);
-        throw err;
+        if (err instanceof McpUserError) throw err;
+        throw await appendExtensionErrorVersionHint(err, { cwd: toolCwd, callerVersion: EFORGE_VERSION });
       }
     },
     formatResponse: formatContributionToolResponse,
