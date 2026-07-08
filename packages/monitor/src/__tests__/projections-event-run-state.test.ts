@@ -27,6 +27,16 @@ describe('event hydration and run state projections', () => {
     expect(JSON.parse(state.events[0].data).type).toBe('phase:start');
     db.close();
   });
+  it('hydrates persisted same-plan recovery events through client-owned schemas', () => {
+    const db = openDatabase(':memory:');
+    db.insertRun({ id: 'r1', sessionId: 's-recovery', planSet: 'set', command: 'build', status: 'running', startedAt: ts, cwd: process.cwd() });
+    const event = { type: 'plan:build:recovery:skip', timestamp: ts, planId: 'plan-01', blockerKind: 'review', reason: 'cross-plan-blocker', details: 'Belongs to another plan.', attemptsRemaining: 1 };
+    db.insertEvent({ runId: 'r1', type: event.type, data: JSON.stringify(event), timestamp: ts });
+    const state = buildRunState(db, 's-recovery');
+    expect(state.events).toHaveLength(1);
+    expect(JSON.parse(state.events[0].data)).toEqual(event);
+    db.close();
+  });
   it('derives unknown, running, and failed run-state status with current precedence', () => {
     const db = openDatabase(':memory:');
     expect(buildRunState(db, 'missing').status).toBe('unknown');

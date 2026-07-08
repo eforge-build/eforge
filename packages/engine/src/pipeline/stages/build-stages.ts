@@ -46,7 +46,7 @@ import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
 import { runValidationProviderRecoveryStage, type ValidationRecoveryRepairContext } from './validation-provider-recovery.js';
 import { resolveAgentRuntimeForInvocationWithExtensions, type ResolvedAgentRuntimeForInvocation } from '../agent-runtime.js';
-import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
+import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts, type ReviewCycleFeedback } from '../review-cycle-feedback.js';
 import { runSamePlanRecovery, type SamePlanRecoveryBlockerKind } from '../same-plan-recovery.js';
 import { isMaxTurnsError } from '../../harness.js';
 import { createToolTracker } from '../span-wiring.js';
@@ -64,17 +64,17 @@ function hasTestStages(build: BuildStageSpec[]): boolean {
     return spec.startsWith('test');
   });
 }
-async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
+async function hasEvaluationCandidateChanges(cwd: string, options?: { failClosed?: boolean }): Promise<boolean> {
   try {
     const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
     if (tracked.trim().length > 0) return true;
     const { stdout: untracked } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
     return untracked.split('\n').some((path) => path.length > 0 && path !== '.eforge' && !path.startsWith('.eforge/'));
   } catch {
-    return false;
+    return options?.failClosed === true;
   }
 }
-async function samePlanRecoveryGate(ctx: BuildStageContext, blockerKind: SamePlanRecoveryBlockerKind, evaluation: LastBuildEvaluation | undefined) { const evaluationRan = evaluation?.ran === true; return { activePlanId: ctx.planId, complete: evaluationRan, confidence: evaluationRan ? 1 : 0, worktreeSafe: !(await hasEvaluationCandidateChanges(ctx.worktreePath)), hasFreshBlockingCheck: evaluationRan && evaluation.blockingIssueOutcomes > 0, deterministicActivePlanOwnership: blockerKind === 'review' || blockerKind === 'test' }; }
+async function samePlanRecoveryGate(ctx: BuildStageContext, blockerKind: SamePlanRecoveryBlockerKind, evaluation: LastBuildEvaluation | undefined) { const evaluationRan = evaluation?.ran === true; return { activePlanId: ctx.planId, complete: evaluationRan, confidence: evaluationRan ? 1 : 0, worktreeSafe: !(await hasEvaluationCandidateChanges(ctx.worktreePath, { failClosed: true })), hasFreshBlockingCheck: evaluationRan && evaluation.blockingIssueOutcomes > 0, deterministicActivePlanOwnership: blockerKind === 'review' || blockerKind === 'test' }; }
 async function unstageEvaluationCandidateChanges(cwd: string): Promise<void> {
   try {
     await exec('git', ['diff', '--cached', '--quiet'], { cwd });
@@ -248,6 +248,27 @@ function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts {
 }
 function lastBuildEvaluationNotRun(): LastBuildEvaluation {
   return { ran: false, accepted: 0, rejected: 0, review: 0, files: [], ...emptyIssueOutcomeCounts() };
+}
+function selectActiveRecoveryIssues(suppliedIssues: ReviewIssue[], feedback: ReviewCycleFeedback | undefined = undefined) {
+  feedback ??= getEmptyReviewCycleFeedback();
+  const guidance = feedback.blockingRetryGuidance;
+  if (guidance.length === 0) return { complete: false, issues: [] as ReviewIssue[] };
+  const issueIds = new Set<string>();
+  for (const item of guidance) {
+    if (!item.issueIds || item.issueIds.length === 0) return { complete: false, issues: [] as ReviewIssue[] };
+    for (const issueId of item.issueIds) issueIds.add(issueId);
+  }
+  const suppliedById = new Map(suppliedIssues.flatMap(issue => issue.issueId ? [[issue.issueId, issue] as const] : []));
+  const issues: ReviewIssue[] = [];
+  for (const issueId of issueIds) {
+    const issue = suppliedById.get(issueId);
+    if (!issue) return { complete: false, issues: [] as ReviewIssue[] };
+    issues.push(issue);
+  }
+  return { complete: true, issues };
+}
+function getEmptyReviewCycleFeedback(): ReviewCycleFeedback {
+  return { blockingRetryGuidance: [], falsePositiveIssues: [], nonBlockingIssues: [], acceptedRiskIssues: [], splitToFollowupIssues: [] };
 }
 function formatNoVerdictsFailureMessage(s: EvaluationSnapshot, r: string): string {
   const p = s.files.map((f) => f.path).join(', ');
@@ -608,8 +629,8 @@ async function* runReviewFixerAttempt(
       planId: input.planId,
       cwd: input.cwd,
       issues: ctx.reviewIssues,
-      evaluatorFeedbackContext: appendPromptSection(renderReviewFixerEvaluatorFeedback(getReviewCycleFeedback(ctx)), samePlanRecoveryContext ?? ''),
-      validationRepairContext: validationRepairContext?.promptContext,
+      evaluatorFeedbackContext: renderReviewFixerEvaluatorFeedback(getReviewCycleFeedback(ctx)),
+      validationRepairContext: validationRepairContext?.promptContext, samePlanRecoveryContext,
       ...(input.round !== undefined ? { round: input.round } : {}),
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -1282,14 +1303,17 @@ registerBuildStage({
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
     const evalHasBlockingIssues = !finalEvaluation?.ran || finalEvaluation.blockingIssueOutcomes > 0;
     if (lastReviewIssueCount > 0 && evalHasBlockingIssues) {
-      ctx.reviewIssues = lastBlockingIssues;
+      const recoveryFeedback = getReviewCycleFeedback(ctx);
+      const recoverySelection = selectActiveRecoveryIssues(lastBlockingIssues, recoveryFeedback);
+      ctx.reviewIssues = recoverySelection.issues;
       const recoveryGate = await samePlanRecoveryGate(ctx, 'review', finalEvaluation);
-      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: lastBlockingIssues, feedback: getReviewCycleFeedback(ctx), maxAttempts: 1, ...recoveryGate, callbacks: {
-        runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { round: maxRounds, samePlanRecoveryContext }),
-        runBlockingCheck: (_attempt) => evaluateStageInner(ctx, { strictness, round: maxRounds }),
+      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: recoverySelection.issues, feedback: recoveryFeedback, maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && recoverySelection.complete, callbacks: {
+        runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
+        runBlockingCheck: (_attempt) => evaluateStageInner(ctx, { strictness }),
         hasBlockers: () => { const latest = getLastBuildEvaluation(ctx); return !latest?.ran || latest.blockingIssueOutcomes > 0; },
       } });
       if (recovered) return;
+      if (ctx.buildFailed) return;
       const errorMsg = !finalEvaluation?.ran
         ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
         : `${finalEvaluation.blockingIssueOutcomes} blocking issue outcome(s) remain after ${maxRounds} review round(s) (${finalEvaluation.unresolvedIssueOutcomes} unresolved, ${finalEvaluation.needsHumanReviewIssueOutcomes} need human review; ${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
@@ -1513,13 +1537,16 @@ registerBuildStage({
     if (getLastBuildEvaluation(ctx)?.blockingIssueOutcomes === 0) { cleared = true; break; }
   }
   if (cleared || lastBlockingIssues.length === 0) return;
-  ctx.reviewIssues = lastBlockingIssues;
+  const recoveryFeedback = getReviewCycleFeedback(ctx);
+  const recoverySelection = selectActiveRecoveryIssues(lastBlockingIssues, recoveryFeedback);
+  ctx.reviewIssues = recoverySelection.issues;
   const recoveryGate = await samePlanRecoveryGate(ctx, 'test', getLastBuildEvaluation(ctx));
-  const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'test', issues: lastBlockingIssues, feedback: getReviewCycleFeedback(ctx), maxAttempts: 1, ...recoveryGate, callbacks: {
-    runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { round: maxRounds, samePlanRecoveryContext }),
-    runBlockingCheck: async function* () { yield* testStageInner(ctx); if (ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness, round: maxRounds }); },
+  const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'test', issues: recoverySelection.issues, feedback: recoveryFeedback, maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && recoverySelection.complete, callbacks: {
+    runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
+    runBlockingCheck: async function* () { yield* testStageInner(ctx); if (ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness }); },
     hasBlockers: () => ctx.reviewIssues.length > 0 && ((latest => !latest?.ran || latest.blockingIssueOutcomes > 0)(getLastBuildEvaluation(ctx))),
   } });
+  if (ctx.buildFailed) return;
   if (!recovered) {
     yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: `Test cycle exhausted ${maxRounds} round(s) with ${lastBlockingIssues.length} production issue(s) remaining.` } as EforgeEvent;
     ctx.buildFailed = true;

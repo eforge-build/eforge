@@ -534,6 +534,10 @@ export function testIssueToReviewIssue(issue: TestIssue): ReviewIssue {
     file: issue.file,
     description: issue.description,
     fix: issue.fix,
+    metadata: {
+      testFile: issue.testFile,
+      ...(issue.testOutput !== undefined && { testOutput: issue.testOutput }),
+    },
   };
 }
 
