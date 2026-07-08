@@ -15,14 +15,15 @@ const hubs: StreamHub[] = [];
 
 function tempDb(): MonitorDB { const dir = mkdtempSync(join(tmpdir(), 'eforge-stream-hub-')); tempDirs.push(dir); return openDatabase(join(dir, 'monitor.db')); }
 function event(extra: Record<string, unknown> = {}): string { return JSON.stringify({ type: 'enqueue:complete', timestamp: ts, id: 'prd-1', filePath: '/q/prd-1.md', title: 'PRD 1', planSet: 'PRD 1', ...extra }); }
+function completionEvent(): string { return JSON.stringify({ type: 'queue:prd:complete', timestamp: ts, prdId: 'prd-1', status: 'completed' }); }
 function insertRun(db: MonitorDB): void { db.insertRun({ id: 'run-1', sessionId: 'session-1', planSet: 'set', command: 'build', status: 'running', startedAt: ts, cwd: process.cwd() }); }
 function insertSessionEvent(db: MonitorDB): void { db.insertEvent({ runId: 'run-1', type: 'phase:start', data: JSON.stringify({ type: 'phase:start', timestamp: ts, runId: 'run-1', planSet: 'set', command: 'build' }), timestamp: ts }); }
 function controller(calls: string[]) {
   const state: AutoBuildState = { enabled: true, watcher: { running: false, pid: null, sessionId: null }, desired: 'enabled', mode: 'running', scheduler: { alive: true, paused: false } };
   return { getSnapshot: () => state, notifyQueueMutation: (reason: string) => { calls.push(reason); return state; } } as never;
 }
-async function start(db: MonitorDB, calls: string[] = []): Promise<{ url: string; hub: StreamHub }> {
-  const context = await createMonitorContext(db, 0, { daemonState: { autoBuildController: controller(calls) } });
+async function start(db: MonitorDB, calls: string[] = [], finalizeQueuePrdCompletion?: () => Promise<void> | void): Promise<{ url: string; hub: StreamHub }> {
+  const context = await createMonitorContext(db, 0, { daemonState: { autoBuildController: controller(calls), finalizeQueuePrdCompletion } });
   const hub = createStreamHub(context, { pollIntervalMs: 20, heartbeatIntervalMs: 60_000, clock: { now: () => Date.parse(ts) } });
   hubs.push(hub);
   const server = createServer((req, res) => {
@@ -73,7 +74,7 @@ describe('stream hub lifecycle and reactions', () => {
     const daemonPromise = readBlocks(`${url}/daemon`, 2);
     await vi.waitFor(() => expect(hub.subscriberCount()).toBe(2));
     hub.broadcast('monitor:shutdown-pending', 'soon');
-    hub.flush();
+    await hub.flush();
     const session = await sessionPromise;
     const daemon = await daemonPromise;
     session.cancel(); daemon.cancel();
@@ -95,7 +96,7 @@ describe('stream hub lifecycle and reactions', () => {
     const db = tempDb(); const calls: string[] = [];
     const { hub } = await start(db, calls);
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event(), timestamp: ts });
-    hub.flush();
+    await hub.flush();
     expect(calls).toEqual(['enqueue']);
   });
 
@@ -103,7 +104,7 @@ describe('stream hub lifecycle and reactions', () => {
     const db = tempDb(); const calls: string[] = [];
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event(), timestamp: ts });
     const { hub } = await start(db, calls);
-    hub.flush();
+    await hub.flush();
     expect(calls).toEqual([]);
   });
 
@@ -112,7 +113,22 @@ describe('stream hub lifecycle and reactions', () => {
     const { hub } = await start(db, calls);
     db.insertDaemonEvent({ type: 'enqueue:complete', data: '{', timestamp: ts });
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event({ id: 'prd-2' }), timestamp: ts });
-    hub.flush();
+    await hub.flush();
     expect(calls).toEqual(['enqueue']);
+  });
+
+  it('finishes runtime queue completion finalization before external notification', async () => {
+    const db = tempDb(); const calls: string[] = []; const order: string[] = [];
+    const { hub } = await start(db, calls, async () => {
+      order.push('finalize:start');
+      await Promise.resolve();
+      order.push('finalize:end');
+    });
+    db.insertDaemonEvent({ type: 'queue:prd:complete', data: completionEvent(), timestamp: ts });
+
+    await hub.flush();
+
+    expect(order).toEqual(['finalize:start', 'finalize:end']);
+    expect(calls).toEqual(['external']);
   });
 });

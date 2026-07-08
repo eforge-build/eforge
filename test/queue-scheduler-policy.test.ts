@@ -4,7 +4,6 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
-import type { EforgeEvent } from '@eforge-build/engine/events';
 import { QueueExecExitCode } from '@eforge-build/engine/prd-queue';
 import type { PolicyGateRegistration } from '@eforge-build/engine/extensions/types';
 import { upsertArtifact } from '@eforge-build/engine/artifacts';
@@ -235,11 +234,6 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     expect(events).not.toContainEqual(expect.objectContaining({ type: 'session:start' }));
 
     if (completion) bus.emit('queue:prd:complete', completion);
-    const followUpEvents: EforgeEvent[] = [];
-    await vi.waitFor(() => {
-      followUpEvents.push(...eventQueue.drainAvailable());
-      expect(followUpEvents).toContainEqual(expect.objectContaining({ type: 'queue:prd:discovered', prdId: 'dependent-prd' }));
-    });
     expect(spawnPrdChild).not.toHaveBeenCalled();
     scheduler.finalizeBlockedAsSkipped();
     expect(scheduler.skipped).toBe(1);

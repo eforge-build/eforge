@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyQueueCascade, previewQueueCascade } from '@eforge-build/engine/queue/cascade-control';
+import { resolveRunningPrdOwnership } from '@eforge-build/engine/queue/cancellation';
 import { useTempDir } from './test-tmpdir.js';
 
 function queueRoot(dir: string): string { return join(dir, '.eforge', 'queue'); }
@@ -127,6 +128,82 @@ describe('queue cascade controls', () => {
     });
     expect(applied.applied).toBe(false);
     expect(invoked).toBe(false);
+  });
+
+  it('returns actionable diagnostics and does not signal when running PID ownership is unverifiable', async () => {
+    const dir = tmp();
+    writePrd(dir, 'queue', 'run');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(join(dir, '.eforge', 'queue-locks', 'run.lock'), String(process.pid));
+    const resolveRunningOwnership = () => resolveRunningPrdOwnership({
+      cwd: dir,
+      prdId: 'run',
+      runs: [{ id: 'run-1', planSet: 'run', sessionId: 'session-1', status: 'running', pid: process.pid + 1 } as never],
+      workerSessions: new Set(['session-1']),
+    });
+
+    const preview = await previewQueueCascade({ cwd: dir, queueDir: queueRoot(dir), prdId: 'run', operation: 'cancel', resolveRunningOwnership });
+    expect(preview.target.runningOwnership).toMatchObject({ owned: false, runId: 'run-1' });
+    expect(preview.target.blockers.join(' ')).toContain('lock PID is not bound to the daemon worker');
+    expect(preview.target.blockers.join(' ')).toContain('No signal was sent');
+    expect(preview.target.blockers.join(' ')).toContain('reconcile the queued PRD');
+
+    let signalled = false;
+    const applied = await applyQueueCascade({
+      cwd: dir,
+      queueDir: queueRoot(dir),
+      prdId: 'run',
+      operation: 'cancel',
+      strategy: 'target-only',
+      expectedAffected: preview.expectedAffected,
+      confirmDependents: false,
+      resolveRunningOwnership,
+      cancelRunning: () => { signalled = true; return { cancelled: true }; },
+    });
+
+    expect(applied.applied).toBe(false);
+    expect(applied.blockers.join(' ')).toContain('No signal was sent');
+    expect(signalled).toBe(false);
+    expect(existsSync(join(dir, '.eforge', 'queue-cancellations', 'run.json'))).toBe(false);
+    expect(existsSync(join(dir, '.eforge', 'queue-locks', 'run.lock'))).toBe(true);
+    expect(existsSync(join(queueRoot(dir), 'run.md'))).toBe(true);
+  });
+
+  it('signals a running adopted queue item only after live lock, run, and daemon session ownership are verified', async () => {
+    const dir = tmp();
+    writePrd(dir, 'queue', 'run');
+    mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
+    writeFileSync(join(dir, '.eforge', 'queue-locks', 'run.lock'), String(process.pid));
+    const resolveRunningOwnership = () => resolveRunningPrdOwnership({
+      cwd: dir,
+      prdId: 'run',
+      runs: [{ id: 'run-1', planSet: 'run', sessionId: 'session-1', status: 'running', pid: process.pid } as never],
+      workerSessions: new Set(['session-1']),
+    });
+    const preview = await previewQueueCascade({ cwd: dir, queueDir: queueRoot(dir), prdId: 'run', operation: 'cancel', resolveRunningOwnership });
+    expect(preview.target.runningOwnership).toMatchObject({ owned: true, sessionId: 'session-1', runId: 'run-1', pid: process.pid });
+
+    let signalledSessionId: string | undefined;
+    const markerPath = join(dir, '.eforge', 'queue-cancellations', 'run.json');
+    const applied = await applyQueueCascade({
+      cwd: dir,
+      queueDir: queueRoot(dir),
+      prdId: 'run',
+      operation: 'cancel',
+      strategy: 'target-only',
+      expectedAffected: preview.expectedAffected,
+      confirmDependents: false,
+      resolveRunningOwnership,
+      cancelRunning: (ownership) => {
+        signalledSessionId = ownership.sessionId;
+        expect(JSON.parse(readFileSync(markerPath, 'utf-8'))).toMatchObject({ prdId: 'run', sessionId: 'session-1', runId: 'run-1', pid: process.pid });
+        return { cancelled: true, reason: 'verified signal sent' };
+      },
+    });
+
+    expect(signalledSessionId).toBe('session-1');
+    expect(applied).toMatchObject({ applied: true, target: { prdId: 'run', status: 'cancelled', sessionId: 'session-1', runId: 'run-1', pid: process.pid, reason: 'verified signal sent' } });
+    rmSync(markerPath, { force: true });
   });
 
   it('writes a running cancellation marker before invoking the cancel delegate when ownership is present', async () => {

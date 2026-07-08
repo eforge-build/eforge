@@ -1550,6 +1550,12 @@ const eventRegistry = {
     summary: (e) => `Stale lock removed: ${e.path} (pid ${e.pid})`,
   },
 
+  'daemon:recovery:lock-adopted': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Live queue lock adopted: ${e.path} (pid ${e.pid}, PRD ${e.prdId})`,
+  },
+
   'daemon:recovery:complete': {
     scope: 'daemon',
     persist: true,

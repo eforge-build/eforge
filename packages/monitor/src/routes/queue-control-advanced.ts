@@ -89,7 +89,14 @@ function isExpectedAffected(value: unknown): value is QueueCascadeExpectedAffect
 }
 
 async function resolveOwnership(context: MonitorContext, record: QueueControlRecord) {
-  return resolveRunningPrdOwnership({ cwd: context.cwd!, prdId: record.id, runs: context.db.getRunningRuns(), workerSessions: new Set(context.options.workerTracker?.listWorkerSessions?.() ?? []) });
+  const runs = context.db.getRunningRuns();
+  return resolveRunningPrdOwnership({
+    cwd: context.cwd!,
+    prdId: record.id,
+    runs,
+    workerSessions: new Set(context.options.workerTracker?.listWorkerSessions?.() ?? []),
+    adoptedWorkerSessions: new Set(runs.map((run) => run.sessionId).filter((sessionId): sessionId is string => typeof sessionId === 'string')),
+  });
 }
 
 function cancelRunning(context: MonitorContext, ownership: { owned: boolean; sessionId?: string }) {

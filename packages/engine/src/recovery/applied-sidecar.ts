@@ -139,6 +139,15 @@ export async function readRawAppliedAction(
   return typeof action === 'string' ? action : undefined;
 }
 
+export async function hasAutoResumeAttempt(sidecarJsonPath: string): Promise<boolean> {
+  try {
+    const parsed = JSON.parse(await readFile(sidecarJsonPath, 'utf-8')) as { autoResume?: { attempts?: unknown } };
+    return typeof parsed.autoResume?.attempts === 'number' && Number.isInteger(parsed.autoResume.attempts) && parsed.autoResume.attempts > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate and narrow an unknown value into the rich `accepted-success` applied
  * metadata recorded by an accepted-success apply. Returns `undefined` for any

@@ -16,8 +16,10 @@ export async function projectQueueForContext(context: MonitorContext): Promise<Q
   let capabilities = new Map<string, QueueItemCapabilities>();
   try {
     const snapshot = await loadQueueControlSnapshot({ cwd: context.cwd, queueDir: context.queuePaths.queueDir, classifyRootLocks: 'read-only' });
+    const runs = context.db.getRunningRuns();
     const workerSessions = new Set(context.options.workerTracker?.listWorkerSessions?.() ?? []);
-    const ownershipEntries = await Promise.all(snapshot.records.map(async (record) => [record.id, await resolveRunningPrdOwnership({ cwd: context.cwd!, prdId: record.id, runs: context.db.getRunningRuns(), workerSessions })] as const));
+    const adoptedWorkerSessions = new Set(runs.map((run) => run.sessionId).filter((sessionId): sessionId is string => typeof sessionId === 'string'));
+    const ownershipEntries = await Promise.all(snapshot.records.map(async (record) => [record.id, await resolveRunningPrdOwnership({ cwd: context.cwd!, prdId: record.id, runs, workerSessions, adoptedWorkerSessions })] as const));
     capabilities = deriveQueueCapabilitiesForSnapshot(snapshot, new Map(ownershipEntries));
   } catch {
     capabilities = new Map();

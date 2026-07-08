@@ -49,8 +49,16 @@ function canCascadeRemove(record: QueueControlRecord): QueueItemCapability {
   return record.status === 'running' ? denied(CAPABILITY_REASONS.runningRemove) : allowed;
 }
 
+function staleOrCorruptLockReason(record: QueueControlRecord): string | undefined {
+  if (record.lock?.state === 'stale') return `Queue item '${record.id}' lock is stale.`;
+  if (record.lock?.state === 'corrupt') return `Queue item '${record.id}' lock is corrupt.`;
+  return undefined;
+}
+
 function canCancel(record: QueueControlRecord, ownership?: QueueCascadeRunningOwnership): QueueItemCapability {
   if (record.status === 'failed' || record.status === 'skipped') return denied(CAPABILITY_REASONS.terminalCancel);
+  const lockReason = staleOrCorruptLockReason(record);
+  if (lockReason !== undefined) return denied(ownership?.reason ?? lockReason);
   if (record.status === 'running' && ownership?.owned !== true) return denied(ownership?.reason ?? CAPABILITY_REASONS.runningCancelUnowned);
   return allowed;
 }
@@ -59,6 +67,7 @@ function canCascadeCancel(record: QueueControlRecord, snapshot: QueueControlSnap
   if (record.status === 'failed' || record.status === 'skipped') return denied(CAPABILITY_REASONS.terminalCancel);
   const affected = [record, ...findCascadeDependents(record.id, snapshot.records).map((d) => d.record)];
   for (const item of affected) {
+    if (staleOrCorruptLockReason(item) !== undefined) return denied(CAPABILITY_REASONS.cascadeCancelUnowned);
     if (item.status === 'running' && ownershipByPrdId?.get(item.id)?.owned !== true) {
       return denied(CAPABILITY_REASONS.cascadeCancelUnowned);
     }

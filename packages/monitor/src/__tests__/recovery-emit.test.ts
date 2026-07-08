@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { safeParseEforgeEvent } from '@eforge-build/client';
 import { openDatabase } from '../db.js';
 import { reconcileOrphanedState, writeDaemonEvent, type ReconciliationReport } from '../server-main.js';
 
@@ -28,7 +29,7 @@ function makeTmpCwd(): string {
 // ---------------------------------------------------------------------------
 
 describe('reconcileOrphanedState returns structured report', () => {
-  it('returns the correct shape with runsFailed, locksRemoved, durationMs', () => {
+  it('returns the correct shape with runsFailed, locksRemoved, durationMs', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
@@ -37,7 +38,7 @@ describe('reconcileOrphanedState returns structured report', () => {
       id: 'run-dead',
       sessionId: 'sess-dead',
       planSet: 'test-set',
-      command: 'build',
+      command: 'eforge queue exec test-set',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
@@ -50,7 +51,7 @@ describe('reconcileOrphanedState returns structured report', () => {
     const lockPath = join(lockDir, 'prd-stale.lock');
     writeFileSync(lockPath, String(DEAD_PID));
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     // runsFailed shape
     expect(Array.isArray(report.runsFailed)).toBe(true);
@@ -83,7 +84,7 @@ describe('reconcileOrphanedState returns structured report', () => {
     db.close();
   });
 
-  it('returns empty arrays when nothing needs reconciling', () => {
+  it('returns empty arrays when nothing needs reconciling', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
@@ -98,7 +99,7 @@ describe('reconcileOrphanedState returns structured report', () => {
       pid: process.pid,
     });
 
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.runsFailed).toHaveLength(0);
     expect(report.locksRemoved).toHaveLength(0);
@@ -107,7 +108,7 @@ describe('reconcileOrphanedState returns structured report', () => {
     db.close();
   });
 
-  it('emits no daemon:recovery:* events itself (emission is the caller\'s responsibility)', () => {
+  it('emits no daemon:recovery:* events itself (emission is the caller\'s responsibility)', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
@@ -115,14 +116,14 @@ describe('reconcileOrphanedState returns structured report', () => {
     db.insertRun({
       id: 'run-dead-2',
       planSet: 'test-set',
-      command: 'build',
+      command: 'eforge queue exec test-set',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
       pid: DEAD_PID,
     });
 
-    reconcileOrphanedState(db, cwd);
+    await reconcileOrphanedState(db, cwd);
 
     // No daemon:recovery:* events should exist in DB (only phase:end inserted by reconciler)
     const allEvents = db.getDaemonEventsAfter(0);
@@ -134,12 +135,12 @@ describe('reconcileOrphanedState returns structured report', () => {
     db.close();
   });
 
-  it('tolerates missing queue-locks directory and returns empty locksRemoved', () => {
+  it('tolerates missing queue-locks directory and returns empty locksRemoved', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
     // No lock dir created
-    const report = reconcileOrphanedState(db, cwd);
+    const report = await reconcileOrphanedState(db, cwd);
 
     expect(report.locksRemoved).toHaveLength(0);
     expect(typeof report.durationMs).toBe('number');
@@ -153,7 +154,7 @@ describe('reconcileOrphanedState returns structured report', () => {
 // ---------------------------------------------------------------------------
 
 describe('caller emission sequence', () => {
-  it('emits daemon:recovery:start, per-item events, daemon:recovery:complete in correct sequence', () => {
+  it('emits daemon:recovery:start, per-item events, daemon:recovery:complete in correct sequence', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
 
@@ -162,7 +163,7 @@ describe('caller emission sequence', () => {
       id: 'run-dead-a',
       sessionId: 'sess-a',
       planSet: 'set-a',
-      command: 'build',
+      command: 'eforge queue exec set-a',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
@@ -172,25 +173,29 @@ describe('caller emission sequence', () => {
       id: 'run-dead-b',
       sessionId: 'sess-b',
       planSet: 'set-b',
-      command: 'build',
+      command: 'eforge queue exec set-b',
       status: 'running',
       startedAt: new Date().toISOString(),
       cwd,
       pid: DEAD_PID,
     });
 
-    // Create two stale lock files
+    // Create two stale lock files and one live lock that should be adopted.
     const lockDir = join(cwd, '.eforge', 'queue-locks');
     mkdirSync(lockDir, { recursive: true });
     const lockPath1 = join(lockDir, 'prd-a.lock');
     const lockPath2 = join(lockDir, 'prd-b.lock');
+    const liveLockPath = join(lockDir, 'prd-live.lock');
+    const corruptLockPath = join(lockDir, 'prd-corrupt.lock');
     writeFileSync(lockPath1, String(DEAD_PID));
     writeFileSync(lockPath2, String(DEAD_PID));
+    writeFileSync(liveLockPath, String(process.pid));
+    writeFileSync(corruptLockPath, 'not-a-pid');
 
     const daemonSessionId = `daemon-test-${Date.now()}`;
 
     // Simulate what main() does: reconcile, then emit the sequence
-    const report: ReconciliationReport = reconcileOrphanedState(db, cwd);
+    const report: ReconciliationReport = await reconcileOrphanedState(db, cwd);
 
     writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
     for (const run of report.runsFailed) {
@@ -202,10 +207,26 @@ describe('caller emission sequence', () => {
       }, daemonSessionId);
     }
     for (const lock of report.locksRemoved) {
+      if (lock.pid !== undefined) {
+        writeDaemonEvent(db, {
+          type: 'daemon:recovery:lock-removed',
+          path: lock.path,
+          pid: lock.pid,
+        }, daemonSessionId);
+      } else {
+        writeDaemonEvent(db, {
+          type: 'daemon:warning',
+          source: 'startup-reconciliation',
+          message: `Removed corrupt queue lock: ${lock.path}`,
+        }, daemonSessionId);
+      }
+    }
+    for (const lock of report.locksAdopted) {
       writeDaemonEvent(db, {
-        type: 'daemon:recovery:lock-removed',
+        type: 'daemon:recovery:lock-adopted',
         path: lock.path,
         pid: lock.pid,
+        prdId: lock.prdId,
       }, daemonSessionId);
     }
     writeDaemonEvent(db, {
@@ -220,22 +241,27 @@ describe('caller emission sequence', () => {
       e.type.startsWith('daemon:recovery:'),
     );
 
-    // Should have: 1 start + 2 run-marked-failed + 2 lock-removed + 1 complete = 6
-    expect(daemonEvents).toHaveLength(6);
+    // Should have: 1 start + 2 run-marked-failed + 2 lock-removed + 1 lock-adopted + 1 complete = 7
+    expect(daemonEvents).toHaveLength(7);
     expect(daemonEvents[0].type).toBe('daemon:recovery:start');
     expect(daemonEvents[daemonEvents.length - 1].type).toBe('daemon:recovery:complete');
 
     // Middle events are run-marked-failed and lock-removed (order follows insertion order)
     const markedFailed = daemonEvents.filter((e) => e.type === 'daemon:recovery:run-marked-failed');
     const locksRemoved = daemonEvents.filter((e) => e.type === 'daemon:recovery:lock-removed');
+    const locksAdopted = daemonEvents.filter((e) => e.type === 'daemon:recovery:lock-adopted');
     expect(markedFailed).toHaveLength(2);
     expect(locksRemoved).toHaveLength(2);
+    expect(locksRemoved.map((event) => JSON.parse(event.data).path)).not.toContain(corruptLockPath);
+    expect(locksAdopted).toHaveLength(1);
+    expect(locksAdopted[0].origin).toBe('daemon');
+    expect(JSON.parse(locksAdopted[0].data)).toMatchObject({ path: liveLockPath, pid: process.pid, prdId: 'prd-live', sessionId: daemonSessionId });
 
     // Validate complete event payload
     const completeEvent = daemonEvents[daemonEvents.length - 1];
     const completePayload = JSON.parse(completeEvent.data) as { runsFailed: number; locksRemoved: number; durationMs: number };
     expect(completePayload.runsFailed).toBe(2);
-    expect(completePayload.locksRemoved).toBe(2);
+    expect(completePayload.locksRemoved).toBe(3);
     expect(typeof completePayload.durationMs).toBe('number');
 
     // All events are daemon-owned (runId=null, origin='daemon').
@@ -246,6 +272,7 @@ describe('caller emission sequence', () => {
       expect(event.origin).toBe('daemon');
       // Verify the daemonSessionId is preserved in the JSON payload
       const payload = JSON.parse(event.data) as { sessionId?: string };
+      expect(safeParseEforgeEvent(payload).success).toBe(true);
       expect(payload.sessionId).toBe(daemonSessionId);
     }
 

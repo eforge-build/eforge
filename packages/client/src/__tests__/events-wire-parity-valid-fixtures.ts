@@ -162,6 +162,7 @@ export const validPayloads: EventWireParityFixture[] = [
   {label: 'daemon:recovery:start',payload: {type: 'daemon:recovery:start',timestamp: '2025-01-01T00:00:00.000Z'},},
   {label: 'daemon:recovery:run-marked-failed',payload: {type: 'daemon:recovery:run-marked-failed',timestamp: '2025-01-01T00:00:00.000Z',runId: 'run-1',planSet: 'my-set',reason: 'orphaned',},},
   {label: 'daemon:recovery:lock-removed',payload: {type: 'daemon:recovery:lock-removed',timestamp: '2025-01-01T00:00:00.000Z',path: '/tmp/eforge.lock',pid: 1234,},},
+  {label: 'daemon:recovery:lock-adopted',payload: {type: 'daemon:recovery:lock-adopted',timestamp: '2025-01-01T00:00:00.000Z',path: '/tmp/eforge.lock',pid: 1234,prdId: 'prd-1',},},
   {label: 'daemon:recovery:complete',payload: {type: 'daemon:recovery:complete',timestamp: '2025-01-01T00:00:00.000Z',runsFailed: 0,locksRemoved: 0,durationMs: 10,},},
   {label: 'daemon:orphan:reaped',payload: {type: 'daemon:orphan:reaped',timestamp: '2025-01-01T00:00:00.000Z',runId: 'run-1',sessionId: 'sess-1',planSet: 'my-set',pid: 5678,},},
   {label: 'daemon:warning',payload: {type: 'daemon:warning',timestamp: '2025-01-01T00:00:00.000Z',source: 'scheduler',message: 'queue stalled',},},

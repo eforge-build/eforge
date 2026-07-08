@@ -12,6 +12,7 @@ export interface RunningOwnershipOptions {
   runs?: RunInfo[];
   sessionIdsByPrdId?: Map<string, string> | Array<{ prdId: string; sessionId: string; runId?: string }>;
   workerSessions?: Set<string>;
+  adoptedWorkerSessions?: Set<string>;
 }
 
 export interface QueuePrdCancellationMarker {
@@ -42,23 +43,24 @@ function isRunningRun(run: RunInfo): boolean {
 
 export async function resolveRunningPrdOwnership(options: RunningOwnershipOptions): Promise<QueueCascadeRunningOwnership> {
   assertSafePrdId(options.prdId);
+  const diagnostic = (reason: string): string => `${reason} No signal was sent. To recover, verify .eforge/queue-locks/${options.prdId}.lock still belongs to the intended eforge worker and retry cancellation; if ownership cannot be established, stop the process manually and reconcile the queued PRD to failed or skipped.`;
   const lock = await readPrdLockStatus(options.prdId, options.cwd);
-  if (lock.state === 'absent') return { owned: false, reason: `Queue item '${options.prdId}' has no live lock.` };
-  if (lock.state === 'stale') return { owned: false, reason: `Queue item '${options.prdId}' lock is stale.` };
-  if (lock.state === 'corrupt') return { owned: false, reason: `Queue item '${options.prdId}' lock is corrupt.` };
+  if (lock.state === 'absent') return { owned: false, reason: diagnostic(`Queue item '${options.prdId}' has no live lock.`) };
+  if (lock.state === 'stale') return { owned: false, reason: diagnostic(`Queue item '${options.prdId}' lock is stale.`) };
+  if (lock.state === 'corrupt') return { owned: false, reason: diagnostic(`Queue item '${options.prdId}' lock is corrupt.`) };
 
   const run = options.runs?.find((r) => runMatchesPrd(r, options.prdId) && isRunningRun(r));
-  if (!run) return { owned: false, reason: `Queue item '${options.prdId}' has no matching running run.` };
+  if (!run) return { owned: false, reason: diagnostic(`Queue item '${options.prdId}' has no matching running run.`) };
   const runRecord = run as unknown as Record<string, unknown>;
   const runId = typeof runRecord.id === 'string' ? runRecord.id : undefined;
   const runPid = typeof runRecord.pid === 'number' ? runRecord.pid : undefined;
-  if (runPid !== lock.pid) return { owned: false, runId, reason: `Queue item '${options.prdId}' lock PID is not bound to the daemon worker.` };
+  if (runPid !== lock.pid) return { owned: false, runId, reason: diagnostic(`Queue item '${options.prdId}' lock PID is not bound to the daemon worker.`) };
   const sessionFromRun = typeof runRecord.sessionId === 'string' ? runRecord.sessionId : undefined;
   const sessionFromEvidence = sessionEvidence(options).sessionId;
   const sessionId = sessionFromRun ?? sessionFromEvidence;
-  if (!sessionId) return { owned: false, runId, reason: `Queue item '${options.prdId}' has no daemon session id.` };
-  if (!options.workerSessions?.has(sessionId)) {
-    return { owned: false, sessionId, runId, reason: `Queue item '${options.prdId}' session is not daemon-owned.` };
+  if (!sessionId) return { owned: false, runId, reason: diagnostic(`Queue item '${options.prdId}' has no daemon session id.`) };
+  if (!options.workerSessions?.has(sessionId) && !options.adoptedWorkerSessions?.has(sessionId)) {
+    return { owned: false, sessionId, runId, reason: diagnostic(`Queue item '${options.prdId}' session is not daemon-owned.`) };
   }
   return { owned: true, sessionId, runId, pid: lock.pid };
 }

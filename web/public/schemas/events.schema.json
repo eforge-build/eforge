@@ -15221,6 +15221,30 @@
           "type": "object",
           "required": [
             "type",
+            "path",
+            "pid",
+            "prdId"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:recovery:lock-adopted",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pid": {
+              "type": "number"
+            },
+            "prdId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "runsFailed",
             "locksRemoved",
             "durationMs"
@@ -33214,6 +33238,30 @@
                           },
                           "pid": {
                             "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "path",
+                          "pid",
+                          "prdId"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "daemon:recovery:lock-adopted",
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "pid": {
+                            "type": "number"
+                          },
+                          "prdId": {
+                            "type": "string"
                           }
                         }
                       },

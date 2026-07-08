@@ -165,6 +165,12 @@ export const daemonEventVariants = [
     pid: Type.Number(),
   }),
   Type.Object({
+    type: Type.Literal('daemon:recovery:lock-adopted'),
+    path: Type.String(),
+    pid: Type.Number(),
+    prdId: Type.String(),
+  }),
+  Type.Object({
     type: Type.Literal('daemon:recovery:complete'),
     runsFailed: Type.Number(),
     locksRemoved: Type.Number(),

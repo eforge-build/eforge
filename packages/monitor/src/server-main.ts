@@ -27,10 +27,15 @@ import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-buil
 import { buildAndPersistRunUpsert, withRecording } from './recorder.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, openSync, closeSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-supervisor.js';
 import { evaluateGuardedRecoveryAutoResume } from './recovery-auto-resume.js';
+import { consumeQueuePrdCancellation } from '@eforge-build/engine/queue/cancellation';
+import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
+import { readPrdLockStatus } from '@eforge-build/engine/prd-queue';
+import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, findLatestPersistedQueueCompletion, type ReconciliationReport } from './startup-reconciliation.js';
+import { startAdoptedQueueWorkerMonitor, type AdoptedQueueWorkerMonitor } from './adopted-queue-workers.js';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -165,20 +170,6 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
 
 
 /**
- * Structured report returned by `reconcileOrphanedState`.
- * The caller in `main()` uses this to emit the daemon:recovery:* event sequence.
- * `reconcileOrphanedState` itself emits no events — all event emission lives in the caller.
- */
-export interface ReconciliationReport {
-  /** Runs that were marked failed because their PID was no longer alive. */
-  runsFailed: Array<{ runId: string; sessionId: string; planSet: string; reason: string }>;
-  /** Lock files that were removed because their PID was no longer alive. */
-  locksRemoved: Array<{ path: string; pid: number }>;
-  /** Wall-clock duration of the reconciliation in milliseconds. */
-  durationMs: number;
-}
-
-/**
  * Write a daemon-scoped event to the SQLite event log as a daemon-owned row
  * (origin='daemon', run_id=NULL). The daemonSessionId is embedded in the JSON
  * payload for consumer correlation but is no longer used as a synthetic run_id.
@@ -186,104 +177,7 @@ export interface ReconciliationReport {
  * Best-effort: any DB error is silently swallowed to avoid crashing the daemon
  * on a non-critical event write failure.
  */
-export { writeDaemonEvent };
-
-/**
- * Reconcile orphaned queue state on daemon startup.
- *
- * Two classes of orphan:
- *  1. Runs in the SQLite DB with status='running' whose PID is no longer
- *     alive (crash, hard-kill). Marked as 'failed' with a reconcile reason.
- *  2. Lock files under `.eforge/queue-locks/*.lock` whose PID is no longer
- *     alive. Deleted so the PRD can be re-claimed.
- *
- * Ordering note: the PRD file itself is left wherever it was (usually in
- * `queue/` root) so the scheduler can pick it up again. We do NOT move it
- * to `queue/failed/` here, because that would be destructive on every
- * daemon restart — the user may want the next auto-build pass to retry.
- *
- * This runs exactly once at daemon startup. The periodic orphan-detection
- * loop still handles live-running daemons.
- *
- * Returns a structured report of what was cleaned up. Emits no daemon recovery
- * events itself — all daemon:recovery:* event emission is the caller's responsibility.
- * The existing synthetic `phase:end` event and `daemon:run:upsert` per failed run
- * are preserved here for backward compatibility with session-scoped event streams.
- */
-export function reconcileOrphanedState(db: MonitorDB, cwd: string): ReconciliationReport {
-  const startedAt = Date.now();
-  const runsFailed: Array<{ runId: string; sessionId: string; planSet: string; reason: string }> = [];
-  const locksRemoved: Array<{ path: string; pid: number }> = [];
-
-  // 1) Runs whose PID is dead
-  try {
-    const runningRuns = db.getRunningRuns();
-    const now = new Date().toISOString();
-    for (const run of runningRuns) {
-      if (run.pid && !isPidAlive(run.pid)) {
-        const reason = 'reconciled: process not alive at daemon startup';
-        db.updateRunStatus(run.id, 'failed', now);
-        buildAndPersistRunUpsert(db, run.id, run.id);
-        // Preserve backward-compatible synthetic phase:end event for session-scoped streams.
-        try {
-          db.insertEvent({
-            runId: run.id,
-            type: 'phase:end',
-            data: JSON.stringify({
-              type: 'phase:end',
-              runId: run.id,
-              result: { status: 'failed', summary: reason },
-              timestamp: now,
-            }),
-            timestamp: now,
-          });
-        } catch {
-          // insertEvent may fail if run row was removed between queries — best-effort
-        }
-        runsFailed.push({
-          runId: run.id,
-          sessionId: run.sessionId ?? run.id,
-          planSet: run.planSet,
-          reason,
-        });
-      }
-    }
-  } catch {
-    // DB may be in an inconsistent state on first-ever startup — best-effort
-  }
-
-  // 2) Lock files whose PID is dead
-  const lockDir = resolve(cwd, '.eforge', 'queue-locks');
-  let entries: string[];
-  try {
-    entries = readdirSync(lockDir);
-  } catch {
-    return { runsFailed, locksRemoved, durationMs: Date.now() - startedAt }; // Dir doesn't exist yet — nothing to reconcile
-  }
-  for (const file of entries) {
-    if (!file.endsWith('.lock')) continue;
-    const lockPath = resolve(lockDir, file);
-    let pid: number;
-    try {
-      pid = parseInt(readFileSync(lockPath, 'utf-8').trim(), 10);
-    } catch {
-      continue;
-    }
-    if (!Number.isFinite(pid) || pid <= 0) {
-      // Corrupt lock file — remove it (not tracked in locksRemoved since no valid pid)
-      try { unlinkSync(lockPath); } catch { /* ignore */ }
-      continue;
-    }
-    if (!isPidAlive(pid)) {
-      try {
-        unlinkSync(lockPath);
-        locksRemoved.push({ path: lockPath, pid });
-      } catch { /* ignore */ }
-    }
-  }
-
-  return { runsFailed, locksRemoved, durationMs: Date.now() - startedAt };
-}
+export { writeDaemonEvent, reconcileOrphanedState, replayPersistedOrphanQueueCompletions, type ReconciliationReport };
 
 /**
  * Context passed to maybePauseOnFailure for each event in the drain loop.
@@ -798,6 +692,9 @@ async function main(): Promise<void> {
 
   const daemonState: DaemonState | undefined = autoBuildSupervisor ? {
     autoBuildController: autoBuildSupervisor,
+    async finalizeQueuePrdCompletion(completion) {
+      await finalizeQueuedPrd({ cwd, queueDir: config?.prdQueue.dir ?? '.eforge/queue', prdId: completion.prdId, status: completion.status, releaseLock: true });
+    },
     onShutdown: undefined as (() => void) | undefined,
   } : undefined;
 
@@ -825,6 +722,8 @@ async function main(): Promise<void> {
     throw err;
   }
 
+  const beforeStartupDaemonCursor = db.getMaxDaemonEventId();
+
   // Emit lifecycle:starting now that port is known (server was just started above).
   writeDaemonEvent(db, {
     type: 'daemon:lifecycle:starting',
@@ -844,11 +743,15 @@ async function main(): Promise<void> {
   // Register in global port registry
   registerPort(cwd, server.port, process.pid);
 
+  if (daemonState && config) {
+    await replayPersistedOrphanQueueCompletions(db, daemonState.autoBuildController, beforeStartupDaemonCursor, { cwd, queueDir: config.prdQueue.dir, daemonSessionId });
+  }
+
   // One-shot reconciliation for state left behind by a previous crash or
-  // hard-kill. Runs after we own the lockfile so no other daemon instance
-  // can be touching the same files.
+  // hard-kill. Runs after persisted terminal queue completions are replayed so
+  // stale running rows do not overwrite authoritative completed/skipped state.
   writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
-  const reconcileReport = reconcileOrphanedState(db, cwd);
+  const reconcileReport = await reconcileOrphanedState(db, cwd, config ? { queueDir: config.prdQueue.dir } : undefined);
   for (const run of reconcileReport.runsFailed) {
     // Emit the daemon-scoped failure event alongside the backward-compatible
     // phase:end that reconcileOrphanedState already inserted per run.
@@ -860,11 +763,38 @@ async function main(): Promise<void> {
     }, daemonSessionId);
   }
   for (const lock of reconcileReport.locksRemoved) {
+    if (lock.pid !== undefined) {
+      writeDaemonEvent(db, {
+        type: 'daemon:recovery:lock-removed',
+        path: lock.path,
+        pid: lock.pid,
+      }, daemonSessionId);
+    } else {
+      writeDaemonEvent(db, {
+        type: 'daemon:warning',
+        source: 'startup-reconciliation',
+        message: `Removed corrupt queue lock: ${lock.path}`,
+      }, daemonSessionId);
+    }
+  }
+  for (const lock of reconcileReport.locksAdopted) {
     writeDaemonEvent(db, {
-      type: 'daemon:recovery:lock-removed',
+      type: 'daemon:recovery:lock-adopted',
       path: lock.path,
       pid: lock.pid,
+      prdId: lock.prdId,
     }, daemonSessionId);
+  }
+  let adoptedQueueWorkerMonitor: AdoptedQueueWorkerMonitor | undefined;
+  if (daemonState && config && reconcileReport.locksAdopted.length > 0) {
+    adoptedQueueWorkerMonitor = startAdoptedQueueWorkerMonitor({
+      db,
+      cwd,
+      queueDir: config.prdQueue.dir,
+      locks: reconcileReport.locksAdopted,
+      autoBuildController: daemonState.autoBuildController,
+      afterCursor: beforeStartupDaemonCursor,
+    });
   }
   writeDaemonEvent(db, {
     type: 'daemon:recovery:complete',
@@ -899,38 +829,81 @@ async function main(): Promise<void> {
   // Orphan detection loop: mark dead PRD build subprocesses as killed.
   // The in-process watcher doesn't need a health check — if it dies, the
   // daemon dies with it, and the next startup's reconciler cleans up.
+  let orphanSweepInProgress = false;
   const orphanTimer = setInterval(() => {
-    try {
-      const runningRuns = db.getRunningRuns();
-      for (const run of runningRuns) {
-        if (run.pid && !isPidAlive(run.pid)) {
-          const now = new Date().toISOString();
-          db.updateRunStatus(run.id, 'killed', now);
-          db.insertEvent({
-            runId: run.id,
-            type: 'phase:end',
-            data: JSON.stringify({
-              type: 'phase:end',
+    if (orphanSweepInProgress) return;
+    orphanSweepInProgress = true;
+    void (async () => {
+      try {
+        const runningRuns = db.getRunningRuns();
+        for (const run of runningRuns) {
+          if (run.pid && !isPidAlive(run.pid)) {
+            const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${run.planSet}.lock`);
+            let orphanFinalStatus: 'completed' | 'failed' | 'skipped' = 'failed';
+            if (config && isSafeQueuedPrdId(run.planSet) && existsSync(lockPath)) {
+              try {
+                const lock = await readPrdLockStatus(run.planSet, cwd);
+                if (lock.state === 'stale' && lock.pid === run.pid) {
+                  const persistedCompletion = findLatestPersistedQueueCompletion(db, run.planSet);
+                  if (persistedCompletion !== undefined) {
+                    orphanFinalStatus = persistedCompletion.status;
+                  } else {
+                    const cancellation = await consumeQueuePrdCancellation({
+                      cwd,
+                      prdId: run.planSet,
+                      ...(run.sessionId !== undefined ? { expectedSessionId: run.sessionId } : {}),
+                      expectedRunId: run.id,
+                      expectedPid: run.pid,
+                    });
+                    orphanFinalStatus = cancellation ? 'skipped' : 'failed';
+                  }
+                  await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: orphanFinalStatus, releaseLock: true });
+                } else {
+                  const lockDescription = lock.state === 'live' || lock.state === 'stale' ? `${lock.state} pid ${lock.pid}` : lock.state;
+                  writeDaemonEvent(db, {
+                    type: 'daemon:warning',
+                    source: 'orphan-reaper',
+                    message: `Skipped queued PRD finalization for orphaned worker ${run.planSet}: lock ownership was not verified (run pid ${run.pid}, lock ${lockDescription}).`,
+                  }, daemonSessionId);
+                }
+              } catch (err) {
+                writeDaemonEvent(db, {
+                  type: 'daemon:warning',
+                  source: 'orphan-reaper',
+                  message: `Queued PRD finalization failed for orphaned worker ${run.planSet}: ${err instanceof Error ? err.message : String(err)}`,
+                }, daemonSessionId);
+              }
+            }
+            const now = new Date().toISOString();
+            db.updateRunStatus(run.id, orphanFinalStatus === 'completed' ? 'completed' : orphanFinalStatus === 'skipped' ? 'skipped' : 'killed', now);
+            db.insertEvent({
               runId: run.id,
-              result: { status: 'failed', summary: 'Orphaned worker process is no longer alive' },
+              type: 'phase:end',
+              data: JSON.stringify({
+                type: 'phase:end',
+                runId: run.id,
+                result: { status: orphanFinalStatus, summary: orphanFinalStatus === 'completed' ? 'Orphaned worker persisted completed queue status' : orphanFinalStatus === 'skipped' ? 'Orphaned worker cancellation was requested' : 'Orphaned worker process is no longer alive' },
+                timestamp: now,
+              }),
               timestamp: now,
-            }),
-            timestamp: now,
-          });
-          buildAndPersistRunUpsert(db, run.id, run.id);
-          // Only emit orphan:reaped when a run is actually marked killed (not on every tick).
-          writeDaemonEvent(db, {
-            type: 'daemon:orphan:reaped',
-            runId: run.id,
-            sessionId: run.sessionId ?? run.id,
-            planSet: run.planSet,
-            pid: run.pid,
-          }, daemonSessionId);
+            });
+            buildAndPersistRunUpsert(db, run.id, run.id);
+            // Only emit orphan:reaped when a run is actually marked killed (not on every tick).
+            writeDaemonEvent(db, {
+              type: 'daemon:orphan:reaped',
+              runId: run.id,
+              sessionId: run.sessionId ?? run.id,
+              planSet: run.planSet,
+              pid: run.pid,
+            }, daemonSessionId);
+          }
         }
+      } catch {
+        // DB might be closed during shutdown
+      } finally {
+        orphanSweepInProgress = false;
       }
-    } catch {
-      // DB might be closed during shutdown
-    }
+    })();
   }, ORPHAN_CHECK_INTERVAL_MS);
   orphanTimer.unref();
 
@@ -1025,6 +998,7 @@ async function main(): Promise<void> {
     const shutdownStartedAt = Date.now();
 
     clearInterval(orphanTimer);
+    adoptedQueueWorkerMonitor?.stop();
     if (stateTimer) clearInterval(stateTimer);
 
     // Abort the in-process watcher through the supervisor and wait (with
@@ -1066,6 +1040,10 @@ async function main(): Promise<void> {
     process.stdout.destroy();
     process.stderr.destroy();
   }
+}
+
+function isSafeQueuedPrdId(prdId: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(prdId) && prdId !== '.' && prdId !== '..';
 }
 
 // Only auto-execute when run as an entry point (not when imported for testing)
