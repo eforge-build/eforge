@@ -19,6 +19,7 @@ import type { AutoBuildQueueMutationReason } from './auto-build-supervisor.js';
  */
 export interface DaemonReactionSink {
   notifyQueueMutation(reason: AutoBuildQueueMutationReason): void;
+  finalizeQueuePrdCompletion?(completion: { prdId: string; status: 'completed' | 'failed' | 'skipped' }): Promise<void> | void;
 }
 
 /**
@@ -34,10 +35,11 @@ export interface DaemonReactionSink {
  * @param event - A fully parsed EforgeEvent (null rows are skipped by the caller).
  * @param sink  - The daemon sink to invoke side effects on.
  */
-export function reactToDaemonEvent(event: EforgeEvent, sink: DaemonReactionSink): void {
+export async function reactToDaemonEvent(event: EforgeEvent, sink: DaemonReactionSink): Promise<void> {
   if (event.type === 'enqueue:complete') {
     sink.notifyQueueMutation('enqueue');
   } else if (event.type === 'queue:prd:complete') {
+    await sink.finalizeQueuePrdCompletion?.({ prdId: event.prdId, status: event.status });
     sink.notifyQueueMutation('external');
   }
 }

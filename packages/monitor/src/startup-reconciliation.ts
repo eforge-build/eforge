@@ -95,16 +95,11 @@ export async function replayPersistedOrphanQueueCompletions(
   beforeStartupCursor: number,
   options?: { cwd: string; queueDir: string; daemonSessionId?: string },
 ): Promise<number> {
-  let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
-  try { rows = db.getDaemonEventsAfter(0).filter((row) => row.id <= beforeStartupCursor); } catch { return 0; }
-  const lastCleanShutdownId = [...rows].reverse().find((row) => row.type === 'daemon:lifecycle:shutdown:complete')?.id ?? 0;
-  const orphanCompletions = rows.filter((row) => row.id > lastCleanShutdownId && row.type === 'queue:prd:complete');
+  const orphanCompletions = findPersistedQueueCompletionsSinceLastCleanShutdown(db, beforeStartupCursor);
   let successfulReplays = 0;
   const replayFailures: string[] = [];
   if (options !== undefined) {
-    for (const row of orphanCompletions) {
-      const completion = parsePersistedQueueCompletion(row.data);
-      if (completion === undefined) continue;
+    for (const completion of orphanCompletions) {
       try {
         await finalizeQueuedPrd({ cwd: options.cwd, queueDir: options.queueDir, prdId: completion.prdId, status: completion.status, releaseLock: true });
         successfulReplays++;
@@ -125,14 +120,47 @@ export async function replayPersistedOrphanQueueCompletions(
   return orphanCompletions.length;
 }
 
+export type PersistedQueueCompletionStatus = 'completed' | 'failed' | 'skipped';
+
+export interface PersistedQueueCompletion {
+  id: number;
+  prdId: string;
+  status: PersistedQueueCompletionStatus;
+}
+
+export function findPersistedQueueCompletionsSinceLastCleanShutdown(db: MonitorDB, beforeStartupCursor: number): PersistedQueueCompletion[] {
+  let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
+  try { rows = db.getDaemonEventsAfter(0).filter((row) => row.id <= beforeStartupCursor); } catch { return []; }
+  const lastCleanShutdownId = [...rows].reverse().find((row) => row.type === 'daemon:lifecycle:shutdown:complete')?.id ?? 0;
+  const latestByPrd = new Map<string, PersistedQueueCompletion>();
+  for (const row of rows.filter((row) => row.id > lastCleanShutdownId && row.type === 'queue:prd:complete')) {
+    const completion = parsePersistedQueueCompletion(row.data, row.id);
+    if (completion === undefined) continue;
+    const existing = latestByPrd.get(completion.prdId);
+    if (existing === undefined || completion.id > existing.id) latestByPrd.set(completion.prdId, completion);
+  }
+  return [...latestByPrd.values()].sort((a, b) => a.id - b.id);
+}
+
+export function findLatestPersistedQueueCompletion(db: MonitorDB, prdId: string, afterCursor = 0): PersistedQueueCompletion | undefined {
+  let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
+  try { rows = db.getDaemonEventsAfter(afterCursor); } catch { return undefined; }
+  for (const row of [...rows].reverse()) {
+    if (row.type !== 'queue:prd:complete') continue;
+    const completion = parsePersistedQueueCompletion(row.data, row.id);
+    if (completion?.prdId === prdId) return completion;
+  }
+  return undefined;
+}
+
 async function queuedRunTerminalRecovery(
   db: MonitorDB,
   cwd: string,
   run: ReturnType<MonitorDB['getRunningRuns']>[number],
   fallbackReason: string,
 ): Promise<{ status: 'completed' | 'failed' | 'skipped'; runStatus: string; phaseStatus: 'completed' | 'failed' | 'skipped'; reason: string }> {
-  const persisted = latestPersistedQueueCompletion(db, run.planSet);
-  if (persisted?.status === 'completed' || persisted?.status === 'skipped') {
+  const persisted = latestPersistedQueueCompletion(db, run.planSet, run.startedAt);
+  if (persisted !== undefined) {
     return {
       status: persisted.status,
       runStatus: persisted.status,
@@ -160,12 +188,12 @@ async function queuedRunTerminalRecovery(
   return { status: 'failed', runStatus: 'failed', phaseStatus: 'failed', reason: fallbackReason };
 }
 
-function latestPersistedQueueCompletion(db: MonitorDB, prdId: string): { status: 'completed' | 'failed' | 'skipped' } | undefined {
+function latestPersistedQueueCompletion(db: MonitorDB, prdId: string, startedAt: string): { status: PersistedQueueCompletionStatus } | undefined {
   let rows: ReturnType<MonitorDB['getDaemonEventsAfter']>;
   try { rows = db.getDaemonEventsAfter(0); } catch { return undefined; }
   for (const row of [...rows].reverse()) {
-    if (row.type !== 'queue:prd:complete') continue;
-    const completion = parsePersistedQueueCompletion(row.data);
+    if (row.timestamp < startedAt || row.type !== 'queue:prd:complete') continue;
+    const completion = parsePersistedQueueCompletion(row.data, row.id);
     if (completion?.prdId === prdId) return { status: completion.status };
   }
   return undefined;
@@ -221,12 +249,12 @@ function safeRegularLockFile(lockPath: string, realLockDir: string): boolean {
   }
 }
 
-function parsePersistedQueueCompletion(data: string): { prdId: string; status: 'completed' | 'failed' | 'skipped' } | undefined {
+export function parsePersistedQueueCompletion(data: string, id = 0): PersistedQueueCompletion | undefined {
   try {
     const parsed = JSON.parse(data) as { prdId?: unknown; status?: unknown };
     if (typeof parsed.prdId !== 'string' || !isSafeQueuedPrdId(parsed.prdId)) return undefined;
     if (parsed.status !== 'completed' && parsed.status !== 'failed' && parsed.status !== 'skipped') return undefined;
-    return { prdId: parsed.prdId, status: parsed.status };
+    return { id, prdId: parsed.prdId, status: parsed.status };
   } catch {
     return undefined;
   }

@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
+import { isPidAlive } from '@eforge-build/client';
 import { basename, resolve } from 'node:path';
 import { type QueueItem } from '@eforge-build/client';
 import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
@@ -96,6 +97,22 @@ async function readRecoverySidecarProjection(dir: string, id: string): Promise<R
   try { return parseRecoverySidecarProjection(await readFile(resolve(dir, `${id}.recovery.json`), 'utf-8'), id); } catch { return {}; }
 }
 
+function classifyLockPayload(raw: string): 'live' | 'non-running' {
+  const trimmed = raw.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return 'non-running';
+  const pid = Number(trimmed);
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'non-running';
+  return isPidAlive(pid) ? 'live' : 'non-running';
+}
+
+function isQueueItemRunningSync(lockDir: string, id: string): boolean {
+  try { return classifyLockPayload(readFileSync(resolve(lockDir, `${id}.lock`), 'utf-8')) === 'live'; } catch { return false; }
+}
+
+async function isQueueItemRunning(lockDir: string, id: string): Promise<boolean> {
+  try { return classifyLockPayload(await readFile(resolve(lockDir, `${id}.lock`), 'utf-8')) === 'live'; } catch { return false; }
+}
+
 export function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem[] {
   const items: QueueItem[] = [];
   const loadDirSync = (dir: string, derivedStatus: string): void => {
@@ -106,7 +123,7 @@ export function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem
         const fm = parseQueueFrontmatter(readFileSync(resolve(dir, file), 'utf-8'));
         if (!fm || typeof fm.title !== 'string') continue;
         const id = basename(file, '.md');
-        const status = derivedStatus === 'pending' && existsSync(resolve(lockDir, `${id}.lock`)) ? 'running' : derivedStatus;
+        const status = derivedStatus === 'pending' && isQueueItemRunningSync(lockDir, id) ? 'running' : derivedStatus;
         items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? readRecoverySidecarProjectionSync(dir, id) : {}));
       } catch { /* skip unreadable */ }
     }
@@ -130,9 +147,7 @@ export async function loadQueueItems(queueDir: string, lockDir: string): Promise
         if (!fm || typeof fm.title !== 'string') continue;
         const id = basename(file, '.md');
         let status = derivedStatus;
-        if (derivedStatus === 'pending') {
-          try { await readFile(resolve(lockDir, `${id}.lock`)); status = 'running'; } catch { /* pending */ }
-        }
+        if (derivedStatus === 'pending' && await isQueueItemRunning(lockDir, id)) status = 'running';
         items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? await readRecoverySidecarProjection(dir, id) : {}));
       } catch { /* skip unreadable */ }
     }

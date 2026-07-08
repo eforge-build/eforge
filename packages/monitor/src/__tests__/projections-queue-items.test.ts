@@ -34,7 +34,7 @@ describe('queue item projections', () => {
   it('keeps sync and async loaders in parity across statuses, sidecars, and dependsOn filtering', async () => {
     const root = tmp(); const queue = join(root, 'queue'); const locks = join(root, 'locks');
     mkdirSync(join(queue, 'failed'), { recursive: true }); mkdirSync(join(queue, 'skipped'), { recursive: true }); mkdirSync(join(queue, 'waiting'), { recursive: true }); mkdirSync(locks);
-    writeFileSync(join(queue, 'a.md'), prd('A', '[b, failed]')); writeFileSync(join(queue, 'b.md'), prd('B')); writeFileSync(join(locks, 'b.lock'), '');
+    writeFileSync(join(queue, 'a.md'), prd('A', '[b, failed]')); writeFileSync(join(queue, 'b.md'), prd('B')); writeFileSync(join(locks, 'b.lock'), String(process.pid));
     writeFileSync(join(queue, 'failed', 'failed.md'), prd('F', '[a]'));
     writeFileSync(join(queue, 'failed', 'failed.recovery.json'), JSON.stringify(recoverySidecar('failed', { action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' })));
     writeFileSync(join(queue, 'failed', 'accepted-complete.md'), prd('Accepted Complete'));
@@ -59,5 +59,20 @@ describe('queue item projections', () => {
     expect(sync.find((i) => i.id === 'failed')?.dependsOn).toBeUndefined();
     expect(sync.find((i) => i.id === 'a')?.dependsOn).toEqual(['b']);
     expect(countPendingQueueDepth(root, 'queue')).toBe(2);
+  });
+
+  it('projects stale and corrupt root locks as pending, not running', async () => {
+    const root = tmp(); const queue = join(root, 'queue'); const locks = join(root, 'locks');
+    mkdirSync(queue, { recursive: true }); mkdirSync(locks, { recursive: true });
+    writeFileSync(join(queue, 'stale.md'), prd('Stale'));
+    writeFileSync(join(queue, 'corrupt.md'), prd('Corrupt'));
+    writeFileSync(join(locks, 'stale.lock'), '2147483647');
+    writeFileSync(join(locks, 'corrupt.lock'), 'not-a-pid');
+
+    expect(loadQueueItemsSync(queue, locks).map((item) => [item.id, item.status]).sort()).toEqual([
+      ['corrupt', 'pending'],
+      ['stale', 'pending'],
+    ]);
+    await expect(loadQueueItems(queue, locks)).resolves.toEqual(loadQueueItemsSync(queue, locks));
   });
 });

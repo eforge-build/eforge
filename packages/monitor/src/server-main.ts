@@ -34,7 +34,8 @@ import { evaluateGuardedRecoveryAutoResume } from './recovery-auto-resume.js';
 import { consumeQueuePrdCancellation } from '@eforge-build/engine/queue/cancellation';
 import { finalizeQueuedPrd } from '@eforge-build/engine/queue/finalizer';
 import { readPrdLockStatus } from '@eforge-build/engine/prd-queue';
-import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, type ReconciliationReport } from './startup-reconciliation.js';
+import { reconcileOrphanedState, replayPersistedOrphanQueueCompletions, findLatestPersistedQueueCompletion, type ReconciliationReport } from './startup-reconciliation.js';
+import { startAdoptedQueueWorkerMonitor, type AdoptedQueueWorkerMonitor } from './adopted-queue-workers.js';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -691,6 +692,9 @@ async function main(): Promise<void> {
 
   const daemonState: DaemonState | undefined = autoBuildSupervisor ? {
     autoBuildController: autoBuildSupervisor,
+    async finalizeQueuePrdCompletion(completion) {
+      await finalizeQueuedPrd({ cwd, queueDir: config?.prdQueue.dir ?? '.eforge/queue', prdId: completion.prdId, status: completion.status, releaseLock: true });
+    },
     onShutdown: undefined as (() => void) | undefined,
   } : undefined;
 
@@ -781,6 +785,17 @@ async function main(): Promise<void> {
       prdId: lock.prdId,
     }, daemonSessionId);
   }
+  let adoptedQueueWorkerMonitor: AdoptedQueueWorkerMonitor | undefined;
+  if (daemonState && config && reconcileReport.locksAdopted.length > 0) {
+    adoptedQueueWorkerMonitor = startAdoptedQueueWorkerMonitor({
+      db,
+      cwd,
+      queueDir: config.prdQueue.dir,
+      locks: reconcileReport.locksAdopted,
+      autoBuildController: daemonState.autoBuildController,
+      afterCursor: beforeStartupDaemonCursor,
+    });
+  }
   writeDaemonEvent(db, {
     type: 'daemon:recovery:complete',
     runsFailed: reconcileReport.runsFailed.length,
@@ -824,19 +839,24 @@ async function main(): Promise<void> {
         for (const run of runningRuns) {
           if (run.pid && !isPidAlive(run.pid)) {
             const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${run.planSet}.lock`);
-            let orphanFinalStatus: 'failed' | 'skipped' = 'failed';
+            let orphanFinalStatus: 'completed' | 'failed' | 'skipped' = 'failed';
             if (config && isSafeQueuedPrdId(run.planSet) && existsSync(lockPath)) {
               try {
                 const lock = await readPrdLockStatus(run.planSet, cwd);
                 if (lock.state === 'stale' && lock.pid === run.pid) {
-                  const cancellation = await consumeQueuePrdCancellation({
-                    cwd,
-                    prdId: run.planSet,
-                    ...(run.sessionId !== undefined ? { expectedSessionId: run.sessionId } : {}),
-                    expectedRunId: run.id,
-                    expectedPid: run.pid,
-                  });
-                  orphanFinalStatus = cancellation ? 'skipped' : 'failed';
+                  const persistedCompletion = findLatestPersistedQueueCompletion(db, run.planSet);
+                  if (persistedCompletion !== undefined) {
+                    orphanFinalStatus = persistedCompletion.status;
+                  } else {
+                    const cancellation = await consumeQueuePrdCancellation({
+                      cwd,
+                      prdId: run.planSet,
+                      ...(run.sessionId !== undefined ? { expectedSessionId: run.sessionId } : {}),
+                      expectedRunId: run.id,
+                      expectedPid: run.pid,
+                    });
+                    orphanFinalStatus = cancellation ? 'skipped' : 'failed';
+                  }
                   await finalizeQueuedPrd({ cwd, queueDir: config.prdQueue.dir, prdId: run.planSet, status: orphanFinalStatus, releaseLock: true });
                 } else {
                   const lockDescription = lock.state === 'live' || lock.state === 'stale' ? `${lock.state} pid ${lock.pid}` : lock.state;
@@ -855,14 +875,14 @@ async function main(): Promise<void> {
               }
             }
             const now = new Date().toISOString();
-            db.updateRunStatus(run.id, orphanFinalStatus === 'skipped' ? 'skipped' : 'killed', now);
+            db.updateRunStatus(run.id, orphanFinalStatus === 'completed' ? 'completed' : orphanFinalStatus === 'skipped' ? 'skipped' : 'killed', now);
             db.insertEvent({
               runId: run.id,
               type: 'phase:end',
               data: JSON.stringify({
                 type: 'phase:end',
                 runId: run.id,
-                result: { status: orphanFinalStatus, summary: orphanFinalStatus === 'skipped' ? 'Orphaned worker cancellation was requested' : 'Orphaned worker process is no longer alive' },
+                result: { status: orphanFinalStatus, summary: orphanFinalStatus === 'completed' ? 'Orphaned worker persisted completed queue status' : orphanFinalStatus === 'skipped' ? 'Orphaned worker cancellation was requested' : 'Orphaned worker process is no longer alive' },
                 timestamp: now,
               }),
               timestamp: now,
@@ -978,6 +998,7 @@ async function main(): Promise<void> {
     const shutdownStartedAt = Date.now();
 
     clearInterval(orphanTimer);
+    adoptedQueueWorkerMonitor?.stop();
     if (stateTimer) clearInterval(stateTimer);
 
     // Abort the in-process watcher through the supervisor and wait (with

@@ -31,7 +31,7 @@ export interface StreamHub extends Omit<MonitorStreamHub, 'attachSession' | 'att
   attachDaemon(req: IncomingMessage, res: ServerResponse): void | Promise<void>;
   subscriberCount(): number;
   buildHeartbeatObject(): unknown;
-  flush(): void;
+  flush(): Promise<void>;
 }
 
 export function createStreamHub(context: MonitorContext, options: StreamHubOptions = {}): StreamHub {
@@ -41,9 +41,10 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
   const startedAtMs = clock.now();
   let reactionCursor = context.db.getMaxDaemonEventId();
   let stopped = false;
+  let reactionScan: Promise<void> | null = null;
 
   const pollTimer = setInterval(() => {
-    runPollCycle();
+    void runPollCycle();
   }, options.pollIntervalMs ?? POLL_INTERVAL_MS);
   unrefTimer(pollTimer);
 
@@ -64,9 +65,9 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
     return buildDaemonHeartbeat(context, heartbeatOptions());
   }
 
-  function runPollCycle(): void {
+  async function runPollCycle(): Promise<void> {
     if (stopped) return;
-    scanDaemonReactions();
+    await scanDaemonReactions();
     deliverSessionSubscribers();
     deliverDaemonSubscribers();
   }
@@ -83,17 +84,37 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
     }
   }
 
-  function scanDaemonReactions(): void {
+  async function scanDaemonReactions(): Promise<void> {
     if (!context.options.daemonState) return;
-    try {
-      const rows = context.db.getDaemonEventsAfter(reactionCursor);
-      for (const row of rows) {
-        if (row.id > reactionCursor) reactionCursor = row.id;
-        const parsed = hydrateEforgeEvent(row);
-        if (parsed) reactToDaemonEvent(parsed, context.options.daemonState.autoBuildController);
+    if (reactionScan !== null) return reactionScan;
+    const currentScan = (async () => {
+      try {
+        const rows = context.db.getDaemonEventsAfter(reactionCursor);
+        for (const row of rows) {
+          let parsed: EforgeEvent | null;
+          try {
+            parsed = hydrateEforgeEvent(row);
+          } catch {
+            if (row.id > reactionCursor) reactionCursor = row.id;
+            continue;
+          }
+          if (parsed) {
+            await reactToDaemonEvent(parsed, {
+              notifyQueueMutation: (reason) => context.options.daemonState?.autoBuildController.notifyQueueMutation(reason),
+              finalizeQueuePrdCompletion: context.options.daemonState?.finalizeQueuePrdCompletion,
+            });
+          }
+          if (row.id > reactionCursor) reactionCursor = row.id;
+        }
+      } catch {
+        // Best-effort: reaction errors must not affect stream delivery.
       }
-    } catch {
-      // Best-effort: reaction errors must not affect stream delivery.
+    })();
+    reactionScan = currentScan;
+    try {
+      await currentScan;
+    } finally {
+      if (reactionScan === currentScan) reactionScan = null;
     }
   }
 
@@ -147,8 +168,8 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
     subscriberCount,
     stop,
     buildHeartbeatObject,
-    flush(): void {
-      runPollCycle();
+    async flush(): Promise<void> {
+      await runPollCycle();
       emitDaemonHeartbeat();
     },
   };

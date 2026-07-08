@@ -24,6 +24,7 @@ export interface WorkerTracker {
 
 export interface DaemonState {
   autoBuildController: AutoBuildController;
+  finalizeQueuePrdCompletion?: (completion: { prdId: string; status: 'completed' | 'failed' | 'skipped' }) => Promise<void> | void;
   onShutdown?: () => void;
 }
 

@@ -107,9 +107,9 @@ describe('AC-008 adoption/reconciliation regression matrix', () => {
     expect(restQueue).toEqual(projectedQueue);
     expect(restQueue.map((item) => [item.id, item.status]).sort()).toEqual([
       ['adopted-live', 'running'],
-      ['corrupt-root', 'running'],
+      ['corrupt-root', 'pending'],
       ['dependent', 'pending'],
-      ['stale-root', 'running'],
+      ['stale-root', 'pending'],
     ]);
     expect(restQueue.find((item) => item.id === 'adopted-live')?.capabilities.cancel).toMatchObject({ allowed: true });
     expect(restQueue.find((item) => item.id === 'stale-root')?.capabilities.cancel).toMatchObject({ allowed: false, reason: expect.stringContaining('stale') });
