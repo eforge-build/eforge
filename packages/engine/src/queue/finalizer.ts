@@ -19,6 +19,7 @@ export interface FinalizeQueuedPrdOptions {
   releaseLock?: boolean;
   requireArtifacts?: boolean;
   writeFailedEvidence?: (filePath: string) => Promise<void>;
+  propagateDependents?: boolean;
 }
 
 export interface FinalizeQueuedPrdResult {
@@ -64,30 +65,42 @@ async function finalizeQueuedPrdOnce(options: FinalizeQueuedPrdOptions): Promise
     }
   }
 
-  let terminalTransition: FinalizeQueuedPrdResult['terminalTransition'];
+  let terminalTransition: FinalizeQueuedPrdResult['terminalTransition'] = 'missing';
+  let primaryError: unknown;
+  let dependentPropagation: (() => Promise<void>) | undefined;
 
-  if (options.status === 'completed') {
-    if (filePath !== undefined) await cleanupCompletedPrd(filePath, options.queueDir, options.cwd);
-    await unblockWaiting(options.queueDir, options.cwd, options.prdId, { requireArtifacts: options.requireArtifacts ?? true });
-    terminalTransition = 'completed-cleanup';
-  } else if (options.status === 'failed') {
-    if (filePath !== undefined) await finalizeFailedFile(options, filePath);
-    else await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed completion replay without PRD file');
-    await propagateSkip(options.queueDir, options.cwd, options.prdId, 'failed');
-    terminalTransition = filePath === undefined ? 'missing' : 'failed';
-  } else {
-    if (filePath !== undefined) await moveTerminalAware(options, filePath, 'skipped');
-    await propagateSkip(options.queueDir, options.cwd, options.prdId, 'cancelled');
-    terminalTransition = filePath === undefined ? 'missing' : 'skipped';
+  try {
+    if (options.status === 'completed') {
+      if (filePath !== undefined) await cleanupCompletedPrd(filePath, options.queueDir, options.cwd);
+      dependentPropagation = async () => { await unblockWaiting(options.queueDir, options.cwd, options.prdId, { requireArtifacts: options.requireArtifacts ?? true }); };
+      terminalTransition = 'completed-cleanup';
+    } else if (options.status === 'failed') {
+      if (filePath !== undefined) await finalizeFailedFile(options, filePath);
+      else await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed completion replay without PRD file');
+      if (options.propagateDependents !== false) dependentPropagation = () => propagateSkip(options.queueDir, options.cwd, options.prdId, 'failed');
+      terminalTransition = filePath === undefined ? 'missing' : 'failed';
+    } else {
+      if (filePath !== undefined) await moveTerminalAware(options, filePath, 'skipped');
+      if (options.propagateDependents !== false) dependentPropagation = () => propagateSkip(options.queueDir, options.cwd, options.prdId, 'cancelled');
+      terminalTransition = filePath === undefined ? 'missing' : 'skipped';
+    }
+
+    await recordCompletion(options);
+    try { await dependentPropagation?.(); } catch { /* best-effort dependent propagation */ }
+  } catch (err) {
+    primaryError = err;
+  } finally {
+    if (options.releaseLock !== false) {
+      try {
+        await releasePrd(options.prdId, options.cwd);
+        lockReleased = true;
+      } catch (releaseErr) {
+        if (primaryError === undefined) primaryError = releaseErr;
+      }
+    }
   }
 
-  await recordCompletion(options);
-
-  if (options.releaseLock !== false) {
-    await releasePrd(options.prdId, options.cwd);
-    lockReleased = true;
-  }
-
+  if (primaryError !== undefined) throw primaryError;
   return { finalized: true, lockReleased, terminalTransition };
 }
 
@@ -101,6 +114,9 @@ async function finalizeFailedFile(options: FinalizeQueuedPrdOptions, filePath: s
   if (options.writeFailedEvidence !== undefined) {
     try {
       await options.writeFailedEvidence(filePath);
+      if (!await hasRecoveryEvidence(options.cwd, options.queueDir, options.prdId)) {
+        await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed evidence writer completed without recovery evidence');
+      }
     } catch {
       await moveTerminalAware(options, filePath, 'failed');
       await writeDegradedRecoveryEvidence(options.cwd, options.queueDir, options.prdId, 'failed evidence writer threw');

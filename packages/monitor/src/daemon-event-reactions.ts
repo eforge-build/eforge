@@ -26,6 +26,7 @@ export interface DaemonReactionSink {
  *
  * Currently handles:
  *  - `enqueue:complete` → `sink.notifyQueueMutation('enqueue')`
+ *  - `queue:prd:complete` → `sink.notifyQueueMutation('external')`
  *
  * Safe to call when auto-build is disabled; AutoBuildSupervisor.notifyQueueMutation
  * already owns disabled/inert-watcher behaviour and is a no-op when not applicable.
@@ -36,5 +37,7 @@ export interface DaemonReactionSink {
 export function reactToDaemonEvent(event: EforgeEvent, sink: DaemonReactionSink): void {
   if (event.type === 'enqueue:complete') {
     sink.notifyQueueMutation('enqueue');
+  } else if (event.type === 'queue:prd:complete') {
+    sink.notifyQueueMutation('external');
   }
 }

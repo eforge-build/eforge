@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 233
+Total variants: 234
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -216,6 +216,7 @@ Total variants: 233
 | `daemon:recovery:start` | - |
 | `daemon:recovery:run-marked-failed` | `planSet`, `reason`, `runId` |
 | `daemon:recovery:lock-removed` | `path`, `pid` |
+| `daemon:recovery:lock-adopted` | `path`, `pid`, `prdId` |
 | `daemon:recovery:complete` | `durationMs`, `locksRemoved`, `runsFailed` |
 | `daemon:orphan:reaped` | `pid`, `planSet`, `runId`, `sessionId` |
 | `daemon:failed-enqueue:upsert` | `failedEnqueue` |

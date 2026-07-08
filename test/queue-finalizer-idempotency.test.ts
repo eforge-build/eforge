@@ -94,6 +94,24 @@ describe('shared queued PRD finalizer', () => {
     expect(evidence.verdict.recommendationSource).toBe('manual-fallback');
   });
 
+  it('writes degraded evidence and releases lock for missing failed PRD file replay', async () => {
+    const cwd = makeTempDir();
+    const queueDir = 'eforge/queue';
+    await mkdir(join(cwd, queueDir, 'waiting'), { recursive: true });
+    await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
+    await writePrd(join(cwd, queueDir, 'waiting', 'child.md'), 'Child', ['missing-parent']);
+    await writeFile(join(cwd, '.eforge', 'queue-locks', 'missing-parent.lock'), String(process.pid), 'utf-8');
+
+    const result = await finalizeQueuedPrd({ cwd, queueDir, prdId: 'missing-parent', status: 'failed' });
+
+    expect(result).toMatchObject({ finalized: true, lockReleased: true, terminalTransition: 'missing' });
+    expect(existsSync(join(cwd, queueDir, 'failed', 'missing-parent.recovery.json'))).toBe(true);
+    expect(existsSync(join(cwd, '.eforge', 'queue-locks', 'missing-parent.lock'))).toBe(false);
+    expect(existsSync(join(cwd, queueDir, 'skipped', 'child.md'))).toBe(true);
+    const registry = await loadCompletionRegistry(cwd);
+    expect(registry.completions['missing-parent']).toMatchObject({ status: 'failed' });
+  });
+
   it('cleans up a persisted orphan queue:prd:complete replay before completion handling can continue', async () => {
     const cwd = makeTempDir();
     const queueDir = 'eforge/queue';

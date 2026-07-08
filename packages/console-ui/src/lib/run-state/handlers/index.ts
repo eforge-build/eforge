@@ -367,6 +367,7 @@ export const IGNORED_EVENT_TYPES = [
   // Durable daemon-wide failed-enqueue projections are handled outside the per-run reducer.
   'daemon:failed-enqueue:upsert',
   'daemon:failed-enqueue:resolved',
+  'daemon:recovery:lock-adopted',
 ] as const;
 
 // ---------------------------------------------------------------------------

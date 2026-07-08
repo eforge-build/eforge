@@ -22,6 +22,7 @@ import { QueueScheduler, type SchedulerInputEvent } from '@eforge-build/engine/q
 import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { movePrdToSubdir, type QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { upsertArtifact } from '@eforge-build/engine/artifacts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,6 +57,20 @@ async function waitForSpawnCount(spawnPrdChild: ReturnType<typeof vi.fn>, expect
 
 async function waitForProcessed(scheduler: QueueScheduler, expectedCount: number): Promise<void> {
   await vi.waitFor(() => expect(scheduler.processed).toBe(expectedCount));
+}
+
+async function recordArtifact(cwd: string, prdId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await upsertArtifact(cwd, {
+    prdId,
+    artifactBranch: `eforge/${prdId}`,
+    commitSha: 'abc123',
+    resolvedBase: 'main',
+    landingAction: 'pr',
+    status: 'built',
+    recordedAt: now,
+    updatedAt: now,
+  });
 }
 
 async function waitForQueuedEvent(
@@ -137,7 +152,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
     // reconciliation does not re-queue it.
     spawnPrdChild
       .mockImplementationOnce(async () => { await movePrdToSubdir(prdAPath, 'failed', cwd); return 'failed'; })   // prd-a
-      .mockResolvedValueOnce('completed') // prd-b
+      .mockImplementationOnce(async () => new Promise(() => {})) // prd-b stays in-flight until the test emits completion
       .mockResolvedValueOnce('completed'); // prd-c
 
     const scheduler = makeScheduler([prdA, prdB]);
@@ -175,6 +190,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
       status: 'completed',
       timestamp: new Date().toISOString(),
     };
+    await recordArtifact(cwd, 'prd-b');
     bus.emit('queue:prd:complete', bCompleteEvent);
     await waitForProcessed(scheduler, 2);
 

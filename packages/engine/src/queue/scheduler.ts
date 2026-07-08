@@ -910,7 +910,13 @@ export class QueueScheduler {
     }
 
     const finalState = this.prdState.get(prdId);
-    if (this.completedPrdFinalizations.has(prdId) || finalState?.status === 'completed' || finalState?.status === 'failed' || finalState?.status === 'skipped') {
+    if (this.completedPrdFinalizations.has(prdId)) {
+      await this.discoverNewPrds();
+      if (status === 'failed' || status === 'skipped') this.propagateBlocked(prdId);
+      await this.startReadyPrds();
+      return;
+    }
+    if (finalState?.status === 'completed' || finalState?.status === 'failed' || finalState?.status === 'skipped') {
       return;
     }
     if (!finalState || finalState.status === 'pending' || finalState.status === 'blocked') {
