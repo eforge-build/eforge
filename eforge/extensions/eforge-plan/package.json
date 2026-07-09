@@ -47,12 +47,12 @@
     "@eforge-build/client": "workspace:*",
     "@eforge-build/extension-sdk": "workspace:*",
     "@eforge-build/input": "workspace:*",
-    "@sinclair/typebox": "0.34.49",
+    "@sinclair/typebox": "0.34.50",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eforge-build/eforge-plan-workstation": "workspace:*",
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },

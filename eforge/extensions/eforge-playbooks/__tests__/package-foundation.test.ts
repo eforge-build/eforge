@@ -15,7 +15,7 @@ describe('eforge-playbooks package foundation', () => {
     const eforgePkg = await json(join(repo, 'packages/eforge/package.json'));
     expect(pkg).toMatchObject({ name: '@eforge-build/eforge-playbooks', version: eforgePkg.version, license: 'Apache-2.0', type: 'module', types: './dist/index.d.ts', eforge: { extension: { name: 'eforge-playbooks', entrypoint: './dist/index.js' } } });
     expect(pkg.files).toEqual(['dist/', 'README.md', 'LICENSE']);
-    expect(pkg.dependencies).toMatchObject({ '@eforge-build/extension-sdk': 'workspace:*', '@eforge-build/input': 'workspace:*', '@eforge-build/scopes': 'workspace:*', yaml: '^2.8.0', zod: '^4.4.3' });
+    expect(pkg.dependencies).toMatchObject({ '@eforge-build/extension-sdk': 'workspace:*', '@eforge-build/input': 'workspace:*', '@eforge-build/scopes': 'workspace:*', yaml: '^2.9.0', zod: '^4.4.3' });
     expect(await readFile(join(repo, 'pnpm-workspace.yaml'), 'utf-8')).toContain('eforge/extensions/eforge-playbooks');
     expect(await readFile(join(repo, 'scripts/lib/lockstep-version.mjs'), 'utf-8')).toContain('eforge/extensions/eforge-playbooks/package.json');
     expect((await json(join(repo, 'package.json'))).scripts['type-check:eforge-playbooks']).toContain('@eforge-build/eforge-playbooks');
