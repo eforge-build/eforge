@@ -95,6 +95,23 @@ function ownershipForPath(path: string, referencedByAtomIds: string[], graph: Pl
   };
 }
 
+/**
+ * Synthetic repair evidence ownership for materialization only. The repair
+ * loop appends these entries so representation-required gap owner paths that
+ * localization missed still produce a source-evidence record (materialized,
+ * or missing/file-not-found) instead of silently having none. They are
+ * appended after atom briefs are built, so they never join
+ * ownedEvidencePaths/localEvidencePaths/sharedEvidenceRefs or shared-brief
+ * sections - no shared-finding ownership is implied.
+ */
+export function synthesizeRepairEvidenceOwnership(paths: string[], atomIds: string[], graph: PlanningAtomGraph): PlanningEvidenceOwnership[] {
+  const validAtomIds = [...new Set(atomIds.filter((atomId) => graph.atoms.some((atom) => atom.atomId === atomId)))].sort();
+  if (validAtomIds.length === 0) return [];
+  return [...new Set(paths.map(normalizeEvidenceValue))].sort()
+    .filter((path) => classifyEvidenceCandidate(path).actionable)
+    .map((path) => ({ ...ownershipForPath(path, validAtomIds, graph), reason: 'synthetic-repair-evidence' }));
+}
+
 function localizationOwnershipMetadata(metadata: OwnershipAccumulator | undefined): Pick<PlanningEvidenceOwnership, 'localizationNeedIds' | 'localizationStatus' | 'localizationConfidence' | 'candidateRank' | 'ownershipRationale' | 'criterionLinked'> {
   if (!metadata) return {};
   const criterionLinked = metadata.criterionLinked === true ? { criterionLinked: true } : {};

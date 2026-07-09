@@ -6,14 +6,14 @@ import type { SourceLocalizationConfidence, SourceLocalizationStatus } from './s
 
 export type PlanningSourceEvidenceStatus = 'materialized' | 'missing' | 'non-actionable' | 'directory' | 'too-large' | 'read-error' | 'budget-exceeded';
 
-export interface PlanningSourceEvidenceLimits { maxFilesTotal: number; maxFilesPerAtom: number; maxBytesTotal: number; maxBytesPerFile: number; maxExcerptBytesPerFile: number; maxEvidenceBytesPerAtom: number }
+export interface PlanningSourceEvidenceLimits { maxFilesTotal: number; maxFilesPerAtom: number; maxBytesTotal: number; maxBytesPerFile: number; maxExcerptBytesPerFile: number; maxEvidenceBytesPerAtom: number; maxPriorityEvidenceBytesPerAtom: number }
 export interface PlanningSourceEvidenceLocalizationMetadata { localizationNeedIds?: string[]; localizationStatus?: SourceLocalizationStatus; localizationConfidence?: SourceLocalizationConfidence; candidateRank?: number; ownershipRationale?: string; budgetNotes?: string[]; accountedByteLength?: number }
-export interface PlanningSourceEvidenceRecord extends PlanningSourceEvidenceLocalizationMetadata { path: string; status: PlanningSourceEvidenceStatus; referencedByAtomIds: string[]; primaryAtomId?: string; shared: boolean; deliveredToAtomIds: string[]; byteLength?: number; excerptByteLength?: number; contentExcerpt?: string; reason?: string; error?: string }
+export interface PlanningSourceEvidenceRecord extends PlanningSourceEvidenceLocalizationMetadata { path: string; status: PlanningSourceEvidenceStatus; referencedByAtomIds: string[]; primaryAtomId?: string; shared: boolean; deliveredToAtomIds: string[]; byteLength?: number; excerptByteLength?: number; contentExcerpt?: string; reason?: string; error?: string; priority?: boolean; budgetAtomIds?: string[] }
 export interface PlanningSourceEvidenceBundle { graphId: string; sourceHash: string; records: PlanningSourceEvidenceRecord[]; byAtomId: Record<string, string[]>; bytesByAtomId?: Record<string, number>; filesByAtomId?: Record<string, number>; totalBytes: number; limits: PlanningSourceEvidenceLimits; validationErrors: string[] }
 export interface ValidatePlanningSourceEvidenceBundleInput { graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; bundle: PlanningSourceEvidenceBundle; limits?: PlanningSourceEvidenceLimits }
 export type PlanningSourceEvidenceValidation = { ok: true; errors: [] } | { ok: false; errors: string[] };
 
-export const DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS: PlanningSourceEvidenceLimits = { maxFilesTotal: 40, maxFilesPerAtom: 8, maxBytesTotal: 80_000, maxBytesPerFile: 200_000, maxExcerptBytesPerFile: 8_000, maxEvidenceBytesPerAtom: 20_000 };
+export const DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS: PlanningSourceEvidenceLimits = { maxFilesTotal: 40, maxFilesPerAtom: 8, maxBytesTotal: 80_000, maxBytesPerFile: 200_000, maxExcerptBytesPerFile: 8_000, maxEvidenceBytesPerAtom: 20_000, maxPriorityEvidenceBytesPerAtom: 40_000 };
 
 export function validatePlanningSourceEvidenceBundle(input: ValidatePlanningSourceEvidenceBundleInput): PlanningSourceEvidenceValidation {
   const limits = input.limits ?? input.bundle.limits ?? DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS;
@@ -43,7 +43,7 @@ function validateRecords(records: PlanningSourceEvidenceRecord[], ownership: Map
     if (record.status === 'materialized' && record.contentExcerpt === undefined) errors.push(`materialized evidence missing excerpt:${record.path}`);
     if (record.status !== 'materialized' && record.contentExcerpt !== undefined) errors.push(`non-materialized evidence has excerpt:${record.path}`);
     if ((record.excerptByteLength ?? 0) > limits.maxExcerptBytesPerFile || utf8ByteLength(record.contentExcerpt ?? '') > limits.maxExcerptBytesPerFile) errors.push(`source evidence excerpt budget exceeded:${record.path}`);
-    for (const atomId of [...record.referencedByAtomIds, ...record.deliveredToAtomIds]) if (!atomIds.has(atomId)) errors.push(`source evidence unknown atom:${record.path}:${atomId}`);
+    for (const atomId of [...record.referencedByAtomIds, ...record.deliveredToAtomIds, ...(record.budgetAtomIds ?? [])]) if (!atomIds.has(atomId)) errors.push(`source evidence unknown atom:${record.path}:${atomId}`);
     if (record.primaryAtomId && !record.referencedByAtomIds.includes(record.primaryAtomId)) errors.push(`source evidence primary does not reference path:${record.path}:${record.primaryAtomId}`);
     if (record.shared && record.status === 'materialized' && record.primaryAtomId && !sameStringList(record.deliveredToAtomIds, [record.primaryAtomId])) errors.push(`shared evidence delivered outside primary atom:${record.path}`);
   }
@@ -73,6 +73,7 @@ function cloneRecord(record: PlanningSourceEvidenceRecord): PlanningSourceEviden
     deliveredToAtomIds: [...record.deliveredToAtomIds],
     ...(record.localizationNeedIds ? { localizationNeedIds: [...record.localizationNeedIds] } : {}),
     ...(record.budgetNotes ? { budgetNotes: [...record.budgetNotes] } : {}),
+    ...(record.budgetAtomIds ? { budgetAtomIds: [...record.budgetAtomIds] } : {}),
   };
 }
 

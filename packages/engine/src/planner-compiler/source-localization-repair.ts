@@ -3,9 +3,9 @@ import type { PlanningAtomGraph } from './atom-graph.js';
 import { runPlanningAtomMap, type PlanningAtomMapResult } from './atom-map-runner.js';
 import type { PlanningReduceGap, PlanningReduceGapIssueKind, PlanningReduceLimits } from './reduce-contracts.js';
 import { runPlanningReduce, type PlanningReduceResult } from './reduce-runner.js';
-import { deriveSharedPlanningBrief } from './shared-brief.js';
+import { deriveSharedPlanningBrief, synthesizeRepairEvidenceOwnership } from './shared-brief.js';
 import type { SharedPlanningBrief, SharedPlanningBriefLimits } from './shared-brief-contracts.js';
-import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits, PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
+import type { PlanningSourceEvidenceBundle, PlanningSourceEvidenceLimits, PlanningSourceEvidenceRecord, PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
 import { materializePlanningSourceEvidence } from './source-evidence-materialization.js';
 import { classifyEvidenceCandidate, normalizeEvidenceValue } from './evidence-hygiene.js';
 import type { SourceInventory } from './source-inventory.js';
@@ -43,7 +43,7 @@ export interface SourceLocalizationRepairDiagnostic {
   aspectIds: string[];
   localizedOwnerPaths: string[];
   localizedOwnerStatus: Array<{ path: string; status: SourceLocalizationStatus | 'none'; needIds: string[] }>;
-  evidenceMaterializationStatus: Array<{ path: string; status: PlanningSourceEvidenceStatus | 'none'; reason?: string }>;
+  evidenceMaterializationStatus: Array<{ path: string; status: PlanningSourceEvidenceStatus | 'none'; reason?: string; budgetAtomIds?: string[]; priority?: boolean }>;
   coverageStatus: { criteria: Record<string, SourceLocalizationRepairCoverageStatus>; aspects: Record<string, SourceLocalizationRepairCoverageStatus>; sourceNeeds: Record<string, SourceLocalizationRepairCoverageStatus> };
   unresolvedReason?: string;
   residueSynthesisBlocked: boolean;
@@ -86,6 +86,9 @@ interface RunSourceLocalizationRepairLoopInput {
 const SOURCE_GAP_KINDS = new Set<PlanningReduceGapIssueKind>(['missing-owner-path', 'missing-contract-evidence', 'missing-entrypoint-evidence', 'missing-config-evidence', 'missing-consumer-surface-evidence', 'directory-only-evidence', 'missing-materialized-source', 'localization-ambiguity']);
 const MAX_REPAIR_PROJECT_HINTS = 100;
 const MAX_FALLBACK_SOURCE_NEEDS_PER_GAP = 16;
+const MAX_REPAIR_PRIORITY_PATHS = 32;
+const MAX_SOFT_PRIORITY_PATHS_PER_GAP = 8;
+const MAX_UNRESOLVED_REASON_PATHS = 8;
 
 // Exploration-only vocabulary kinds: they describe why exploration could not localize, not a repairable
 // reduce gap, so they must never be re-inferred into a source-gap kind from gap text. They trigger repair
@@ -108,8 +111,9 @@ export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizati
     const affectedAtomIds = resolveAffectedAtomIds({ gaps, graph: input.graph, sourceLocalizationBundle: state.sourceLocalizationBundle, sourceEvidenceBundle: state.sourceEvidenceBundle });
     const repairHints = mergeRepairHints(input.sourceLocalizationHints, hintsForGaps(gaps, affectedAtomIds, state.sourceLocalizationBundle));
     const sourceLocalizationBundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.sourceInventory, graph: input.graph, hints: repairHints, limits: input.sourceLocalizationLimits });
-    const sharedBrief = deriveSharedPlanningBrief({ graph: input.graph, sourceLocalizationBundle, limits: input.sharedBriefLimits });
-    const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: input.graph, sharedBrief, limits: input.sourceEvidenceLimits });
+    const priorityPaths = repairPriorityPaths(gaps, sourceLocalizationBundle);
+    const sharedBrief = withSyntheticRepairOwnership(deriveSharedPlanningBrief({ graph: input.graph, sourceLocalizationBundle, limits: input.sharedBriefLimits }), gaps, affectedAtomIds, input.graph);
+    const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: input.graph, sharedBrief, limits: input.sourceEvidenceLimits, priorityPaths });
     const map = affectedAtomIds.length === 0 ? state.map : await runPlanningAtomMap({ graph: input.graph, inventory: input.sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes: input.reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent, affectedAtomIds, priorOutputs: state.map.outputs });
     const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
     state = { sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce };
@@ -174,7 +178,10 @@ function buildRepairDiagnostic(input: { attempt: number; maxAttempts: number; ga
     aspectIds,
     localizedOwnerPaths,
     localizedOwnerStatus: localizedOwnerPaths.map((path) => ownerStatus(path, input.sourceLocalizationBundle)),
-    evidenceMaterializationStatus: localizedOwnerPaths.map((path) => ({ path, status: evidenceByPath.get(path)?.status ?? 'none', ...(evidenceByPath.get(path)?.reason ? { reason: evidenceByPath.get(path)!.reason } : {}) })),
+    evidenceMaterializationStatus: localizedOwnerPaths.map((path) => {
+      const record = evidenceByPath.get(path);
+      return { path, status: record?.status ?? 'none' as const, ...(record?.reason ? { reason: record.reason } : {}), ...(record?.budgetAtomIds && record.budgetAtomIds.length > 0 ? { budgetAtomIds: [...record.budgetAtomIds] } : {}), ...(record?.priority ? { priority: true } : {}) };
+    }),
     coverageStatus: { criteria: coverageRecord(criterionIds, input.graph.atoms.flatMap((atom) => atom.criterionIds)), aspects: coverageRecord(aspectIds, input.sourceLocalizationBundle.records.flatMap((record) => record.linkedAspectIds)), sourceNeeds: coverageRecord(sourceNeedIds, input.sourceLocalizationBundle.records.map((record) => record.needId)) },
     ...(input.status === 'exhausted' || input.status === 'unresolved' ? { unresolvedReason: input.unresolvedReasonOverride ?? unresolvedReason(input.gaps, input.affectedAtomIds, localizedOwnerPaths, input.sourceEvidenceBundle) } : {}),
     residueSynthesisBlocked: true,
@@ -238,12 +245,52 @@ function hintKindFor(kind: PlanningReduceGapIssueKind): SourceLocalizationHint['
   return 'keyword';
 }
 
+/**
+ * Two-tier repair priority for evidence materialization. Hard tier: explicit
+ * gap owner paths - never truncated, so the exact evidence a
+ * representation-required gap demanded always ranks first. Soft tier: the
+ * remaining localized candidates for the gaps (the same set unresolvedReason
+ * later checks), capped per gap and in total so a broad localization fan-out
+ * cannot turn "priority" into "everything".
+ */
+function repairPriorityPaths(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
+  const hard = uniq(gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue)));
+  const hardSet = new Set(hard);
+  const soft = uniq(gaps.flatMap((gap) => localizedPathsFor([gap], localization)
+    .map(normalizeEvidenceValue)
+    .filter((path) => !hardSet.has(path))
+    .slice(0, MAX_SOFT_PRIORITY_PATHS_PER_GAP)));
+  return [...hard, ...soft].slice(0, Math.max(hard.length, MAX_REPAIR_PRIORITY_PATHS));
+}
+
+/**
+ * Appends synthetic repair evidence ownership for hard-priority gap owner
+ * paths that localization did not resolve into ownership, so the materializer
+ * produces a real record for them (materialized or missing) instead of
+ * leaving them without any evidence record. Materialization-only: atom briefs
+ * are already built, so the synthetic entries never join ownedEvidencePaths
+ * or shared-brief sections.
+ */
+function withSyntheticRepairOwnership(brief: SharedPlanningBrief, gaps: ClassifiedPlanningReduceGap[], affectedAtomIds: string[], graph: PlanningAtomGraph): SharedPlanningBrief {
+  const existing = new Set(brief.evidenceOwnership.map((entry) => entry.path));
+  const missingHardPaths = uniq(gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue))).filter((path) => !existing.has(path));
+  const synthetic = missingHardPaths.flatMap((path) => synthesizeRepairEvidenceOwnership([path], atomIdsForSyntheticPath(path, gaps, affectedAtomIds), graph));
+  return synthetic.length === 0 ? brief : { ...brief, evidenceOwnership: [...brief.evidenceOwnership, ...synthetic] };
+}
+
+function atomIdsForSyntheticPath(path: string, gaps: ClassifiedPlanningReduceGap[], fallbackAtomIds: string[]): string[] {
+  const matchingGapAtomIds = gaps
+    .filter((gap) => gap.ownerPaths.map(normalizeEvidenceValue).includes(path))
+    .flatMap((gap) => gap.affectedAtomIds);
+  return uniq(matchingGapAtomIds.length > 0 ? matchingGapAtomIds : fallbackAtomIds);
+}
+
 function localizedPathsFor(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
   const needIds = new Set(gaps.flatMap((gap) => gap.sourceNeedIds));
-  const explicit = gaps.flatMap((gap) => gap.ownerPaths);
+  const explicit = gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue));
   const localized = localization.records
-    .filter((record) => needIds.has(record.needId) || explicit.includes(record.query) || record.candidateFiles.some((candidate) => explicit.includes(candidate.path)))
-    .flatMap((record) => record.candidateFiles.map((candidate) => candidate.path));
+    .filter((record) => needIds.has(record.needId) || explicit.includes(normalizeEvidenceValue(record.query)) || record.candidateFiles.some((candidate) => explicit.includes(normalizeEvidenceValue(candidate.path))))
+    .flatMap((record) => record.candidateFiles.map((candidate) => normalizeEvidenceValue(candidate.path)));
   return uniq([...explicit, ...localized]);
 }
 
@@ -260,8 +307,19 @@ function coverageRecord(ids: string[], coveredIds: string[]): Record<string, Sou
 function unresolvedReason(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], paths: string[], evidence: PlanningSourceEvidenceBundle): string {
   if (atomIds.length === 0) return 'no affected atoms resolved from gap metadata';
   if (paths.length === 0) return 'no localized owner paths resolved';
-  const nonMaterialized = paths.filter((path) => evidence.records.find((record) => record.path === path)?.status !== 'materialized');
-  return nonMaterialized.length > 0 ? `localized owner paths not materialized:${nonMaterialized.join(',')}` : `reducer still reports source/localization gaps:${gaps.map((gap) => gap.gap.gapId).join(',')}`;
+  const recordByPath = new Map(evidence.records.map((record) => [record.path, record]));
+  const nonMaterialized = paths.filter((path) => recordByPath.get(path)?.status !== 'materialized');
+  if (nonMaterialized.length === 0) return `reducer still reports source/localization gaps:${gaps.map((gap) => gap.gap.gapId).join(',')}`;
+  const detailed = nonMaterialized.slice(0, MAX_UNRESOLVED_REASON_PATHS).map((path) => describeNonMaterializedPath(path, recordByPath.get(path)));
+  const overflow = nonMaterialized.length - MAX_UNRESOLVED_REASON_PATHS;
+  return `localized owner paths not materialized:${detailed.join(',')}${overflow > 0 ? ` (+${overflow} more)` : ''}`;
+}
+
+function describeNonMaterializedPath(path: string, record: PlanningSourceEvidenceRecord | undefined): string {
+  if (!record) return `${path}(no-evidence-record)`;
+  const reason = record.reason ? `:${record.reason}` : '';
+  const budgetAtoms = record.budgetAtomIds && record.budgetAtomIds.length > 0 ? `@${record.budgetAtomIds.join('+')}` : '';
+  return `${path}(${record.status}${reason}${budgetAtoms})`;
 }
 
 function extractPathSignals(text: string): string[] {

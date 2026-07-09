@@ -84,7 +84,7 @@ const CompilerDiagnosticsRepairAttemptSchema = Type.Object({
   aspectIds: boundedIds(240, 128),
   localizedOwnerPaths: boundedIds(300, 64),
   localizedOwnerStatus: Type.Array(Type.Object({ path: boundedString(300), status: LocalizationOwnerStatusSchema, needIds: boundedIds(160, 16) }, { additionalProperties: false }), { maxItems: 64 }),
-  evidenceMaterializationStatus: Type.Array(Type.Object({ path: boundedString(300), status: EvidenceStatusSchema, reason: Type.Optional(boundedString(500)) }, { additionalProperties: false }), { maxItems: 64 }),
+  evidenceMaterializationStatus: Type.Array(Type.Object({ path: boundedString(300), status: EvidenceStatusSchema, reason: Type.Optional(boundedString(500)), budgetAtomIds: Type.Optional(boundedIds(160, 16)), priority: Type.Optional(Type.Boolean()) }, { additionalProperties: false }), { maxItems: 64 }),
   coverageStatus: Type.Object({
     criteria: Type.Array(RepairCoverageEntrySchema(80), { maxItems: 256 }),
     aspects: Type.Array(RepairCoverageEntrySchema(240), { maxItems: 1_024 }),
@@ -113,6 +113,7 @@ const CompilerDiagnosticsEvidenceFailureSchema = Type.Object({
   reason: Type.Optional(boundedString(500)),
   error: Type.Optional(boundedString(500)),
   referencedByAtomIds: boundedIds(160, 16),
+  budgetAtomIds: Type.Optional(boundedIds(160, 16)),
 }, { additionalProperties: false });
 
 const CompilerDiagnosticsSharedBriefBudgetEntrySchema = Type.Object({
