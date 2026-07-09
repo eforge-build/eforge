@@ -285,6 +285,7 @@ describe('eforge-plan README planner contract', () => {
     expect(rows.some((row) => row.startsWith('| `analyze-all-backlog` |'))).toBe(true);
     expect(rows.filter((row) => row.includes('build-queue'))).toEqual([
       expect.stringMatching(/^\| `handoff-session-plan` \|/),
+      expect.stringMatching(/^\| `resubmit-session-plan` \|/),
     ]);
   });
 

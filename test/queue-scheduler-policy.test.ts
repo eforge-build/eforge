@@ -41,11 +41,10 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     );
 
     await scheduler.start();
-    await vi.waitFor(() => {
-      expect(existsSync(join(cwd, 'eforge', 'queue', 'failed', 'blocked-prd.md'))).toBe(true);
-    });
-
-    const events = eventQueue.drainAvailable();
+    const events = await waitForSchedulerEvents(eventQueue, (seen) =>
+      existsSync(join(cwd, 'eforge', 'queue', 'failed', 'blocked-prd.md')) &&
+      seen.some((event) => event.type === 'queue:prd:complete' && event.prdId === 'blocked-prd'),
+    );
     expect(spawnPrdChild).not.toHaveBeenCalled();
     expect(profileRouter).not.toHaveBeenCalled();
     expect(events.some((event) => event.type === 'session:start')).toBe(false);
@@ -78,11 +77,10 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     );
 
     await scheduler.start();
-    await vi.waitFor(() => {
-      expect(existsSync(join(cwd, 'eforge', 'queue', 'failed', 'approval-prd.md'))).toBe(true);
-    });
-
-    const events = eventQueue.drainAvailable();
+    const events = await waitForSchedulerEvents(eventQueue, (seen) =>
+      existsSync(join(cwd, 'eforge', 'queue', 'failed', 'approval-prd.md')) &&
+      seen.some((event) => event.type === 'queue:prd:complete' && event.prdId === 'approval-prd'),
+    );
     expect(spawnPrdChild).not.toHaveBeenCalled();
     expect(events).toContainEqual(expect.objectContaining({ type: 'extension:policy:decision', decision: 'require-approval', reason: 'needs human review' }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:complete', prdId: 'approval-prd', status: 'failed' }));

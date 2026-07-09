@@ -39,6 +39,8 @@ export interface LifecycleItemProgressRow {
   title?: string;
   status?: string;
   lifecycleState?: string;
+  unresolvedSourceRef?: boolean;
+  missingLifecycleEvidence?: boolean;
   shipped?: boolean;
   evidence?: string;
   rows?: LifecycleLinkRow[];
@@ -65,6 +67,7 @@ export interface PlanSourceRefs {
 export interface PlanLifecycleProjection {
   sourceRefs: PlanSourceRefs;
   lifecycleState: string;
+  partialReasons?: Array<{ code: string; message: string }>;
   itemRows: LifecycleItemProgressRow[];
   linkRows: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
@@ -99,6 +102,9 @@ export interface Artifact {
   linkRows?: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
   lifecycleState?: string;
+  partialReasons?: Array<{ code: string; message: string }>;
+  statusSource?: string;
+  statusSourceDisclosure?: string;
   prRefs?: PullRequestRef[];
   landingRefs?: LandingRef[];
 }
@@ -534,6 +540,9 @@ export interface PlanData {
   linkRows?: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
   lifecycleState?: string;
+  partialReasons?: Array<{ code: string; message: string }>;
+  statusSource?: string;
+  statusSourceDisclosure?: string;
   itemRows?: LifecycleItemProgressRow[];
   epicProgress?: EpicProgress[];
   prRefs?: PullRequestRef[];
@@ -550,43 +559,12 @@ export interface Readiness {
   skippedDimensions?: string[];
   acDiagnostics?: AcDiagnostic[];
 }
-export interface PlanDetail { path?: string; plan?: PlanData; readiness?: Readiness; sourceRefs?: PlanSourceRefs; lifecycle?: PlanLifecycleProjection; }
+export interface PlanDetail { path?: string; plan?: PlanData; readiness?: Readiness; sourceRefs?: PlanSourceRefs; lifecycle?: PlanLifecycleProjection; statusSource?: string; statusSourceDisclosure?: string; }
 
-export interface PlanSetChild {
-  id: string;
-  file?: string;
-  kind?: string;
-  status: string;
-  buildable?: boolean;
-  profile?: string;
-  dependsOn?: string[];
-  exists?: boolean;
-  validation?: { ok?: boolean; diagnosticCount?: number };
-}
-export interface PlanSetDiagnostic {
-  severity?: string;
-  code?: string;
-  message?: string;
-  childId?: string;
-  file?: string;
-  dependency?: string;
-  path?: string;
-}
-export interface PlanSetSummary {
-  id: string;
-  title?: string;
-  status?: string;
-  strategy?: string;
-  children?: PlanSetChild[];
-  diagnostics?: PlanSetDiagnostic[];
-}
-export interface PlanSetDetail {
-  planSet?: PlanSetSummary;
-  validation?: { ok?: boolean; diagnostics?: PlanSetDiagnostic[] };
-  dir?: string;
-  manifestPath?: string;
-  anchorContent?: string;
-}
+export interface PlanSetChild { id: string; file?: string; kind?: string; status: string; buildable?: boolean; profile?: string; dependsOn?: string[]; exists?: boolean; validation?: { ok?: boolean; diagnosticCount?: number }; }
+export interface PlanSetDiagnostic { severity?: string; code?: string; message?: string; childId?: string; file?: string; dependency?: string; path?: string; }
+export interface PlanSetSummary { id: string; title?: string; status?: string; strategy?: string; children?: PlanSetChild[]; diagnostics?: PlanSetDiagnostic[]; }
+export interface PlanSetDetail { planSet?: PlanSetSummary; validation?: { ok?: boolean; diagnostics?: PlanSetDiagnostic[] }; dir?: string; manifestPath?: string; anchorContent?: string; }
 export type Detail = PlanDetail | PlanSetDetail | null;
 
 export interface WorkstationData {

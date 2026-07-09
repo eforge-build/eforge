@@ -53,11 +53,16 @@ const LifecycleTimestampFields = {
   submittedAt: Type.Optional(Type.String()),
   lastBuildActivityAt: Type.Optional(Type.String()),
 } as const;
+const StatusSourceFields = {
+  statusSource: Type.Optional(Type.String()),
+  statusSourceDisclosure: Type.Optional(Type.String()),
+} as const;
 export const SessionPlanProjectionSchema = Type.Object({
   session: Type.String(),
   topic: Type.String(),
   status: Type.String(),
   body: Type.String(),
+  ...StatusSourceFields,
   ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const SessionPlanDetailOutputSchema = Type.Object({
@@ -66,6 +71,7 @@ export const SessionPlanDetailOutputSchema = Type.Object({
   path: Type.String(),
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycle: Type.Optional(SessionPlanLifecycleProjectionSchema),
+  ...StatusSourceFields,
   ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const PlanningArtifactSchema = Type.Object({
@@ -73,6 +79,8 @@ export const PlanningArtifactSchema = Type.Object({
   key: Type.String(),
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycleState: Type.Optional(LifecycleStateSchema),
+  partialReasons: Type.Optional(Type.Array(Type.Object({ code: Type.String(), message: Type.String() }, { additionalProperties: true }))),
+  ...StatusSourceFields,
   itemRows: Type.Optional(Type.Array(ItemLifecycleProjectionSchema)),
   linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
   failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
@@ -203,22 +211,38 @@ export const ListAgentRuntimeProfilesInputSchema = Type.Object({
 });
 export const ListAgentRuntimeProfilesOutputSchema = ProfileListResponseSchema;
 export const HandoffSessionPlanInputSchema = Type.Object({ session: Type.String() });
+export const ResubmitSessionPlanInputSchema = Type.Object({ session: Type.String() });
+const HandoffNotReadyOutputSchema = Type.Object({
+  kind: Type.Literal('not-ready'),
+  session: Type.String(),
+  readiness: SessionPlanReadinessDetailSchema,
+  message: Type.String(),
+}, JsonObjectAdditionalProperties);
+const HandoffEnqueuedOutputSchema = Type.Object({
+  kind: Type.Literal('enqueued'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
+  queueSessionId: Type.String(), pid: Type.Number(), autoBuild: Type.Boolean(), message: Type.String(), submittedAt: Type.String(),
+  readiness: SessionPlanReadinessDetailSchema,
+}, JsonObjectAdditionalProperties);
+const HandoffEnqueueFailedOutputSchema = Type.Object({
+  kind: Type.Literal('enqueue-failed'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
+  command: Type.String(), message: Type.String(), readiness: SessionPlanReadinessDetailSchema,
+}, JsonObjectAdditionalProperties);
 export const HandoffSessionPlanOutputSchema = Type.Union([
+  HandoffNotReadyOutputSchema,
+  HandoffEnqueuedOutputSchema,
+  HandoffEnqueueFailedOutputSchema,
+]);
+export const ResubmitSessionPlanOutputSchema = Type.Union([
   Type.Object({
-    kind: Type.Literal('not-ready'),
+    kind: Type.Literal('not-recoverable'),
     session: Type.String(),
-    readiness: SessionPlanReadinessDetailSchema,
     message: Type.String(),
+    status: Type.Optional(Type.String()),
+    readiness: Type.Optional(SessionPlanReadinessDetailSchema),
   }, JsonObjectAdditionalProperties),
-  Type.Object({
-    kind: Type.Literal('enqueued'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
-    queueSessionId: Type.String(), pid: Type.Number(), autoBuild: Type.Boolean(), message: Type.String(), submittedAt: Type.String(),
-    readiness: SessionPlanReadinessDetailSchema,
-  }, JsonObjectAdditionalProperties),
-  Type.Object({
-    kind: Type.Literal('enqueue-failed'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
-    command: Type.String(), message: Type.String(), readiness: SessionPlanReadinessDetailSchema,
-  }, JsonObjectAdditionalProperties),
+  HandoffNotReadyOutputSchema,
+  HandoffEnqueuedOutputSchema,
+  HandoffEnqueueFailedOutputSchema,
 ]);
 // --- eforge:endregion session-plan-schemas ---
 
@@ -238,3 +262,4 @@ export type SetSessionPlanReadyInput = Static<typeof SetSessionPlanReadyInputSch
 export type DeleteSessionPlanInput = Static<typeof DeleteSessionPlanInputSchema>;
 export type UpdateSessionPlanMetadataInput = Static<typeof UpdateSessionPlanMetadataInputSchema>;
 export type HandoffSessionPlanInput = Static<typeof HandoffSessionPlanInputSchema>;
+export type ResubmitSessionPlanInput = Static<typeof ResubmitSessionPlanInputSchema>;

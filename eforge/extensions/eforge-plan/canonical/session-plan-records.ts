@@ -91,9 +91,10 @@ export function replaceSessionPlanLinks(store: EforgePlanStore, input: { session
   replaceAllSessionPlanEpics(store, { session: input.session, epics: (input.epicIds ?? []).map((epicRef, sequence) => ({ epicRef, epicId: getEpic(store, epicRef)?.id, role: 'source', provenance: input.provenance ?? 'canonical-sync', sourceTaskId: input.sourceTaskId, sourceRecommendationRef: input.sourceRecommendationRef, promotedAt: now, sequence })) });
 }
 
-export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
+export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; eforgeSessionId?: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
   const at = input.timestamp ?? canonicalNowIso();
   const existing = getSessionPlan(store, input.session);
+  supersedeRecoverableSessionBuildEvidence(store, input.session, at);
   upsertSessionPlan(store, {
     session: input.session,
     path: input.path ?? existing?.path,
@@ -103,7 +104,7 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     planningDepth: existing?.planningDepth,
     profile: existing?.profile,
     agentProfile: existing?.agentProfile,
-    eforgeSessionId: existing?.eforgeSessionId,
+    eforgeSessionId: input.eforgeSessionId ?? input.queuePrdId ?? existing?.eforgeSessionId,
     submittedAt: at,
     createdAt: existing?.createdAt ?? at,
     updatedAt: at,
@@ -113,15 +114,28 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     frontmatter: existing?.frontmatter ?? {},
   });
   upsertQueuePrd(store, { prdId: input.queuePrdId, session: input.session, sourcePath: input.path, status: input.status ?? 'queued', submittedAt: at, updatedAt: at });
-  for (const itemId of input.itemIds ?? []) recordLifecycleEvidence(store, { evidenceKey: `submitted:${input.queuePrdId}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, queuePrdId: input.queuePrdId, lifecycleState: 'submitted', reasonCode: 'submitted-session-plan', evidenceKind: 'handoff', occurredAt: at, links: jsonValue({ session: input.session, queuePrdId: input.queuePrdId, path: input.path }) });
+  const itemIds = submittedItemIds(store, input.session, input.itemIds);
+  for (const itemId of itemIds) recordLifecycleEvidence(store, { evidenceKey: `submitted:${input.queuePrdId}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, queuePrdId: input.queuePrdId, lifecycleState: 'submitted', reasonCode: 'submitted-session-plan', evidenceKind: 'handoff', occurredAt: at, links: jsonValue({ session: input.session, queuePrdId: input.queuePrdId, path: input.path }) });
   markCanonicalSearchDirty(store, [
     { documentType: 'session_plan', documentId: input.session, reason: 'session-plan-submitted' },
-    ...(input.itemIds ?? []).map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'session-plan-submitted' })),
+    ...itemIds.map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'session-plan-submitted' })),
   ]);
+}
+
+function submittedItemIds(store: EforgePlanStore, session: string, inputItemIds: string[] | undefined): string[] {
+  const rows = getDatabase(store).prepare("SELECT COALESCE(item_id, item_ref) AS item_id FROM session_plan_items WHERE session = ? AND role = 'source' ORDER BY sequence, item_ref").all(session) as Array<{ item_id?: string | null }>;
+  return [...new Set([
+    ...rows.map((row) => row.item_id).filter((itemId): itemId is string => typeof itemId === 'string' && itemId.length > 0),
+    ...(inputItemIds ?? []),
+  ])];
 }
 
 function markPlannedSessionEvidenceNonCurrent(store: EforgePlanStore, session: string, status: string | undefined, timestamp: string): void {
   getDatabase(store).prepare(`UPDATE lifecycle_evidence SET is_current = 0, is_terminal = 1, status = COALESCE(?, status), superseded_at = ? WHERE is_current = 1 AND session = ? AND reason_code = 'planned-session-plan'`).run(status ?? null, timestamp, session);
+}
+
+function supersedeRecoverableSessionBuildEvidence(store: EforgePlanStore, session: string, timestamp: string): void {
+  getDatabase(store).prepare(`UPDATE lifecycle_evidence SET is_current = 0, is_terminal = 1, superseded_at = ? WHERE is_current = 1 AND session = ? AND lifecycle_state IN ('submitted','queued','build','failed') AND landing_id IS NULL`).run(timestamp, session);
 }
 
 function readContentIfAvailable(path: string | undefined): string | undefined {
@@ -168,7 +182,7 @@ function stringArray(value: unknown, single?: unknown): string[] {
 
 function resolvedSessionPlanStatus(existingStatus: string | undefined, inputStatus: string | undefined, frontmatterStatus: string | undefined): string {
   const incomingStatus = inputStatus ?? frontmatterStatus;
-  if (existingStatus === 'submitted' && (incomingStatus === undefined || incomingStatus === 'ready')) return existingStatus;
+  if ((existingStatus === 'submitted' || existingStatus === 'removed') && (incomingStatus === undefined || incomingStatus === 'ready')) return existingStatus;
   return incomingStatus ?? existingStatus ?? 'draft';
 }
 

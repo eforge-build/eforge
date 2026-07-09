@@ -33,6 +33,9 @@ export function PlanBuildTracePanel({ plan, detail }: { plan: PlanData; detail?:
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Build trace</h4>
         {lifecycleState && <Badge variant="outline" className="capitalize">{lifecycleState}</Badge>}
       </div>
+      {lifecycleState === 'partial' && (detail?.lifecycle?.partialReasons ?? plan.partialReasons ?? []).map((reason) => (
+        <p key={reason.code} className="mt-1 text-xs text-muted-foreground">{reason.message}</p>
+      ))}
       {rows.length === 0 ? (
         <EmptyState className="mt-2 p-2 text-xs">
           Not queued for a build yet. Queue, run, PR, and landing activity appears here after handoff.

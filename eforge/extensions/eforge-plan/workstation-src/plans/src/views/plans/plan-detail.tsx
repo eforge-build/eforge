@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowRight, CheckCircle2, Trash2, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, RotateCcw, Trash2, X } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Timestamp } from '@/components/timestamp';
@@ -44,6 +44,7 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
+  const [confirmingResubmit, setConfirmingResubmit] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [agentProfileOptions, setAgentProfileOptions] = React.useState<AgentProfileOptionsState>({ status: 'loading', profiles: [] });
   // While an AI revision turn is running it auto-applies on completion, so the
@@ -81,11 +82,16 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
   const statusReady = plan.status === 'ready';
   const canMarkReady = readinessPasses && !statusReady;
   const canHandoff = readinessPasses && statusReady;
+  const canResubmit = readinessPasses && (plan.status === 'submitted' || plan.status === 'removed');
   const lifecycleTimestamps = planLifecycleTimestamps(detail, artifact);
 
   React.useEffect(() => {
     if (!canHandoff) setConfirmingHandoff(false);
   }, [canHandoff]);
+
+  React.useEffect(() => {
+    if (!canResubmit) setConfirmingResubmit(false);
+  }, [canResubmit]);
 
   React.useEffect(() => {
     let active = true;
@@ -104,13 +110,26 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
 
   const handoff = async () => {
     if (!canHandoff) return;
-    if (!confirmingHandoff) { setConfirmingHandoff(true); setConfirmingDelete(false); return; }
+    if (!confirmingHandoff) { setConfirmingHandoff(true); setConfirmingResubmit(false); setConfirmingDelete(false); return; }
     setConfirmingHandoff(false);
     await onHandoff(plan.session);
   };
 
+  const resubmit = async () => {
+    if (!canResubmit) return;
+    if (!confirmingResubmit) { setConfirmingResubmit(true); setConfirmingHandoff(false); setConfirmingDelete(false); return; }
+    setConfirmingResubmit(false);
+    try {
+      const result = await getBridge().invokeAction<{ kind?: string; message?: string }>('resubmit-session-plan', { session: plan.session });
+      toast.push(result.message ?? `Resubmitted ${plan.session}.`, result.kind === 'enqueued' ? 'success' : 'error');
+      await onRefresh();
+    } catch (caught) {
+      toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
+    }
+  };
+
   const deletePlan = async () => {
-    if (!confirmingDelete) { setConfirmingDelete(true); setConfirmingHandoff(false); return; }
+    if (!confirmingDelete) { setConfirmingDelete(true); setConfirmingHandoff(false); setConfirmingResubmit(false); return; }
     setConfirmingDelete(false);
     try {
       const result = await bridge.invokeAction<{ message?: string }>('delete-session-plan', { session: plan.session });
@@ -142,6 +161,7 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canMarkReady && <Button variant="secondary" size="sm" disabled={locked} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Mark ready</Button>}
+          {canResubmit && <Button variant={confirmingResubmit ? 'destructive' : 'secondary'} size="sm" disabled={locked} onClick={() => void resubmit()} onBlur={() => setConfirmingResubmit(false)}><RotateCcw className="h-4 w-4" /> {confirmingResubmit ? 'Confirm resubmit' : 'Resubmit'}</Button>}
           <Button variant={confirmingDelete ? 'destructive' : 'outline'} size="sm" disabled={locked} onClick={() => void deletePlan()} onBlur={() => setConfirmingDelete(false)}>
             <Trash2 className="h-4 w-4" /> {confirmingDelete ? 'Confirm delete' : 'Delete'}
           </Button>
@@ -162,12 +182,15 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         <div className="flex flex-wrap items-center gap-2">
           {!statusReady && <Badge>{plan.status}</Badge>}
           {!canHandoff && <Badge variant={readinessPasses ? 'default' : 'outline'}>{readinessPasses ? 'checks pass' : 'not ready'}</Badge>}
+          {detail.lifecycle?.lifecycleState === 'partial' && <Badge variant="outline" title={detail.lifecycle.partialReasons?.map((reason) => reason.message).join(' ')}>partial lifecycle</Badge>}
           {plan.planning_type && <Badge variant="outline">{plan.planning_type}</Badge>}
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
           <span className={`ml-auto text-xs font-semibold ${canHandoff ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
         <PlanLifecycleMetadata timestamps={lifecycleTimestamps} />
+        <PlanStatusSourceDisclosure detail={detail} />
+        <PlanPartialLifecycleExplanation detail={detail} />
 
         {executiveSummary !== undefined && (
           <AnnotatablePlanSection
@@ -204,6 +227,23 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         </CollapsiblePanel>
       </CardContent>
     </Card>
+  );
+}
+
+function PlanStatusSourceDisclosure({ detail }: { detail: PlanDetail }) {
+  const disclosure = detail.statusSourceDisclosure ?? detail.plan?.statusSourceDisclosure;
+  if (!disclosure) return null;
+  return <p className="rounded border border-border bg-background/40 p-2 text-xs text-muted-foreground">{disclosure}</p>;
+}
+
+function PlanPartialLifecycleExplanation({ detail }: { detail: PlanDetail }) {
+  const reasons = detail.lifecycle?.partialReasons ?? detail.plan?.partialReasons ?? [];
+  if (detail.lifecycle?.lifecycleState !== 'partial' || reasons.length === 0) return null;
+  return (
+    <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-900 dark:text-amber-100">
+      <div className="font-semibold">Partial lifecycle projection</div>
+      {reasons.map((reason) => <p key={reason.code}>{reason.message}</p>)}
+    </div>
   );
 }
 

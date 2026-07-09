@@ -10,6 +10,8 @@ import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import type { ListBoardOutput } from './schema.js';
 import { toJsonSafeRecord } from './json-safe.js';
 
+export const SESSION_PLAN_STATUS_SOURCE_DISCLOSURE = 'status source = canonical eforge-plan SQLite session-plan status records in the eforge-plan extension store; lifecycle/projection records, monitor events, event-tail output, and status fields are derived evidence or diagnostics.';
+
 export type PlanningArtifactKey = `plan:${string}` | `plan-set:${string}`;
 
 export function sessionPlanKey(session: string): PlanningArtifactKey {
@@ -44,6 +46,7 @@ export function projectPlanListEntry(entry: SessionPlanningListEntry, lifecycle?
     title: entry.topic,
     topic: entry.topic,
     status: entry.status,
+    ...((entry as { statusSource?: string; statusSourceDisclosure?: string }).statusSource ? { statusSource: (entry as { statusSource?: string }).statusSource, statusSourceDisclosure: (entry as { statusSourceDisclosure?: string }).statusSourceDisclosure } : {}),
     path: entry.path,
     ready: entry.ready,
     missingDimensions: entry.missingDimensions,
@@ -73,11 +76,12 @@ export function projectPlanSetListEntry(entry: SessionPlanSetListEntry) {
   };
 }
 
-export function projectSessionPlanDetail(input: { plan: SessionPlan; readiness: SessionPlanReadinessDetail; path: string; lifecycle?: SessionPlanLifecycleProjection }) {
+export function projectSessionPlanDetail(input: { plan: SessionPlan; readiness: SessionPlanReadinessDetail; path: string; lifecycle?: SessionPlanLifecycleProjection; statusSource?: string; statusSourceDisclosure?: string }) {
   return {
     plan: projectSessionPlan(input.plan),
     readiness: input.readiness,
     path: input.path,
+    ...(input.statusSource ? { statusSource: input.statusSource, statusSourceDisclosure: input.statusSourceDisclosure } : {}),
     ...(input.lifecycle !== undefined ? { sourceRefs: input.lifecycle.sourceRefs, lifecycle: input.lifecycle } : {}),
   };
 }

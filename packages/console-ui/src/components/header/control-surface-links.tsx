@@ -13,7 +13,7 @@ interface ControlSurfaceLinksProps {
 export function ControlSurfaceLinks({ onNavigate }: ControlSurfaceLinksProps) {
   const navItems = buildNavItems();
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" title="Session-plan status source: canonical eforge-plan SQLite records; monitor events and event-tail output are derived diagnostics.">
       {navItems.map((item) => (
         <button
           key={item.id}
