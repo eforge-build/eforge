@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
@@ -82,6 +82,9 @@ export async function writeCompilerDiagnosticsArtifact(input: WriteCompilerDiagn
   const artifactPath = resolve(dir, fileName);
   if (!isInsideDirectory(artifactPath, dir)) throw new Error(`Compiler diagnostics artifact path escapes output directory: ${fileName}`);
   await writeFile(artifactPath, serializeCompilerDiagnostics(input.diagnostics), 'utf8');
+  // A fresh compiler run supersedes any fail-closed rescope artifact left by a
+  // prior run in the same plan-set dir; both never describe the same run.
+  if (fileName === COMPILER_DIAGNOSTICS_ARTIFACT) await rm(resolve(dir, RESCOPE_FAIL_CLOSED_ARTIFACT), { force: true });
   return artifactPath;
 }
 
@@ -96,6 +99,10 @@ export async function writeRescopeFailClosedArtifact(input: WriteRescopeFailClos
   await mkdir(dir, { recursive: true });
   const artifactPath = resolve(dir, RESCOPE_FAIL_CLOSED_ARTIFACT);
   await writeFile(artifactPath, `${JSON.stringify({ reason: bounded(input.reason, 2_000), rescope: rescopeSection(input.rescope) }, null, 2)}\n`, 'utf8');
+  // Fail-closed aborts before the main diagnostics artifact is written; a
+  // stale compiler-diagnostics.json from a prior run would misdirect the
+  // post-mortem toward the wrong failure.
+  await rm(resolve(dir, COMPILER_DIAGNOSTICS_ARTIFACT), { force: true });
   return artifactPath;
 }
 // --- eforge:endregion compiler-diagnostics-entrypoints ---
