@@ -1001,13 +1001,13 @@ async function prefillEforgePlan(ctx: ExtensionContext): Promise<void> {
 
 async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevState): Promise<string | null> {
 	const items: SelectItem[] = [
-		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Describe the work; the model names the branch" },
+		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Delegates to shared /git branch" },
 		{ value: DEV_ACTION.PLAN, label: "Open eforge-plan planning entry", description: "Invoke the generic eforge-plan contribution" },
 		{ value: DEV_ACTION.TAIL_EVENTS, label: "Tail monitor events", description: "Live eforge monitor events" },
 		{ value: DEV_ACTION.TAIL_EXTENSION_EVENTS, label: "Tail extension events", description: "Preset for extension events" },
-		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, maintainability, docs drift/link check" },
-		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
-		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
+		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "Delegates to shared /git checks" },
+		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Delegates to shared /git pr" },
+		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Delegates to shared /git land" },
 		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },
 		{ value: DEV_ACTION.RELEASE, label: "Release wizard", description: "Open PR, auto-merge, then tag merged main" },
 		{ value: DEV_ACTION.RELEASE_FINALIZE, label: "Finalize release tag", description: "After release PR merge: tag main and push only the tag" },
@@ -1081,24 +1081,16 @@ export default function eforgeDevExtension(pi: ExtensionAPI) {
 
 			switch (subcommand) {
 				case DEV_ACTION.BRANCH:
-					await createBranch(pi, ctx, rest.join(" "));
-					await refresh(ctx);
+					pi.sendUserMessage(`/git branch ${rest.join(" ")}`.trim());
 					return;
 				case DEV_ACTION.CHECKS:
-					await runChecks(pi, ctx, setLastChecks);
-					await refresh(ctx);
+					pi.sendUserMessage("/git checks");
 					return;
 				case DEV_ACTION.PR:
-					await showPrReadiness(pi, ctx);
+					pi.sendUserMessage("/git pr");
 					return;
 				case DEV_ACTION.LAND:
-					await landBranch(pi, ctx, setLastChecks, {
-						autoCommitDirtyWorktree: true,
-						onCommitQueued: (branch) => {
-							pendingLandAfterCommit = { branch };
-						},
-					});
-					await refresh(ctx);
+					pi.sendUserMessage("/git land");
 					return;
 				case DEV_ACTION.RELEASE:
 					await releaseWizard(pi, ctx, setLastChecks);

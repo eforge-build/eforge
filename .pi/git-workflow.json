@@ -1,0 +1,13 @@
+{
+  "baseBranch": "main",
+  "checkSteps": [
+    { "label": "Build workspace", "command": "pnpm", "args": ["build"], "timeout": 120000 },
+    { "label": "Type check", "command": "pnpm", "args": ["type-check"], "timeout": 120000 },
+    { "label": "Test", "command": "pnpm", "args": ["test"], "timeout": 180000 },
+    { "label": "Maintainability check", "command": "pnpm", "args": ["maintainability:check"], "timeout": 60000 },
+    { "label": "Docs drift/link check", "command": "node", "args": ["packages/docs-gen/dist/cli.js", "check"], "timeout": 30000 }
+  ],
+  "commitSkill": "/skill:commit",
+  "allowLocalFastForward": true,
+  "mainBranchNote": "The current git branch is main. /git branch <work description> can create a short-lived branch automatically when useful, but do not block, pause, or ask for confirmation solely because work is happening on main. Assume the developer knows what they are doing."
+}

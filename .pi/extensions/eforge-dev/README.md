@@ -4,14 +4,16 @@ Project-local maintainer workflow extension for developing eforge itself.
 
 This extension is intentionally separate from the published `@eforge-build/pi-eforge` integration. The published extension owns user-facing eforge commands (`/eforge:*`). This project-local extension owns repository-specific maintainer workflows under `/dev`.
 
+Generic branch/check/PR landing workflows now also live in the shared `git-workflow` Pi extension from `pi-dotfiles` and are available as `/git ...`, configured by `.pi/git-workflow.json`. `/dev` keeps the eforge maintainer cockpit and eforge-specific release/restart/event-tail flows.
+
 ## Commands
 
 ```text
 /dev              Open the maintainer cockpit panel
-/dev branch       Describe the work; the model creates/switches to a short-lived branch
-/dev checks       Run build, type-check, test, maintainability, and the generated docs drift/link check
-/dev pr           Show PR-readiness summary
-/dev land         Auto-commit with /skill:commit, check, and open a PR, optionally enabling auto-merge after CI passes
+/dev branch       Delegate to shared /git branch
+/dev checks       Delegate to shared /git checks
+/dev pr           Delegate to shared /git pr
+/dev land         Delegate to shared /git land
 /dev restart      Build from source and restart the local eforge daemon
 /dev release      Guided protected-main release flow: PR, auto-merge, then tag merged main
 /dev release-finalize vX.Y.Z
@@ -24,7 +26,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 /dev refresh      Refresh footer/widget status
 ```
 
-`/dev branch` accepts either a backward-compatible explicit branch name like `fix/foo` or a natural-language work description like `fix the dev branch prompt`. When a description is provided, the command defers to the active LLM to choose the branch name and run the git switch/create command.
+Use `/git branch` directly for branch creation/switching. `/dev branch` remains a compatibility shim that forwards to `/git branch`.
 
 ## Event tails
 
