@@ -38,9 +38,10 @@ You are working in a git worktree. All changes should be made within this workin
      ```
    - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
    - Cleanup-targeted marker slugs in shared files must match `plan-\d{2}-...` (for example, `plan-01-auth`). Only those temporary plan-ID marker lines are stripped from tracked JavaScript/TypeScript-family source files during successful cleanup; non-plan module slugs are not stripped and must not be used for temporary build-coordination markers in source.
-6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
-7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
-8. **Batch independent operations in a single response — one response is one turn regardless of how many operations it contains.** You have a limited turn budget. Reading files one-by-one across sequential turns is the fastest way to burn it.
+6. **Honor test ownership** — read the plan's `Test ownership` declaration. When it is `builder`, implement the required tests with the production change. When it is `test-writer` or `existing-only`, do not create or rewrite tests for the acceptance coverage; the dedicated stage or existing suite owns them.
+7. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
+8. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
+9. **Batch independent operations in a single response — one response is one turn regardless of how many operations it contains.** You have a limited turn budget. Reading files one-by-one across sequential turns is the fastest way to burn it.
    - **Reading:** when you need to read several files to understand an area, issue all the reads in one response. Do not wait for the first result to decide what to read next if the set is already knowable from the plan or file layout.
    - **Editing:** when making the same mechanical change across multiple files, emit all edits in one response.
    - **Mixing:** if you know you need N reads followed by M edits and the reads won't change the edit targets, issue the reads in one turn, then the edits in the next turn — not N+M turns.

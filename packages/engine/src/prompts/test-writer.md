@@ -12,6 +12,10 @@ You are a test-writer agent working in a git worktree. Your job is to write test
 
 {{implementation_context}}
 
+## Ownership Boundary
+
+When the plan declares `Test ownership: test-writer`, you are the sole author of new acceptance-coverage tests for this plan. If the plan declares a different owner (`builder` or `existing-only`), make no changes and emit `count="0"`. If the plan carries no `Test ownership` declaration, proceed: this stage was configured deliberately and an absent declaration is authorization, not a veto. Do not rewrite tests already authored by another stage merely to restate the same acceptance coverage.
+
 ## Process
 
 ### Phase 1: Discovery

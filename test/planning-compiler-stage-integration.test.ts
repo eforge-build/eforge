@@ -165,9 +165,9 @@ describe('bounded planner compiler stage integration', () => {
 
     const events = await collect(getCompileStage('planner')(ctx));
 
-    // A malformed submission synthesizes a budget-exhausted outcome; a single-criterion
-    // source has no split signal, so the stage proceeds hint-less with a warning.
-    expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('no split signal'))).toBe(true);
+    // A malformed submission synthesizes a budget-exhausted outcome; a no-literal-path,
+    // single-unit source is inspected without being treated as an architecture split signal.
+    expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('deterministic localization confidence is sufficient'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes(GATE_HANDOFF_MESSAGE))).toBe(true);
   });
 

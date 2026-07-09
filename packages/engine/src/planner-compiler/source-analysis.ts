@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 export interface MarkdownLine { line: number; text: string; startByte: number; endByte: number; headingPath: string[] }
 
-const GENERIC_SURFACE_TERMS = ['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'api'];
+export const GENERIC_SURFACE_TERMS = ['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'api'];
 const PATH_LIKE_RE = /(?:\.\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g;
 const INTERFACE_PATTERNS: Array<[string, RegExp]> = [
   ['schema-contract', /\b(?:schema|contract|interface)s?\b|\bwire\s+shape\b|\bdata\s+model\b/i],

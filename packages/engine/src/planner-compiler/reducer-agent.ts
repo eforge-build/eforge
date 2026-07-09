@@ -5,7 +5,7 @@ import { safeParseWithSchema } from '@eforge-build/client';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
 import { PlanningReduceOutputSchema, type PlanningReduceOutput, type PlanningReduceTask } from './reduce-contracts.js';
-import { minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_DOCS_WORK_VALUES, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_VALUES, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, REDUCE_DIGEST_LIMITS, strongestWorkDeclaration, validatePlanningReduceDigest, type PlanningModuleDocsWork, type PlanningModuleTestWork, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import { minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_DOCS_WORK_VALUES, PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_VALUES, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, REDUCE_DIGEST_LIMITS, strongestWorkDeclaration, validatePlanningReduceDigest, type PlanningModuleDocsWork, type PlanningModuleReviewDepth, type PlanningModuleTestOwnership, type PlanningModuleTestWork, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
 
@@ -99,9 +99,11 @@ Call ${submitToolName} with an object matching its schema.
 - Completed outputs must not contain representationRequired gaps.
 - Source/localization gaps (missing owner paths, missing contract/entrypoint/config/consumer surface evidence, directory-only evidence, missing materialized source, or localization ambiguity) must be emitted as structured gaps with issueKind, sourceLocalizationSignal: true, relevant sourceNeedIds, affectedAtomIds, ownerPaths when known, criterionIds, and aspectIds. Do not convert these gaps into implementation candidates.
 - Only source/localization gaps with concrete ownerPaths, productScopedOutputRefs, and productScopedValidationRefs tied to original criterionIds can later become buildable residue; otherwise they are repair-only compiler diagnostics.
+- Produce the smallest coherent module set. Coalesce input modules when one builder can implement them coherently within the reduce-node budget. Keep a split only for concrete independent ownership, dependency, or context boundaries; generic labels such as test versus general are not boundaries.
 - ${PLANNING_MODULE_DOCS_WORK_PROMPT_RULE}
 - ${PLANNING_MODULE_TEST_WORK_PROMPT_RULE}
-- Preserve docsWork/testWork declarations from digest modules when re-emitting module candidates; when merging modules, keep the strongest declaration (author-new over sync-existing/exercise-existing over none).
+- ${PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE}
+- Preserve model-authored intent from digest modules when re-emitting module candidates; when merging modules, keep the strongest docs/test work and a single explicit test owner, and justify the merged review depth.
 - ${PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE}
 - Failed outputs must not include fragments or module candidates.
 - Include reduceDigest. It is the canonical bounded digest for parent reducers; do not copy full markdown into it.
@@ -143,7 +145,7 @@ function reduceDigestForAtomOutput(output: PlanningAtomOutput): PlanningReduceDi
     criterionIds: uniq([...fragments.flatMap((fragment) => fragment.criterionIds), ...modules.flatMap((module) => module.criterionIds)]),
     aspectIds: uniq([...output.aspectUpdates.map((update) => update.aspectId), ...fragments.flatMap((fragment) => fragment.aspectIds), ...modules.flatMap((module) => module.aspectIds)]),
     fragments: fragments.map((fragment) => ({ fragmentId: fragment.fragmentId, title: fragment.title, intent: boundedOrReference(fragment.markdown, `Full markdown retained in atom artifact fragment ${fragment.fragmentId}.`), criterionIds: [...fragment.criterionIds], aspectIds: [...fragment.aspectIds], ...(fragment.dependsOnFragmentIds ? { dependsOnFragmentIds: [...fragment.dependsOnFragmentIds] } : {}) })),
-    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in atom artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in atom artifact module ${module.moduleId}.`), ...(module.docsWork ? { docsWork: module.docsWork } : {}), ...(module.testWork ? { testWork: module.testWork } : {}), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
+    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in atom artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in atom artifact module ${module.moduleId}.`), ...(module.docsWork ? { docsWork: module.docsWork } : {}), ...(module.testWork ? { testWork: module.testWork } : {}), ...(module.testOwnership ? { testOwnership: module.testOwnership } : {}), ...(module.reviewDepth ? { reviewDepth: module.reviewDepth } : {}), ...(module.reviewRationale ? { reviewRationale: module.reviewRationale } : {}), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
   };
 }
 
@@ -163,18 +165,19 @@ function reduceDigestForReduceOutput(output: PlanningReduceOutput): PlanningRedu
     criterionIds: uniq([...fragments.flatMap((fragment) => fragment.criterionIds), ...modules.flatMap((module) => module.criterionIds), ...issues.flatMap((issue) => issue.criterionIds)]),
     aspectIds: uniq([...fragments.flatMap((fragment) => fragment.aspectIds), ...modules.flatMap((module) => module.aspectIds), ...issues.flatMap((issue) => issue.aspectIds)]),
     fragments: fragments.map((fragment) => ({ fragmentId: fragment.fragmentId, title: fragment.title, intent: boundedOrReference(fragment.markdown, `Full markdown retained in reduce artifact fragment ${fragment.fragmentId}.`), criterionIds: [...fragment.criterionIds], aspectIds: [...fragment.aspectIds], ...(fragment.dependsOnFragmentIds ? { dependsOnFragmentIds: [...fragment.dependsOnFragmentIds] } : {}) })),
-    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in reduce artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in reduce artifact module ${module.moduleId}.`), ...(module.docsWork ? { docsWork: module.docsWork } : {}), ...(module.testWork ? { testWork: module.testWork } : {}), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
+    modules: modules.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: boundedOrReference(module.description, `Full description retained in reduce artifact module ${module.moduleId}.`), criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], validationExpectation: boundedOrReference(module.validationExpectation, `Validation details retained in reduce artifact module ${module.moduleId}.`), ...(module.docsWork ? { docsWork: module.docsWork } : {}), ...(module.testWork ? { testWork: module.testWork } : {}), ...(module.testOwnership ? { testOwnership: module.testOwnership } : {}), ...(module.reviewDepth ? { reviewDepth: module.reviewDepth } : {}), ...(module.reviewRationale ? { reviewRationale: module.reviewRationale } : {}), ...(module.dependsOnModuleIds ? { dependsOnModuleIds: [...module.dependsOnModuleIds] } : {}) })),
     issues,
   };
 }
 
-interface CandidateWorkDeclarations { moduleId: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork }
+interface CandidateWorkDeclarations { moduleId: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string }
 
 /**
- * Deterministically stamp docsWork/testWork from schema-validated module candidates onto
+ * Deterministically stamp model-authored intent from schema-validated module candidates onto
  * producer-authored digest modules (matched by moduleId). Producers are prompted to mirror
  * the declarations into their digests, but this guarantees they survive the digest-authored
- * reduce path even when a producer omits them; the strongest declaration wins.
+ * reduce path even when a producer omits them; the strongest work declaration wins and the
+ * candidate remains authoritative for exclusive ownership and review intent.
  */
 function withCandidateWorkDeclarations(digest: PlanningReduceDigest, candidates: CandidateWorkDeclarations[]): PlanningReduceDigest {
   if (!digest.modules || digest.modules.length === 0 || candidates.length === 0) return digest;
@@ -184,7 +187,14 @@ function withCandidateWorkDeclarations(digest: PlanningReduceDigest, candidates:
     if (!candidate) return module;
     const docsWork = strongestWorkDeclaration(PLANNING_MODULE_DOCS_WORK_VALUES, module.docsWork, candidate.docsWork);
     const testWork = strongestWorkDeclaration(PLANNING_MODULE_TEST_WORK_VALUES, module.testWork, candidate.testWork);
-    return { ...module, ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}) };
+    const testOwnership = candidate.testOwnership ?? module.testOwnership;
+    // Review depth and rationale travel as a pair: a rationale written for one
+    // source's depth must not be attached to the other source's depth.
+    const reviewIntent = candidate.reviewDepth !== undefined
+      ? { reviewDepth: candidate.reviewDepth, reviewRationale: candidate.reviewRationale }
+      : { reviewDepth: module.reviewDepth, reviewRationale: module.reviewRationale };
+    const { reviewDepth, reviewRationale } = reviewIntent;
+    return { ...module, ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}), ...(testOwnership !== undefined ? { testOwnership } : {}), ...(reviewDepth !== undefined ? { reviewDepth } : {}), ...(reviewRationale !== undefined ? { reviewRationale } : {}) };
   });
   return { ...digest, modules };
 }

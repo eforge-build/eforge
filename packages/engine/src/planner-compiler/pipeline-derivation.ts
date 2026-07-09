@@ -1,10 +1,10 @@
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { PlanningAtom } from './atom-graph.js';
-import type { PlanningModuleDocsWork, PlanningModuleTestWork } from './reduce-digest-contracts.js';
+import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleTestOwnership, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 import type { SourceLocalizationRecord } from './source-localization-contracts.js';
 
-export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork }
+export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string }
 export interface PlanPipelineRiskInputs {
   modules: PlanPipelineModuleSignals[];
   atoms: Array<Pick<PlanningAtom, 'atomId' | 'criterionIds' | 'subsystemHints' | 'estimate'>>;
@@ -13,7 +13,7 @@ export interface PlanPipelineRiskInputs {
 }
 export type PlanPipelineRiskFactor = 'large-plan' | 'residue-derived' | 'repair-only-residue' | 'low-confidence-localization' | 'multi-subsystem' | 'dependency-root';
 export interface PlanRiskAssessment { moduleId: string; score: number; factors: PlanPipelineRiskFactor[] }
-export interface DerivedPlanPipelineSettings { moduleId: string; build: BuildStageSpec[]; review: ReviewProfileConfig; risk: PlanRiskAssessment; rationale: string }
+export interface DerivedPlanPipelineSettings { moduleId: string; build: BuildStageSpec[]; review: ReviewProfileConfig; reviewDepth: PlanningModuleReviewDepth; testOwnership: PlanningModuleTestOwnership; risk: PlanRiskAssessment; rationale: string }
 export interface PlanPipelineDerivation { plans: DerivedPlanPipelineSettings[]; defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
 
 export const LARGE_PLAN_CRITERION_COUNT = 3;
@@ -39,27 +39,39 @@ export function derivePlanPipelineSettings(input: PlanPipelineRiskInputs): PlanP
     .sort((a, b) => a.moduleId.localeCompare(b.moduleId))
     .map((module) => settingsForModule(module, input, dependedOn));
   const highestScore = plans.reduce((max, plan) => Math.max(max, plan.risk.score), 0);
+  const deepestReview = plans.reduce<PlanningModuleReviewDepth>((depth, plan) => deeperReviewDepth(depth, plan.reviewDepth), 'light');
+  const broadestBuild = [...plans].sort((a, b) => buildBreadth(b.build) - buildBreadth(a.build) || b.risk.score - a.risk.score || a.moduleId.localeCompare(b.moduleId))[0]?.build ?? buildForScore(highestScore);
   return {
     plans,
-    defaultBuild: [...buildForScore(highestScore)],
-    defaultReview: cloneReview(reviewForScore(highestScore)),
+    defaultBuild: cloneBuildStages(broadestBuild),
+    defaultReview: cloneReview(reviewForDepth(deepestReview)),
     rationale: derivationRationale(plans, highestScore),
   };
+}
+
+/** Deep-copy build stages: parallel-stage entries are nested arrays, so a shallow spread would share them across consumers. */
+export function cloneBuildStages(build: readonly BuildStageSpec[]): BuildStageSpec[] {
+  return build.map((spec) => (Array.isArray(spec) ? [...spec] : spec));
 }
 
 function settingsForModule(module: PlanPipelineModuleSignals, input: PlanPipelineRiskInputs, dependedOn: Set<string>): DerivedPlanPipelineSettings {
   const factors = riskFactorsForModule(module, input, dependedOn);
   const score = factors.reduce((total, factor) => total + FACTOR_WEIGHTS[factor], 0);
-  const review = reviewForScore(score);
+  const requiredReviewDepth = reviewDepthForScore(score);
+  const reviewDepth = deeperReviewDepth(module.reviewDepth ?? requiredReviewDepth, requiredReviewDepth);
+  const review = reviewForDepth(reviewDepth);
   const docsWork = module.docsWork ?? 'none';
   const testWork = module.testWork ?? 'none';
-  const build = buildForModule(score, docsWork, testWork);
+  const testOwnership = resolveTestOwnership(module);
+  const build = buildForModule(score, docsWork, testWork, testOwnership, module.testOwnership !== undefined);
   return {
     moduleId: module.moduleId,
     build,
     review: cloneReview(review),
+    reviewDepth,
+    testOwnership,
     risk: { moduleId: module.moduleId, score, factors },
-    rationale: moduleRationale(score, factors, docsWork, testWork, build, review),
+    rationale: moduleRationale(score, factors, docsWork, testWork, testOwnership, module.reviewDepth, module.reviewRationale, build, review),
   };
 }
 
@@ -69,7 +81,9 @@ const FACTOR_WEIGHTS: Record<PlanPipelineRiskFactor, number> = {
   'repair-only-residue': 1,
   'low-confidence-localization': 1,
   'multi-subsystem': 1,
-  'dependency-root': 1,
+  // Dependency shape affects ordering, not review safety. It remains visible
+  // in diagnostics but cannot escalate a small plan by itself.
+  'dependency-root': 0,
 };
 
 function riskFactorsForModule(module: PlanPipelineModuleSignals, input: PlanPipelineRiskInputs, dependedOn: Set<string>): PlanPipelineRiskFactor[] {
@@ -87,9 +101,10 @@ function riskFactorsForModule(module: PlanPipelineModuleSignals, input: PlanPipe
   return factors;
 }
 
-function isLargePlan(module: PlanPipelineModuleSignals, joinedAtoms: PlanPipelineRiskInputs['atoms']): boolean {
-  if (module.criterionIds.length >= LARGE_PLAN_CRITERION_COUNT) return true;
-  if (module.aspectIds.length >= LARGE_PLAN_ASPECT_COUNT) return true;
+function isLargePlan(_module: PlanPipelineModuleSignals, joinedAtoms: PlanPipelineRiskInputs['atoms']): boolean {
+  // Criterion/aspect counts are lexical structure, not concrete execution risk.
+  // Escalate only when the source evidence itself is large enough to pressure a
+  // bounded builder context.
   const sourceBytes = joinedAtoms.reduce((total, atom) => total + atom.estimate.sourceBytes, 0);
   return sourceBytes >= LARGE_PLAN_SOURCE_BYTES;
 }
@@ -110,23 +125,45 @@ function dependedOnModuleIds(modules: PlanPipelineModuleSignals[]): Set<string> 
   return dependedOn;
 }
 
-function reviewForScore(score: number): ReviewProfileConfig {
-  if (score >= HEAVY_REVIEW_MIN_SCORE) return HEAVY_REVIEW;
-  if (score >= MODERATE_REVIEW_MIN_SCORE) return MODERATE_REVIEW;
+function reviewDepthForScore(score: number): PlanningModuleReviewDepth {
+  if (score >= HEAVY_REVIEW_MIN_SCORE) return 'heavy';
+  if (score >= MODERATE_REVIEW_MIN_SCORE) return 'standard';
+  return 'light';
+}
+
+function reviewForDepth(depth: PlanningModuleReviewDepth): ReviewProfileConfig {
+  if (depth === 'heavy') return HEAVY_REVIEW;
+  if (depth === 'standard') return MODERATE_REVIEW;
   return LIGHT_REVIEW;
 }
 
-function buildForScore(score: number): BuildStageSpec[] {
-  return buildForModule(score, 'none', 'none');
+function deeperReviewDepth(a: PlanningModuleReviewDepth, b: PlanningModuleReviewDepth): PlanningModuleReviewDepth {
+  const rank: Record<PlanningModuleReviewDepth, number> = { light: 0, standard: 1, heavy: 2 };
+  return rank[a] >= rank[b] ? a : b;
 }
 
-function buildForModule(score: number, docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork): BuildStageSpec[] {
+function resolveTestOwnership(module: PlanPipelineModuleSignals): PlanningModuleTestOwnership {
+  if (module.testOwnership) return module.testOwnership;
+  if (module.testWork === 'author-new') return 'test-writer';
+  return 'existing-only';
+}
+
+function buildForScore(score: number): BuildStageSpec[] {
+  return buildForModule(score, 'none', 'none', 'existing-only', false);
+}
+
+function buildForModule(score: number, docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork, owner: PlanningModuleTestOwnership, ownerDeclared: boolean): BuildStageSpec[] {
   const build: BuildStageSpec[] = [docsWork === 'author-new' ? ['implement', 'doc-author'] : 'implement'];
   if (docsWork !== 'none') build.push('doc-sync');
-  if (testWork === 'author-new') build.push('test-write');
-  if (testWork !== 'none' || score >= HEAVY_REVIEW_MIN_SCORE) build.push('test-cycle');
+  // Ownership resolution lives in resolveTestOwnership; callers pass the resolved owner.
+  if (owner === 'test-writer') build.push('test-write');
+  if (ownerDeclared || testWork !== 'none' || score >= HEAVY_REVIEW_MIN_SCORE) build.push('test-cycle');
   build.push('review-cycle');
   return build;
+}
+
+function buildBreadth(build: readonly BuildStageSpec[]): number {
+  return build.reduce((total, spec) => total + (Array.isArray(spec) ? spec.length : 1), 0);
 }
 
 function formatBuild(build: readonly BuildStageSpec[]): string {
@@ -137,14 +174,15 @@ function cloneReview(review: ReviewProfileConfig): ReviewProfileConfig {
   return { strategy: review.strategy, perspectives: [...review.perspectives], maxRounds: review.maxRounds, evaluatorStrictness: review.evaluatorStrictness };
 }
 
-function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork, build: readonly BuildStageSpec[], review: ReviewProfileConfig): string {
+function moduleRationale(score: number, factors: PlanPipelineRiskFactor[], docsWork: PlanningModuleDocsWork, testWork: PlanningModuleTestWork, testOwnership: PlanningModuleTestOwnership, proposedReviewDepth: PlanningModuleReviewDepth | undefined, reviewRationale: string | undefined, build: readonly BuildStageSpec[], review: ReviewProfileConfig): string {
   const basis = factors.length > 0 ? `risk score ${score} (${factors.join(', ')})` : 'no risk factors';
-  return `${basis}; declared docs work ${docsWork}, test work ${testWork}; derived build ${formatBuild(build)} and ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
+  const intent = proposedReviewDepth ? `model review intent ${proposedReviewDepth} (${reviewRationale ?? 'no rationale'})` : 'no model review intent; deterministic fallback used';
+  return `${basis}; declared docs work ${docsWork}, test work ${testWork}, test owner ${testOwnership}; ${intent}; derived build ${formatBuild(build)} and ${review.strategy} review with perspectives ${review.perspectives.join(', ')}, ${review.maxRounds} round(s), ${review.evaluatorStrictness} evaluation`;
 }
 
 function derivationRationale(plans: DerivedPlanPipelineSettings[], highestScore: number): string {
   const perPlan = plans.map((plan) => `- ${plan.moduleId}: ${plan.rationale}`);
-  return ['Per-plan pipeline settings derived deterministically from compiler risk signals.', `Set-level defaults follow the highest plan risk score (${highestScore}).`, ...perPlan].join('\n');
+  return ['Per-plan pipeline settings normalize typed model intent against deterministic compiler safety signals.', `Set-level review follows the deepest normalized review; build defaults follow the broadest normalized plan pipeline (highest risk score ${highestScore}).`, ...perPlan].join('\n');
 }
 
 function intersects(a: string[], b: string[]): boolean { return a.some((value) => b.includes(value)); }

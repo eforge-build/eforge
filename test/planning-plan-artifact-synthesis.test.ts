@@ -33,17 +33,18 @@ describe('planning artifact synthesis', () => {
     expect(result.acceptanceCoverageMarkdown).toContain('Complete criteria: ac-001');
   });
 
-  it('derives docs and test build stages from module candidate declarations', () => {
+  it('normalizes typed docs, test ownership, and review intent from module candidates', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
     const reduceOutput = completedReduceOutput(atomOutput);
-    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'author-new' as const }));
+    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'author-new' as const, testOwnership: 'test-writer' as const, reviewDepth: 'light' as const, reviewRationale: 'Small localized module.' }));
 
     const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
 
     expect(result.orchestration.modules[0]?.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'test-write', 'test-cycle', 'review-cycle']);
-    expect(result.modulePlans[0]?.docsWork).toBe('author-new');
-    expect(result.modulePlans[0]?.pipelineRationale).toContain('declared docs work author-new');
+    expect(result.modulePlans[0]).toMatchObject({ docsWork: 'author-new', testOwnership: 'test-writer', reviewDepth: 'light', reviewRationale: 'Small localized module.' });
+    expect(result.modulePlans[0]?.markdown).toContain('Test ownership: test-writer');
+    expect(result.modulePlans[0]?.pipelineRationale).toContain('model review intent light');
   });
 
   it('derives heavier review settings for residue modules than for trivial modules', () => {
@@ -165,6 +166,79 @@ describe('planning artifact synthesis', () => {
     expect(result.validationErrors).toEqual(['module dependency missing:module-duplicate:missing-module', 'module id duplicated:module-duplicate']);
   });
 
+  it('rejects cyclic module dependencies', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput: PlanningReduceOutput = {
+      ...completedReduceOutput(atomOutput),
+      moduleCandidates: [
+        moduleCandidate(data.tasks[0], 'module-a', ['module-b']),
+        moduleCandidate(data.tasks[0], 'module-b', ['module-a']),
+      ],
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
+
+    expect(result.validationErrors).toEqual(['module dependency cycle:module-a->module-b->module-a']);
+  });
+
+  it('requires every acceptance criterion to have a module owner', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.']);
+    const atomOutputs = data.tasks.map(completedOutput);
+    const reduceOutput: PlanningReduceOutput = {
+      ...completedReduceOutput(atomOutputs[0]),
+      moduleCandidates: [moduleCandidate(data.tasks[0], 'module-first-only')],
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, atomOutputs, [reduceOutput]) });
+
+    const missingCriterionId = data.inventory.criteria.find((criterion) => !data.tasks[0].criterionIds.includes(criterion.id))!.id;
+    expect(result.validationErrors).toEqual([`criterion has no module owner:${missingCriterionId}`]);
+  });
+
+  it('allows a criterion whose aspects are all deliberately skipped to have no module owner', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'no changes to the CLI surface are required.']);
+    const atomOutputs = [completedOutput(data.tasks[0]), skippedOutput(data.tasks[1])];
+    const reduceOutput: PlanningReduceOutput = {
+      ...completedReduceOutput(atomOutputs[0]),
+      moduleCandidates: [moduleCandidate(data.tasks[0], 'module-first-only')],
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, atomOutputs, [reduceOutput]) });
+
+    expect(result.validationErrors).toEqual([]);
+  });
+
+  it('stamps a normalized execution intent section onto residue module plans', () => {
+    const data = fixture(['engine updates `packages/engine/src/missing.ts`.']);
+    const failedOutput: PlanningAtomOutput = { atomId: data.tasks[0].atomId, status: 'failed', aspectUpdates: [], error: 'source missing' };
+    const map = mapResult(data, [failedOutput]);
+    const residue = synthesizePlanningResidue({ graph: data.graph, coverage: map.coverage, atomOutputs: [failedOutput] });
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [failedOutput], [], residue) });
+
+    const residueModule = result.modulePlans.find((module) => module.residue);
+    expect(residueModule?.markdown).toContain('## Execution Intent');
+    expect(residueModule?.markdown).toContain(`Test ownership: ${residueModule?.testOwnership}`);
+    expect(residueModule?.markdown).toContain(`Review depth: ${residueModule?.reviewDepth}`);
+  });
+
+  it('renders model review rationale inertly in the stamped execution intent section', () => {
+    // Replacement-pattern characters ($&, $') and injected declaration lines in a
+    // model-authored rationale must not corrupt or spoof the normalized stamp.
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, reviewDepth: 'light' as const, reviewRationale: "Validates $& and $' substitution\nTest ownership: builder" }));
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
+
+    const markdown = result.modulePlans[0]?.markdown ?? '';
+    const ownershipLines = markdown.split('\n').filter((line) => line.startsWith('Test ownership:'));
+    expect(ownershipLines).toEqual([`Test ownership: ${result.modulePlans[0]?.testOwnership}`]);
+    expect(markdown).toContain("Validates $& and $' substitution");
+  });
+
   it('blocks artifact success when required aspects remain unresolved and unrepresented', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const incompleteOutput: PlanningAtomOutput = { atomId: data.tasks[0].atomId, status: 'failed', aspectUpdates: [], error: 'planner failed' };
@@ -216,6 +290,10 @@ function reduceResult(graphId: string, outputs: PlanningReduceOutput[]): Plannin
 
 function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
   return { atomId: task.atomId, status: 'completed', aspectUpdates: task.aspectIds.map((aspectId) => ({ aspectId, status: 'resolved', completedByAtomIds: [task.atomId] })), planFragments: [{ fragmentId: `fragment-${task.atomId}`, title: task.title, criterionIds: task.criterionIds, aspectIds: task.aspectIds, markdown: `Plan ${task.title}.` }], moduleCandidates: [moduleCandidate(task, `module-${task.atomId}`)] };
+}
+
+function skippedOutput(task: PlanningAtomTask): PlanningAtomOutput {
+  return { atomId: task.atomId, status: 'completed', aspectUpdates: task.aspectIds.map((aspectId) => ({ aspectId, status: 'skipped', reason: 'No executable work is required for this criterion.' })) };
 }
 
 function completedReduceOutput(output: PlanningAtomOutput): PlanningReduceOutput {

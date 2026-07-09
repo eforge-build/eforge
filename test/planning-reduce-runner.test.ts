@@ -124,15 +124,17 @@ describe('planning reduce runner', () => {
     const prompt = formatPlanningReducerPrompt(task);
 
     expect(prompt).toContain(`Digest for ${data.mapResult.outputs[0]!.atomId}.`);
+    expect(prompt).toContain('Produce the smallest coherent module set');
+    expect(prompt).toContain('testOwnership');
     expect(prompt).not.toContain('LOSSY-MARKDOWN-SHOULD-NOT-APPEAR');
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(task.budget.maxReducePromptBytes);
   });
 
-  it('carries module docsWork/testWork declarations into reducer digests', () => {
+  it('carries typed module intent into reducer digests', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
       ...output,
-      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const })),
+      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const, testOwnership: 'existing-only' as const, reviewDepth: 'light' as const, reviewRationale: 'Localized change.' })),
     }));
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
@@ -141,13 +143,16 @@ describe('planning reduce runner', () => {
 
     expect(prompt).toContain('"docsWork": "author-new"');
     expect(prompt).toContain('"testWork": "exercise-existing"');
+    expect(prompt).toContain('"testOwnership": "existing-only"');
+    expect(prompt).toContain('"reviewDepth": "light"');
+    expect(prompt).toContain('"reviewRationale": "Localized change."');
   });
 
-  it('stamps candidate docsWork/testWork declarations onto producer-authored reducer digests', () => {
+  it('stamps candidate model intent onto producer-authored reducer digests', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
       ...output,
-      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const })),
+      moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const, testOwnership: 'builder' as const, reviewDepth: 'standard' as const, reviewRationale: 'Cross-contract change.' })),
       reduceDigest: {
         sourceId: output.atomId,
         sourceKind: 'atom' as const,
@@ -163,10 +168,13 @@ describe('planning reduce runner', () => {
 
     const prompt = formatPlanningReducerPrompt(task);
 
-    // The authored digest omitted testWork and declared weaker docsWork; the validated
-    // module candidates' declarations must still reach the reducer (strongest wins).
+    // The authored digest omitted model intent and declared weaker docsWork; the validated
+    // module candidates' declarations must still reach the reducer (strongest work wins).
     expect(prompt).toContain('"docsWork": "author-new"');
     expect(prompt).toContain('"testWork": "exercise-existing"');
+    expect(prompt).toContain('"testOwnership": "builder"');
+    expect(prompt).toContain('"reviewDepth": "standard"');
+    expect(prompt).toContain('"reviewRationale": "Cross-contract change."');
     expect(prompt).not.toContain('"docsWork": "sync-existing"');
   });
 
