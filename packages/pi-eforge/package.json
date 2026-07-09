@@ -57,9 +57,15 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
-    "typebox": "^1.3.0",
+    "typebox": "^1.3.6",
     "yaml": "^2.9.0"
   },
   "author": "Schaake Solutions LLC",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.80.5",
+    "@earendil-works/pi-coding-agent": "^0.80.5",
+    "@earendil-works/pi-tui": "^0.80.5",
+    "@sinclair/typebox": "^0.34.50"
+  }
 }
