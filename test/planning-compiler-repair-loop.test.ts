@@ -69,6 +69,57 @@ describe('planning compiler source-localization repair loop', () => {
     expect(result.sourceEvidenceBundle.records).toContainEqual(expect.objectContaining({ path: ownerPath, status: 'materialized' }));
   });
 
+  it('materializes every repair-critical owner path under tight per-atom evidence budgets', async () => {
+    const ownerPaths = ['packages/api/src/routes/a.ts', 'packages/api/src/routes/b.ts', 'packages/api/src/routes/c.ts', 'packages/api/src/routes/d.ts'];
+    const cwd = await workspace(Object.fromEntries(ownerPaths.map((ownerPath, index) => [ownerPath, `export function ownerRoute${index}() { return 'padding-padding-padding'; }\n`])));
+    const content = prd(['Account management workflows remain source-grounded with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(task, 'initial')),
+      reduceSubmission(sourceGapOutput(task, 'gap-owners', { ownerPaths, affectedAtomIds: [] })),
+      atomSubmission(completedOutput(task, 'repaired')),
+      reduceSubmission(completedReduceOutput(completedOutput(task, 'repaired'))),
+    ]);
+
+    // The generic per-atom byte budget fits only one owner excerpt; without repair
+    // priority the remaining owner paths would drop as budget-exceeded and the
+    // compile would fail with "localized owner paths not materialized".
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1, sourceEvidenceLimits: { maxEvidenceBytesPerAtom: 100 } });
+
+    expect(result.status).toBe('complete');
+    expect(result.validationErrors).toEqual([]);
+    for (const ownerPath of ownerPaths) {
+      expect(result.sourceEvidenceBundle.records).toContainEqual(expect.objectContaining({ path: ownerPath, status: 'materialized', priority: true }));
+    }
+    const repairedAtomPrompt = harness.prompts[2] ?? '';
+    for (const [index] of ownerPaths.entries()) expect(repairedAtomPrompt).toContain(`ownerRoute${index}`);
+    expect(result.repairDiagnostics).toEqual([expect.objectContaining({ status: 'repaired', gapIds: ['gap-owners'] })]);
+  });
+
+  it('names the dropped paths, budgets, and atoms when repair-critical evidence cannot materialize', async () => {
+    const blockedPath = 'packages/api/src/routes/blocked.ts';
+    const missingPath = 'packages/api/src/routes/missing.ts';
+    const cwd = await workspace({ [blockedPath]: `export function blockedRoute() { return 'padding-padding-padding'; }\n` });
+    const content = prd(['Account management workflows remain source-grounded with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(task, 'initial')),
+      reduceSubmission(sourceGapOutput(task, 'gap-owners', { ownerPaths: [blockedPath, missingPath], affectedAtomIds: [] })),
+      atomSubmission(completedOutput(task, 'repair')),
+      reduceSubmission(sourceGapOutput(task, 'gap-owners-after', { ownerPaths: [blockedPath, missingPath], affectedAtomIds: [] })),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1, sourceEvidenceLimits: { maxPriorityEvidenceBytesPerAtom: 10 } });
+
+    expect(result.status).toBe('incomplete');
+    expect(result.validationErrors).toEqual(expect.arrayContaining([expect.stringContaining(`${missingPath}(missing:file-not-found)`)]));
+    expect(result.validationErrors).toEqual(expect.arrayContaining([expect.stringContaining(`${blockedPath}(budget-exceeded:max-priority-evidence-bytes-per-atom@${task.atomId})`)]));
+    expect(result.repairDiagnostics[0]?.evidenceMaterializationStatus).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: blockedPath, status: 'budget-exceeded', reason: 'max-priority-evidence-bytes-per-atom', budgetAtomIds: [task.atomId], priority: true }),
+      expect.objectContaining({ path: missingPath, status: 'missing', reason: 'file-not-found', priority: true }),
+    ]));
+  });
+
   it('reports exhausted diagnostics and blocks candidate-reduce-gap artifacts when no owner localizes', async () => {
     const cwd = await workspace({});
     const content = prd(['unknown subsystem updates a missing owner path with localized repository evidence.']);

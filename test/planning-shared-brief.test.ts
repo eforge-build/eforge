@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
-import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, runPlanningAtomMap, validatePlanningAtomOutput, validateSharedPlanningBrief, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, runPlanningAtomMap, synthesizeRepairEvidenceOwnership, validatePlanningAtomOutput, validateSharedPlanningBrief, type PlanningAtomOutput, type PlanningAtomTask } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
 
 const limits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
@@ -88,6 +88,32 @@ describe('planning shared brief and evidence ownership', () => {
     expect(graph.atoms.length).toBeGreaterThan(1);
     expect(ownership?.referencedByAtomIds.length).toBe(1);
     expect(ownership?.shared).toBe(false);
+  });
+
+  it('synthesizes repair evidence ownership with normal shared/primary derivation, for materialization only', () => {
+    const { graph, brief } = fixture();
+    const normalShared = brief.evidenceOwnership.find((entry) => entry.path === 'packages/engine/src/shared.ts')!;
+    const atomIds = graph.atoms.map((atom) => atom.atomId);
+    const syntheticPath = 'packages/engine/src/repair-target.ts';
+
+    const synthetic = synthesizeRepairEvidenceOwnership([syntheticPath, syntheticPath, 'packages'], atomIds, graph);
+
+    // Duplicates dedupe, non-actionable paths drop, shared/primary derivation matches ownershipForPath.
+    expect(synthetic).toHaveLength(1);
+    expect(synthetic[0]).toMatchObject({ path: syntheticPath, shared: true, reason: 'synthetic-repair-evidence', primaryAtomId: normalShared.primaryAtomId, referencedByAtomIds: [...atomIds].sort() });
+    expect(synthetic[0].consumerAtomIds).toEqual(atomIds.filter((atomId) => atomId !== normalShared.primaryAtomId).sort());
+    expect(synthesizeRepairEvidenceOwnership([syntheticPath], ['atom-unknown'], graph)).toEqual([]);
+
+    // Materialization-only invariant: appending synthetic ownership keeps the
+    // brief valid but never joins atom briefs, so no shared-finding ownership
+    // is implied for the synthetic path.
+    const augmented = { ...brief, evidenceOwnership: [...brief.evidenceOwnership, ...synthetic] };
+    expect(validateSharedPlanningBrief(augmented, graph)).toEqual({ ok: true, errors: [] });
+    for (const atomBrief of augmented.atomBriefs) {
+      expect(atomBrief.ownedEvidencePaths).not.toContain(syntheticPath);
+      expect(atomBrief.localEvidencePaths).not.toContain(syntheticPath);
+      expect(atomBrief.sharedEvidenceRefs.map((ref) => ref.path)).not.toContain(syntheticPath);
+    }
   });
 
   it('uniquifies shared evidence section ids when truncated paths collide', () => {

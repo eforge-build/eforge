@@ -160,6 +160,58 @@ describe('planning source evidence materialization', () => {
     }
   });
 
+  it('materializes repair-priority paths ahead of higher-value generic evidence', async () => {
+    await writeEvidence('packages/engine/src/linked.ts', 'export const linked = true;\n');
+    await writeEvidence('packages/engine/src/zz-priority.ts', 'export const priority = true;\n');
+    const data = await fixture(['engine updates `packages/engine/src/linked.ts`.']);
+    const atomId = data.graph.atoms[0].atomId;
+    // Not criterion-linked, no localization confidence: loses every generic ranking tier.
+    data.brief.evidenceOwnership.push({ path: 'packages/engine/src/zz-priority.ts', referencedByAtomIds: [atomId], consumerAtomIds: [], shared: false, reason: 'synthetic-repair-evidence' });
+
+    const bundle = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxFilesTotal: 1 }, priorityPaths: ['packages/engine/src/zz-priority.ts'] });
+    const records = new Map(bundle.records.map((record) => [record.path, record]));
+
+    expect(records.get('packages/engine/src/zz-priority.ts')).toMatchObject({ status: 'materialized', priority: true });
+    expect(records.get('packages/engine/src/zz-priority.ts')?.budgetNotes).toContain('priority');
+    expect(records.get('packages/engine/src/linked.ts')).toMatchObject({ status: 'budget-exceeded', reason: 'max-files-total' });
+  });
+
+  it('materializes all shared repair-priority files on one primary atom past the generic per-atom byte budget', async () => {
+    const sharedPaths = ['packages/engine/src/a.ts', 'packages/engine/src/b.ts', 'packages/engine/src/c.ts', 'packages/engine/src/d.ts'];
+    for (const sharedPath of sharedPaths) await writeEvidence(sharedPath, 'x'.repeat(40));
+    const backticked = sharedPaths.map((sharedPath) => `\`${sharedPath}\``).join(', ');
+    const data = await fixture([`engine updates ${backticked} for one aspect.`, `engine validates ${backticked} for another aspect.`]);
+    const primaryAtomId = data.brief.evidenceOwnership.find((entry) => entry.path === sharedPaths[0])!.primaryAtomId!;
+    expect(data.brief.evidenceOwnership.filter((entry) => sharedPaths.includes(entry.path)).every((entry) => entry.shared && entry.primaryAtomId === primaryAtomId)).toBe(true);
+
+    const withoutPriority = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxEvidenceBytesPerAtom: 100 } });
+    const dropped = withoutPriority.records.filter((record) => record.status === 'budget-exceeded');
+    expect(dropped.length).toBe(2);
+    expect(dropped.every((record) => record.reason === 'max-evidence-bytes-per-atom' && record.budgetAtomIds?.length === 1 && record.budgetAtomIds[0] === primaryAtomId)).toBe(true);
+
+    const withPriority = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxEvidenceBytesPerAtom: 100 }, priorityPaths: sharedPaths });
+    expect(withPriority.validationErrors).toEqual([]);
+    expect(withPriority.records.filter((record) => sharedPaths.includes(record.path)).every((record) => record.status === 'materialized' && record.priority === true && record.deliveredToAtomIds[0] === primaryAtomId)).toBe(true);
+    expect(withPriority.bytesByAtomId?.[primaryAtomId]).toBe(160);
+  });
+
+  it('keeps priority materialization bounded by the priority per-atom ceiling and the global byte budget', async () => {
+    const sharedPaths = ['packages/engine/src/a.ts', 'packages/engine/src/b.ts', 'packages/engine/src/c.ts'];
+    for (const sharedPath of sharedPaths) await writeEvidence(sharedPath, 'x'.repeat(40));
+    const backticked = sharedPaths.map((sharedPath) => `\`${sharedPath}\``).join(', ');
+    const data = await fixture([`engine updates ${backticked}.`]);
+    const atomId = data.graph.atoms[0].atomId;
+
+    const atomCeiling = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxPriorityEvidenceBytesPerAtom: 100 }, priorityPaths: sharedPaths });
+    const atomCeilingDropped = atomCeiling.records.filter((record) => record.status === 'budget-exceeded');
+    expect(atomCeilingDropped.length).toBe(1);
+    expect(atomCeilingDropped[0]).toMatchObject({ reason: 'max-priority-evidence-bytes-per-atom', priority: true, budgetAtomIds: [atomId] });
+
+    const totalCeiling = await materializePlanningSourceEvidence({ cwd, graph: data.graph, sharedBrief: data.brief, limits: { maxBytesTotal: 100 }, priorityPaths: sharedPaths });
+    expect(totalCeiling.records.some((record) => record.status === 'budget-exceeded' && record.reason === 'max-total-evidence-bytes' && record.priority === true)).toBe(true);
+    expect(totalCeiling.totalBytes).toBeLessThanOrEqual(100);
+  });
+
   it('passes materialized source evidence to atom prompts while keeping mapper tools disabled', async () => {
     await writeEvidence('packages/engine/src/local.ts', 'export function localEvidence() { return true; }');
     const data = await fixture(['engine updates `packages/engine/src/local.ts`.']);

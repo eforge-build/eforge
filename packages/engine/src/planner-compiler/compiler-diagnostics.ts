@@ -255,7 +255,7 @@ function repairAttemptEntry(diagnostic: SourceLocalizationRepairDiagnostic): Com
     aspectIds: boundedIds(diagnostic.aspectIds, 240, 128),
     localizedOwnerPaths: boundedIds(diagnostic.localizedOwnerPaths, 300, 64),
     localizedOwnerStatus: diagnostic.localizedOwnerStatus.slice(0, 64).map((entry) => ({ path: bounded(entry.path, 300), status: entry.status, needIds: boundedIds(entry.needIds, 160, 16) })),
-    evidenceMaterializationStatus: diagnostic.evidenceMaterializationStatus.slice(0, 64).map((entry) => ({ path: bounded(entry.path, 300), status: entry.status, ...(entry.reason ? { reason: bounded(entry.reason, 500) } : {}) })),
+    evidenceMaterializationStatus: diagnostic.evidenceMaterializationStatus.slice(0, 64).map((entry) => ({ path: bounded(entry.path, 300), status: entry.status, ...(entry.reason ? { reason: bounded(entry.reason, 500) } : {}), ...(entry.budgetAtomIds && entry.budgetAtomIds.length > 0 ? { budgetAtomIds: boundedIds(entry.budgetAtomIds, 160, 16) } : {}), ...(entry.priority ? { priority: true } : {}) })),
     coverageStatus: {
       criteria: coverageEntries(diagnostic.coverageStatus.criteria, 80, 256),
       aspects: coverageEntries(diagnostic.coverageStatus.aspects, 240, 1_024),
@@ -306,6 +306,7 @@ function evidenceFailureEntries(result: BoundedPlannerCompilerResult): CompilerD
       ...(record.reason ? { reason: bounded(record.reason, 500) } : {}),
       ...(record.error ? { error: bounded(record.error, 500) } : {}),
       referencedByAtomIds: boundedIds(record.referencedByAtomIds, 160, 16),
+      ...(record.budgetAtomIds && record.budgetAtomIds.length > 0 ? { budgetAtomIds: boundedIds(record.budgetAtomIds, 160, 16) } : {}),
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
 }

@@ -86,7 +86,7 @@ describe('planning compiler diagnostics', () => {
   it('records exhausted repair attempts and blocked residue synthesis', () => {
     const data = fixture(['engine updates `packages/engine/src/missing.ts`.']);
     const atomOutput = completedOutput(data.tasks[0]);
-    const exhausted = repairDiagnostic(data.tasks[0], { attempt: 1, status: 'exhausted', unresolvedReason: 'no localized owner paths resolved' });
+    const exhausted = repairDiagnostic(data.tasks[0], { attempt: 1, status: 'exhausted', unresolvedReason: 'no localized owner paths resolved', evidenceMaterializationStatus: [{ path: 'packages/engine/src/missing.ts', status: 'budget-exceeded', reason: 'max-priority-evidence-bytes-per-atom', budgetAtomIds: [data.tasks[0].atomId], priority: true }] });
     const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)], {
       repairDiagnostics: [repairDiagnostic(data.tasks[0], { attempt: 1, status: 'unresolved' }), exhausted],
       status: 'incomplete',
@@ -100,6 +100,7 @@ describe('planning compiler diagnostics', () => {
     expect(diagnostics.repair.status).toBe('exhausted');
     expect(diagnostics.repair.attempts).toHaveLength(2);
     expect(diagnostics.repair.attempts[1]).toEqual(expect.objectContaining({ status: 'exhausted', unresolvedReason: 'no localized owner paths resolved', residueSynthesisBlocked: true }));
+    expect(diagnostics.repair.attempts[1].evidenceMaterializationStatus).toEqual([{ path: 'packages/engine/src/missing.ts', status: 'budget-exceeded', reason: 'max-priority-evidence-bytes-per-atom', budgetAtomIds: [data.tasks[0].atomId], priority: true }]);
     expect(diagnostics.repair.attempts[1].coverageStatus.criteria).toEqual([{ id: 'ac-001', status: 'covered' }]);
     expect(diagnostics.residue.synthesisBlocked).toBe(true);
     expect(diagnostics.residue.blockedReasons).toContain('no localized owner paths resolved');
@@ -216,6 +217,7 @@ describe('planning compiler diagnostics', () => {
         { path: 'packages/engine/src/a.ts', status: 'materialized', referencedByAtomIds: [atomId], shared: false, deliveredToAtomIds: [atomId], contentExcerpt: 'export {};' },
         { path: 'packages/engine/src/missing.ts', status: 'missing', referencedByAtomIds: [atomId], shared: false, deliveredToAtomIds: [], reason: 'file not found' },
         { path: 'packages/engine/src/big.ts', status: 'too-large', referencedByAtomIds: [atomId], shared: false, deliveredToAtomIds: [], reason: 'exceeds per-file budget' },
+        { path: 'packages/engine/src/blocked.ts', status: 'budget-exceeded', referencedByAtomIds: [atomId], shared: false, deliveredToAtomIds: [], reason: 'max-evidence-bytes-per-atom', budgetAtomIds: [atomId] },
       ],
     });
 
@@ -224,6 +226,7 @@ describe('planning compiler diagnostics', () => {
     expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
     expect(diagnostics.evidenceFailures).toEqual([
       { path: 'packages/engine/src/big.ts', status: 'too-large', reason: 'exceeds per-file budget', referencedByAtomIds: [atomId] },
+      { path: 'packages/engine/src/blocked.ts', status: 'budget-exceeded', reason: 'max-evidence-bytes-per-atom', referencedByAtomIds: [atomId], budgetAtomIds: [atomId] },
       { path: 'packages/engine/src/missing.ts', status: 'missing', reason: 'file not found', referencedByAtomIds: [atomId] },
     ]);
   });
@@ -359,7 +362,7 @@ function residueFixture(data: ReturnType<typeof fixture>, entries: Array<{ candi
   };
 }
 
-function repairDiagnostic(task: PlanningAtomTask, overrides: { attempt: number; status: SourceLocalizationRepairDiagnostic['status']; unresolvedReason?: string }): SourceLocalizationRepairDiagnostic {
+function repairDiagnostic(task: PlanningAtomTask, overrides: { attempt: number; status: SourceLocalizationRepairDiagnostic['status']; unresolvedReason?: string; evidenceMaterializationStatus?: SourceLocalizationRepairDiagnostic['evidenceMaterializationStatus'] }): SourceLocalizationRepairDiagnostic {
   return {
     attempt: overrides.attempt,
     status: overrides.status,
@@ -372,7 +375,7 @@ function repairDiagnostic(task: PlanningAtomTask, overrides: { attempt: number; 
     aspectIds: task.aspectIds,
     localizedOwnerPaths: [],
     localizedOwnerStatus: [],
-    evidenceMaterializationStatus: [],
+    evidenceMaterializationStatus: overrides.evidenceMaterializationStatus ?? [],
     coverageStatus: { criteria: { 'ac-001': 'covered' }, aspects: {}, sourceNeeds: {} },
     ...(overrides.unresolvedReason ? { unresolvedReason: overrides.unresolvedReason } : {}),
     residueSynthesisBlocked: true,

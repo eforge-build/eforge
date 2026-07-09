@@ -1,19 +1,22 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { classifyEvidenceCandidate } from './evidence-hygiene.js';
+import { classifyEvidenceCandidate, normalizeEvidenceValue } from './evidence-hygiene.js';
 import { utf8ByteLength } from './source-analysis.js';
 import { DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceLimits, type PlanningSourceEvidenceRecord, type PlanningSourceEvidenceStatus } from './source-evidence-contracts.js';
 import type { PlanningAtomGraph } from './atom-graph.js';
 import { compareEvidenceOwnershipValue, type PlanningEvidenceOwnership, type SharedPlanningBrief } from './shared-brief-contracts.js';
 
-export interface MaterializePlanningSourceEvidenceInput { cwd: string; graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; limits?: Partial<PlanningSourceEvidenceLimits> }
+export interface MaterializePlanningSourceEvidenceInput { cwd: string; graph: PlanningAtomGraph; sharedBrief: SharedPlanningBrief; limits?: Partial<PlanningSourceEvidenceLimits>; priorityPaths?: string[] }
 
 export async function materializePlanningSourceEvidence(input: MaterializePlanningSourceEvidenceInput): Promise<PlanningSourceEvidenceBundle> {
   const limits = { ...DEFAULT_PLANNING_SOURCE_EVIDENCE_LIMITS, ...(input.limits ?? {}) };
+  const priorityPaths = new Set((input.priorityPaths ?? []).map(normalizeEvidenceValue));
   const state = { totalBytes: 0, filesByAtom: new Map<string, number>(), bytesByAtom: new Map<string, number>() };
   const records: PlanningSourceEvidenceRecord[] = [];
-  for (const [index, ownership] of rankOwnershipForMaterialization(input.sharedBrief.evidenceOwnership).entries()) {
-    records.push(index >= limits.maxFilesTotal ? budgetRecord(ownership, 'max-files-total') : await materializeOne(input.cwd, ownership, limits, state));
+  for (const [index, ownership] of rankOwnershipForMaterialization(input.sharedBrief.evidenceOwnership, priorityPaths).entries()) {
+    const priority = priorityPaths.has(ownership.path);
+    const record = index >= limits.maxFilesTotal ? budgetRecord(ownership, 'max-files-total') : await materializeOne(input.cwd, ownership, limits, state, priority);
+    records.push(priority ? { ...record, priority: true } : record);
   }
   const bundle: PlanningSourceEvidenceBundle = { graphId: input.graph.graphId, sourceHash: input.graph.sourceHash, records: records.sort((a, b) => a.path.localeCompare(b.path)), byAtomId: buildByAtom(records), bytesByAtomId: mapToSortedRecord(state.bytesByAtom), filesByAtomId: mapToSortedRecord(state.filesByAtom), totalBytes: state.totalBytes, limits, validationErrors: [] };
   const validation = validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle, limits });
@@ -26,14 +29,18 @@ export async function materializePlanningSourceEvidence(input: MaterializePlanni
  * it directly materializes docs/config sweep-ins while src/ and test/ files
  * (alphabetically late) starve - fatal once a single-atom graph funnels every
  * path into one per-atom budget. Value order is the shared comparator also
- * used by shared-brief section selection. Output records are re-sorted by
- * path, so only budget contention order changes.
+ * used by shared-brief section selection, with one materializer-local tier
+ * above it: repair-priority paths (representation-required gap owner paths
+ * passed by the repair loop) rank first, so budget contention and the
+ * maxFilesTotal cutoff can never drop the evidence a reducer gap demanded.
+ * Output records are re-sorted by path, so only budget contention order
+ * changes.
  */
-function rankOwnershipForMaterialization(ownership: PlanningEvidenceOwnership[]): PlanningEvidenceOwnership[] {
-  return [...ownership].sort(compareEvidenceOwnershipValue);
+function rankOwnershipForMaterialization(ownership: PlanningEvidenceOwnership[], priorityPaths: Set<string>): PlanningEvidenceOwnership[] {
+  return [...ownership].sort((a, b) => Number(priorityPaths.has(b.path)) - Number(priorityPaths.has(a.path)) || compareEvidenceOwnershipValue(a, b));
 }
 
-async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership, limits: PlanningSourceEvidenceLimits, state: { totalBytes: number; filesByAtom: Map<string, number>; bytesByAtom: Map<string, number> }): Promise<PlanningSourceEvidenceRecord> {
+async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership, limits: PlanningSourceEvidenceLimits, state: { totalBytes: number; filesByAtom: Map<string, number>; bytesByAtom: Map<string, number> }, priority: boolean): Promise<PlanningSourceEvidenceRecord> {
   const candidate = classifyEvidenceCandidate(ownership.path);
   if (!candidate.actionable) return statusRecord(ownership, 'non-actionable', candidate.reason);
   const resolved = safeResolve(cwd, ownership.path);
@@ -47,18 +54,23 @@ async function materializeOne(cwd: string, ownership: PlanningEvidenceOwnership,
     if (!info.isFile()) return statusRecord(ownership, 'read-error', 'not-a-regular-file');
     if (info.size > limits.maxBytesPerFile) return statusRecord(ownership, 'too-large', 'file-byte-size-exceeds-limit', { byteLength: info.size });
     const deliveredToAtomIds = deliveryAtoms(ownership);
-    if (deliveredToAtomIds.some((atomId) => (state.filesByAtom.get(atomId) ?? 0) >= limits.maxFilesPerAtom)) return statusRecord(ownership, 'budget-exceeded', 'max-files-per-atom');
+    if (!priority) {
+      const overFileAtomIds = deliveredToAtomIds.filter((atomId) => (state.filesByAtom.get(atomId) ?? 0) >= limits.maxFilesPerAtom);
+      if (overFileAtomIds.length > 0) return statusRecord(ownership, 'budget-exceeded', 'max-files-per-atom', { budgetAtomIds: overFileAtomIds });
+    }
     const content = await readFile(containedPath, 'utf8');
     const excerpt = boundedBytes(content, limits.maxExcerptBytesPerFile);
     const excerptByteLength = utf8ByteLength(excerpt);
     if (state.totalBytes + excerptByteLength > limits.maxBytesTotal) return statusRecord(ownership, 'budget-exceeded', 'max-total-evidence-bytes', { byteLength: info.size });
-    if (deliveredToAtomIds.some((atomId) => (state.bytesByAtom.get(atomId) ?? 0) + excerptByteLength > limits.maxEvidenceBytesPerAtom)) return statusRecord(ownership, 'budget-exceeded', 'max-evidence-bytes-per-atom', { byteLength: info.size });
+    const perAtomByteCap = priority ? limits.maxPriorityEvidenceBytesPerAtom : limits.maxEvidenceBytesPerAtom;
+    const overByteAtomIds = deliveredToAtomIds.filter((atomId) => (state.bytesByAtom.get(atomId) ?? 0) + excerptByteLength > perAtomByteCap);
+    if (overByteAtomIds.length > 0) return statusRecord(ownership, 'budget-exceeded', priority ? 'max-priority-evidence-bytes-per-atom' : 'max-evidence-bytes-per-atom', { byteLength: info.size, budgetAtomIds: overByteAtomIds });
     for (const atomId of deliveredToAtomIds) {
       state.filesByAtom.set(atomId, (state.filesByAtom.get(atomId) ?? 0) + 1);
       state.bytesByAtom.set(atomId, (state.bytesByAtom.get(atomId) ?? 0) + excerptByteLength);
     }
     state.totalBytes += excerptByteLength;
-    return baseRecord(ownership, 'materialized', { deliveredToAtomIds, byteLength: info.size, excerptByteLength, accountedByteLength: excerptByteLength, budgetNotes: evidenceBudgetNotes(info.size, excerptByteLength, limits), contentExcerpt: excerpt });
+    return baseRecord(ownership, 'materialized', { deliveredToAtomIds, byteLength: info.size, excerptByteLength, accountedByteLength: excerptByteLength, budgetNotes: evidenceBudgetNotes(info.size, excerptByteLength, limits, priority), contentExcerpt: excerpt });
   } catch (err) {
     if (isNotFound(err)) return statusRecord(ownership, 'missing', 'file-not-found');
     return statusRecord(ownership, 'read-error', 'read-failed', { error: err instanceof Error ? err.message : String(err) });
@@ -95,11 +107,12 @@ function localizationMetadata(ownership: PlanningEvidenceOwnership): Partial<Pla
   };
 }
 
-function evidenceBudgetNotes(byteLength: number, excerptByteLength: number, limits: PlanningSourceEvidenceLimits): string[] {
+function evidenceBudgetNotes(byteLength: number, excerptByteLength: number, limits: PlanningSourceEvidenceLimits, priority: boolean): string[] {
   return [
     `file-bytes:${byteLength}/${limits.maxBytesPerFile}`,
     `excerpt-bytes:${excerptByteLength}/${limits.maxExcerptBytesPerFile}`,
     ...(excerptByteLength < byteLength ? ['excerpt-truncated'] : []),
+    ...(priority ? ['priority'] : []),
   ];
 }
 
