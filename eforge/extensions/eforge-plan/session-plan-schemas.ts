@@ -53,11 +53,16 @@ const LifecycleTimestampFields = {
   submittedAt: Type.Optional(Type.String()),
   lastBuildActivityAt: Type.Optional(Type.String()),
 } as const;
+const StatusSourceFields = {
+  statusSource: Type.Optional(Type.String()),
+  statusSourceDisclosure: Type.Optional(Type.String()),
+} as const;
 export const SessionPlanProjectionSchema = Type.Object({
   session: Type.String(),
   topic: Type.String(),
   status: Type.String(),
   body: Type.String(),
+  ...StatusSourceFields,
   ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const SessionPlanDetailOutputSchema = Type.Object({
@@ -66,6 +71,7 @@ export const SessionPlanDetailOutputSchema = Type.Object({
   path: Type.String(),
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycle: Type.Optional(SessionPlanLifecycleProjectionSchema),
+  ...StatusSourceFields,
   ...LifecycleTimestampFields,
 }, JsonObjectAdditionalProperties);
 export const PlanningArtifactSchema = Type.Object({
@@ -73,6 +79,8 @@ export const PlanningArtifactSchema = Type.Object({
   key: Type.String(),
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycleState: Type.Optional(LifecycleStateSchema),
+  partialReasons: Type.Optional(Type.Array(Type.Object({ code: Type.String(), message: Type.String() }, { additionalProperties: true }))),
+  ...StatusSourceFields,
   itemRows: Type.Optional(Type.Array(ItemLifecycleProjectionSchema)),
   linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
   failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),

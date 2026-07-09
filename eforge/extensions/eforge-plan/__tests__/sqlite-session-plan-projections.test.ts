@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
+import { captureCanonicalBacklogItem } from '../canonical/backlog-records.js';
 import { recordCanonicalLifecycleEvent } from '../canonical/lifecycle-records.js';
 import { recordSessionPlanSubmitted, syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
 import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from '../projections/index.js';
@@ -30,7 +31,7 @@ describe('SQLite session-plan projections', () => {
       expect(output).toMatchObject({ limit: 2, offset: 0, total: expect.any(Number), pagination: expect.objectContaining({ returned: 2, hasMore: true, nextOffset: 2 }) });
       expect(output.plans.length).toBeLessThanOrEqual(2);
       expect([...output.artifacts, ...second.artifacts]).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: 'plan', session: 'plan-extra', lifecycle: expect.objectContaining({ itemIds: ['candidate', 'planned'], state: 'partial' }) }),
+        expect.objectContaining({ kind: 'plan', session: 'plan-extra', lifecycle: expect.objectContaining({ itemIds: ['candidate', 'planned'], state: 'planned' }) }),
       ]));
     });
   });
@@ -217,18 +218,63 @@ describe('SQLite session-plan projections', () => {
     });
   });
 
-  it('returns lifecycle for partial multi-item session plans with per-item links', async () => {
+  it('returns lifecycle for partial multi-item session plans with per-item links and reason metadata', async () => {
     await withTempProjectionProject(async (cwd) => {
       seedProjectionBacklog(cwd);
       writeSessionPlan(cwd, 'plan-partial', ['candidate', 'running']);
 
       const lifecycle = await getSessionPlanLifecycleProjection(cwd, 'plan-partial');
 
-      expect(lifecycle).toMatchObject({ session: 'plan-partial', itemIds: ['candidate', 'running'], state: 'partial' });
+      expect(lifecycle).toMatchObject({ session: 'plan-partial', itemIds: ['candidate', 'running'], state: 'partial', partialReasons: [expect.objectContaining({ code: 'mixed-source-states' })] });
       expect(lifecycle.associatedLinks).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: 'session-plan', session: 'plan-partial' }),
         expect.objectContaining({ kind: 'build-session', buildSessionId: 'build-session-1' }),
       ]));
+    });
+  });
+
+  it('projects missing source lifecycle evidence as partial with reason metadata', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      writeSessionPlan(cwd, 'plan-missing-lifecycle', ['unresolved-source']);
+      const db = new DatabaseSync(join(cwd, '.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite'));
+      try {
+        db.prepare('DELETE FROM lifecycle_evidence WHERE session = ?').run('plan-missing-lifecycle');
+      } finally {
+        db.close();
+      }
+
+      const lifecycle = await getSessionPlanLifecycleProjection(cwd, 'plan-missing-lifecycle');
+      const listed = await listPlanningArtifactsProjection(cwd, { includeSubmitted: true, limit: 100 });
+      const artifact = listed.artifacts.find((entry: { session?: string }) => entry.session === 'plan-missing-lifecycle');
+
+      expect(lifecycle).toMatchObject({ session: 'plan-missing-lifecycle', state: 'partial', partialReasons: expect.arrayContaining([expect.objectContaining({ code: 'incomplete-coverage' }), expect.objectContaining({ code: 'missing-lifecycle-evidence' })]) });
+      expect(artifact).toMatchObject({ session: 'plan-missing-lifecycle', lifecycleState: 'partial', partialReasons: expect.arrayContaining([expect.objectContaining({ code: 'incomplete-coverage' }), expect.objectContaining({ code: 'missing-lifecycle-evidence' })]) });
+    });
+  });
+
+  it('keeps unresolved source refs partial even when planned lifecycle evidence exists', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      writeSessionPlan(cwd, 'plan-unresolved-with-evidence', ['unresolved-source']);
+
+      const lifecycle = await getSessionPlanLifecycleProjection(cwd, 'plan-unresolved-with-evidence');
+
+      expect(lifecycle).toMatchObject({ session: 'plan-unresolved-with-evidence', state: 'partial', partialReasons: expect.arrayContaining([expect.objectContaining({ code: 'incomplete-coverage' })]) });
+      expect(lifecycle.itemRows).toEqual(expect.arrayContaining([expect.objectContaining({ itemId: 'unresolved-source', unresolvedSourceRef: true, lifecycleState: 'planned' })]));
+    });
+  });
+
+  it('projects homogeneous multi-item lifecycle as the shared state', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      seedProjectionBacklog(cwd);
+      captureCanonicalBacklogItem(cwd, { id: 'shipped-copy', title: 'Shipped Copy', status: 'candidate', epicId: 'epic-a' });
+      writeSessionPlan(cwd, 'plan-shipped-together', ['shipped', 'shipped-copy']);
+      recordCanonicalLifecycleEvent(cwd, { eventKey: 'shipped-copy-1', type: 'landing:complete', action: 'merge', commitSha: 'def456', timestamp: '2027-01-01T00:07:00.000Z' }, ['shipped-copy']);
+
+      const lifecycle = await getSessionPlanLifecycleProjection(cwd, 'plan-shipped-together');
+
+      expect(lifecycle).toMatchObject({ session: 'plan-shipped-together', itemIds: ['shipped', 'shipped-copy'], state: 'shipped', partialReasons: [] });
     });
   });
 });

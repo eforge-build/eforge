@@ -33,6 +33,7 @@ function PlanRow({ plan }: PlanRowProps) {
   const excerpt = hasBody ? plan.body.slice(0, 200) : '';
   const buildCount = plan.build?.length ?? 0;
   const hasReview = Boolean(plan.review);
+  const partialReasons = ((plan as PlanItem & { partialReasons?: Array<{ message?: string }> }).partialReasons ?? []).map((reason) => reason.message).filter((message): message is string => typeof message === 'string' && message.length > 0);
 
   return (
     <div className="border rounded p-2 text-xs space-y-1">
@@ -54,6 +55,7 @@ function PlanRow({ plan }: PlanRowProps) {
         )}
       </div>
       {plan.name && <p className="text-muted-foreground">{plan.name}</p>}
+      {partialReasons.map((message) => <p key={message} className="text-muted-foreground">{message}</p>)}
       {hasBody && (
         <div>
           <button

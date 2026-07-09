@@ -40,6 +40,10 @@ export interface SessionPlanListEntryWire {
   missingDimensions: string[];
   /** Associated eforge run session identifier. Present when the plan was submitted and declares `eforge_session`. */
   eforge_session?: string;
+  /** Identifier for the status authority or compatibility bridge used. */
+  statusSource?: string;
+  /** Human-readable disclosure for canonical vs derived status surfaces. */
+  statusSourceDisclosure?: string;
 }
 
 /** Readiness detail returned by mutation routes and the readiness GET. */
@@ -66,6 +70,10 @@ export interface SessionPlanDataWire {
   body: string;
   /** Optional agent runtime profile name supplied by the producer that creates the session plan. */
   agent_profile?: string;
+  /** Identifier for the status authority or compatibility bridge used. */
+  statusSource?: string;
+  /** Human-readable disclosure for canonical vs derived status surfaces. */
+  statusSourceDisclosure?: string;
 }
 
 /** Response for GET /api/session-plan/list */
@@ -134,6 +142,12 @@ export interface SessionPlanSetStatusRequest {
 /** Response for POST /api/session-plan/set-status */
 export interface SessionPlanSetStatusResponse {
   session: string;
+  /** Effective status accepted by the daemon/bridge. */
+  status?: SessionPlanStatusWire;
+  /** Identifier for the status authority or compatibility bridge used. */
+  statusSource?: string;
+  /** Human-readable disclosure for canonical vs derived status surfaces. */
+  statusSourceDisclosure?: string;
 }
 
 /** Request body for POST /api/session-plan/select-dimensions */

@@ -162,12 +162,15 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         <div className="flex flex-wrap items-center gap-2">
           {!statusReady && <Badge>{plan.status}</Badge>}
           {!canHandoff && <Badge variant={readinessPasses ? 'default' : 'outline'}>{readinessPasses ? 'checks pass' : 'not ready'}</Badge>}
+          {detail.lifecycle?.lifecycleState === 'partial' && <Badge variant="outline" title={detail.lifecycle.partialReasons?.map((reason) => reason.message).join(' ')}>partial lifecycle</Badge>}
           {plan.planning_type && <Badge variant="outline">{plan.planning_type}</Badge>}
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
           <span className={`ml-auto text-xs font-semibold ${canHandoff ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
         <PlanLifecycleMetadata timestamps={lifecycleTimestamps} />
+        <PlanStatusSourceDisclosure detail={detail} />
+        <PlanPartialLifecycleExplanation detail={detail} />
 
         {executiveSummary !== undefined && (
           <AnnotatablePlanSection
@@ -204,6 +207,23 @@ export function PlanDetailCard({ detail, artifact, revision, locked, onSelectAnn
         </CollapsiblePanel>
       </CardContent>
     </Card>
+  );
+}
+
+function PlanStatusSourceDisclosure({ detail }: { detail: PlanDetail }) {
+  const disclosure = detail.statusSourceDisclosure ?? detail.plan?.statusSourceDisclosure;
+  if (!disclosure) return null;
+  return <p className="rounded border border-border bg-background/40 p-2 text-xs text-muted-foreground">{disclosure}</p>;
+}
+
+function PlanPartialLifecycleExplanation({ detail }: { detail: PlanDetail }) {
+  const reasons = detail.lifecycle?.partialReasons ?? detail.plan?.partialReasons ?? [];
+  if (detail.lifecycle?.lifecycleState !== 'partial' || reasons.length === 0) return null;
+  return (
+    <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-900 dark:text-amber-100">
+      <div className="font-semibold">Partial lifecycle projection</div>
+      {reasons.map((reason) => <p key={reason.code}>{reason.message}</p>)}
+    </div>
   );
 }
 

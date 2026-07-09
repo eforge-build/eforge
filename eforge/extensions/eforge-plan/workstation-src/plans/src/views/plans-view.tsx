@@ -230,6 +230,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <p className="text-xs text-muted-foreground">{artifact.kind === 'plan-set' ? `${artifact.childCount ?? 0} child plans` : artifact.session}</p>
                     <ArtifactBuildChip artifact={artifact} />
+                    {artifact.lifecycleState === 'partial' && artifact.partialReasons?.[0] && <span className="text-2xs text-muted-foreground">{artifact.partialReasons[0].message}</span>}
                     <span className="text-2xs text-muted-foreground"><Timestamp value={selectPlanRecencyTimestamp(artifact)} prefix="Updated" /></span>
                   </div>
                 </button>

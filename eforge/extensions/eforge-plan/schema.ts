@@ -428,12 +428,15 @@ export const ItemLifecycleProjectionSchema = Type.Object({
   status: BacklogStatusSchema,
   epic: Type.Optional(Type.String()),
   lifecycleState: LifecycleStateSchema,
+  unresolvedSourceRef: Type.Optional(Type.Boolean()),
+  missingLifecycleEvidence: Type.Optional(Type.Boolean()),
   linkRows: Type.Array(LifecycleLinkRowSchema),
   failureEvidence: Type.Array(LifecycleLinkRowSchema),
 }, { additionalProperties: false });
 export const SessionPlanLifecycleProjectionSchema = Type.Object({
   sourceRefs: PlanSourceRefsSchema,
   lifecycleState: LifecycleStateSchema,
+  partialReasons: Type.Optional(Type.Array(Type.Object({ code: Type.String(), message: Type.String() }, { additionalProperties: true }))),
   itemRows: Type.Array(ItemLifecycleProjectionSchema),
   linkRows: Type.Array(LifecycleLinkRowSchema),
   failureEvidence: Type.Array(LifecycleLinkRowSchema),

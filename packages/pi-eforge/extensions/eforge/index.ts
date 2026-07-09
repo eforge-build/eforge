@@ -1836,7 +1836,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the selected planning template; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the selected planning template; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Status source: canonical eforge-plan SQLite session-plan status records; projections, monitor events, event-tail output, and status fields are derived evidence or diagnostics. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     parameters: Type.Object({
       action: StringEnum(
         ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy"] as const,
@@ -2050,6 +2050,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           }
         } else if ((data as { session?: unknown }).session) {
           lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { session: string }).session)));
+          if (typeof (data as { statusSourceDisclosure?: unknown }).statusSourceDisclosure === 'string') {
+            lines.push(theme.fg("muted", String((data as { statusSourceDisclosure: string }).statusSourceDisclosure)));
+          }
         } else {
           lines.push(theme.fg("muted", text.text.slice(0, 200)));
         }

@@ -9,7 +9,7 @@ import { projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import { recordSessionPlanSubmitted, syncSessionPlanFile } from './canonical/session-plan-records.js';
 import { isTerminalBuildStatus, isTerminalQueuePrdStatus, normalizePlanningStatus } from './planning-state-policy.js';
-import { listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
+import { SESSION_PLAN_STATUS_SOURCE_DISCLOSURE, listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
 import { withProjectionStore } from './projections/store.js';
 import { getProjectionSessionPlan } from './sqlite/repositories/projections/session-plans.js';
 import { withCanonicalTransaction } from './canonical/store.js';
@@ -230,8 +230,13 @@ export const setSessionPlanReady = defineExtensionAction({
     }
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'ready' });
     const readyAt = new Date().toISOString();
-    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness, { status: 'ready', frontmatter: { eforge_plan: { ready_at: readyAt } } });
-    return toJsonSafeObject({ kind: 'ready', session: input.session, status: result.plan.status, readyAt, readiness, plan: projectSessionPlan(result.plan) });
+    await syncSessionPlanStatus(ctx.cwd, input.session, 'ready', { readinessSummary: readiness as never, frontmatter: { eforge_plan: { ready_at: readyAt } } });
+    const canonical = await showSessionPlanProjection(ctx.cwd, input.session);
+    const effectiveStatus = canonical?.plan?.status ?? result.plan.status;
+    if (effectiveStatus !== 'ready') {
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, status: effectiveStatus, readyAt, statusSource: 'eforge-plan-sqlite-session-plan-status', statusSourceDisclosure: SESSION_PLAN_STATUS_SOURCE_DISCLOSURE, readiness, message: `Canonical session-plan status is ${effectiveStatus}; not reporting ready from Markdown compatibility state.`, plan: projectSessionPlan(result.plan) });
+    }
+    return toJsonSafeObject({ kind: 'ready', session: input.session, status: effectiveStatus, readyAt, statusSource: 'eforge-plan-sqlite-session-plan-status', statusSourceDisclosure: SESSION_PLAN_STATUS_SOURCE_DISCLOSURE, readiness, plan: projectSessionPlan(result.plan) });
   },
 });
 
@@ -245,12 +250,14 @@ export const deleteSessionPlanAction = defineExtensionAction({
   async handler(input, ctx) {
     const planning = adapter();
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'abandoned' });
-    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), await planning.flat.readiness({ cwd: ctx.cwd, session: input.session }));
+    await syncSessionPlanStatus(ctx.cwd, input.session, 'abandoned', { readinessSummary: await planning.flat.readiness({ cwd: ctx.cwd, session: input.session }) as never });
     return toJsonSafeObject({
       kind: 'deleted',
       session: input.session,
       status: 'abandoned',
       message: `Deleted ${input.session} from active plans by marking it abandoned.`,
+      statusSource: 'eforge-plan-sqlite-session-plan-status',
+      statusSourceDisclosure: SESSION_PLAN_STATUS_SOURCE_DISCLOSURE,
       plan: projectSessionPlan(result.plan),
     });
   },
@@ -294,15 +301,16 @@ export const handoffSessionPlan = defineExtensionAction({
   async handler(input, ctx) {
     const planning = adapter();
     const loaded = await planning.flat.load({ cwd: ctx.cwd, session: input.session });
-    if (!loaded.readiness.ready) {
-      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: 'Session plan is not ready; no handoff source path was produced.' });
-    }
-    if (loaded.plan.status !== 'ready') {
-      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan status is ${loaded.plan.status}; mark it ready before handoff.` });
-    }
     const canonicalPlan = await withProjectionStore(ctx.cwd, (store) => getProjectionSessionPlan(store, input.session), () => undefined);
-    if (canonicalPlan?.status !== undefined && canonicalPlan.status !== 'ready') {
-      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan canonical status is ${canonicalPlan.status}; only ready plans can be handed off. Use resubmit-session-plan when terminal failed or removed queue/build evidence makes this submitted plan recoverable.` });
+    const effectiveStatus = canonicalPlan?.status ?? loaded.plan.status;
+    const statusSource = canonicalPlan?.status !== undefined ? 'eforge-plan-sqlite-session-plan-status' : 'markdown-compatibility-fallback';
+    const statusSourceFields = { status: effectiveStatus, statusSource, ...(canonicalPlan?.status !== undefined ? { statusSourceDisclosure: SESSION_PLAN_STATUS_SOURCE_DISCLOSURE } : {}) };
+    if (!loaded.readiness.ready) {
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, ...statusSourceFields, message: 'Session plan is not ready; no handoff source path was produced.' });
+    }
+    if (effectiveStatus !== 'ready') {
+      const recoveryGuidance = canonicalPlan?.status === 'submitted' || canonicalPlan?.status === 'removed' ? ' Use resubmit-session-plan when terminal failed or removed queue/build evidence makes this plan recoverable.' : '';
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, ...statusSourceFields, message: `Session plan ${statusSource === 'eforge-plan-sqlite-session-plan-status' ? 'canonical ' : ''}status is ${effectiveStatus}; mark it ready before handoff.${recoveryGuidance}` });
     }
     await readFile(loaded.path, 'utf-8');
     const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
@@ -401,6 +409,12 @@ export const sessionPlanActions = [
   handoffSessionPlan,
   resubmitSessionPlan,
 ] as const;
+
+export async function syncSessionPlanStatus(cwd: string, session: string, status: string, overrides: Parameters<typeof syncSessionPlanFile>[3] = {}): Promise<void> {
+  const planning = adapter();
+  const path = planning.flat.resolvePath({ cwd, session });
+  await syncSessionPlanFile(cwd, session, path, { ...overrides, status });
+}
 
 async function syncFlatSessionPlan(cwd: string, session: string, path: string, readinessSummary?: unknown, overrides: Parameters<typeof syncSessionPlanFile>[3] = {}): Promise<void> {
   await syncSessionPlanFile(cwd, session, path, { ...overrides, ...(readinessSummary === undefined ? {} : { readinessSummary: readinessSummary as never }) });

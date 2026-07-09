@@ -170,7 +170,7 @@ The tool returns a JSON response with a `sessionId` and `autoBuild` status.
 
 After successful enqueue:
 
-1. If the source came from a session plan file (Branch A path input, or Branch D session-plan selection), the daemon automatically updates the session file's status to `submitted` and records the session ID — no manual frontmatter edit is needed.
+1. If the source came from a session plan file (Branch A path input, or Branch D session-plan selection), the daemon automatically updates the session file's status to `submitted` and records the session ID — no manual frontmatter edit is needed. For extension-owned session plans, the status source is the canonical eforge-plan SQLite session-plan status record; projections, monitor events, event-tail output, and status fields are derived evidence or diagnostics.
 
 2. Tell the user:
 

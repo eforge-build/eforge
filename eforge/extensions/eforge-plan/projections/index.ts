@@ -6,7 +6,7 @@ export { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 export { getItemDetailProjection, getEpicDetailProjection, compactItemFromStore, compactEpicFromRows, hydrateCompactItemSearchResults, listAllCompactEpicsFromStore } from './items.js';
 export { listBoardCompactProjection, buildBoardDebugProjection, renderBoardProjection } from './board.js';
 export { getRecommendationProjection, buildRecommendationActionability } from './recommendations.js';
-export { listPlanningArtifactsProjection, getSessionPlanLifecycleProjection, showSessionPlanProjection } from './session-plans.js';
+export { SESSION_PLAN_STATUS_SOURCE_DISCLOSURE, listPlanningArtifactsProjection, getSessionPlanLifecycleProjection, showSessionPlanProjection } from './session-plans.js';
 export { findNonterminalCoverage } from './coverage.js';
 
 import { withProjectionStore } from './store.js';
