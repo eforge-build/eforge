@@ -8,7 +8,9 @@ import type { NativeExtensionRecorderState, NativeExtensionRegistry, ExtensionPr
 import type { ProfileListResponse } from '@eforge-build/client';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
-import { getSessionPlan, openEforgePlanStore } from '../sqlite/index.js';
+import { synchronizeRemovedQueuePrdCoverage } from '../canonical/queue-removal-cleanup.js';
+import { getSessionPlan, openEforgePlanStore, recordLifecycleEvidence, upsertBuildRun, upsertBuildSession, upsertQueuePrd } from '../sqlite/index.js';
+import { getDatabase } from '../sqlite/store-internal.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -46,6 +48,26 @@ function storedReadiness(cwd: string, session: string): unknown {
 function storedStatus(cwd: string, session: string): string | undefined {
   const store = openEforgePlanStore(cwd);
   try { return getSessionPlan(store, session)?.status; } finally { store.close(); }
+}
+
+function storedSessionPlanCount(cwd: string, session: string): number {
+  const store = openEforgePlanStore(cwd);
+  try { return (getDatabase(store).prepare('SELECT count(*) AS count FROM session_plans WHERE session = ?').get(session) as { count: number }).count; } finally { store.close(); }
+}
+
+function storedQueueRows(cwd: string, session: string): Array<{ prd_id: string; status: string | null }> {
+  const store = openEforgePlanStore(cwd);
+  try { return getDatabase(store).prepare('SELECT prd_id, status FROM queue_prds WHERE session = ? ORDER BY prd_id').all(session) as Array<{ prd_id: string; status: string | null }>; } finally { store.close(); }
+}
+
+function storedSubmittedEvidenceRows(cwd: string, session: string): Array<{ queue_prd_id: string | null; is_current: number; is_terminal: number; superseded_at: string | null }> {
+  const store = openEforgePlanStore(cwd);
+  try { return getDatabase(store).prepare("SELECT queue_prd_id, is_current, is_terminal, superseded_at FROM lifecycle_evidence WHERE session = ? AND reason_code = 'submitted-session-plan' ORDER BY queue_prd_id").all(session) as Array<{ queue_prd_id: string | null; is_current: number; is_terminal: number; superseded_at: string | null }>; } finally { store.close(); }
+}
+
+function storedCurrentEvidenceRows(cwd: string, session: string): Array<{ queue_prd_id: string | null; lifecycle_state: string; is_current: number; is_terminal: number; superseded_at: string | null }> {
+  const store = openEforgePlanStore(cwd);
+  try { return getDatabase(store).prepare("SELECT queue_prd_id, lifecycle_state, is_current, is_terminal, superseded_at FROM lifecycle_evidence WHERE session = ? ORDER BY evidence_key").all(session) as Array<{ queue_prd_id: string | null; lifecycle_state: string; is_current: number; is_terminal: number; superseded_at: string | null }>; } finally { store.close(); }
 }
 
 function expectStoredReadiness(cwd: string, session: string, readiness: unknown): void {
@@ -434,6 +456,208 @@ ${readyBody()}`, 'utf-8');
       expect(second).toMatchObject({ kind: 'not-ready', session: 'ready-plan', message: expect.stringContaining('canonical status is submitted') });
       expect(enqueuedSources).toEqual([]);
       expect(storedStatus(cwd, 'ready-plan')).toBe('submitted');
+    });
+  });
+
+  it('resubmits an existing submitted plan after terminal failed build evidence without duplicating identity or provenance', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', title: 'Item one', status: 'planned' });
+      await writeBacklogEpic(cwd, { id: 'epic-one', title: 'Epic one', status: 'planned' });
+      await mkdir(join(cwd, '.eforge', 'session-plans'), { recursive: true });
+      await writeFile(join(cwd, '.eforge', 'session-plans', 'recover-plan.md'), `---\nsession: recover-plan\ntopic: Recover Plan\nstatus: ready\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\neforge_plan:\n  source_item_ids:\n    - item-one\n  source_epic_ids:\n    - epic-one\n  source_recommendation_ref: rec-one\n---\n${readyBody('Recover Plan')}`, 'utf-8');
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'recover-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'recover-plan' }, { enqueue: async () => ({ sessionId: 'old-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try {
+        upsertBuildRun(store, { runId: 'old-run', session: 'recover-plan', queuePrdId: 'old-queue', status: 'failed', finishedAt: '2099-01-01T00:00:00.000Z' });
+        recordLifecycleEvidence(store, { evidenceKey: 'failed:old-run:item-one', itemRef: 'item-one', session: 'recover-plan', queuePrdId: 'old-queue', runId: 'old-run', lifecycleState: 'failed', reasonCode: 'failed-result', evidenceKind: 'build-run', status: 'failed', isCurrent: true, isTerminal: true, occurredAt: '2099-01-01T00:00:00.000Z' });
+      } finally { store.close(); }
+      await writeFile(join(cwd, '.eforge', 'session-plans', 'recover-plan.md'), `---\nsession: recover-plan\ntopic: Recover Plan\nstatus: ready\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\n---\n${readyBody('Recover Plan')}`, 'utf-8');
+
+      const enqueueCalls: Array<{ source: string; suppressSessionPlanSubmissionMark?: boolean }> = [];
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'recover-plan' }, { enqueue: async (request) => { enqueueCalls.push(request); return { sessionId: 'new-queue', pid: 2, autoBuild: true }; } });
+      const shown = await dispatch(cwd, 'show-session-plan', { session: 'recover-plan' });
+      const list = await dispatch(cwd, 'list-planning-artifacts', { includeSubmitted: true });
+      const listedPlan = (list.artifacts as Array<{ key: string; lifecycle?: { lifecycleState?: string } }>).find((artifact) => artifact.key === 'plan:recover-plan');
+
+      expect(resubmitted).toMatchObject({ kind: 'enqueued', session: 'recover-plan', queueSessionId: 'new-queue', sourcePath: '.eforge/session-plans/recover-plan.md' });
+      expect(enqueueCalls).toEqual([{ source: '.eforge/session-plans/recover-plan.md', suppressSessionPlanSubmissionMark: true }]);
+      expect(storedStatus(cwd, 'recover-plan')).toBe('submitted');
+      expect(storedSessionPlanCount(cwd, 'recover-plan')).toBe(1);
+      expect(storedQueueRows(cwd, 'recover-plan')).toEqual([
+        { prd_id: 'new-queue', status: 'queued' },
+        { prd_id: 'old-queue', status: 'queued' },
+      ]);
+      expect(storedSubmittedEvidenceRows(cwd, 'recover-plan')).toEqual([
+        { queue_prd_id: 'new-queue', is_current: 1, is_terminal: 0, superseded_at: null },
+        { queue_prd_id: 'old-queue', is_current: 0, is_terminal: 1, superseded_at: expect.any(String) },
+      ]);
+      expect(storedCurrentEvidenceRows(cwd, 'recover-plan')).toEqual(expect.arrayContaining([
+        expect.objectContaining({ queue_prd_id: 'old-queue', lifecycle_state: 'submitted', is_current: 0, is_terminal: 1, superseded_at: expect.any(String) }),
+        expect.objectContaining({ queue_prd_id: 'old-queue', lifecycle_state: 'failed', is_current: 0, is_terminal: 1, superseded_at: expect.any(String) }),
+        expect.objectContaining({ queue_prd_id: 'new-queue', lifecycle_state: 'submitted', is_current: 1, is_terminal: 0, superseded_at: null }),
+      ]));
+      expect(shown.sourceRefs).toMatchObject({ sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'], recommendationRef: 'rec-one' });
+      expect(shown.lifecycle).toMatchObject({ lifecycleState: 'queue' });
+      expect(JSON.stringify(shown.lifecycle)).toContain('new-queue');
+      expect(JSON.stringify(shown.lifecycle)).not.toContain('old-queue');
+      expect(JSON.stringify(shown.lifecycle)).not.toContain('old-run');
+      expect((shown.sourceRefRows as Array<{ itemRef?: string }>).filter((row) => row.itemRef === 'item-one')).toEqual([expect.objectContaining({ itemRef: 'item-one', provenance: 'canonical-sync', sourceRecommendationRef: 'rec-one', promotedAt: expect.any(String) })]);
+      expect((list.artifacts as Array<{ key: string; lifecycle?: { lifecycleState?: string } }>).filter((artifact) => artifact.key === 'plan:recover-plan')).toHaveLength(1);
+      expect(JSON.stringify(listedPlan)).toContain('new-queue');
+      expect(JSON.stringify(listedPlan)).not.toContain('old-queue');
+      expect(JSON.stringify(listedPlan)).not.toContain('old-run');
+      const second = await dispatch(cwd, 'resubmit-session-plan', { session: 'recover-plan' }, { enqueue: async () => ({ sessionId: 'duplicate-queue', pid: 3, autoBuild: false }) });
+      expect(second).toMatchObject({ kind: 'not-recoverable', session: 'recover-plan', message: expect.stringContaining('Active queue/build evidence') });
+      expect(storedQueueRows(cwd, 'recover-plan').map((row) => row.prd_id)).not.toContain('duplicate-queue');
+    });
+  });
+
+  it('resubmits a submitted plan after removed queue evidence and keeps the stale record separate from the fresh queue record', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', title: 'Item one', status: 'planned' });
+      await writeBacklogEpic(cwd, { id: 'epic-one', title: 'Epic one', status: 'planned' });
+      await mkdir(join(cwd, '.eforge', 'session-plans'), { recursive: true });
+      await writeFile(join(cwd, '.eforge', 'session-plans', 'removed-queue-plan.md'), `---\nsession: removed-queue-plan\ntopic: Removed Queue Plan\nstatus: ready\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\neforge_plan:\n  source_item_ids:\n    - item-one\n  source_epic_ids:\n    - epic-one\n  source_recommendation_ref: rec-one\n---\n${readyBody('Removed Queue Plan')}`, 'utf-8');
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'removed-queue-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'removed-queue-plan' }, { enqueue: async () => ({ sessionId: 'removed-queue', pid: 1, autoBuild: false }) });
+      await synchronizeRemovedQueuePrdCoverage(cwd, 'removed-queue', { timestamp: '2099-01-01T00:00:00.000Z' });
+      expect(storedStatus(cwd, 'removed-queue-plan')).toBe('removed');
+      await writeFile(join(cwd, '.eforge', 'session-plans', 'removed-queue-plan.md'), `---\nsession: removed-queue-plan\ntopic: Removed Queue Plan\nstatus: ready\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\n---\n${readyBody('Removed Queue Plan')}`, 'utf-8');
+      await dispatch(cwd, 'check-session-plan-readiness', { session: 'removed-queue-plan' });
+      expect(storedStatus(cwd, 'removed-queue-plan')).toBe('removed');
+      const enqueueCalls: Array<{ source: string; suppressSessionPlanSubmissionMark?: boolean }> = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'removed-queue-plan' }, { enqueue: async (request) => { enqueueCalls.push(request); return { sessionId: 'fresh-queue', pid: 2, autoBuild: false }; } });
+      const shown = await dispatch(cwd, 'show-session-plan', { session: 'removed-queue-plan' });
+
+      expect(resubmitted).toMatchObject({ kind: 'enqueued', session: 'removed-queue-plan', queueSessionId: 'fresh-queue' });
+      expect(enqueueCalls).toEqual([{ source: '.eforge/session-plans/removed-queue-plan.md', suppressSessionPlanSubmissionMark: true }]);
+      expect(storedStatus(cwd, 'removed-queue-plan')).toBe('submitted');
+      expect(storedQueueRows(cwd, 'removed-queue-plan')).toEqual([
+        { prd_id: 'fresh-queue', status: 'queued' },
+        { prd_id: 'removed-queue', status: 'removed' },
+      ]);
+      expect(storedSessionPlanCount(cwd, 'removed-queue-plan')).toBe(1);
+      expect(shown.sourceRefs).toMatchObject({ sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'], recommendationRef: 'rec-one' });
+      expect((shown.sourceRefRows as Array<{ itemRef?: string }>).filter((row) => row.itemRef === 'item-one')).toEqual([expect.objectContaining({ itemRef: 'item-one', provenance: 'canonical-sync', sourceRecommendationRef: 'rec-one' })]);
+    });
+  });
+
+  it('resubmits a submitted plan after failed queue evidence without a build run', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'failed-queue-plan', readyBody('Failed Queue Plan'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'failed-queue-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'failed-queue-plan' }, { enqueue: async () => ({ sessionId: 'failed-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try { upsertQueuePrd(store, { prdId: 'failed-queue', session: 'failed-queue-plan', status: 'failed', updatedAt: '2099-01-01T00:00:00.000Z' }); } finally { store.close(); }
+      const calls: Array<{ source: string; suppressSessionPlanSubmissionMark?: boolean }> = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'failed-queue-plan' }, { enqueue: async (request) => { calls.push(request); return { sessionId: 'fresh-failed-queue', pid: 2, autoBuild: false }; } });
+
+      expect(resubmitted).toMatchObject({ kind: 'enqueued', session: 'failed-queue-plan', queueSessionId: 'fresh-failed-queue' });
+      expect(calls).toEqual([{ source: '.eforge/session-plans/failed-queue-plan.md', suppressSessionPlanSubmissionMark: true }]);
+      expect(storedSessionPlanCount(cwd, 'failed-queue-plan')).toBe(1);
+      expect(storedQueueRows(cwd, 'failed-queue-plan')).toEqual([
+        { prd_id: 'failed-queue', status: 'failed' },
+        { prd_id: 'fresh-failed-queue', status: 'queued' },
+      ]);
+    });
+  });
+
+  it('resubmits after failed build-session evidence supersedes a stale queued row', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'failed-session-plan', readyBody('Failed Session Plan'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'failed-session-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'failed-session-plan' }, { enqueue: async () => ({ sessionId: 'stale-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try { upsertBuildSession(store, { buildSessionId: 'failed-build-session', session: 'failed-session-plan', status: 'failed', finishedAt: '2099-01-01T00:00:00.000Z' }); } finally { store.close(); }
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'failed-session-plan' }, { enqueue: async () => ({ sessionId: 'fresh-session-queue', pid: 2, autoBuild: false }) });
+
+      expect(resubmitted).toMatchObject({ kind: 'enqueued', session: 'failed-session-plan', queueSessionId: 'fresh-session-queue' });
+      expect(storedQueueRows(cwd, 'failed-session-plan')).toEqual([
+        { prd_id: 'fresh-session-queue', status: 'queued' },
+        { prd_id: 'stale-queue', status: 'queued' },
+      ]);
+    });
+  });
+
+  it('does not treat successful completed build evidence as recoverable', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'completed-plan', readyBody('Completed Plan'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'completed-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'completed-plan' }, { enqueue: async () => ({ sessionId: 'completed-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try {
+        upsertQueuePrd(store, { prdId: 'completed-queue', session: 'completed-plan', status: 'completed', updatedAt: '2099-01-01T00:00:00.000Z' });
+        upsertBuildRun(store, { runId: 'completed-run', session: 'completed-plan', queuePrdId: 'completed-queue', status: 'completed', finishedAt: '2099-01-01T00:01:00.000Z' });
+      } finally { store.close(); }
+      const calls: string[] = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'completed-plan' }, { enqueue: async (request) => { calls.push(request.source); return { sessionId: 'unexpected', pid: 2, autoBuild: false }; } });
+
+      expect(resubmitted).toMatchObject({ kind: 'not-recoverable', session: 'completed-plan', message: expect.stringContaining('No terminal failed or removed queue/build evidence') });
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it('returns enqueue-failed for recoverable resubmit without creating fresh evidence', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'recoverable-enqueue-fail', readyBody('Recoverable Enqueue Fail'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'recoverable-enqueue-fail' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'recoverable-enqueue-fail' }, { enqueue: async () => ({ sessionId: 'old-failed-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try { upsertQueuePrd(store, { prdId: 'old-failed-queue', session: 'recoverable-enqueue-fail', status: 'failed', updatedAt: '2099-01-01T00:00:00.000Z' }); } finally { store.close(); }
+      const beforeEvidence = storedSubmittedEvidenceRows(cwd, 'recoverable-enqueue-fail');
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'recoverable-enqueue-fail' }, { enqueue: async () => { throw new Error('daemon unavailable'); } });
+
+      expect(resubmitted).toMatchObject({ kind: 'enqueue-failed', session: 'recoverable-enqueue-fail', sourcePath: '.eforge/session-plans/recoverable-enqueue-fail.md' });
+      expect(String(resubmitted.message)).toContain('Session plan is recoverable, but enqueue failed');
+      expect(String(resubmitted.command)).toContain('.eforge/session-plans/recoverable-enqueue-fail.md');
+      expect(storedStatus(cwd, 'recoverable-enqueue-fail')).toBe('submitted');
+      expect(storedQueueRows(cwd, 'recoverable-enqueue-fail')).toEqual([{ prd_id: 'old-failed-queue', status: 'failed' }]);
+      expect(storedSubmittedEvidenceRows(cwd, 'recoverable-enqueue-fail')).toEqual(beforeEvidence);
+    });
+  });
+
+  it('does not resubmit when newer successful terminal evidence follows older recoverable evidence', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'newer-success-plan', readyBody('Newer Success Plan'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'newer-success-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'newer-success-plan' }, { enqueue: async () => ({ sessionId: 'older-failed-queue', pid: 1, autoBuild: false }) });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try {
+        upsertQueuePrd(store, { prdId: 'older-failed-queue', session: 'newer-success-plan', status: 'failed', updatedAt: '2099-01-01T00:00:00.000Z' });
+        upsertBuildSession(store, { buildSessionId: 'newer-success-session', session: 'newer-success-plan', status: 'completed', finishedAt: '2099-01-01T00:01:00.000Z' });
+      } finally { store.close(); }
+      const calls: string[] = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'newer-success-plan' }, { enqueue: async (request) => { calls.push(request.source); return { sessionId: 'unexpected', pid: 2, autoBuild: false }; } });
+
+      expect(resubmitted).toMatchObject({ kind: 'not-recoverable', session: 'newer-success-plan', message: expect.stringContaining('No terminal failed or removed queue/build evidence') });
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it('does not resubmit an active submitted plan until terminal failed or removed queue/build evidence exists', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'active-submitted-plan', readyBody('Active Submitted Plan'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'active-submitted-plan' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'active-submitted-plan' }, { enqueue: async () => ({ sessionId: 'active-queue', pid: 1, autoBuild: false }) });
+      const enqueueCalls: string[] = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'active-submitted-plan' }, {
+        enqueue: async (request) => {
+          enqueueCalls.push(request.source);
+          return { sessionId: 'unexpected-queue', pid: 2, autoBuild: false };
+        },
+      });
+
+      expect(resubmitted).toMatchObject({ kind: 'not-recoverable', session: 'active-submitted-plan', status: 'submitted', message: expect.stringContaining('Active queue/build evidence') });
+      expect(enqueueCalls).toEqual([]);
+      expect(storedQueueRows(cwd, 'active-submitted-plan')).toEqual([{ prd_id: 'active-queue', status: 'queued' }]);
     });
   });
 

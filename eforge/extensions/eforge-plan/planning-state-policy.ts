@@ -18,7 +18,7 @@ export interface PlanEligibilityProjection {
 export const TERMINAL_SESSION_STATUSES = ['abandoned', 'canceled', 'cancelled', 'complete', 'completed', 'deleted', 'done', 'merged', 'removed', 'shipped', 'superseded'] as const;
 const TERMINAL_SESSION_STATUS_SET = new Set<string>(TERMINAL_SESSION_STATUSES);
 const TERMINAL_PLANNING_TASK_STATUSES = new Set(['applied', 'dismissed', 'failed', 'cancelled', 'canceled', 'completed', 'done']);
-const TERMINAL_BUILD_STATUSES = new Set(['completed', 'cancelled', 'canceled', 'removed', 'skipped']);
+const TERMINAL_BUILD_STATUSES = new Set(['completed', 'cancelled', 'canceled', 'failed', 'removed', 'skipped']);
 const TERMINAL_QUEUE_PRD_STATUSES = new Set(['cancelled', 'canceled', 'complete', 'completed', 'deleted', 'done', 'failed', 'removed', 'skipped']);
 const CURRENT_RESULT_STATES = new Set(['failed', 'partial', 'shipped', 'merged']);
 const ACTIVE_PLANNING_TASK_STATUSES = new Set(['queued', 'running', 'active', 'in-progress']);

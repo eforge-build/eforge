@@ -8,10 +8,12 @@ import { toJsonSafeObject } from './json-safe.js';
 import { projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import { recordSessionPlanSubmitted, syncSessionPlanFile } from './canonical/session-plan-records.js';
+import { isTerminalBuildStatus, isTerminalQueuePrdStatus, normalizePlanningStatus } from './planning-state-policy.js';
 import { listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
 import { withProjectionStore } from './projections/store.js';
 import { getProjectionSessionPlan } from './sqlite/repositories/projections/session-plans.js';
 import { withCanonicalTransaction } from './canonical/store.js';
+import { getDatabase } from './sqlite/store-internal.js';
 import {
   projectSessionPlan,
   projectSessionPlanSetDetail,
@@ -25,6 +27,8 @@ import {
   DeleteSessionPlanOutputSchema,
   HandoffSessionPlanInputSchema,
   HandoffSessionPlanOutputSchema,
+  ResubmitSessionPlanInputSchema,
+  ResubmitSessionPlanOutputSchema,
   ListAgentRuntimeProfilesInputSchema,
   ListAgentRuntimeProfilesOutputSchema,
   ListPlanningArtifactsInputSchema,
@@ -298,7 +302,7 @@ export const handoffSessionPlan = defineExtensionAction({
     }
     const canonicalPlan = await withProjectionStore(ctx.cwd, (store) => getProjectionSessionPlan(store, input.session), () => undefined);
     if (canonicalPlan?.status !== undefined && canonicalPlan.status !== 'ready') {
-      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan canonical status is ${canonicalPlan.status}; only ready plans can be handed off.` });
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: `Session plan canonical status is ${canonicalPlan.status}; only ready plans can be handed off. Use resubmit-session-plan when terminal failed or removed queue/build evidence makes this submitted plan recoverable.` });
     }
     await readFile(loaded.path, 'utf-8');
     const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
@@ -342,6 +346,45 @@ export const handoffSessionPlan = defineExtensionAction({
   },
 });
 
+export const resubmitSessionPlan = defineExtensionAction({
+  id: 'resubmit-session-plan',
+  title: 'Resubmit recoverable session plan',
+  description: 'Resubmit an existing submitted session plan when terminal failed or removed queue/build evidence makes recovery eligible, preserving plan identity and source provenance.',
+  inputSchema: ResubmitSessionPlanInputSchema,
+  outputSchema: ResubmitSessionPlanOutputSchema,
+  sideEffects: ['local-read', 'local-write', 'daemon-state', 'build-queue'],
+  async handler(input, ctx) {
+    const planning = adapter();
+    const loaded = await planning.flat.load({ cwd: ctx.cwd, session: input.session });
+    const eligibility = await getResubmitEligibility(ctx.cwd, input.session);
+    if (!loaded.readiness.ready) {
+      return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness: loaded.readiness, message: 'Session plan is not ready; resubmit requires a ready plan body.' });
+    }
+    if (!eligibility.eligible) {
+      return toJsonSafeObject({ kind: 'not-recoverable', session: input.session, status: eligibility.status, readiness: loaded.readiness, message: eligibility.message });
+    }
+    await readFile(loaded.path, 'utf-8');
+    const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
+    const command = `eforge build ${quoteShellArg(sourcePath)}`;
+    let enqueued: Awaited<ReturnType<typeof ctx.buildQueue.enqueue>>;
+    try {
+      enqueued = await ctx.buildQueue.enqueue({ source: sourcePath, suppressSessionPlanSubmissionMark: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return toJsonSafeObject({ kind: 'enqueue-failed', session: input.session, sourcePath, absolutePath: loaded.path, command, message: `Session plan is recoverable, but enqueue failed: ${message}. You can run ${command} manually.`, readiness: loaded.readiness });
+    }
+    let canonicalSyncWarning: string | undefined;
+    const submittedAt = new Date().toISOString();
+    try {
+      const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
+      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
+    } catch (err) {
+      canonicalSyncWarning = err instanceof Error ? err.message : String(err);
+    }
+    return toJsonSafeObject({ kind: 'enqueued', session: input.session, sourcePath, absolutePath: loaded.path, queueSessionId: enqueued.sessionId, pid: enqueued.pid, autoBuild: enqueued.autoBuild, submittedAt, message: `Resubmitted existing session plan ${sourcePath} for build${enqueued.autoBuild ? '; auto-build is enabled.' : '.'}`, readiness: loaded.readiness, ...(canonicalSyncWarning !== undefined && { canonicalSyncWarning }) });
+  },
+});
+
 export const sessionPlanActions = [
   listAgentRuntimeProfiles,
   listPlanningArtifacts,
@@ -356,10 +399,72 @@ export const sessionPlanActions = [
   deleteSessionPlanAction,
   updateSessionPlanMetadataAction,
   handoffSessionPlan,
+  resubmitSessionPlan,
 ] as const;
 
 async function syncFlatSessionPlan(cwd: string, session: string, path: string, readinessSummary?: unknown, overrides: Parameters<typeof syncSessionPlanFile>[3] = {}): Promise<void> {
   await syncSessionPlanFile(cwd, session, path, { ...overrides, ...(readinessSummary === undefined ? {} : { readinessSummary: readinessSummary as never }) });
+}
+
+async function getResubmitEligibility(cwd: string, session: string): Promise<{ eligible: boolean; status?: string; message: string }> {
+  return withCanonicalTransaction(cwd, (store) => {
+    const db = getDatabase(store);
+    const plan = db.prepare('SELECT status FROM session_plans WHERE session = ?').get(session) as { status?: string | null } | undefined;
+    const status = typeof plan?.status === 'string' ? plan.status : undefined;
+    if (status !== 'submitted' && status !== 'removed') {
+      return { eligible: false, status, message: `Session plan canonical status is ${status ?? 'missing'}; resubmit is only for submitted or queue-removed plans with terminal failed/removed recovery evidence.` };
+    }
+    const queueRows = db.prepare('SELECT prd_id, status, COALESCE(updated_at, submitted_at, created_at) AS timestamp FROM queue_prds WHERE session = ?').all(session) as Array<{ prd_id: string; status?: string | null; timestamp?: string | null }>;
+    const buildRows = db.prepare('SELECT run_id, queue_prd_id, status, COALESCE(finished_at, started_at) AS timestamp FROM build_runs WHERE session = ? OR queue_prd_id IN (SELECT prd_id FROM queue_prds WHERE session = ?)').all(session, session) as Array<{ run_id: string; queue_prd_id?: string | null; status?: string | null; timestamp?: string | null }>;
+    const buildSessionRows = db.prepare('SELECT build_session_id, status, COALESCE(finished_at, started_at) AS timestamp FROM build_sessions WHERE session = ?').all(session) as Array<{ build_session_id: string; status?: string | null; timestamp?: string | null }>;
+    const lifecycleRows = db.prepare("SELECT lifecycle_state, status, occurred_at FROM lifecycle_evidence WHERE session = ? AND is_current = 1 AND lifecycle_state IN ('submitted','queued','build')").all(session) as Array<{ lifecycle_state: string; status?: string | null; occurred_at?: string | null }>;
+    const recoverableQueue = queueRows.some((row) => isRecoverableQueueStatus(row.status));
+    const recoverableBuild = buildRows.some((row) => isRecoverableBuildStatus(row.status)) || buildSessionRows.some((row) => isRecoverableBuildStatus(row.status));
+    const recoverableAt = latestTimestamp([
+      ...queueRows.filter((row) => isRecoverableQueueStatus(row.status)).map((row) => row.timestamp),
+      ...buildRows.filter((row) => isRecoverableBuildStatus(row.status)).map((row) => row.timestamp),
+      ...buildSessionRows.filter((row) => isRecoverableBuildStatus(row.status)).map((row) => row.timestamp),
+    ]);
+    const latestTerminalAt = latestTimestamp([
+      ...queueRows.filter((row) => isTerminalQueuePrdStatus(row.status)).map((row) => row.timestamp),
+      ...buildRows.filter((row) => isTerminalBuildStatus(row.status)).map((row) => row.timestamp),
+      ...buildSessionRows.filter((row) => isTerminalBuildStatus(row.status)).map((row) => row.timestamp),
+    ]);
+    const hasNewerNonRecoverableTerminal = recoverableAt !== undefined && latestTerminalAt !== undefined && latestTerminalAt > recoverableAt;
+    const recoverableBuildSessionSupersedes = (timestamp: string | null | undefined) => buildSessionRows.some((build) => isRecoverableBuildStatus(build.status) && timestampGte(build.timestamp, timestamp));
+    const hasLiveQueue = queueRows.some((row) => !isTerminalQueuePrdStatus(row.status) && !recoverableBuildSessionSupersedes(row.timestamp) && !buildRows.some((build) => build.queue_prd_id === row.prd_id && isRecoverableBuildStatus(build.status) && timestampGte(build.timestamp, row.timestamp)));
+    const hasLiveBuild = buildRows.some((row) => !isTerminalBuildStatus(row.status)) || buildSessionRows.some((row) => !isTerminalBuildStatus(row.status));
+    const hasFreshLiveLifecycle = lifecycleRows.some((row) => !isTerminalBuildStatus(row.status) && timestampGte(row.occurred_at, recoverableAt));
+    if (hasLiveQueue || hasLiveBuild || hasFreshLiveLifecycle) {
+      return { eligible: false, status, message: 'Active queue/build evidence is correlated with this session plan; wait for the current handoff or build to finish before resubmitting.' };
+    }
+    if (hasNewerNonRecoverableTerminal || (!recoverableQueue && !recoverableBuild)) {
+      return { eligible: false, status, message: 'No terminal failed or removed queue/build evidence is correlated with this submitted session plan; active/non-terminal plans should continue through the existing handoff or queue flow.' };
+    }
+    return { eligible: true, status, message: 'Recoverable failed or removed queue/build evidence found.' };
+  });
+}
+
+function isRecoverableQueueStatus(status: string | undefined | null): boolean {
+  return normalizePlanningStatus(status) === 'failed' || isRecoverableRemovedStatus(status);
+}
+
+function isRecoverableRemovedStatus(status: string | undefined | null): boolean {
+  const normalized = normalizePlanningStatus(status);
+  return normalized === 'removed' || normalized === 'deleted';
+}
+
+function isRecoverableBuildStatus(status: string | undefined | null): boolean {
+  return normalizePlanningStatus(status) === 'failed' || isRecoverableRemovedStatus(status);
+}
+
+function latestTimestamp(values: Array<string | null | undefined>): string | undefined {
+  return values.filter((value): value is string => typeof value === 'string' && value.length > 0).sort().at(-1);
+}
+
+function timestampGte(value: string | null | undefined, cutoff: string | null | undefined): boolean {
+  if (!cutoff) return true;
+  return typeof value === 'string' && value >= cutoff;
 }
 
 function quoteShellArg(value: string): string {

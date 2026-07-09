@@ -9,7 +9,7 @@ import { withProjectionStore } from './store.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 import { getProjectionSessionPlan, listProjectionSessionPlanEpics, listProjectionSessionPlanItems, listProjectionSessionPlans, type ProjectionSessionPlanRow } from '../sqlite/repositories/projections/session-plans.js';
 import { getProjectionItem, listProjectionItems } from '../sqlite/repositories/projections/items.js';
-import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems } from '../sqlite/repositories/projections/lifecycle.js';
+import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems, type ProjectionLifecycleEvidenceRow, type ProjectionQueueBuildRow } from '../sqlite/repositories/projections/lifecycle.js';
 import type { EforgePlanStore } from '../sqlite/index.js';
 import { computeEffectiveLifecycle } from './lifecycle.js';
 import type { AssociatedPlanBuildLink, ListPlanningArtifactsInput } from './types.js';
@@ -93,25 +93,55 @@ function lifecycleLinkRows(links: AssociatedPlanBuildLink[]) {
   return links.map((link) => cleanObject({ kind: link.kind, stage: String(link.reasonCode ?? link.kind), label: link.label ?? link.id, status: link.status ?? '', session: link.session, runId: link.runId, buildSessionId: link.buildSessionId, prUrl: link.prUrl ?? link.url, path: link.path, timestamp: link.timestamp, affectedItemIds: link.affectedItemIds ?? link.itemIds ?? [] }));
 }
 
+function currentSessionEvidenceIds(evidenceRows: ProjectionLifecycleEvidenceRow[], session: string) {
+  const current = evidenceRows.filter((row) => row.session === session && row.isCurrent);
+  return {
+    queuePrdIds: new Set(current.map((row) => row.queuePrdId).filter((id): id is string => id !== undefined)),
+    runIds: new Set(current.map((row) => row.runId).filter((id): id is string => id !== undefined)),
+    buildSessionIds: new Set(current.map((row) => row.buildSessionId).filter((id): id is string => id !== undefined)),
+  };
+}
+
+function hasCurrentSessionEvidenceIds(currentIds: ReturnType<typeof currentSessionEvidenceIds>): boolean {
+  return currentIds.queuePrdIds.size > 0 || currentIds.runIds.size > 0 || currentIds.buildSessionIds.size > 0;
+}
+
+function isCurrentSessionBuildLink(link: AssociatedPlanBuildLink, session: string, currentIds: ReturnType<typeof currentSessionEvidenceIds>): boolean {
+  if (link.session !== session || !hasCurrentSessionEvidenceIds(currentIds)) return true;
+  if (link.kind === 'queue-prd') return currentIds.queuePrdIds.has(link.id);
+  if (link.kind === 'build-run') return link.runId !== undefined && currentIds.runIds.has(link.runId);
+  if (link.kind === 'build-session') return link.buildSessionId !== undefined && currentIds.buildSessionIds.has(link.buildSessionId);
+  return true;
+}
+
+function isCurrentSessionBuildRow(row: ProjectionQueueBuildRow, session: string, currentIds: ReturnType<typeof currentSessionEvidenceIds>): boolean {
+  if (row.session !== session || !hasCurrentSessionEvidenceIds(currentIds)) return true;
+  if (row.kind === 'queue-prd') return currentIds.queuePrdIds.has(row.id);
+  if (row.kind === 'build-run') return row.runId !== undefined && currentIds.runIds.has(row.runId);
+  if (row.kind === 'build-session') return row.buildSessionId !== undefined && currentIds.buildSessionIds.has(row.buildSessionId);
+  return true;
+}
+
 function sessionLifecycleFromStore(store: EforgePlanStore, session: string) {
-  const sessionBuildRows = listProjectionQueueBuildLinks(store).filter((row) => row.session === session);
+  const evidenceRows = listCurrentLifecycleEvidence(store);
+  const currentIds = currentSessionEvidenceIds(evidenceRows, session);
+  const sessionBuildRows = listProjectionQueueBuildLinks(store).filter((row) => row.session === session && isCurrentSessionBuildRow(row, session, currentIds));
   const items = listProjectionSessionPlanItems(store, session);
   const epics = listProjectionSessionPlanEpics(store, session);
   const sourceRefs = sourceRefsFromRows(items, epics);
   const itemIds = sourceRefs.sourceItemIds;
   const allSessionItems = listProjectionSessionItems(store);
   const allTaskItems = listProjectionPlanningTaskItems(store);
-  const evidenceRows = listCurrentLifecycleEvidence(store);
   const itemRows = itemIds.map((itemId) => {
     const item = getProjectionItem(store, itemId) ?? listProjectionItems(store).find((candidate) => candidate.id === itemId);
-    const linkRows = lifecycleLinkRows(getAssociatedPlanBuildLinksForItemsFromStore(store, [itemId]));
+    const linkRows = lifecycleLinkRows(getAssociatedPlanBuildLinksForItemsFromStore(store, [itemId]).filter((link) => isCurrentSessionBuildLink(link, session, currentIds)));
     const evidence = evidenceRows.filter((e) => e.itemId === itemId || e.itemRef === itemId);
     const sessionItems = allSessionItems.filter((s) => (s.itemId ?? s.itemRef) === itemId);
     const taskItems = allTaskItems.filter((t) => (t.itemId ?? t.itemRef) === itemId);
     const life = computeEffectiveLifecycle({ userStatus: item?.userStatus ?? 'candidate', evidence, sessionItems, taskItems, hasUnresolvedDependency: false });
     return { itemId, title: item?.title ?? itemId, status: item?.userStatus ?? 'candidate', ...(item?.epicId ? { epic: item.epicId } : {}), lifecycleState: life.lifecycleState, linkRows, failureEvidence: linkRows.filter((row) => row.status === 'failed') };
   });
-  const linkRows = lifecycleLinkRows(getAssociatedPlanBuildLinksForItemsFromStore(store, itemIds));
+  const linkRows = lifecycleLinkRows(getAssociatedPlanBuildLinksForItemsFromStore(store, itemIds).filter((link) => isCurrentSessionBuildLink(link, session, currentIds)));
   const states = [...new Set(itemRows.map((row) => row.lifecycleState))];
   const lifecycleState = states.length === 0 ? 'none' : itemIds.length > 1 ? 'partial' : states[0];
   return { session, sourceRefs, sourceRefRows: sourceRefRows(items, epics), lifecycleState, state: lifecycleState, itemIds, itemRows, linkRows, sessionBuildRows, associatedLinks: linkRows, failureEvidence: linkRows.filter((row) => row.status === 'failed') };
