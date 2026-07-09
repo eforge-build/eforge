@@ -1,0 +1,107 @@
+name: harden-session-plan-canonical-status-recovery
+description: Bounded planner compiler artifacts for
+  harden-session-plan-canonical-status-recovery
+base_branch: main
+validate: []
+plans:
+  - id: mod-session-plan-status-surfaces
+    name: Session-plan status/projection surfaces
+    depends_on: []
+    branch: harden-session-plan-canonical-status-recovery/mod-session-plan-status-surfaces
+    build:
+      - implement
+      - doc-sync
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: mod-resubmit-recovery-provenance
+    name: Identity-preserving resubmit recovery and provenance
+    depends_on: []
+    branch: harden-session-plan-canonical-status-recovery/mod-resubmit-recovery-provenance
+    build:
+      - implement
+      - doc-sync
+      - test-write
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: mod-ac010-quality-gates
+    name: AC-010 quality gates
+    depends_on:
+      - mod-resubmit-recovery-provenance
+      - mod-session-plan-status-surfaces
+    branch: harden-session-plan-canonical-status-recovery/mod-ac010-quality-gates
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings derived deterministically from compiler risk
+    signals.
+
+    Set-level defaults follow the highest plan risk score (4).
+
+    - mod-ac010-quality-gates: risk score 1 (low-confidence-localization);
+    declared docs work none, test work exercise-existing; derived build
+    implement -> test-cycle -> review-cycle and auto review with perspectives
+    code, test, 1 round(s), standard evaluation
+
+    - mod-resubmit-recovery-provenance: risk score 4 (large-plan,
+    low-confidence-localization, multi-subsystem, dependency-root); declared
+    docs work sync-existing, test work author-new; derived build implement ->
+    doc-sync -> test-write -> test-cycle -> review-cycle and parallel review
+    with perspectives code, security, test, verify, 2 round(s), strict
+    evaluation
+
+    - mod-session-plan-status-surfaces: risk score 4 (large-plan,
+    low-confidence-localization, multi-subsystem, dependency-root); declared
+    docs work sync-existing, test work author-new; derived build implement ->
+    doc-sync -> test-write -> test-cycle -> review-cycle and parallel review
+    with perspectives code, security, test, verify, 2 round(s), strict
+    evaluation
+diff_base_ref: 33c00094ab48da3077cf24b4288a822f6bf8d496

@@ -1,0 +1,3655 @@
+{
+  "version": 1,
+  "planSetName": "harden-session-plan-canonical-status-recovery",
+  "sourceHash": "f681c072ea1bd18d988df7d26334a6d763ec58137bd6969fcd4043d865002ac7",
+  "graphId": "atom-graph-f4b470377f91af9e",
+  "compilerStatus": "complete",
+  "validationErrors": [],
+  "coverage": {
+    "completeCriteria": [
+      "ac-001",
+      "ac-002",
+      "ac-003",
+      "ac-004",
+      "ac-005",
+      "ac-006",
+      "ac-007",
+      "ac-008",
+      "ac-009",
+      "ac-010"
+    ],
+    "incompleteCriteria": [],
+    "criteria": [
+      {
+        "criterionId": "ac-001",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-001:general:general"
+        ],
+        "resolvedAspectIds": [
+          "ac-001:general:general"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-002",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-002:interface:ui",
+          "ac-002:interface:ui-surface",
+          "ac-002:subsystem:incomplete",
+          "ac-002:subsystem:mixed",
+          "ac-002:subsystem:ui"
+        ],
+        "resolvedAspectIds": [
+          "ac-002:interface:ui",
+          "ac-002:interface:ui-surface",
+          "ac-002:subsystem:incomplete",
+          "ac-002:subsystem:mixed",
+          "ac-002:subsystem:ui"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-003",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-003:subsystem:planned",
+          "ac-003:subsystem:shipped"
+        ],
+        "resolvedAspectIds": [
+          "ac-003:subsystem:planned",
+          "ac-003:subsystem:shipped"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-004",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-004:interface:extension",
+          "ac-004:interface:extension-surface",
+          "ac-004:subsystem:extension",
+          "ac-004:subsystem:kernel",
+          "ac-004:subsystem:mcp"
+        ],
+        "resolvedAspectIds": [
+          "ac-004:interface:extension",
+          "ac-004:interface:extension-surface",
+          "ac-004:subsystem:extension",
+          "ac-004:subsystem:kernel",
+          "ac-004:subsystem:mcp"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-005",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-005:interface:extension",
+          "ac-005:interface:extension-surface",
+          "ac-005:subsystem:extension"
+        ],
+        "resolvedAspectIds": [
+          "ac-005:interface:extension",
+          "ac-005:interface:extension-surface",
+          "ac-005:subsystem:extension"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-006",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-006:subsystem:build",
+          "ac-006:subsystem:deleting",
+          "ac-006:subsystem:queue",
+          "ac-006:subsystem:recreating"
+        ],
+        "resolvedAspectIds": [
+          "ac-006:subsystem:build",
+          "ac-006:subsystem:deleting",
+          "ac-006:subsystem:queue",
+          "ac-006:subsystem:recreating"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-007",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-007:subsystem:provenance",
+          "ac-007:subsystem:recommendation"
+        ],
+        "resolvedAspectIds": [
+          "ac-007:subsystem:provenance",
+          "ac-007:subsystem:recommendation"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-008",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-008:subsystem:build",
+          "ac-008:subsystem:queue"
+        ],
+        "resolvedAspectIds": [
+          "ac-008:subsystem:build",
+          "ac-008:subsystem:queue"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-009",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-009:general:general"
+        ],
+        "resolvedAspectIds": [
+          "ac-009:general:general"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      },
+      {
+        "criterionId": "ac-010",
+        "complete": true,
+        "requiredAspectIds": [
+          "ac-010:interface:test",
+          "ac-010:subsystem:test"
+        ],
+        "resolvedAspectIds": [
+          "ac-010:interface:test",
+          "ac-010:subsystem:test"
+        ],
+        "skippedAspectIds": [],
+        "representedAspectIds": [],
+        "pendingAspectIds": []
+      }
+    ],
+    "aspects": [
+      {
+        "aspectId": "ac-001:general:general",
+        "criterionId": "ac-001",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-general"
+        ],
+        "reason": "Planned a focused lifecycle projection/display module for multi-source session plans whose resolved source states are all identical, preserving mixed-state partial behavior."
+      },
+      {
+        "aspectId": "ac-002:interface:ui",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-incomplete"
+        ],
+        "reason": "Planned UI work exposes the partial/mixed/incomplete lifecycle explanation instead of leaving users to infer it from status alone."
+      },
+      {
+        "aspectId": "ac-002:interface:ui-surface",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-incomplete"
+        ],
+        "reason": "Planned workstation and console surface updates cover the user-facing text for mixed source states, missing lifecycle evidence, and incomplete coverage."
+      },
+      {
+        "aspectId": "ac-002:subsystem:incomplete",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-incomplete"
+        ],
+        "reason": "Planned projection/policy work treats missing lifecycle evidence and intentionally incomplete coverage as a non-terminal partial-equivalent state with explanatory reasons."
+      },
+      {
+        "aspectId": "ac-002:subsystem:mixed",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-incomplete"
+        ],
+        "reason": "Planned projection/policy work handles mixed source-item lifecycle states as partial rather than shipped/ready, with reason metadata for UI rendering."
+      },
+      {
+        "aspectId": "ac-002:subsystem:ui",
+        "criterionId": "ac-002",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-incomplete"
+        ],
+        "reason": "Planned UI module consumes projection reasons and renders clear explanatory copy in the session-plan views."
+      },
+      {
+        "aspectId": "ac-003:subsystem:planned",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-planned"
+        ],
+        "reason": "Planned a bounded module that covers planned-state lifecycle recovery and required same-state/mixed regression coverage."
+      },
+      {
+        "aspectId": "ac-003:subsystem:shipped",
+        "criterionId": "ac-003",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-planned"
+        ],
+        "reason": "Planned the coupled shipped-evidence side of the same lifecycle recovery module and mixed shipped/planned coverage."
+      },
+      {
+        "aspectId": "ac-004:interface:extension",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension"
+        ],
+        "reason": "Planned extension action/status parity for extension-managed plans via shared effective-status contract across `set-session-plan-ready`, `handoff-session-plan`, and MCP status writes."
+      },
+      {
+        "aspectId": "ac-004:interface:extension-surface",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension"
+        ],
+        "reason": "Planned user-facing extension surfaces to render the same effective status and the same actionable status-source failure message."
+      },
+      {
+        "aspectId": "ac-004:subsystem:extension",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension"
+        ],
+        "reason": "Planned extension-owned session-plan view/action/schema work around status source and unsupported write handling."
+      },
+      {
+        "aspectId": "ac-004:subsystem:kernel",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension"
+        ],
+        "reason": "Planned shared client/daemon session-plan status contract so kernel projections and routes remain canonical for all consumers."
+      },
+      {
+        "aspectId": "ac-004:subsystem:mcp",
+        "criterionId": "ac-004",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension"
+        ],
+        "reason": "Planned MCP `eforge_session_plan set-status` to reuse the shared status contract and fail loudly for unsupported writes."
+      },
+      {
+        "aspectId": "ac-005:interface:extension",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension-002"
+        ],
+        "reason": "Planned an extension-facing status-source disclosure for session-plan tooling, using extension-owned eforge-plan/Pi surfaces and avoiding monitor event output as the authority."
+      },
+      {
+        "aspectId": "ac-005:interface:extension-surface",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension-002"
+        ],
+        "reason": "Planned the user-facing surface change: tool output or synchronized docs must explicitly name the authoritative session-plan status source."
+      },
+      {
+        "aspectId": "ac-005:subsystem:extension",
+        "criterionId": "ac-005",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-extension-002"
+        ],
+        "reason": "Scoped implementation to extension-owned session-plan view/action/schema and Pi extension integration candidates, with validation against existing extension tests."
+      },
+      {
+        "aspectId": "ac-006:subsystem:build",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build"
+        ],
+        "reason": "Covered by the terminal queue/build resubmit eligibility module, including failed/removed build evidence."
+      },
+      {
+        "aspectId": "ac-006:subsystem:deleting",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build"
+        ],
+        "reason": "Covered by the identity-preserving resubmit module, which explicitly avoids deleting the session plan."
+      },
+      {
+        "aspectId": "ac-006:subsystem:queue",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build"
+        ],
+        "reason": "Covered by the terminal queue/build resubmit eligibility module, including removed queue records and cleanup synchronization."
+      },
+      {
+        "aspectId": "ac-006:subsystem:recreating",
+        "criterionId": "ac-006",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build"
+        ],
+        "reason": "Covered by the identity-preserving resubmit module, which keeps the existing plan identity instead of recreating it."
+      },
+      {
+        "aspectId": "ac-007:subsystem:provenance",
+        "criterionId": "ac-007",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-provenance"
+        ],
+        "reason": "Planned as part of canonical resubmission link preservation: keep source item/epic IDs, appropriate session identity, and stored provenance links when resubmitting existing canonical session-plan records."
+      },
+      {
+        "aspectId": "ac-007:subsystem:recommendation",
+        "criterionId": "ac-007",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-provenance"
+        ],
+        "reason": "Planned in the same preservation module: keep existing recommendation references/links in canonical records through resubmission and recovery flows."
+      },
+      {
+        "aspectId": "ac-008:subsystem:build",
+        "criterionId": "ac-008",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build-002"
+        ],
+        "reason": "Planned build-side resubmission handling so handoff creates fresh build lifecycle evidence and stale submitted-status evidence no longer blocks readiness."
+      },
+      {
+        "aspectId": "ac-008:subsystem:queue",
+        "criterionId": "ac-008",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-build-002"
+        ],
+        "reason": "Planned queue-side lifecycle renewal and queue/recovery surface propagation for resubmitted handoff."
+      },
+      {
+        "aspectId": "ac-009:general:general",
+        "criterionId": "ac-009",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-general"
+        ],
+        "reason": "Planned a recovery regression module covering failed build or removed queue cleanup through resubmit and handoff, with provenance/source-reference preservation checks."
+      },
+      {
+        "aspectId": "ac-010:interface:test",
+        "criterionId": "ac-010",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-test"
+        ],
+        "reason": "Planned the test-interface validation surface for AC-010 around the required root quality commands: pnpm test, pnpm type-check, and pnpm maintainability:check."
+      },
+      {
+        "aspectId": "ac-010:subsystem:test",
+        "criterionId": "ac-010",
+        "status": "resolved",
+        "satisfied": true,
+        "completedByAtomIds": [
+          "atom-rescope-test"
+        ],
+        "reason": "Planned the test subsystem work as an existing-suite quality gate, with failures remediated until all required commands exit 0."
+      }
+    ]
+  },
+  "reduce": {
+    "gaps": [],
+    "conflicts": []
+  },
+  "exploration": {
+    "outcomeStatus": "budget-exhausted",
+    "unresolvedNeedIds": [
+      "criterion-ac-002-interface-ui",
+      "criterion-ac-002-interface-ui-surface",
+      "criterion-ac-002-subsystem-incomplete",
+      "criterion-ac-002-subsystem-mixed",
+      "criterion-ac-002-subsystem-ui",
+      "criterion-ac-002-surface-ui",
+      "criterion-ac-003-subsystem-planned",
+      "criterion-ac-003-subsystem-shipped",
+      "criterion-ac-004-interface-extension",
+      "criterion-ac-004-interface-extension-surface",
+      "criterion-ac-004-subsystem-extension",
+      "criterion-ac-004-subsystem-kernel",
+      "criterion-ac-004-subsystem-mcp",
+      "criterion-ac-004-surface-extension",
+      "criterion-ac-005-interface-extension",
+      "criterion-ac-005-interface-extension-surface",
+      "criterion-ac-005-subsystem-extension",
+      "criterion-ac-005-surface-extension",
+      "criterion-ac-006-subsystem-build",
+      "criterion-ac-006-subsystem-deleting",
+      "criterion-ac-006-subsystem-queue",
+      "criterion-ac-006-subsystem-recreating",
+      "criterion-ac-007-subsystem-provenance",
+      "criterion-ac-007-subsystem-recommendation",
+      "criterion-ac-008-subsystem-build",
+      "criterion-ac-008-subsystem-queue",
+      "criterion-ac-010-interface-test",
+      "criterion-ac-010-subsystem-test",
+      "criterion-ac-010-surface-test",
+      "inventory-interface-extension",
+      "inventory-interface-extension-surface",
+      "inventory-interface-test",
+      "inventory-interface-ui",
+      "inventory-interface-ui-surface",
+      "inventory-subsystem-build",
+      "inventory-subsystem-deleting",
+      "inventory-subsystem-extension",
+      "inventory-subsystem-incomplete",
+      "inventory-subsystem-mcp",
+      "inventory-subsystem-planned",
+      "inventory-subsystem-provenance",
+      "inventory-subsystem-queue",
+      "inventory-subsystem-recommendation",
+      "inventory-subsystem-recreating",
+      "inventory-subsystem-shipped",
+      "inventory-subsystem-test",
+      "inventory-subsystem-ui"
+    ],
+    "reasons": [
+      "missing-consumer-surface-evidence",
+      "missing-contract-evidence",
+      "tool-budget"
+    ],
+    "attemptedQueries": [
+      {
+        "query": "read eforge/extensions/eforge-plan/session-plan-view-model.ts offset 1 limit 260",
+        "tool": "read",
+        "result": "Confirmed session-plan view model imports SessionPlan types from @eforge-build/input, SessionPlanLifecycleProjection from backlog-domain, ListBoardOutput from schema, and defines PlanningArtifactKey."
+      },
+      {
+        "query": "read packages/eforge/src/cli/mcp-proxy.ts offset 880 limit 135",
+        "tool": "read",
+        "result": "Confirmed MCP proxy tool registration area using createDaemonTool; snippet showed neighboring eforge_continue_repair tool and daemon API call pattern."
+      },
+      {
+        "query": "read packages/pi-eforge/extensions/eforge/index.ts offset 1830 limit 180",
+        "tool": "read",
+        "result": "Confirmed Pi extension registers tool name eforge_session_plan with description for managing session plans and actions including list-active/show in the visible snippet."
+      },
+      {
+        "query": "read packages/pi-eforge/extensions/eforge/index.ts offset 2010 limit 260",
+        "tool": "read",
+        "result": "Confirmed Pi extension output rendering for session-plan list entries/status color and readiness output including ready/missingDimensions."
+      },
+      {
+        "query": "read packages/client/src/routes/session-plan.ts offset 1 limit 190",
+        "tool": "read",
+        "result": "Confirmed client-owned session-plan wire contract, including SessionPlanStatusWire = planning|ready|abandoned|submitted and imported SessionPlan* request/response interfaces."
+      },
+      {
+        "query": "read packages/client/src/routes/route-map.ts offset 70 limit 40",
+        "tool": "read",
+        "result": "Confirmed central API_ROUTES route-map file exists in @eforge-build/client; visible snippet showed adjacent API route constants."
+      },
+      {
+        "query": "grep literal sessionPlanSetStatus in packages/monitor/src",
+        "tool": "grep",
+        "result": "Confirmed packages/monitor/src/routes/extension-content.ts references route keys including sessionPlanList, sessionPlanShow, sessionPlanCreate, sessionPlanSetSection, sessionPlanSkipDimension, sessionPlanSetStatus."
+      },
+      {
+        "query": "read packages/monitor/src/routes/session-plans.ts offset 1 limit 220",
+        "tool": "read",
+        "result": "Confirmed daemon session-plan route definitions import API_ROUTES, security helpers, request parsing, and session-plan service handlers."
+      },
+      {
+        "query": "read packages/monitor/src/routes/session-plan-service.ts offset 1 limit 260",
+        "tool": "read",
+        "result": "Confirmed daemon session-plan service imports SessionPlan* wire request/response types including SessionPlanSetStatusRequest and SessionPlanSetStatusResponse."
+      },
+      {
+        "query": "find packages/input/src pattern *session* limit 200",
+        "tool": "find",
+        "result": "Confirmed input package session-plan files/directories including session-plan-creation-draft.ts, session-plan-realpath.ts, and session-plan-set/."
+      },
+      {
+        "query": "read eforge/extensions/eforge-plan/__tests__/queue-removal-coverage-cleanup.test.ts offset 1 limit 340",
+        "tool": "read",
+        "result": "Confirmed test file exists; imports temp fs/sqlite, extension recorder, vitest, canonical backlog helpers."
+      },
+      {
+        "query": "read eforge/extensions/eforge-plan/index.ts offset 340 limit 90",
+        "tool": "read",
+        "result": "Confirmed extension command-registration area exists in eforge-plan index."
+      },
+      {
+        "query": "grep function queueRemovalPrdId|queueRemovalPrdId|eventTimestamp in eforge/extensions/eforge-plan/index.ts",
+        "tool": "grep",
+        "result": "Found onEvent('queue:prd:removed') calling queueRemovalPrdId and synchronizeRemovedQueuePrdCoverage with eventTimestamp."
+      },
+      {
+        "query": "grep queue:prd:removed in . glob **/*.{ts,md}",
+        "tool": "grep",
+        "result": "Found public event docs row for queue:prd:removed with prdId, previousStatus, removedSidecars."
+      },
+      {
+        "query": "read packages/monitor/src/routes/queue-control.ts offset 1 limit 160",
+        "tool": "read",
+        "result": "Confirmed monitor queue-control route imports API_ROUTES and engine queue/control functions including removeQueuedPrd."
+      },
+      {
+        "query": "grep function removeQueuedPrd|export async function removeQueuedPrd|removeQueuedPrd in packages/engine/src",
+        "tool": "grep",
+        "result": "Found export async function removeQueuedPrd in packages/engine/src/queue/control.ts around line 467."
+      },
+      {
+        "query": "read packages/engine/src/queue/control.ts offset 430 limit 110",
+        "tool": "read",
+        "result": "Confirmed queue/control implementation region around dependency override and start of removeQueuedPrd."
+      },
+      {
+        "query": "read packages/engine/src/queue/control.ts offset 540 limit 80",
+        "tool": "read",
+        "result": "Confirmed removeQueuedPrd removes sidecars and returns previousStatus, currentStatus 'removed', removedSidecars."
+      },
+      {
+        "query": "read eforge/extensions/eforge-plan/canonical/lifecycle-records.ts offset 1 limit 220",
+        "tool": "read",
+        "result": "Confirmed canonical lifecycle records module imports event, store, lifecycle, upsert build/session/queue and evidence helpers."
+      },
+      {
+        "query": "read eforge/extensions/eforge-plan/planning-state-policy.ts offset 1 limit 120",
+        "tool": "read",
+        "result": "Confirmed planning state policy module exists and imports LifecycleState."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-mixed",
+        "query": "read eforge/extensions/eforge-plan/__tests__/lifecycle.test.ts",
+        "tool": "read",
+        "result": "Confirmed lifecycle regression test file imports projectTraceLifecycle, applyLifecycleEvent, correlateLifecycleEvent, decideLifecycleUpdate, read/write backlog item, and trace sidecar helpers."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-mixed",
+        "query": "read eforge/extensions/eforge-plan/__tests__/sqlite-projections-lifecycle.test.ts",
+        "tool": "read",
+        "result": "Confirmed sqlite/canonical lifecycle projection tests import canonical backlog/session-plan/lifecycle record helpers, withCanonicalTransaction, recordLifecycleEvidence, and associated plan build link projections."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-incomplete",
+        "query": "read eforge/extensions/eforge-plan/projections/lifecycle.ts",
+        "tool": "read",
+        "result": "Confirmed lifecycle projection module imports UserStatus/LifecycleState, projection lifecycle evidence/session rows, and status predicates such as stale planned session-plan evidence and live/terminal session-plan status."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-mixed",
+        "query": "read eforge/extensions/eforge-plan/projections/index.ts",
+        "tool": "read",
+        "result": "Confirmed projection facade exports computeEffectiveLifecycle, mapReasonCode, publicLifecycleState, reasonForEvidence, and session-plan projection APIs."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-incomplete",
+        "query": "find eforge/extensions/eforge-plan/projections/*.ts",
+        "tool": "find",
+        "result": "Confirmed projection files: board, coverage, index, items, lifecycle, links, pagination, recommendations, session-plans, store, types."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-mixed",
+        "query": "grep session.*lifecycle|projectSessionPlanLifecycle|lifecycleState|sourceRefs in eforge/extensions/eforge-plan/projections",
+        "tool": "grep",
+        "result": "Located projection references, including recommendations.ts using findNonterminalCoverage; follow-up focused on session-plans.ts."
+      },
+      {
+        "needId": "criterion-ac-002-subsystem-incomplete",
+        "query": "read eforge/extensions/eforge-plan/projections/session-plans.ts",
+        "tool": "read",
+        "result": "Confirmed session-plan projection module imports workflow adapter, board projection/debug helpers, pagination, and projection store utilities."
+      },
+      {
+        "needId": "criterion-ac-002-interface-ui",
+        "query": "read eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans/plan-detail.tsx",
+        "tool": "read",
+        "result": "Confirmed plan detail UI surface imports bridge, badges/buttons/cards, PlanData/PlanDetail context, lifecycle evidence panel, and related plan components."
+      },
+      {
+        "needId": "criterion-ac-002-interface-ui-surface",
+        "query": "grep Built from|source item|sourceRefs|itemRows|lifecycle|partial|coverage|evidence in eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans",
+        "tool": "grep",
+        "result": "Confirmed lifecycle-evidence-panel.tsx uses resolveSourceRefs(plan, detail) from detail.sourceRefs, detail.lifecycle.sourceRefs, or plan.sourceRefs and exposes PlanBuildTracePanel."
+      },
+      {
+        "needId": "criterion-ac-002-interface-ui-surface",
+        "query": "find *context*rail* under eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans",
+        "tool": "find",
+        "result": "No context rail files found matching that pattern in the plans view directory."
+      },
+      {
+        "needId": "criterion-ac-010-surface-test",
+        "query": "ls test",
+        "tool": "ls",
+        "result": "Confirmed repository-level test directory and representative Vitest test files including acceptance, adoption, and maintainability tests."
+      },
+      {
+        "needId": "criterion-ac-010-interface-test",
+        "query": "grep \"type-check\" in **/package.json",
+        "tool": "grep",
+        "result": "Confirmed root package.json type-check script and package-level type-check scripts."
+      },
+      {
+        "needId": "criterion-ac-010-interface-test",
+        "query": "grep maintainability:check|check-agent-maintainability|agent-maintainability",
+        "tool": "grep",
+        "result": "Confirmed package.json maintainability command references and .pi/extensions/eforge-dev/index.ts command surface."
+      },
+      {
+        "needId": "criterion-ac-010-subsystem-test",
+        "query": "read test/agent-maintainability-check.test.ts",
+        "tool": "read",
+        "result": "Confirmed Vitest coverage for scripts/check-agent-maintainability.mjs exit behavior and region-marker/file-size failures."
+      },
+      {
+        "needId": "criterion-ac-010-subsystem-test",
+        "query": "read scripts/check-agent-maintainability.mjs",
+        "tool": "read",
+        "result": "Confirmed maintainability ratchet script checks line caps, no-growth baseline, and balanced eforge region markers."
+      },
+      {
+        "needId": "inventory-subsystem-test",
+        "query": "read scripts/check-skill-parity.mjs",
+        "tool": "read",
+        "result": "Confirmed additional repository validation script for plugin/Pi skill parity."
+      },
+      {
+        "needId": "inventory-interface-test",
+        "query": "read packages/console-ui/vitest.config.ts",
+        "tool": "read",
+        "result": "Confirmed package-local Vitest config using jsdom, setup file, and src test includes."
+      },
+      {
+        "needId": "inventory-interface-test",
+        "query": "read eforge/extensions/eforge-plan/workstation-src/plans/vitest.config.ts",
+        "tool": "read",
+        "result": "Confirmed extension plan workstation Vitest config using jsdom, setup file, and src test includes."
+      },
+      {
+        "needId": "inventory-interface-test",
+        "query": "read packages/console-ui/package.json",
+        "tool": "read",
+        "result": "Confirmed console-ui package scripts include build, type-check, test, and test:watch."
+      },
+      {
+        "needId": "inventory-interface-test",
+        "query": "read eforge/extensions/eforge-plan/workstation-src/plans/package.json",
+        "tool": "read",
+        "result": "Read attempted/observed for extension plan workstation package manifest; prior observation confirms path exists."
+      },
+      {
+        "query": "aggregateLifecycleState|projectSessionPlanLifecycle|partial per-item|sourceItemIds in test",
+        "tool": "grep",
+        "result": "No matches found."
+      },
+      {
+        "query": "aggregateLifecycleState|projectSessionPlanLifecycle|lifecycleState: 'partial'|sourceItemIds in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "plan-revision-orchestration.ts imports projectSessionPlanLifecycle/projectSessionPlanSourceRefs."
+      },
+      {
+        "query": "eforge/extensions/eforge-plan/projections/session-plans.ts offset 1 limit 280",
+        "tool": "read",
+        "result": "File exists; read showed session-plan projection module imports input adapter, canonical store, board projection modules."
+      },
+      {
+        "query": "eforge/extensions/eforge-plan/__tests__/sqlite-session-plan-projections.test.ts offset 1 limit 220",
+        "tool": "read",
+        "result": "File exists; imports canonical lifecycle/session plan records and projection fixtures."
+      },
+      {
+        "query": "eforge/extensions/eforge-plan/__tests__/sqlite-session-plan-projections.test.ts offset 221 limit 80",
+        "tool": "read",
+        "result": "Observed plan-partial with candidate/running items expecting lifecycle state 'partial' and associated links."
+      },
+      {
+        "query": "lifecycleState.*shipped|state: 'shipped'|shipped.*planned|planned.*shipped|state: 'planned' in eforge/extensions/eforge-plan/__tests__",
+        "tool": "grep",
+        "result": "sqlite-canonical-lifecycle-writes.test.ts has user_status 'shipped' assertions and references findCanonicalNonterminalCoverage."
+      },
+      {
+        "query": "aggregateLifecycleState|projectSessionPlanLifecycle|lifecycleState.*partial|state: 'partial' in test",
+        "tool": "grep",
+        "result": "No matches found."
+      },
+      {
+        "query": "eforge/extensions/eforge-plan/__tests__/sqlite-projection-fixtures.ts offset 1 limit 180",
+        "tool": "read",
+        "result": "File exists; fixture helpers include temp projection project, backlog seeding, extension action dispatch, recorder setup."
+      },
+      {
+        "query": "eforge/extensions/eforge-plan/projections/lifecycle.ts offset 1 limit 260",
+        "tool": "read",
+        "result": "File exists; lifecycle projection source imports LifecycleState and classifiers for live/planned/session/terminal statuses."
+      },
+      {
+        "query": "partial|mixed|incomplete|lifecycleState|itemRows in eforge/extensions/eforge-plan/workstation-src/plans/src",
+        "tool": "grep",
+        "result": "recommendations-rail.tsx matched actionability and planEligibleIds context; output truncated."
+      },
+      {
+        "query": "read under eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans-vie...",
+        "tool": "read",
+        "result": "Prior observation was truncated before exact path/output, so no exact file path asserted."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-recommendation",
+        "query": "recommendation.*ref|recommendationRef|recommendation_ref in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found sourceRecommendationRef in draft-plan-unit-schemas.ts."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-provenance",
+        "query": "source_item_ids in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found source_item_ids handling in session-plan-metadata.ts."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-provenance",
+        "query": "sourceEpic|source_epic|source_epic_ids in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found source_epic_ids and source_recommendation_ref written in promote.ts."
+      },
+      {
+        "query": "sourceTaskId|source_task|taskId|canonical in eforge/extensions/eforge-plan/canonical eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Path not found due to combined path input."
+      },
+      {
+        "query": "resubmit|re-submit|submitted-status|not-ready|stale submitted in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found not-ready output schema in session-plan-schemas.ts."
+      },
+      {
+        "query": "handoff-session-plan|set-session-plan-ready|set-status in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found set-session-plan-ready and handoff-session-plan action definitions in session-plan-actions.ts."
+      },
+      {
+        "query": "list eforge/extensions/eforge-plan/canonical",
+        "tool": "ls",
+        "result": "Confirmed canonical directory with backlog, coverage, lifecycle, planning-task, queue-removal-cleanup, recommendation, and session-plan record modules."
+      },
+      {
+        "needId": "criterion-ac-007-subsystem-provenance",
+        "query": "sourceRecommendationRef|sourceTaskId|sourceItem|sourceEpic|provenance in eforge/extensions/eforge-plan/canonical",
+        "tool": "grep",
+        "result": "Found sourceItemIds, sourceEpicIds, and sourceRecommendationRef fields in canonical/session-plan-records.ts."
+      },
+      {
+        "query": "record.*SessionPlan|syncSessionPlanArtifact|submittedAt|queue in eforge/extensions/eforge-plan",
+        "tool": "grep",
+        "result": "Found terminal queue status policy in planning-state-policy.ts."
+      },
+      {
+        "query": "read eforge/extensions/eforge-plan/canonical/session...",
+        "tool": "read",
+        "result": "Read attempt was truncated in prior observation; no additional confirmed content beyond path prefix."
+      }
+    ],
+    "candidatePaths": [
+      ".pi/extensions/eforge-dev/index.ts",
+      "eforge/extensions/eforge-plan",
+      "eforge/extensions/eforge-plan/__tests__",
+      "eforge/extensions/eforge-plan/__tests__/lifecycle.test.ts",
+      "eforge/extensions/eforge-plan/__tests__/queue-removal-coverage-cleanup.test.ts",
+      "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-lifecycle-writes.test.ts",
+      "eforge/extensions/eforge-plan/__tests__/sqlite-projection-fixtures.ts",
+      "eforge/extensions/eforge-plan/__tests__/sqlite-projections-lifecycle.test.ts",
+      "eforge/extensions/eforge-plan/__tests__/sqlite-session-plan-projections.test.ts",
+      "eforge/extensions/eforge-plan/canonical",
+      "eforge/extensions/eforge-plan/canonical/backlog-records.ts",
+      "eforge/extensions/eforge-plan/canonical/coverage.ts",
+      "eforge/extensions/eforge-plan/canonical/item-body-sections.ts",
+      "eforge/extensions/eforge-plan/canonical/lifecycle-records.ts",
+      "eforge/extensions/eforge-plan/canonical/planning-task-records.ts",
+      "eforge/extensions/eforge-plan/canonical/queue-removal-cleanup.ts",
+      "eforge/extensions/eforge-plan/canonical/recommendation-records.ts",
+      "eforge/extensions/eforge-plan/canonical/search-dirty.ts",
+      "eforge/extensions/eforge-plan/canonical/session-plan-records.ts",
+      "eforge/extensions/eforge-plan/canonical/store.ts",
+      "eforge/extensions/eforge-plan/draft-plan-unit-schemas.ts",
+      "eforge/extensions/eforge-plan/index.ts",
+      "eforge/extensions/eforge-plan/plan-revision-orchestration.ts",
+      "eforge/extensions/eforge-plan/planning-state-policy.ts",
+      "eforge/extensions/eforge-plan/projections",
+      "eforge/extensions/eforge-plan/projections/board.ts",
+      "eforge/extensions/eforge-plan/projections/coverage.ts",
+      "eforge/extensions/eforge-plan/projections/index.ts",
+      "eforge/extensions/eforge-plan/projections/items.ts",
+      "eforge/extensions/eforge-plan/projections/lifecycle.ts",
+      "eforge/extensions/eforge-plan/projections/links.ts",
+      "eforge/extensions/eforge-plan/projections/pagination.ts",
+      "eforge/extensions/eforge-plan/projections/recommendations.ts",
+      "eforge/extensions/eforge-plan/projections/session-plans.ts",
+      "eforge/extensions/eforge-plan/projections/store.ts",
+      "eforge/extensions/eforge-plan/projections/types.ts",
+      "eforge/extensions/eforge-plan/promote.ts",
+      "eforge/extensions/eforge-plan/session-plan-actions.ts",
+      "eforge/extensions/eforge-plan/session-plan-metadata.ts",
+      "eforge/extensions/eforge-plan/session-plan-schemas.ts",
+      "eforge/extensions/eforge-plan/session-plan-view-model.ts",
+      "eforge/extensions/eforge-plan/workstation-src/plans/package.json",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src/views",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans/lifecycle-evidence-panel.tsx",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src/views/plans/plan-detail.tsx",
+      "eforge/extensions/eforge-plan/workstation-src/plans/src/views/recommendations-rail.tsx",
+      "eforge/extensions/eforge-plan/workstation-src/plans/vitest.config.ts",
+      "package.json",
+      "packages/client/src/routes/route-map.ts",
+      "packages/client/src/routes/session-plan.ts",
+      "packages/console-ui/package.json",
+      "packages/console-ui/vitest.config.ts",
+      "packages/eforge/src/cli/mcp-proxy.ts",
+      "packages/engine/src/queue/control.ts",
+      "packages/extension-sdk/package.json",
+      "packages/input/src/session-plan-creation-draft.ts",
+      "packages/input/src/session-plan-realpath.ts",
+      "packages/input/src/session-plan-set",
+      "packages/monitor/src/routes/extension-content.ts",
+      "packages/monitor/src/routes/queue-control.ts",
+      "packages/monitor/src/routes/session-plan-service.ts",
+      "packages/monitor/src/routes/session-plans.ts",
+      "packages/pi-eforge/extensions/eforge/index.ts",
+      "scripts/check-agent-maintainability.mjs",
+      "scripts/check-skill-parity.mjs",
+      "test",
+      "test/ac008-adoption-reconciliation-regression.test.ts",
+      "test/ac008-daemon-wire-ownership.test.ts",
+      "test/accept-success-direct-pr-landing.test.ts",
+      "test/accept-success-static-discipline.test.ts",
+      "test/acceptance-criteria-inventory.test.ts",
+      "test/acceptance-criteria-quality.test.ts",
+      "test/acceptance-summary.test.ts",
+      "test/acceptance-unknown-resolver.test.ts",
+      "test/adopt.test.ts",
+      "test/adopted-queue-worker-restart.test.ts",
+      "test/adopted-success-preservation.test.ts",
+      "test/agent-config.mixed-harness.test.ts",
+      "test/agent-maintainability-check.test.ts",
+      "web/public/reference/events.md"
+    ],
+    "rescopeHints": [],
+    "notes": "Submit-only grace mode honored; no further repository inspection or edits performed. Confirmed extension/Pi, MCP proxy, client route contract, monitor route/service, and input session-plan domain paths. Budget expired before verifying exact set-session-plan-ready/handoff implementations, unsupported status-write behavior, authoritative status-source wording, or Claude plugin parity.; Submit-only grace mode after exhausting the read-only tool budget. Hints above are limited to paths explicitly confirmed in prior observations; build/resubmission/recreating ownership may require further inspection of canonical session-plan handoff/status modules and queue/build lifecycle projections.; Tool budget was already exhausted before additional inspection. Confirmed anchors localize ac-002 to the eforge-plan projection lifecycle/session-plan modules, lifecycle regression tests, and the Workstation plan detail/lifecycle evidence UI surface. Function-body semantics for same-state vs mixed/incomplete status projection and exact UI copy still need verification by downstream work.; Submit-only grace mode was requested after the 18-tool budget was exhausted. Confirmed evidence primarily localizes ac-010 to root/package test commands, the test directory, Vitest configs, and maintainability validation scripts.; Submission based only on supplied prior observations; no additional repository tools were available. Last UI read observation was truncated, so only fully confirmed paths are asserted.; Submit-only grace mode: no further repository inspection performed. Hints are based only on prior read-only observations; unresolved need ids remain listed because budget was exhausted before full contract/flow confirmation.",
+    "unknownIdDrops": [],
+    "toolUseCount": 122
+  },
+  "rescope": {
+    "status": "exhausted-proceeded",
+    "attempts": 1,
+    "maxAttempts": 1,
+    "originalAtomCount": 1,
+    "revisedAtomCount": 9,
+    "ledger": {
+      "totalToolUseBudget": 130,
+      "usedToolUses": 122
+    },
+    "riskReasons": [
+      "low-confidence-share (7/14)",
+      "subsystem-diverse-root (16 subsystems)",
+      "unresolved-interface-signals (12)"
+    ],
+    "splitGroups": [
+      {
+        "directiveId": "rescope-extension",
+        "groupKey": "extension",
+        "criterionIds": [
+          "ac-004",
+          "ac-005"
+        ],
+        "rationale": "degraded exploration: split by extension (2 criteria, 17 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-build",
+        "groupKey": "build",
+        "criterionIds": [
+          "ac-006",
+          "ac-008"
+        ],
+        "rationale": "degraded exploration: split by build (2 criteria, 12 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-incomplete",
+        "groupKey": "incomplete",
+        "criterionIds": [
+          "ac-002"
+        ],
+        "rationale": "degraded exploration: split by incomplete (1 criteria, 10 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-test",
+        "groupKey": "test",
+        "criterionIds": [
+          "ac-010"
+        ],
+        "rationale": "degraded exploration: split by test (1 criteria, 5 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-planned",
+        "groupKey": "planned",
+        "criterionIds": [
+          "ac-003"
+        ],
+        "rationale": "degraded exploration: split by planned (1 criteria, 4 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-provenance",
+        "groupKey": "provenance",
+        "criterionIds": [
+          "ac-007"
+        ],
+        "rationale": "degraded exploration: split by provenance (1 criteria, 4 unresolved need links)"
+      },
+      {
+        "directiveId": "rescope-general",
+        "groupKey": "general",
+        "criterionIds": [
+          "ac-001",
+          "ac-009"
+        ],
+        "rationale": "degraded exploration: split by general (2 criteria, 0 unresolved need links)"
+      }
+    ],
+    "rerunScopeKeys": [
+      "build",
+      "extension",
+      "incomplete",
+      "planned",
+      "provenance",
+      "test"
+    ],
+    "preservedScopeKeys": [
+      "general"
+    ],
+    "unresolvedCriticalNeedIds": []
+  },
+  "repair": {
+    "status": "not-needed",
+    "attempts": []
+  },
+  "residue": {
+    "synthesisBlocked": false,
+    "blockedReasons": [],
+    "candidates": []
+  },
+  "evidenceFailures": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": ".claude/skills/eforge-daemon-restart/SKILL.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": ".claude/skills/eval-analysis/SKILL.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": ".github/workflows/publish.yml",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": ".pi/extensions/eforge-dev/index.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": ".pi/extensions/eforge-dev/README.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/config-migration.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/extensions.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/images/console-recovery-build.png",
+      "status": "too-large",
+      "reason": "file-byte-size-exceeds-limit",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "docs/llm-friendly-code.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/releasing.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/roadmap.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/stacking.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "docs/webux-workspaces.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge-plugin/.mcp.json",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge-plugin/bin/eforge-mcp-proxy.mjs",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/config/config.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/extend/extend.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/init/init.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/profile-new/profile-new.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/profile/profile.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/recover/recover.md",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/restart/restart.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/stack/stack.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/status/status.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge-plugin/skills/update/update.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general"
+      ]
+    },
+    {
+      "path": "eforge/dependency-update-evidence.md",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-guardrails/maintainability-parser.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-capture-guardrails.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-accepted-baseline.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-analyze-all-regression.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-apply.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-evidence-classification.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-evidence-prefixes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-git-delta.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-item-audit-cache.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-packets.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-prompt-contract.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-recommendation-overlay.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-source-first-audit.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-curation-source.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-epic-reference-validation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-query-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/backlog-storage-migration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/docs-validation-contract.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/draft-plan-unit-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/kanban.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/lifecycle.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/live-coverage-planning-state-regression.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/package-foundation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/package-publication.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/plan-revision-annotations.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/plan-revision-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-agent-task-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-agent-task-creation-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-agent-task-creation-drafts.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planner-orchestration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/planning-agent-task-contract-neutrality.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/promotion-selection.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/promotion.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/queue-removal-coverage-cleanup.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/readme-contract.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/readme-mature-workflows.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-actionability.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-apply-validation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-freshness-view.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-index.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-invalidation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-refresh-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-general",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendation-status.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/recommendations-store.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/registration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/roadmap-integration.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/session-plan-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/session-plan-metadata.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/shipped-evidence-gap-regressions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/shipped-evidence.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-board-projections.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-backlog-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-lifecycle-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-planning-tasks.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-canonical-session-plan-writes.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-fts-search.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-maintenance-fixtures.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-maintenance-projection-preservation.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projection-actions.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projection-fixtures.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-projections-lifecycle.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-recommendation-actionability.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-repositories.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-search-fixtures.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-session-plan-projections.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/sqlite-storage-schema.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/storage.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/trace-lifecycle-freshness.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/update-item-body-safe.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/workstation-assets.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/__tests__/workstation-docs.test.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/agent-task-contributions.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-capture-guardrails.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-agent-tasks.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-incomplete",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-apply-utils.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-full-audit.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-recommendation-overlay.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-schemas.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/backlog-domain.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned",
+        "atom-rescope-provenance",
+        "atom-rescope-test"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/backlog-records.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/coverage.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/item-body-sections.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/planning-task-records.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/queue-removal-cleanup.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/recommendation-records.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/search-dirty.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/session-plan-records.ts",
+      "status": "budget-exceeded",
+      "reason": "max-evidence-bytes-per-atom",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ],
+      "budgetAtomIds": [
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/canonical/store.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/draft-plan-unit-schemas.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-provenance"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/index.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-extension",
+        "atom-rescope-extension-002"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/package.json",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-test"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/plan-revision-orchestration.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-extension",
+        "atom-rescope-extension-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/planning-state-policy.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-build",
+        "atom-rescope-build-002",
+        "atom-rescope-general",
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    },
+    {
+      "path": "eforge/extensions/eforge-plan/projections/board.ts",
+      "status": "budget-exceeded",
+      "reason": "max-files-total",
+      "referencedByAtomIds": [
+        "atom-rescope-incomplete",
+        "atom-rescope-planned"
+      ]
+    }
+  ],
+  "sharedBriefBudget": [
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-build",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-extension",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-general",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-planned",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-agents-md",
+      "atomId": "atom-rescope-test",
+      "path": "AGENTS.md",
+      "message": "Section shared-evidence-agents-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-plugin-marketplace-json",
+      "atomId": "atom-rescope-general",
+      "path": ".claude-plugin/marketplace.json",
+      "message": "Section shared-evidence-claude-plugin-marketplace-json demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-plugin-marketplace-json",
+      "atomId": "atom-rescope-incomplete",
+      "path": ".claude-plugin/marketplace.json",
+      "message": "Section shared-evidence-claude-plugin-marketplace-json demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-plugin-marketplace-json",
+      "atomId": "atom-rescope-planned",
+      "path": ".claude-plugin/marketplace.json",
+      "message": "Section shared-evidence-claude-plugin-marketplace-json demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-plugin-marketplace-json",
+      "atomId": "atom-rescope-provenance",
+      "path": ".claude-plugin/marketplace.json",
+      "message": "Section shared-evidence-claude-plugin-marketplace-json demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-daemon-restart-skill-md",
+      "atomId": "atom-rescope-extension",
+      "path": ".claude/skills/eforge-daemon-restart/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-daemon-restart-skill-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-daemon-restart-skill-md",
+      "atomId": "atom-rescope-provenance",
+      "path": ".claude/skills/eforge-daemon-restart/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-daemon-restart-skill-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-build",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-build-002",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-extension",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-general",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-planned",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md",
+      "atomId": "atom-rescope-provenance",
+      "path": ".claude/skills/eforge-plugin-update-docs/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eforge-plugin-update-docs-skill-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eval-analysis-skill-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": ".claude/skills/eval-analysis/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eval-analysis-skill-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eval-analysis-skill-md",
+      "atomId": "atom-rescope-planned",
+      "path": ".claude/skills/eval-analysis/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eval-analysis-skill-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-claude-skills-eval-analysis-skill-md",
+      "atomId": "atom-rescope-provenance",
+      "path": ".claude/skills/eval-analysis/SKILL.md",
+      "message": "Section shared-evidence-claude-skills-eval-analysis-skill-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-contributing-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "CONTRIBUTING.md",
+      "message": "Section shared-evidence-contributing-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-contributing-md",
+      "atomId": "atom-rescope-test",
+      "path": "CONTRIBUTING.md",
+      "message": "Section shared-evidence-contributing-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-architecture-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/architecture.md",
+      "message": "Section shared-evidence-docs-architecture-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-extensions-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/extensions.md",
+      "message": "Section shared-evidence-docs-extensions-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-hooks-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/hooks.md",
+      "message": "Section shared-evidence-docs-hooks-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-build",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-general",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-images-console-recovery-build-png",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/images/console-recovery-build.png",
+      "message": "Section shared-evidence-docs-images-console-recovery-build-png demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-llm-friendly-code-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/llm-friendly-code.md",
+      "message": "Section shared-evidence-docs-llm-friendly-code-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-releasing-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/releasing.md",
+      "message": "Section shared-evidence-docs-releasing-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-build",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-provenance",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-roadmap-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/roadmap.md",
+      "message": "Section shared-evidence-docs-roadmap-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-stacking-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/stacking.md",
+      "message": "Section shared-evidence-docs-stacking-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-stacking-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/stacking.md",
+      "message": "Section shared-evidence-docs-stacking-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-stacking-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/stacking.md",
+      "message": "Section shared-evidence-docs-stacking-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-stacking-md",
+      "atomId": "atom-rescope-test",
+      "path": "docs/stacking.md",
+      "message": "Section shared-evidence-docs-stacking-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-build-002",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-extension",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-extension-002",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-general",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-docs-webux-workspaces-md",
+      "atomId": "atom-rescope-planned",
+      "path": "docs/webux-workspaces.md",
+      "message": "Section shared-evidence-docs-webux-workspaces-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-build",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-build-002",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-extension",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-extension-002",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-general",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-incomplete",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-planned",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-provenance",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-config-yaml",
+      "atomId": "atom-rescope-test",
+      "path": "eforge/config.yaml",
+      "message": "Section shared-evidence-eforge-config-yaml demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-dependency-update-evidence-md",
+      "atomId": "atom-rescope-incomplete",
+      "path": "eforge/dependency-update-evidence.md",
+      "message": "Section shared-evidence-eforge-dependency-update-evidence-md demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-dependency-update-evidence-md",
+      "atomId": "atom-rescope-planned",
+      "path": "eforge/dependency-update-evidence.md",
+      "message": "Section shared-evidence-eforge-dependency-update-evidence-md demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-dependency-update-evidence-md",
+      "atomId": "atom-rescope-test",
+      "path": "eforge/dependency-update-evidence.md",
+      "message": "Section shared-evidence-eforge-dependency-update-evidence-md demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-build",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-build-002",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-extension",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-extension-002",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-general",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-incomplete",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-planned",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-provenance",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-provenance: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-index-ts",
+      "atomId": "atom-rescope-test",
+      "path": "eforge/extensions/eforge-guardrails/index.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-index-ts demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-maintainabil",
+      "atomId": "atom-rescope-extension",
+      "path": "eforge/extensions/eforge-guardrails/maintainability-parser.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-maintainabil demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-maintainabil",
+      "atomId": "atom-rescope-extension-002",
+      "path": "eforge/extensions/eforge-guardrails/maintainability-parser.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-maintainabil demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-guardrails-maintainabil",
+      "atomId": "atom-rescope-test",
+      "path": "eforge/extensions/eforge-guardrails/maintainability-parser.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-guardrails-maintainabil demoted for atom-rescope-test: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-agent-task-contrib",
+      "atomId": "atom-rescope-extension",
+      "path": "eforge/extensions/eforge-plan/agent-task-contributions.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-agent-task-contrib demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-agent-task-contrib",
+      "atomId": "atom-rescope-extension-002",
+      "path": "eforge/extensions/eforge-plan/agent-task-contributions.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-agent-task-contrib demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6",
+      "atomId": "atom-rescope-extension",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6 demoted for atom-rescope-extension: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6",
+      "atomId": "atom-rescope-extension-002",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6 demoted for atom-rescope-extension-002: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6",
+      "atomId": "atom-rescope-general",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6 demoted for atom-rescope-general: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6",
+      "atomId": "atom-rescope-incomplete",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6 demoted for atom-rescope-incomplete: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6",
+      "atomId": "atom-rescope-planned",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-source.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-3f9b40c6 demoted for atom-rescope-planned: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-c8e6eaaf",
+      "atomId": "atom-rescope-build",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-schemas.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-c8e6eaaf demoted for atom-rescope-build: atom section budget (8) reached; path stays available via evidence summaries."
+    },
+    {
+      "code": "atom-section-demoted",
+      "sectionId": "shared-evidence-eforge-extensions-eforge-plan-backlog-c-c8e6eaaf",
+      "atomId": "atom-rescope-build-002",
+      "path": "eforge/extensions/eforge-plan/backlog-curation-schemas.ts",
+      "message": "Section shared-evidence-eforge-extensions-eforge-plan-backlog-c-c8e6eaaf demoted for atom-rescope-build-002: atom section budget (8) reached; path stays available via evidence summaries."
+    }
+  ],
+  "omitted": {
+    "gaps": 0,
+    "conflicts": 0,
+    "repairAttempts": 0,
+    "evidenceFailures": 151,
+    "coverageAspects": 0,
+    "coverageCriteria": 0,
+    "residueCandidates": 0,
+    "validationErrors": 0,
+    "descriptionBytes": 0,
+    "sharedBriefBudget": 1135
+  }
+}
