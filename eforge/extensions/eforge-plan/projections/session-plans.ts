@@ -7,7 +7,7 @@ import { buildBoard, projectBoardOutput } from '../board-actions.js';
 import { pageMetadata, paginateProjection } from './pagination.js';
 import { withProjectionStore } from './store.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
-import { getProjectionSessionPlan, listProjectionSessionPlanEpics, listProjectionSessionPlanItems, listProjectionSessionPlans, type ProjectionSessionPlanRow } from '../sqlite/repositories/projections/session-plans.js';
+import { getProjectionSessionPlan, listAllProjectionSessionPlans, listProjectionSessionPlanEpics, listProjectionSessionPlanItems, listProjectionSessionPlans, type ProjectionSessionPlanRow } from '../sqlite/repositories/projections/session-plans.js';
 import { getProjectionItem, listProjectionItems } from '../sqlite/repositories/projections/items.js';
 import { listCurrentLifecycleEvidence, listProjectionPlanningTaskItems, listProjectionQueueBuildLinks, listProjectionSessionItems, type ProjectionLifecycleEvidenceRow, type ProjectionQueueBuildRow } from '../sqlite/repositories/projections/lifecycle.js';
 import type { EforgePlanStore } from '../sqlite/index.js';
@@ -192,7 +192,7 @@ export async function listPlanningArtifactsProjection(cwd: string, input: ListPl
     | { descriptorKind: 'artifact'; key: string; session?: string; planSetId?: string; updatedAt?: string; artifact: any };
   const { sqlPlans, sqlSessions } = await withProjectionStore(cwd, (store) => {
     const plans = listProjectionSessionPlans(store, input.includeSubmitted);
-    return { sqlPlans: plans, sqlSessions: new Set(listProjectionSessionPlans(store, true).map((plan) => plan.session)) };
+    return { sqlPlans: plans, sqlSessions: new Set(listAllProjectionSessionPlans(store).map((plan) => plan.session)) };
   }, () => ({ sqlPlans: [] as ProjectionSessionPlanRow[], sqlSessions: new Set<string>() }));
   const flat = (await listFlatArtifacts(cwd, input.includeSubmitted)).filter((artifact) => !sqlSessions.has(artifact.session));
   const planSets = await listPlanSetArtifacts(cwd, input.includeSubmitted);

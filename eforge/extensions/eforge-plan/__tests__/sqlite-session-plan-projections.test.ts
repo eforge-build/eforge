@@ -36,6 +36,22 @@ describe('SQLite session-plan projections', () => {
     });
   });
 
+  it('does not reintroduce terminal canonical plans through stale ready Markdown fallback', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const dir = join(cwd, '.eforge/session-plans');
+      mkdirSync(dir, { recursive: true });
+      const path = join(dir, 'removed-stale-ready.md');
+      const content = readinessPlanContent('removed-stale-ready', readyBody('Removed Stale Ready'), 'ready');
+      writeFileSync(path, content);
+      syncSessionPlanArtifact(cwd, { session: 'removed-stale-ready', path, content, status: 'removed', sourceItemIds: [] });
+
+      const output = await listPlanningArtifactsProjection(cwd, { limit: 100, includeSubmitted: true });
+
+      expect((output.plans as Array<{ session?: string }>).map((plan) => plan.session)).not.toContain('removed-stale-ready');
+      expect((output.artifacts as Array<{ key?: string }>).map((artifact) => artifact.key)).not.toContain('plan:removed-stale-ready');
+    });
+  });
+
   it('shows SQLite source refs and lifecycle while loading the body from the Markdown artifact', async () => {
     await withTempProjectionProject(async (cwd) => {
       seedProjectionBacklog(cwd);

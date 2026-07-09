@@ -246,7 +246,7 @@ describe('eforge-plan session-plan extension actions', () => {
       expect(lifecycle.lifecycleState).toBe('partial');
       expect((lifecycle.itemRows as Array<Record<string, unknown>>).map((row) => [row.itemId, row.lifecycleState])).toEqual([
         ['item-one', 'shipped'],
-        ['item-two', 'planned'],
+        ['item-two', 'none'],
       ]);
       expect(lifecycle.linkRows).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'session-plan', session: 'linked-plan', affectedItemIds: ['item-one'] })]));
     });
@@ -498,7 +498,8 @@ ${readyBody()}`, 'utf-8');
         expect.objectContaining({ queue_prd_id: 'new-queue', lifecycle_state: 'submitted', is_current: 1, is_terminal: 0, superseded_at: null }),
       ]));
       expect(shown.sourceRefs).toMatchObject({ sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'], recommendationRef: 'rec-one' });
-      expect(shown.lifecycle).toMatchObject({ lifecycleState: 'queue' });
+      expect(shown.lifecycle).toMatchObject({ lifecycleState: 'partial' });
+      expect(shown.lifecycle).toMatchObject({ itemRows: [expect.objectContaining({ itemId: 'item-one', lifecycleState: 'queue' })] });
       expect(JSON.stringify(shown.lifecycle)).toContain('new-queue');
       expect(JSON.stringify(shown.lifecycle)).not.toContain('old-queue');
       expect(JSON.stringify(shown.lifecycle)).not.toContain('old-run');
@@ -658,6 +659,42 @@ ${readyBody()}`, 'utf-8');
       expect(resubmitted).toMatchObject({ kind: 'not-recoverable', session: 'active-submitted-plan', status: 'submitted', message: expect.stringContaining('Active queue/build evidence') });
       expect(enqueueCalls).toEqual([]);
       expect(storedQueueRows(cwd, 'active-submitted-plan')).toEqual([{ prd_id: 'active-queue', status: 'queued' }]);
+    });
+  });
+
+  it('does not resubmit a recoverable submitted plan when the current body is not ready', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'non-ready-resubmit', readyBody('Non Ready Resubmit'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'non-ready-resubmit' });
+      await dispatch(cwd, 'handoff-session-plan', { session: 'non-ready-resubmit' }, { enqueue: async () => ({ sessionId: 'old-failed', pid: 1, autoBuild: false }) });
+      await writeSessionPlanRaw(cwd, 'non-ready-resubmit', '# Missing required sections', 'ready');
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try { upsertQueuePrd(store, { prdId: 'old-failed', session: 'non-ready-resubmit', status: 'failed', updatedAt: '2099-01-01T00:00:00.000Z' }); } finally { store.close(); }
+      const calls: string[] = [];
+      const beforeEvidence = storedSubmittedEvidenceRows(cwd, 'non-ready-resubmit');
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'non-ready-resubmit' }, { enqueue: async (request) => { calls.push(request.source); return { sessionId: 'unexpected-fresh', pid: 2, autoBuild: false }; } });
+
+      expect(resubmitted).toMatchObject({ kind: 'not-ready', session: 'non-ready-resubmit' });
+      expect(calls).toEqual([]);
+      expect(storedQueueRows(cwd, 'non-ready-resubmit')).toEqual([{ prd_id: 'old-failed', status: 'failed' }]);
+      expect(storedSubmittedEvidenceRows(cwd, 'non-ready-resubmit')).toEqual(beforeEvidence);
+    });
+  });
+
+  it('does not resubmit a ready plan with non-recoverable canonical status', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'ready-status-resubmit', readyBody('Ready Status Resubmit'));
+      await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-status-resubmit' });
+      const store = openEforgePlanStore(cwd, { create: true, migrate: true });
+      try { upsertQueuePrd(store, { prdId: 'old-failed', session: 'ready-status-resubmit', status: 'failed', updatedAt: '2099-01-01T00:00:00.000Z' }); } finally { store.close(); }
+      const calls: string[] = [];
+
+      const resubmitted = await dispatch(cwd, 'resubmit-session-plan', { session: 'ready-status-resubmit' }, { enqueue: async (request) => { calls.push(request.source); return { sessionId: 'unexpected-fresh', pid: 2, autoBuild: false }; } });
+
+      expect(resubmitted).toMatchObject({ kind: 'not-recoverable', session: 'ready-status-resubmit', status: 'ready' });
+      expect(calls).toEqual([]);
+      expect(storedQueueRows(cwd, 'ready-status-resubmit')).toEqual([{ prd_id: 'old-failed', status: 'failed' }]);
     });
   });
 

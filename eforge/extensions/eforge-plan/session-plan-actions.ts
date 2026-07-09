@@ -334,7 +334,7 @@ export const handoffSessionPlan = defineExtensionAction({
     const submittedAt = new Date().toISOString();
     try {
       const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
-      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
+      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, eforgeSessionId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
     } catch (err) {
       canonicalSyncWarning = err instanceof Error ? err.message : String(err);
     }
@@ -385,7 +385,7 @@ export const resubmitSessionPlan = defineExtensionAction({
     const submittedAt = new Date().toISOString();
     try {
       const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
-      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
+      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, eforgeSessionId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: submittedAt }));
     } catch (err) {
       canonicalSyncWarning = err instanceof Error ? err.message : String(err);
     }

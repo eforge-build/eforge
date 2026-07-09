@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { listSessionPlansWire, setStatusWire, showSessionPlan } from '@eforge-build/monitor/routes/session-plan-service';
 import { showSessionPlanProjection } from '../eforge/extensions/eforge-plan/projections/index.js';
 import { withTempProjectionProject } from '../eforge/extensions/eforge-plan/__tests__/sqlite-projection-fixtures.js';
+import { captureCanonicalBacklogItem } from '../eforge/extensions/eforge-plan/canonical/backlog-records.js';
 import { syncSessionPlanArtifact } from '../eforge/extensions/eforge-plan/canonical/session-plan-records.js';
 
 function readySessionPlanContent(session: string, status: string): string {
@@ -44,7 +45,8 @@ describe('session-plan canonical set-status bridge', () => {
       const content = readySessionPlanContent(session, 'submitted');
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, content);
-      syncSessionPlanArtifact(cwd, { session, path, content, status: 'submitted', sourceItemIds: [] });
+      captureCanonicalBacklogItem(cwd, { id: 'bridge-item', title: 'Bridge item', status: 'planned' });
+      syncSessionPlanArtifact(cwd, { session, path, content, status: 'submitted', sourceItemIds: ['bridge-item'] });
 
       const response = await setStatusWire(cwd, { session, status: 'abandoned' });
       const projected = await showSessionPlanProjection(cwd, session);
@@ -52,7 +54,9 @@ describe('session-plan canonical set-status bridge', () => {
       const db = new DatabaseSync(resolve(cwd, '.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite'));
       try {
         const row = db.prepare('SELECT status FROM session_plans WHERE session = ?').get(session) as { status: string };
+        const evidence = db.prepare("SELECT status, is_current, is_terminal, superseded_at FROM lifecycle_evidence WHERE session = ? AND reason_code = 'planned-session-plan' AND item_ref = ?").get(session, 'bridge-item') as { status: string; is_current: number; is_terminal: number; superseded_at: string | null };
         expect(row.status).toBe('abandoned');
+        expect(evidence).toMatchObject({ status: 'abandoned', is_current: 0, is_terminal: 1, superseded_at: expect.any(String) });
       } finally {
         db.close();
       }
@@ -98,6 +102,34 @@ describe('session-plan canonical set-status bridge', () => {
       expect(listed.plans).toEqual(expect.arrayContaining([expect.objectContaining({ session, status: 'submitted', eforge_session: 'build-session-42', statusSource: 'eforge-plan-sqlite-session-plan-status' })]));
       expect(shown.plan).toMatchObject({ session, status: 'submitted', eforge_session: 'build-session-42', statusSource: 'eforge-plan-sqlite-session-plan-status' });
       expect(projected).toMatchObject({ session, plan: expect.objectContaining({ status: 'submitted' }), statusSource: 'eforge-plan-sqlite-session-plan-status', submittedAt: expect.any(String) });
+    });
+  });
+
+  it('fails closed and rolls Markdown back when canonical status update fails', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      const session = 'canonical-update-fails';
+      const path = resolve(cwd, '.eforge/session-plans', `${session}.md`);
+      const content = readySessionPlanContent(session, 'ready');
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+      syncSessionPlanArtifact(cwd, { session, path, content, status: 'ready', sourceItemIds: [] });
+      const dbPath = resolve(cwd, '.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite');
+      const db = new DatabaseSync(dbPath);
+      try {
+        db.exec("CREATE TRIGGER fail_session_plan_status_update BEFORE UPDATE OF status ON session_plans BEGIN SELECT RAISE(FAIL, 'blocked canonical update'); END;");
+      } finally {
+        db.close();
+      }
+
+      await expect(setStatusWire(cwd, { session, status: 'abandoned' })).rejects.toMatchObject({ statusCode: 500, body: expect.objectContaining({ statusSourceDisclosure: expect.stringContaining('canonical eforge-plan SQLite session-plan status records') }) });
+      await expect(readFile(path, 'utf8')).resolves.toContain('status: ready');
+      const verify = new DatabaseSync(dbPath);
+      try {
+        const row = verify.prepare('SELECT status FROM session_plans WHERE session = ?').get(session) as { status: string };
+        expect(row.status).toBe('ready');
+      } finally {
+        verify.close();
+      }
     });
   });
 

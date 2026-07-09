@@ -363,7 +363,9 @@ function CreatePlanForm({ onClose, onCreated }: { onClose: () => void; onCreated
 // into the plan shows the full evidence and links out to the run; the chip never
 // mirrors the global queue here.
 const BUILD_CHIP: Record<string, { label: string; tone: Tone }> = {
+  queue: { label: 'Queued', tone: 'info' },
   queued: { label: 'Queued', tone: 'info' },
+  build: { label: 'Building', tone: 'progress' },
   building: { label: 'Building', tone: 'progress' },
   active: { label: 'Building', tone: 'progress' },
   'pr-open': { label: 'PR open', tone: 'warn' },

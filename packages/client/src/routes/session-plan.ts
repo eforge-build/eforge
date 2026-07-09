@@ -3,7 +3,8 @@
 // ---------------------------------------------------------------------------
 
 /** Lifecycle status of a session plan. */
-export type SessionPlanStatusWire = 'planning' | 'ready' | 'abandoned' | 'submitted';
+export type SessionPlanStatusWire = 'planning' | 'ready' | 'abandoned' | 'submitted' | 'removed';
+export type SessionPlanSettableStatusWire = Exclude<SessionPlanStatusWire, 'removed'>;
 
 /** Planning type of a session plan. */
 export type PlanningTypeWire =
@@ -134,7 +135,7 @@ export interface SessionPlanSkipDimensionResponse {
 /** Request body for POST /api/session-plan/set-status */
 export interface SessionPlanSetStatusRequest {
   session: string;
-  status: SessionPlanStatusWire;
+  status: SessionPlanSettableStatusWire;
   /** Required when status is 'submitted'. */
   eforge_session?: string;
 }

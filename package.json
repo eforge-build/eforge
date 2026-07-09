@@ -27,7 +27,7 @@
     "test": "node scripts/check-skill-parity.mjs && vitest run --silent",
     "vitest": "node scripts/vitest-wrapper.mjs",
     "test:watch": "vitest",
-    "type-check": "pnpm --filter @eforge-build/engine build && pnpm --filter @eforge-build/monitor build && pnpm --filter @eforge-build/eforge build && pnpm -r type-check",
+    "type-check": "pnpm --filter @eforge-build/engine... --filter @eforge-build/monitor... --filter @eforge-build/eforge... --workspace-concurrency=1 build && pnpm -r type-check",
     "type-check:eforge-plan": "pnpm --filter @eforge-build/eforge-plan type-check",
     "type-check:eforge-playbooks": "pnpm --filter @eforge-build/eforge-playbooks type-check",
     "release": "node scripts/bump-version.mjs",

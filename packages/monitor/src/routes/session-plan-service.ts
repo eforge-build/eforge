@@ -204,11 +204,11 @@ export async function setStatusWire(cwd: string, body: SessionPlanSetStatusReque
   const { adapter, isReadinessError } = await getPlanningAdapter();
   const canonicalBefore = readCanonicalSessionPlanStatus(cwd, body.session);
   const requiresCanonicalStatusUpdate = canonicalBefore !== undefined;
-  let previousStatus: SessionPlanDataWire['status'] | undefined;
+  let previousStatus: SessionPlanSetStatusRequest['status'] | undefined;
   let previousEforgeSession: string | undefined;
   try {
     const loaded = await adapter.flat.load({ cwd, session: body.session });
-    previousStatus = loaded.plan.status as SessionPlanDataWire['status'];
+    previousStatus = loaded.plan.status as SessionPlanSetStatusRequest['status'];
     previousEforgeSession = loaded.plan.eforge_session;
   } catch {
     // Preserve the adapter's original error if set-status itself fails.

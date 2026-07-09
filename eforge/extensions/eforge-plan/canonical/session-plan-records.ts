@@ -91,7 +91,7 @@ export function replaceSessionPlanLinks(store: EforgePlanStore, input: { session
   replaceAllSessionPlanEpics(store, { session: input.session, epics: (input.epicIds ?? []).map((epicRef, sequence) => ({ epicRef, epicId: getEpic(store, epicRef)?.id, role: 'source', provenance: input.provenance ?? 'canonical-sync', sourceTaskId: input.sourceTaskId, sourceRecommendationRef: input.sourceRecommendationRef, promotedAt: now, sequence })) });
 }
 
-export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
+export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { session: string; queuePrdId: string; eforgeSessionId?: string; path?: string; itemIds?: string[]; timestamp?: string; status?: string }): void {
   const at = input.timestamp ?? canonicalNowIso();
   const existing = getSessionPlan(store, input.session);
   supersedeRecoverableSessionBuildEvidence(store, input.session, at);
@@ -104,7 +104,7 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     planningDepth: existing?.planningDepth,
     profile: existing?.profile,
     agentProfile: existing?.agentProfile,
-    eforgeSessionId: existing?.eforgeSessionId,
+    eforgeSessionId: input.eforgeSessionId ?? input.queuePrdId ?? existing?.eforgeSessionId,
     submittedAt: at,
     createdAt: existing?.createdAt ?? at,
     updatedAt: at,
