@@ -294,6 +294,28 @@ describe('planning compiler diagnostics', () => {
 
     await expect(writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: '../escape', reason: 'x', rescope })).rejects.toThrow(/safe relative path component/);
   });
+
+  it('removes the stale sibling artifact so fail-closed and compiler diagnostics never coexist', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-stale-artifact-'));
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const diagnostics = buildCompilerDiagnostics({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), planSetName: 'diag-set' });
+    const rescope: AdaptiveRescopeDiagnostics = {
+      status: 'fail-closed', attempts: 1, maxAttempts: 1, originalAtomCount: 1, revisedAtomCount: 1,
+      ledger: { totalToolUseBudget: 24, usedToolUses: 24 },
+      riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: ['need-1'],
+    };
+
+    // A prior run's compiler-diagnostics.json must not survive a fail-closed rescope.
+    const diagnosticsPath = await writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', diagnostics });
+    const failClosedPath = await writeRescopeFailClosedArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', reason: 'rescoping exhausted', rescope });
+    await expect(readFile(diagnosticsPath, 'utf8')).rejects.toThrow();
+
+    // The reverse: a later successful compile removes the stale fail-closed artifact.
+    await writeCompilerDiagnosticsArtifact({ cwd, outputDir: 'eforge/plans', planSetName: 'diag-set', diagnostics });
+    await expect(readFile(failClosedPath, 'utf8')).rejects.toThrow();
+    await expect(readFile(diagnosticsPath, 'utf8')).resolves.toContain('"planSetName"');
+  });
 });
 
 interface CompilerFixtureOverrides {

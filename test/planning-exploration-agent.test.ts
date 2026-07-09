@@ -114,7 +114,7 @@ describe('exploration hints from submission', () => {
     expect(result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')).toBe(true);
   });
 
-  it('keeps non-completed outcomes diagnostic-only without localization hints', () => {
+  it('salvages validated hints from non-completed outcomes', () => {
     const result = explorationHintsFromSubmission({
       status: 'needs-rescope',
       projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/a.ts'] }],
@@ -123,8 +123,27 @@ describe('exploration hints from submission', () => {
     });
 
     expect(result.outcome.status).toBe('needs-rescope');
-    expect(result.hints).toBeUndefined();
+    expect(result.hints?.projectHints).toHaveLength(1);
+    expect(result.hints?.projectHints?.[0].paths).toEqual(['packages/engine/src/a.ts']);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it('salvages hints from a budget-exhausted submission and keeps the validated needId', () => {
+    const result = explorationHintsFromSubmission({
+      status: 'budget-exhausted',
+      projectHints: [
+        { needId: 'need-valid', kind: 'interface', query: 'recommendation action api surfaces', paths: ['packages/engine/src/a.ts'] },
+        { needId: 'need-unknown', kind: 'keyword', query: 'other lead', keywords: ['lead'] },
+      ],
+      reasons: ['tool-budget'],
+      toolUseCount: 24,
+    }, { allowedNeedIds: ['need-valid'] });
+
+    expect(result.outcome.status).toBe('budget-exhausted');
+    expect(result.hints?.projectHints).toHaveLength(2);
+    expect(result.hints?.projectHints?.[0]).toMatchObject({ needId: 'need-valid', paths: ['packages/engine/src/a.ts'] });
+    expect(result.hints?.projectHints?.[1]).not.toHaveProperty('needId');
+    expect(result.unknownIdDrops).toEqual([{ field: 'needId', id: 'need-unknown', index: 1 }]);
   });
 
   it('drops unknown echoed ids with machine-readable diagnostics', () => {

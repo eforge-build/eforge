@@ -60,15 +60,13 @@ export interface ExplorationIdValidationContext { allowedNeedIds?: string[]; all
 /**
  * Convert a raw exploration outcome into validated localization hints. Invalid
  * hint entries and unknown echoed ids are dropped individually with diagnostics;
- * malformed ids never reject the whole outcome.
+ * malformed ids never reject the whole outcome. Hints are salvaged from every
+ * outcome status: a budget-exhausted or ambiguous scope's confirmed evidence is
+ * still evidence, and discarding it wholesale anti-scales with source breadth.
  */
 export function explorationHintsFromSubmission(submission: RepositoryExplorationOutcome, context: ExplorationIdValidationContext = {}): ExplorationHintsFromSubmissionResult {
   const { outcome, diagnostics: idDiagnostics, unknownIdDrops } = dropUnknownIds(submission, context);
-  if (outcome.status !== 'completed') {
-    return { outcome, diagnostics: idDiagnostics, unknownIdDrops };
-  }
-  const projectHintsForLocalization = (outcome.projectHints ?? []).map(({ needId: _needId, ...hint }) => hint);
-  const normalized = normalizeSourceLocalizationInputs({ projectHints: projectHintsForLocalization });
+  const normalized = normalizeSourceLocalizationInputs({ projectHints: outcome.projectHints ?? [] });
   const projectHints = normalized.hints.projectHints ?? [];
   return {
     outcome,

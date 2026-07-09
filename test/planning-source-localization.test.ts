@@ -277,6 +277,57 @@ describe('planning source localization foundation', () => {
   });
 });
 
+describe('witness-based need resolution', () => {
+  it('resolves a hint-minted need through its own confirmed paths', async () => {
+    const temp = await workspace({ 'modules/recommend/src/recommendation-actions.ts': 'export const actions = [];' });
+    const bundle = await deriveSourceLocalization({
+      cwd: temp.cwd,
+      hints: { projectHints: [{ kind: 'interface', query: 'recommendation action api surfaces', paths: ['modules/recommend/src/recommendation-actions.ts'] }] },
+    });
+
+    const record = bundle.records.find((item) => item.needId.startsWith('project-hint-interface-'));
+    expect(record?.status).toBe('resolved');
+    expect(record?.confidence).toBe('high');
+    expect(record?.candidateFiles[0]).toMatchObject({ path: 'modules/recommend/src/recommendation-actions.ts', reason: 'exploration-confirmed witness path' });
+    expect(record?.candidateFiles[0].signals).toContain('witness-path');
+  });
+
+  it('attaches witnesses to an existing need when the hint echoes its needId', async () => {
+    const temp = await workspace({ 'modules/alpha/src/real-entry.ts': 'export const entry = true;' });
+    const content = prd(['alpha updates the package entrypoint in `modules/alpha/src/missing-entry.ts`.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const entryNeedId = 'criterion-ac-001-surface-entrypoint';
+
+    const without = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+    const withoutRecord = without.records.find((item) => item.needId === entryNeedId);
+    expect(withoutRecord).toBeDefined();
+    expect(withoutRecord?.status === 'resolved' && withoutRecord.confidence === 'high').toBe(false);
+
+    const bundle = await deriveSourceLocalization({
+      cwd: temp.cwd, inventory, graph,
+      hints: { projectHints: [{ needId: entryNeedId, kind: 'entrypoint', query: 'alpha package entrypoint', paths: ['modules/alpha/src/real-entry.ts'] }] },
+    });
+    const record = bundle.records.find((item) => item.needId === entryNeedId);
+    expect(record?.status).toBe('resolved');
+    expect(record?.confidence).toBe('high');
+    expect(record?.candidateFiles[0].signals).toContain('witness-path');
+  });
+
+  it('reports unindexed witness paths with a warning and no candidate', async () => {
+    const temp = await workspace({ 'modules/alpha/src/present.ts': 'export const present = true;' });
+    const bundle = await deriveSourceLocalization({
+      cwd: temp.cwd,
+      hints: { projectHints: [{ kind: 'interface', query: 'phantom surface claims', paths: ['modules/alpha/src/not-there.ts'] }] },
+    });
+
+    const record = bundle.records.find((item) => item.needId.startsWith('project-hint-interface-'));
+    expect(record?.candidateFiles.some((candidate) => candidate.path === 'modules/alpha/src/not-there.ts')).toBe(false);
+    expect(record?.diagnostics.some((diagnostic) => diagnostic.code === 'witness-path-unindexed' && diagnostic.path === 'modules/alpha/src/not-there.ts')).toBe(true);
+    expect(record?.status === 'resolved' && record.confidence === 'high').toBe(false);
+  });
+});
+
 function allCandidates(bundle: SourceLocalizationBundle): string[] {
   return [...new Set(bundle.records.flatMap((record) => record.candidateFiles.map((candidate) => candidate.path)))].sort();
 }

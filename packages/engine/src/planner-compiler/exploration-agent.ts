@@ -100,7 +100,7 @@ export async function runRepositoryExplorationAgent(input: RunRepositoryExplorat
 }
 
 async function runExplorationSubmitGrace(input: RunRepositoryExplorationAgentInput, submitToolName: string, onSubmit: (submission: RepositoryExplorationOutcome) => boolean, events: EforgeEvent[], toolUses: number, maxTurns: number): Promise<string | undefined> {
-  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}.\n\n## Prior read-only observations\n\n${summarizeExplorationObservations(events)}`;
+  const gracePrompt = `${formatRepositoryExplorationPrompt(input.inventory, input.baselineBundle, input.maxToolUses, submitToolName, input.scopeNeedIds)}\n\nTool budget is exhausted after ${toolUses} read-only tool uses. Do not call repository tools. You are now in submit-only grace mode: call ${submitToolName} with status \"budget-exhausted\", unresolvedNeedIds, reasons including \"tool-budget\", attempted query context if known, empty rescopeHints if none, and toolUseCount ${toolUses}. Include projectHints for every path you confirmed in the observations below, echoing the matching needId where one applies - confirmed evidence is used even on a budget-exhausted submission.\n\n## Prior read-only observations\n\n${summarizeExplorationObservations(events)}`;
   try {
     for await (const event of input.harness.run({
       ...pickSdkOptions(input.agentOptions ?? {}),
@@ -202,9 +202,11 @@ Call ${submitToolName} with an object matching its schema: { "status": "complete
 - Use status "completed" when you found useful concrete hints, "needs-rescope" when the source is too broad, "ambiguous" when multiple incompatible owners remain plausible, and "budget-exhausted" when tool budget prevents resolution.
 - Each hint: { "needId"?, "kind", "query", "paths"?, "keywords"?, "subsystemHints"?, "interfaceKeys"?, "criterionIds"?, "aspectIds"? }.
 - kind must be one of: ${REPOSITORY_EXPLORATION_HINT_KINDS.join(', ')}.
+- When a hint answers one of the unresolved needs above, echo that need's needId and include the confirmed paths: confirmed paths attached to a needId resolve that need directly.
 - Key every hint to the criterion ids (and aspect ids when listed) it grounds; unkeyed hints localize poorly.
 - paths must be repository-relative (no leading "/", no ".." segments) and must name files or directories you actually confirmed exist.
 - Prefer a few high-confidence hints with concrete paths over many speculative ones.
+- Include projectHints for whatever you did confirm even when status is "budget-exhausted" or "ambiguous"; partial confirmed evidence is used, not discarded.
 - If you find nothing useful for a need, omit it rather than guessing.
 `;
 }

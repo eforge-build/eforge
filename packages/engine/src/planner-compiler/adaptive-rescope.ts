@@ -21,7 +21,6 @@ import type { SourceInventory } from './source-inventory.js';
  * the decomposed planner gets a chance to produce scoped work.
  */
 const CRITICAL_NEED_KINDS = new Set(['entrypoint']);
-const GENERIC_INTERFACE_QUERIES = new Set(['api', 'command', 'command-surface', 'config', 'configuration', 'contract', 'docs', 'extension', 'extension-surface', 'plugin', 'route', 'route-api', 'schema', 'schema-contract', 'test', 'ui', 'ui-surface']);
 
 export type AdaptiveRescopeStatus = 'not-needed' | 'warning-only' | 'rescoped' | 'exhausted-proceeded' | 'fail-closed';
 
@@ -95,12 +94,12 @@ export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inv
 }
 
 function isCompileBlockingNeed(record: SourceLocalizationRecord): boolean {
-  if (CRITICAL_NEED_KINDS.has(record.kind)) return true;
-  // Interface words inferred from PRD prose or inventory summaries are broad
-  // localization signals, not proof that compile would be unsafe. Only an
-  // explicit project hint naming a non-generic interface remains fail-closed.
-  if (record.kind !== 'interface' || record.source !== 'project-hint') return false;
-  return !GENERIC_INTERFACE_QUERIES.has(stableSlug(record.query));
+  // Only needs derived from the PRD source may block a compile. Needs minted
+  // from exploration-agent hints (source 'project-hint') are the agent's own
+  // mid-flight leads: they add localization evidence but never new
+  // compile-blocking obligations, otherwise pass/fail depends on run-to-run
+  // agent phrasing instead of the source being planned.
+  return record.source !== 'project-hint' && CRITICAL_NEED_KINDS.has(record.kind);
 }
 
 function unresolvedInterfaceSignalNeedIds(bundle: SourceLocalizationBundle): string[] {

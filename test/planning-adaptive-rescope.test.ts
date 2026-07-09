@@ -104,24 +104,26 @@ describe('rescope risk classification and directives', () => {
     expect(risk.reasons.join(' ')).toContain('subsystem-diverse-root');
   });
 
-  it('marks unresolved entrypoint needs and explicit project-hint interfaces as critical', () => {
+  it('marks only source-derived entrypoint needs as critical; agent-minted project-hint needs never block', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([
       { needId: 'need-generic-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'criterion', linkedCriterionIds: ['ac-001'], interfaceKeys: ['schema-contract'] },
       { needId: 'need-inventory-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'inventory', linkedCriterionIds: ['ac-001'], interfaceKeys: ['route-api'] },
       { needId: 'need-explicit-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'project-hint', linkedCriterionIds: ['ac-001'], interfaceKeys: ['WidgetContract'] },
+      { needId: 'need-hint-entry', kind: 'entrypoint', status: 'unresolved', confidence: 'low', source: 'project-hint', linkedCriterionIds: ['ac-001'] },
       { needId: 'need-entry', kind: 'entrypoint', status: 'partial', confidence: 'medium' },
       { needId: 'need-ok', kind: 'keyword', status: 'resolved', confidence: 'high' },
       { needId: 'need-keyword', kind: 'keyword', status: 'unresolved', confidence: 'low' },
     ]);
-    expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry', 'need-explicit-iface']);
+    expect(criticalUnresolvedNeedIds(bundle, inventory)).toEqual(['need-entry']);
   });
 
-  it('treats generic interface wording as a rescope signal but not a fail-closed blocker', () => {
+  it('treats interface wording as a rescope signal but not a fail-closed blocker', () => {
     const { inventory } = crossCutting();
     const bundle = bundleWith([
       { needId: 'need-generic-linked', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'criterion', linkedCriterionIds: ['ac-001'], interfaceKeys: ['schema-contract'] },
       { needId: 'need-unlinked', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'inventory', interfaceKeys: ['route-api'] },
+      { needId: 'need-hint-iface', kind: 'interface', status: 'unresolved', confidence: 'low', source: 'project-hint', linkedCriterionIds: ['ac-001'], interfaceKeys: ['SessionPlanSourceRefs'] },
     ]);
     expect(partitionCriticalUnresolvedNeeds(bundle, inventory)).toEqual({ rescopable: [], unrescopable: [] });
   });
@@ -204,6 +206,38 @@ describe('adaptive rescope loop', () => {
     const attempt = runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
     await expect(attempt).rejects.toThrow(AdaptiveRescopeFailClosedError);
     await expect(attempt).rejects.toThrow(/critical source need/);
+  });
+
+  it('resolves critical entrypoint needs through witness paths on budget-exhausted submissions instead of failing closed', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-witness-'));
+    // Same critical shape as the fail-closed test above (the PRD-named paths
+    // do not exist, so exploration runs), but the agent discovered the real
+    // owners and each budget-exhausted scope submission echoes the entrypoint
+    // needId with its confirmed path - salvaged witnesses must satisfy the gate.
+    await mkdir(path.join(cwd, 'packages/engine/src'), { recursive: true });
+    await mkdir(path.join(cwd, 'packages/client/src'), { recursive: true });
+    await writeFile(path.join(cwd, 'packages/engine/src/actual-entry.ts'), 'export const owner = true;\n', 'utf8');
+    await writeFile(path.join(cwd, 'packages/client/src/actual-entry.ts'), 'export const consumer = true;\n', 'utf8');
+    const content = prd([
+      'engine updates the package entrypoint in `packages/engine/src/rescope-main.ts`.',
+      'client updates the package entrypoint in `packages/client/src/rescope-main.ts`.',
+    ]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const witnessHints = [
+      { needId: 'criterion-ac-001-surface-entrypoint', kind: 'entrypoint', query: 'engine package entrypoint', paths: ['packages/engine/src/actual-entry.ts'], criterionIds: ['ac-001'] },
+      { needId: 'criterion-ac-002-surface-entrypoint', kind: 'entrypoint', query: 'client package entrypoint', paths: ['packages/client/src/actual-entry.ts'], criterionIds: ['ac-002'] },
+    ];
+    const harness = new StubHarness([
+      submit('submit-scope-1', outcome('budget-exhausted', { reasons: ['tool-budget'], projectHints: witnessHints })),
+      submit('submit-scope-2', outcome('budget-exhausted', { reasons: ['tool-budget'], projectHints: witnessHints })),
+    ]);
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
+
+    expect(result.diagnostics.status).toBe('exhausted-proceeded');
+    expect(result.diagnostics.unresolvedCriticalNeedIds).toEqual([]);
+    expect(result.outcome?.status).toBe('budget-exhausted');
+    expect(result.hints?.projectHints?.length).toBeGreaterThan(0);
   });
 
   it('proceeds degraded when generic route and schema interface signals remain unresolved after scoped reruns', async () => {

@@ -50,7 +50,7 @@ export function deriveSourceLocalizationNeeds(input: Pick<DeriveSourceLocalizati
   for (const globalNeed of input.inventory?.globalLocalizationNeeds ?? []) needs.push(need(`inventory-${globalNeed.id}`, globalNeed.kind, globalNeed.query, globalNeed.criterionIds, [], globalNeed.subsystemHints, globalNeed.interfaceKeys, [], 'inventory'));
   for (const candidate of input.inventory?.evidenceCandidates.filter((item) => item.actionable) ?? []) needs.push(need(`inventory-evidence-${evidenceSlug(candidate.value)}`, candidate.kind === 'directory' ? 'directory' : 'literal-path', candidate.value, [], [], inferSubsystemHints(candidate.value), inferInterfaceKeys(candidate.value), [], 'inventory'));
   for (const hint of hints.projectHints ?? []) needs.push(...hintNeeds(hint));
-  const assigned = assignNeedsToAtoms(dedupeNeeds(needs), input.graph);
+  const assigned = assignNeedsToAtoms(attachHintWitnesses(dedupeNeeds(needs), hints.projectHints ?? []), input.graph);
   return assigned.length > 0 ? assigned : atomFallbackNeeds(input.graph);
 }
 
@@ -81,11 +81,27 @@ function candidateCapForNeed(need: SourceLocalizationNeed, limits: SourceLocaliz
 }
 
 function scoreNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits: SourceLocalizationLimits, diagnostics: SourceLocalizationDiagnostic[]): SourceLocalizationCandidate[] {
+  const witnesses = witnessCandidates(need, index, diagnostics);
   const query = normalizeEvidenceValue(need.query);
-  if (need.kind === 'literal-path') return literalCandidates(query, index);
-  if (need.kind === 'directory') return directoryCandidates(need, query, index, limits, diagnostics);
+  if (need.kind === 'literal-path') return [...witnesses, ...literalCandidates(query, index)];
+  if (need.kind === 'directory') return [...witnesses, ...directoryCandidates(need, query, index, limits, diagnostics)];
   const manifestEntrypointTargets = new Set(index.files.flatMap((file) => file.manifestEntrypoints));
-  return index.files.flatMap((file) => scoreFileForNeed(file, need, manifestEntrypointTargets));
+  return [...witnesses, ...index.files.flatMap((file) => scoreFileForNeed(file, need, manifestEntrypointTargets))];
+}
+
+/**
+ * Witness paths are repository files the exploration agent confirmed while
+ * investigating this need. Index membership is the honesty check: an indexed
+ * witness resolves the need at literal-path strength, an unindexed one is
+ * reported and contributes nothing.
+ */
+function witnessCandidates(need: SourceLocalizationNeed, index: RepositoryIndex, diagnostics: SourceLocalizationDiagnostic[]): SourceLocalizationCandidate[] {
+  return need.witnessPaths.flatMap((path) => {
+    const matches = literalCandidates(normalizeEvidenceValue(path), index)
+      .map((item) => candidate(item.path, item.score, 'exploration-confirmed witness path', [...item.signals, 'witness-path']));
+    if (matches.length === 0) diagnostics.push({ code: 'witness-path-unindexed', message: `Witness path ${path} is not in the repository index.`, severity: 'warning', needId: need.id, path });
+    return matches;
+  });
 }
 
 function literalCandidates(query: string, index: RepositoryIndex): SourceLocalizationCandidate[] {
@@ -160,20 +176,39 @@ function hintNeeds(hint: SourceLocalizationHint): SourceLocalizationNeed[] {
   const contextInterfaceKeys = hint.interfaceKeys ?? inferInterfaceKeys(contextQuery);
   return [
     ...(hint.paths ?? []).map((pathQuery) => need(`project-hint-path-${evidenceSlug(pathQuery)}`, 'literal-path', pathQuery, hint.criterionIds ?? [], hint.aspectIds ?? [], contextSubsystemHints, [...contextInterfaceKeys, hint.kind], hint.atomIds ?? [], 'project-hint')),
-    need(`project-hint-${stableSlug(hint.kind)}-${stableSlug(hint.query)}`, hint.kind, hint.query, hint.criterionIds ?? [], hint.aspectIds ?? [], contextSubsystemHints, contextInterfaceKeys, hint.atomIds ?? [], 'project-hint'),
+    need(`project-hint-${stableSlug(hint.kind)}-${stableSlug(hint.query)}`, hint.kind, hint.query, hint.criterionIds ?? [], hint.aspectIds ?? [], contextSubsystemHints, contextInterfaceKeys, hint.atomIds ?? [], 'project-hint', hint.paths ?? []),
     ...(hint.keywords ?? []).map((keyword) => need(`project-hint-keyword-${stableSlug(keyword)}`, 'keyword', keyword, hint.criterionIds ?? [], hint.aspectIds ?? [], contextSubsystemHints, contextInterfaceKeys, hint.atomIds ?? [], 'project-hint')),
   ];
 }
 
-function need(id: string, kind: SourceLocalizationNeedKind, query: string, criterionIds: string[], aspectIds: string[], subsystemHints: string[], interfaceKeys: string[], assignedAtomIds: string[], source: SourceLocalizationNeed['source']): SourceLocalizationNeed {
-  return { id, kind, query, criterionIds: [...new Set(criterionIds)].sort(), aspectIds: [...new Set(aspectIds)].sort(), subsystemHints: [...new Set(subsystemHints.filter(Boolean))].sort(), interfaceKeys: [...new Set(interfaceKeys.filter(Boolean))].sort(), assignedAtomIds: [...new Set(assignedAtomIds)].sort(), source };
+/**
+ * A hint that echoes an existing needId with confirmed paths is the
+ * exploration agent answering that need directly; attach the paths as
+ * witnesses so the need resolves through the evidence instead of requiring
+ * the token scorer to re-derive the claim from prose.
+ */
+function attachHintWitnesses(needs: SourceLocalizationNeed[], hints: SourceLocalizationHint[]): SourceLocalizationNeed[] {
+  const witnessesByNeedId = new Map<string, string[]>();
+  for (const hint of hints) {
+    if (!hint.needId || !hint.paths?.length) continue;
+    witnessesByNeedId.set(hint.needId, [...(witnessesByNeedId.get(hint.needId) ?? []), ...hint.paths]);
+  }
+  if (witnessesByNeedId.size === 0) return needs;
+  return needs.map((item) => {
+    const witnesses = witnessesByNeedId.get(item.id);
+    return witnesses ? { ...item, witnessPaths: [...new Set([...item.witnessPaths, ...witnesses])].sort() } : item;
+  });
+}
+
+function need(id: string, kind: SourceLocalizationNeedKind, query: string, criterionIds: string[], aspectIds: string[], subsystemHints: string[], interfaceKeys: string[], assignedAtomIds: string[], source: SourceLocalizationNeed['source'], witnessPaths: string[] = []): SourceLocalizationNeed {
+  return { id, kind, query, criterionIds: [...new Set(criterionIds)].sort(), aspectIds: [...new Set(aspectIds)].sort(), subsystemHints: [...new Set(subsystemHints.filter(Boolean))].sort(), interfaceKeys: [...new Set(interfaceKeys.filter(Boolean))].sort(), assignedAtomIds: [...new Set(assignedAtomIds)].sort(), source, witnessPaths: [...new Set(witnessPaths.filter(Boolean))].sort() };
 }
 
 function dedupeNeeds(needs: SourceLocalizationNeed[]): SourceLocalizationNeed[] {
   const byId = new Map<string, SourceLocalizationNeed>();
   for (const item of needs) {
     const existing = byId.get(item.id);
-    byId.set(item.id, existing ? need(item.id, item.kind, item.query, [...existing.criterionIds, ...item.criterionIds], [...existing.aspectIds, ...item.aspectIds], [...existing.subsystemHints, ...item.subsystemHints], [...existing.interfaceKeys, ...item.interfaceKeys], [...existing.assignedAtomIds, ...item.assignedAtomIds], existing.source) : item);
+    byId.set(item.id, existing ? need(item.id, item.kind, item.query, [...existing.criterionIds, ...item.criterionIds], [...existing.aspectIds, ...item.aspectIds], [...existing.subsystemHints, ...item.subsystemHints], [...existing.interfaceKeys, ...item.interfaceKeys], [...existing.assignedAtomIds, ...item.assignedAtomIds], existing.source, [...existing.witnessPaths, ...item.witnessPaths]) : item);
   }
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -198,6 +233,10 @@ function confidenceFor(score: number): SourceLocalizationConfidence {
 }
 
 function recordStatus(need: SourceLocalizationNeed, candidates: SourceLocalizationCandidate[], diagnostics: SourceLocalizationDiagnostic[]): SourceLocalizationStatus {
+  // An exploration-confirmed witness is a direct owner confirmation; breadth
+  // capping cannot hide a better candidate than an exact witness match, so
+  // budget diagnostics must not degrade a witness-resolved need to partial.
+  if (candidates[0]?.confidence === 'high' && candidates[0].signals.includes('witness-path')) return 'resolved';
   if (diagnostics.some((item) => item.code.includes('budget'))) return candidates.length > 0 ? 'partial' : 'budget-exceeded';
   if (candidates.length === 0) return diagnostics.some((item) => item.code === 'broad-directory') ? 'ignored' : 'unresolved';
   return candidates[0].confidence === 'low' ? 'partial' : 'resolved';
