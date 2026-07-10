@@ -77,13 +77,20 @@ function completedOutput(task: PlanningAtomTask): PlanningAtomOutput {
 }
 
 function completedReduceOutput(node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[] = []): PlanningReduceOutput {
+  // A well-behaved reducer keeps module boundaries within the configured
+  // ceilings (maxCriteriaPerUnit is 1 here), so it carries the per-atom module
+  // candidates forward instead of coalescing every criterion into one module -
+  // proposal normalization rejects a module that exceeds the criterion budget.
+  const moduleCandidates = [...new Map(
+    [...atomOutputs.flatMap((output) => output.moduleCandidates ?? []), ...childOutputs.flatMap((output) => output.moduleCandidates ?? [])].map((module) => [module.moduleId, module]),
+  ).values()];
   return {
     nodeId: node.nodeId,
     status: 'completed',
     compactSummary: 'Reduced compiler synthesis.',
     reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: 'Reduced compiler synthesis.', criterionIds: node.criterionIds, aspectIds: node.aspectIds },
     planFragments: [...atomOutputs.flatMap((output) => output.planFragments ?? []), ...childOutputs.flatMap((output) => output.planFragments ?? [])],
-    moduleCandidates: [{ moduleId: 'module-reduced', title: 'Reduced module', criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: 'Implement reduced compiler work.', validationExpectation: 'Reduced checks pass.' }],
+    moduleCandidates,
     validationStrategy: 'Run relevant checks.',
   };
 }
@@ -196,7 +203,7 @@ describe('compile planner stage bounded compiler orchestration', () => {
     expect(reducePromptCount).toBeGreaterThan(0);
     // No agent receives the monolithic root source as its prompt.
     expect(harness.prompts.every((prompt) => !prompt.includes(sentinel) || prompt.includes('submit_'))).toBe(true);
-    expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
+    expect(ctx.plans.map((plan) => plan.id).sort()).toEqual(expectedTasks(content, cfg).map((task) => `module-${task.atomId}`).sort());
   });
 
   it('routes normal-risk compiles through the bounded compiler unconditionally', async () => {
@@ -219,7 +226,7 @@ describe('compile planner stage bounded compiler orchestration', () => {
     expect(events.some((event) => event.type === 'planning:complete')).toBe(false);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('running planning quality review'))).toBe(true);
     expect(ctx.pipeline.compile).toEqual(['planner', 'planning-quality-review-cycle']);
-    expect(ctx.plans.map((plan) => plan.id)).toEqual(['module-reduced']);
+    expect(ctx.plans.map((plan) => plan.id).sort()).toEqual(expectedTasks(content, cfg).map((task) => `module-${task.atomId}`).sort());
   });
 
   it('announces the effective pipeline with a deterministic planning:pipeline event', async () => {

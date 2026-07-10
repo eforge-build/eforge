@@ -4,7 +4,7 @@ import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleT
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 import type { SourceLocalizationRecord } from './source-localization-contracts.js';
 
-export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string }
+export interface PlanPipelineModuleSignals { moduleId: string; criterionIds: string[]; aspectIds: string[]; dependsOnModuleIds: string[]; residue: boolean; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; testOwnershipDeclared?: boolean; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string }
 export interface PlanPipelineRiskInputs {
   modules: PlanPipelineModuleSignals[];
   atoms: Array<Pick<PlanningAtom, 'atomId' | 'criterionIds' | 'subsystemHints' | 'estimate'>>;
@@ -63,7 +63,7 @@ function settingsForModule(module: PlanPipelineModuleSignals, input: PlanPipelin
   const docsWork = module.docsWork ?? 'none';
   const testWork = module.testWork ?? 'none';
   const testOwnership = resolveTestOwnership(module);
-  const build = buildForModule(score, docsWork, testWork, testOwnership, module.testOwnership !== undefined);
+  const build = buildForModule(score, docsWork, testWork, testOwnership, module.testOwnershipDeclared ?? (module.testOwnership !== undefined));
   return {
     moduleId: module.moduleId,
     build,

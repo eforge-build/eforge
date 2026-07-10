@@ -76,9 +76,11 @@ Unresolved source/localization gaps must not become executable `candidate-reduce
 
 ### Pipeline derivation and artifact synthesis
 
-`pipeline-derivation.ts` derives per-module build stages and review settings by normalizing typed model intent against deterministic risk signals (source-evidence size, residue derivation, localization confidence, subsystem spread). Model review intent can deepen but never relax the deterministic review floor, and exactly one test-authoring owner is resolved per module.
+`proposal-normalization.ts` owns the canonical executable proposal. It retains the model's proposed intent, applies conservative defaults and risk-floor escalations through `pipeline-derivation.ts`, enforces module/context/criterion/subsystem ceilings, validates dependency and criterion ownership, and assigns each localized file at most one exclusive owner module. Ambiguous file claims are resolved deterministically to one owner and the other claimants become consumers; conflicting explicit claims fail artifact synthesis. Normalization never creates additional modules.
 
-`plan-artifact-synthesis.ts` assembles the final plan set and validates traceability: unique module ids, resolvable and acyclic dependencies, criterion-to-module ownership (criteria whose required aspects are all deliberately skipped need no owner), and aspect coverage. Every module plan - candidate and residue alike - receives a machine-rendered `## Execution Intent` section built from the normalized settings, never patched into agent-authored text.
+`pipeline-derivation.ts` derives per-module build stages and review settings from that normalized intent and deterministic risk signals (source-evidence size, residue derivation, localization confidence, subsystem spread). Model review intent can deepen but never relax the deterministic review floor, and exactly one test-authoring owner is resolved per module. The normalizer validates the resulting docs and test stages before they become executable orchestration.
+
+`plan-artifact-synthesis.ts` renders module plans and orchestration exclusively from the normalized proposal (the plan-set summary also embeds agent-authored fragments and coverage) and validates aspect coverage. Every module plan - candidate and residue alike - receives a machine-rendered `## Execution Intent` section built from the normalized settings, never patched into agent-authored text.
 
 Normalized test ownership is also written to each orchestration plan as executable metadata. Build preflight rejects incompatible `test-write` wiring, while stage-boundary guards reject builder-authored tests owned elsewhere, test-writer production edits, and tester-created acceptance coverage. Violating stage changes are rolled back and surfaced through a typed ownership-violation event.
 
@@ -90,13 +92,13 @@ Project-specific knowledge belongs in optional hints supplied through `SourceLoc
 
 ## Diagnostics and events
 
-Compiler diagnostics should be machine-readable and stable enough for tests and callers to inspect. They include repository exploration outcome status, unresolved needs, shared reasons, attempted queries, candidate paths, rescope hints, notes, unknown-id drops, and tool-use count when exploration runs. Prefer returning diagnostics through compiler results. Add planning events only when existing observable results cannot carry the required repair or exploration diagnostics; event wire shapes are owned by `@eforge-build/client`.
+Compiler diagnostics should be machine-readable and stable enough for tests and callers to inspect. Version 2 adds proposal normalization status, per-module proposed and normalized intent, fallback/normalization/safety-escalation reasons, normalized stages, owned paths, ownership conflicts, and normalization validation errors. Diagnostics also include repository exploration outcome status, unresolved needs, shared reasons, attempted queries, candidate paths, rescope hints, notes, unknown-id drops, and tool-use count when exploration runs. Prefer returning diagnostics through compiler results. Add planning events only when existing observable results cannot carry the required repair or exploration diagnostics; event wire shapes are owned by `@eforge-build/client`.
 
 ## Invariants
 
 - Atom planners and reducers remain tool-less; repository access is performed by deterministic compiler internals.
 - Source inventory, localization, shared-brief ownership, materialization, atom map, reduce, repair, and residue keep traceability to original criteria and aspects.
 - Repair reruns only affected atoms when possible and preserves prior outputs for unaffected atoms.
-- The model proposes module and pipeline intent; deterministic synthesis validates traceability and dependencies, applies safety-based review floors, and derives a pipeline with exactly one declared test-authoring owner.
+- The model proposes module and pipeline intent; deterministic normalization validates traceability, dependencies, exclusive file ownership, configured ceilings, and stage compatibility, applies safety-based review floors, and derives a pipeline with exactly one declared test-authoring owner.
 - Exhausted source/localization repair fails closed with diagnostics instead of vague executable residue.
 - Product-specific layout assumptions are expressed through caller hints or fixtures, not hard-coded compiler defaults.

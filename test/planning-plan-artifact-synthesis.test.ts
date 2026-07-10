@@ -45,6 +45,37 @@ describe('planning artifact synthesis', () => {
     expect(result.modulePlans[0]).toMatchObject({ docsWork: 'author-new', testOwnership: 'test-writer', reviewDepth: 'light', reviewRationale: 'Small localized module.' });
     expect(result.modulePlans[0]?.markdown).toContain('Test ownership: test-writer');
     expect(result.modulePlans[0]?.pipelineRationale).toContain('model review intent light');
+    expect(result.normalization.status).toBe('accepted');
+  });
+
+  it('records conservative fallbacks without multiplying modules or stages', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]) });
+
+    expect(result.modulePlans).toHaveLength(1);
+    expect(result.modulePlans[0]?.build).toEqual(['implement', 'review-cycle']);
+    expect(result.normalization.status).toBe('normalized');
+    expect(result.normalization.modules[0]?.proposedIntent).toEqual({ dependsOnModuleIds: [] });
+    expect(result.normalization.modules[0]?.normalizationChanges.map((change) => [change.field, change.kind])).toEqual([
+      ['docsWork', 'fallback'],
+      ['testWork', 'fallback'],
+      ['testOwnership', 'fallback'],
+      ['reviewDepth', 'fallback'],
+    ]);
+  });
+
+  it('normalizes contradictory new-test intent to one compatible authoring stage', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, testWork: 'author-new' as const, testOwnership: 'existing-only' as const }));
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
+
+    expect(result.validationErrors).toEqual([]);
+    expect(result.modulePlans[0]).toMatchObject({ testOwnership: 'test-writer', build: ['implement', 'test-write', 'test-cycle', 'review-cycle'] });
+    expect(result.normalization.modules[0]?.normalizationChanges).toContainEqual(expect.objectContaining({ field: 'testOwnership', kind: 'normalized' }));
   });
 
   it('derives heavier review settings for residue modules than for trivial modules', () => {
@@ -180,6 +211,80 @@ describe('planning artifact synthesis', () => {
     const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput]) });
 
     expect(result.validationErrors).toEqual(['module dependency cycle:module-a->module-b->module-a']);
+    expect(result.normalization.fileOwnership).toContainEqual(expect.objectContaining({ path: 'packages/engine/src/a.ts', ownerModuleId: 'module-a', consumerModuleIds: ['module-b'] }));
+    expect(result.normalization.modules.find((module) => module.moduleId === 'module-a')?.normalizationChanges).toContainEqual(expect.objectContaining({ field: 'fileOwnership', kind: 'normalized' }));
+  });
+
+  it('fails artifact synthesis when a residue claim collides with an evidence-owned path', () => {
+    // Residue localizedOwnerPaths are explicit claims: unlike ambiguous
+    // candidate overlap (demoted to consumers), a residue module claiming a
+    // path an evidence-derived module already owns fails closed.
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    const residue: PlanningResidueSynthesis = {
+      graphId: data.graph.graphId,
+      sourceHash: data.graph.sourceHash,
+      candidates: [{
+        candidateId: 'candidate-follow-up-overlap',
+        kind: 'follow-up',
+        reason: 'pending-aspect',
+        title: 'Follow-up work on the same file',
+        criterionIds: ['ac-001'],
+        aspectIds: data.tasks[0].aspectIds,
+        scope: 'Follow-up scope.',
+        expectedOutputs: ['Follow-up landed.'],
+        validationExpectations: ['Checks pass.'],
+        rationale: 'Deferred follow-up work.',
+        buildability: 'repair-only',
+        localizedOwnerPaths: ['packages/engine/src/a.ts'],
+      }],
+      coverageUpdates: [],
+      validationErrors: [],
+      limits: { maxCandidates: 80, maxScopeBytes: 1_200, maxRationaleBytes: 1_200, maxExpectedOutputBytes: 800, maxValidationExpectationBytes: 800 },
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, [atomOutput], [reduceOutput], residue) });
+
+    expect(result.normalization.status).toBe('rejected');
+    expect(result.normalization.fileOwnershipConflicts).toEqual([{ path: 'packages/engine/src/a.ts', ownerModuleIds: ['candidate-follow-up-overlap', 'module-reduce-000-001'] }]);
+    expect(result.validationErrors).toContain('file ownership overlap:packages/engine/src/a.ts:candidate-follow-up-overlap,module-reduce-000-001');
+  });
+
+  it('keeps compiler-level validation errors out of the normalization verdict', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = { ...compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]), validationErrors: ['upstream compiler validation error'] };
+
+    const result = synthesizePlanningArtifacts({ compilerResult });
+
+    // The compiler error still blocks artifact synthesis, but the proposal
+    // verdict and its diagnostics stay scoped to normalization-owned checks.
+    expect(result.validationErrors).toContain('upstream compiler validation error');
+    expect(result.normalization.validationErrors).toEqual([]);
+    expect(result.normalization.status).toBe('normalized');
+  });
+
+  it('rejects model boundaries that exceed the configured criterion ceiling without splitting them', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.']);
+    const atomOutputs = data.tasks.map(completedOutput);
+    const reduceOutput: PlanningReduceOutput = {
+      ...completedReduceOutput(atomOutputs[0]),
+      moduleCandidates: [{
+        moduleId: 'module-too-broad',
+        title: 'Combined module',
+        criterionIds: data.tasks.flatMap((task) => task.criterionIds),
+        aspectIds: data.tasks.flatMap((task) => task.aspectIds),
+        description: 'Combine both bounded planning units.',
+        validationExpectation: 'All checks pass.',
+      }],
+    };
+
+    const result = synthesizePlanningArtifacts({ compilerResult: compilerFixture(data, atomOutputs, [reduceOutput]) });
+
+    expect(result.modulePlans).toHaveLength(1);
+    expect(result.validationErrors).toContain('module criterion budget exceeded:module-too-broad:2>1');
+    expect(result.normalization.status).toBe('rejected');
   });
 
   it('requires every acceptance criterion to have a module owner', () => {

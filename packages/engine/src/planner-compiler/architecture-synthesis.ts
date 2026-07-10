@@ -10,8 +10,9 @@ import {
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import type { PlanningSynthesizedModulePlan } from './plan-artifact-synthesis.js';
 import { derivePlanIds } from './plan-ids.js';
+import type { NormalizedPlanningFileOwnership } from './proposal-normalization.js';
 
-export interface SynthesizeArchitectureInput { compilerResult: BoundedPlannerCompilerResult; modulePlans: PlanningSynthesizedModulePlan[] }
+export interface SynthesizeArchitectureInput { compilerResult: BoundedPlannerCompilerResult; modulePlans: PlanningSynthesizedModulePlan[]; fileOwnership: NormalizedPlanningFileOwnership[] }
 export interface SynthesizeArchitectureResult { markdown: string; manifest: PlanningArchitectureManifest }
 
 interface ArchitecturePlan extends PlanningArchitectureManifestPlan { validationExpectation: string }
@@ -21,7 +22,7 @@ export function synthesizeArchitecture(input: SynthesizeArchitectureInput): Synt
   const planIds = derivePlanIds(input.modulePlans);
   const plans = architecturePlans(input.modulePlans, planIds);
   const plansByAtom = plansByAtomId(result, input.modulePlans, planIds);
-  const fileOwnership = fileOwnershipEntries(result, input.modulePlans, planIds, plansByAtom);
+  const fileOwnership = fileOwnershipEntries(input.fileOwnership, planIds);
   const contracts = contractEntries(result, plans, plansByAtom, fileOwnership);
   const conflicts = conflictEntries(result, input.modulePlans, planIds);
   const manifest: PlanningArchitectureManifest = {
@@ -65,35 +66,14 @@ function plansByAtomId(result: BoundedPlannerCompilerResult, modulePlans: Planni
   return byAtom;
 }
 
-function fileOwnershipEntries(result: BoundedPlannerCompilerResult, modulePlans: PlanningSynthesizedModulePlan[], planIds: Map<string, string>, plansByAtom: Map<string, string[]>): PlanningArchitectureManifestFileOwnership[] {
-  const entries = new Map<string, PlanningArchitectureManifestFileOwnership>();
-  for (const ownership of result.sharedBrief.evidenceOwnership) {
-    const ownerAtomId = ownership.primaryAtomId ?? ownership.referencedByAtomIds[0];
-    const ownerPlanIds = ownerAtomId ? plansByAtom.get(ownerAtomId) ?? [] : [];
-    const consumerPlanIds = uniq(ownership.consumerAtomIds.flatMap((atomId) => plansByAtom.get(atomId) ?? [])).filter((planId) => !ownerPlanIds.includes(planId));
-    entries.set(ownership.path, {
-      path: bounded(ownership.path, 500),
-      ownerPlanIds: ownerPlanIds.slice(0, 16),
-      consumerPlanIds: consumerPlanIds.slice(0, 32),
-      shared: ownership.shared,
-      ...(ownership.reason ? { reason: bounded(ownership.reason, 500) } : {}),
-    });
-  }
-  const residuePlanIds = new Map(result.residue.candidates.map((candidate) => [candidate.candidateId, candidate.localizedOwnerPaths ?? []]));
-  for (const module of modulePlans.filter((module) => module.residue)) {
-    const planId = planIdFor(planIds, module.moduleId);
-    for (const path of residuePlanIds.get(module.moduleId) ?? []) {
-      const existing = entries.get(path);
-      if (!existing) {
-        entries.set(path, { path: bounded(path, 500), ownerPlanIds: [planId], consumerPlanIds: [], shared: false, reason: 'residue localized owner' });
-      } else if (existing.ownerPlanIds.length > 0 && !existing.ownerPlanIds.includes(planId)) {
-        entries.set(path, { ...existing, consumerPlanIds: uniq([...existing.consumerPlanIds, planId]).slice(0, 32) });
-      } else if (existing.ownerPlanIds.length === 0) {
-        entries.set(path, { ...existing, ownerPlanIds: [planId] });
-      }
-    }
-  }
-  return [...entries.values()].sort((a, b) => a.path.localeCompare(b.path));
+function fileOwnershipEntries(ownership: NormalizedPlanningFileOwnership[], planIds: Map<string, string>): PlanningArchitectureManifestFileOwnership[] {
+  return ownership.map((entry) => ({
+    path: bounded(entry.path, 500),
+    ownerPlanIds: entry.ownerModuleId ? [planIdFor(planIds, entry.ownerModuleId)] : [],
+    consumerPlanIds: entry.consumerModuleIds.map((moduleId) => planIdFor(planIds, moduleId)).sort().slice(0, 32),
+    shared: entry.shared,
+    ...(entry.reason ? { reason: bounded(entry.reason, 500) } : {}),
+  })).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function contractEntries(result: BoundedPlannerCompilerResult, plans: ArchitecturePlan[], plansByAtom: Map<string, string[]>, fileOwnership: PlanningArchitectureManifestFileOwnership[]): PlanningArchitectureManifestContract[] {

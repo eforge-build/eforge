@@ -4,7 +4,8 @@ import { synthesizeArchitecture } from './architecture-synthesis.js';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { derivePlanningAspectCoverage, type PlanningAspectCoverageSummary } from './coverage-accounting.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
-import { cloneBuildStages, derivePlanPipelineSettings, type DerivedPlanPipelineSettings } from './pipeline-derivation.js';
+import { cloneBuildStages } from './pipeline-derivation.js';
+import { normalizePlanningProposal, type PlanningProposalNormalizationResult } from './proposal-normalization.js';
 import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleTestOwnership, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 
@@ -12,23 +13,18 @@ export interface SynthesizePlanningArtifactsInput { compilerResult: BoundedPlann
 export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; docsWork: PlanningModuleDocsWork; testWork: PlanningModuleTestWork; testOwnership: PlanningModuleTestOwnership; reviewDepth: PlanningModuleReviewDepth; reviewRationale?: string; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
 export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[]; build: BuildStageSpec[]; review: ReviewProfileConfig }> }
 export interface PlanningArtifactPipelineDefaults { defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
-export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; acceptanceCoverageMarkdown: string; validationErrors: string[] }
+export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; normalization: PlanningProposalNormalizationResult; acceptanceCoverageMarkdown: string; validationErrors: string[] }
 
-type PlanningSynthesizedModulePlanBase = Omit<PlanningSynthesizedModulePlan, 'build' | 'review' | 'reviewDepth' | 'testOwnership' | 'pipelineRationale'> & { testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth };
+type PlanningSynthesizedModulePlanBase = Omit<PlanningSynthesizedModulePlan, 'build' | 'review' | 'docsWork' | 'testWork' | 'reviewDepth' | 'testOwnership' | 'pipelineRationale'> & { docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth };
 
 export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsInput): PlanningArtifactSynthesisResult {
   const result = input.compilerResult;
   const fragments = selectPlanFragments(result);
   const baseModules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
-  const derivation = derivePlanPipelineSettings({
-    modules: baseModules.map((module) => ({ moduleId: module.moduleId, criterionIds: module.criterionIds, aspectIds: module.aspectIds, dependsOnModuleIds: module.dependsOnModuleIds, residue: module.residue, docsWork: module.docsWork, testWork: module.testWork, testOwnership: module.testOwnership, reviewDepth: module.reviewDepth, reviewRationale: module.reviewRationale })),
-    atoms: result.atomGraph.atoms,
-    localizationRecords: result.sourceLocalizationBundle.records,
-    residueCandidates: result.residue.candidates,
-  });
-  const modules = baseModules.map((module) => stampPipelineSettings(module, derivation.plans));
-  const validationErrors = validateSynthesizedArtifacts(result, modules);
-  const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules });
+  const normalization = normalizePlanningProposal({ compilerResult: result, modules: baseModules });
+  const modules = normalization.modules.map(stampNormalizedModule);
+  const validationErrors = validateSynthesizedArtifacts(result, normalization.validationErrors);
+  const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules, fileOwnership: normalization.fileOwnership });
   const acceptanceCoverageMarkdown = coverageMarkdownFor(result);
   const planMarkdown = planMarkdownFor(result, modules, fragments);
   if (!nonEmpty(architecture.markdown)) validationErrors.push('architecture markdown is empty');
@@ -39,16 +35,16 @@ export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsIn
     planMarkdown,
     modulePlans: modules,
     orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds], build: cloneBuildStages(module.build), review: { ...module.review, perspectives: [...module.review.perspectives] } })) },
-    pipelineDefaults: { defaultBuild: derivation.defaultBuild, defaultReview: derivation.defaultReview, rationale: derivation.rationale },
+    pipelineDefaults: { defaultBuild: normalization.defaultBuild, defaultReview: normalization.defaultReview, rationale: normalization.rationale },
+    normalization,
     acceptanceCoverageMarkdown,
     validationErrors: [...new Set(validationErrors)].sort(),
   };
 }
 
-function stampPipelineSettings(module: PlanningSynthesizedModulePlanBase, plans: DerivedPlanPipelineSettings[]): PlanningSynthesizedModulePlan {
-  const settings = plans.find((plan) => plan.moduleId === module.moduleId);
-  if (!settings) throw new Error(`missing derived pipeline settings for module:${module.moduleId}`);
-  return { ...module, markdown: appendNormalizedExecutionIntent(module.markdown, settings), testOwnership: settings.testOwnership, reviewDepth: settings.reviewDepth, build: cloneBuildStages(settings.build), review: { ...settings.review, perspectives: [...settings.review.perspectives] }, pipelineRationale: settings.rationale };
+function stampNormalizedModule(module: PlanningProposalNormalizationResult['modules'][number]): PlanningSynthesizedModulePlan {
+  const { proposedIntent: _proposedIntent, normalizationChanges: _normalizationChanges, ownedPaths: _ownedPaths, ...normalized } = module;
+  return { ...normalized, markdown: appendNormalizedExecutionIntent(module.markdown, module), build: cloneBuildStages(module.build), review: { ...module.review, perspectives: [...module.review.perspectives] } };
 }
 
 /**
@@ -59,8 +55,8 @@ function stampPipelineSettings(module: PlanningSynthesizedModulePlanBase, plans:
  * (`$&` etc.) are inert, and the rationale is collapsed to a single line so a
  * model-authored review rationale cannot inject extra declaration lines.
  */
-function appendNormalizedExecutionIntent(markdown: string, settings: DerivedPlanPipelineSettings): string {
-  return [markdown, '', '## Execution Intent', '', `Test ownership: ${settings.testOwnership}`, `Review depth: ${settings.reviewDepth}`, `Review rationale: ${singleLine(settings.rationale)}`].join('\n');
+function appendNormalizedExecutionIntent(markdown: string, settings: Pick<PlanningSynthesizedModulePlan, 'testOwnership' | 'reviewDepth' | 'pipelineRationale'>): string {
+  return [markdown, '', '## Execution Intent', '', `Test ownership: ${settings.testOwnership}`, `Review depth: ${settings.reviewDepth}`, `Review rationale: ${singleLine(settings.pipelineRationale)}`].join('\n');
 }
 
 function singleLine(value: string): string { return value.replace(/\s+/g, ' ').trim(); }
@@ -92,8 +88,8 @@ function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments:
     dependsOnModuleIds: uniq(module.dependsOnModuleIds ?? []),
     validationExpectation: module.validationExpectation,
     residue: false,
-    docsWork: module.docsWork ?? 'none',
-    testWork: module.testWork ?? 'none',
+    ...(module.docsWork ? { docsWork: module.docsWork } : {}),
+    ...(module.testWork ? { testWork: module.testWork } : {}),
     ...(module.testOwnership ? { testOwnership: module.testOwnership } : {}),
     ...(module.reviewDepth ? { reviewDepth: module.reviewDepth } : {}),
     ...(module.reviewRationale ? { reviewRationale: module.reviewRationale } : {}),
@@ -119,63 +115,15 @@ function residueModules(candidates: PlanningResidueCandidate[]): PlanningSynthes
   }));
 }
 
-function validateSynthesizedArtifacts(result: BoundedPlannerCompilerResult, modules: PlanningSynthesizedModulePlan[]): string[] {
-  const errors = [...result.validationErrors];
+function validateSynthesizedArtifacts(result: BoundedPlannerCompilerResult, normalizationErrors: string[]): string[] {
+  // Compiler-level validation errors still block artifact synthesis; they are
+  // merged here (not inside normalization) so the normalization verdict stays
+  // scoped to the model's proposal.
+  const errors = [...normalizationErrors, ...result.validationErrors];
   const coverage = coverageFor(result);
-  validateModules(modules, errors);
-  validateModuleCriterionCoverage(result, modules, coverage, errors);
   validateCoverage(coverage, errors);
   if (result.reduce.finalOutput?.status === 'failed' && result.residue.candidates.length === 0) errors.push('failed reduce output requires residue coverage');
-  return errors;
-}
-
-function validateModules(modules: PlanningSynthesizedModulePlan[], errors: string[]): void {
-  const moduleIds = new Set(modules.map((module) => module.moduleId).filter(nonEmpty));
-  validateUnique('module', modules.map((module) => module.moduleId), errors);
-  for (const module of modules) {
-    if (!nonEmpty(module.moduleId)) errors.push('module requires id');
-    if (!nonEmpty(module.title)) errors.push(`module requires title:${module.moduleId}`);
-    if (!nonEmpty(module.markdown)) errors.push(`module requires markdown:${module.moduleId}`);
-    if (module.criterionIds.length === 0) errors.push(`module requires criteria:${module.moduleId}`);
-    if (module.aspectIds.length === 0) errors.push(`module requires aspects:${module.moduleId}`);
-    if (!nonEmpty(module.validationExpectation)) errors.push(`module requires validation expectation:${module.moduleId}`);
-    for (const dependencyId of module.dependsOnModuleIds) {
-      if (dependencyId === module.moduleId) errors.push(`module dependency self-reference:${module.moduleId}`);
-      else if (!moduleIds.has(dependencyId)) errors.push(`module dependency missing:${module.moduleId}:${dependencyId}`);
-    }
-  }
-  validateDependencyCycles(modules, errors);
-}
-
-function validateDependencyCycles(modules: PlanningSynthesizedModulePlan[], errors: string[]): void {
-  const dependencies = new Map(modules.map((module) => [module.moduleId, module.dependsOnModuleIds]));
-  const state = new Map<string, 'visiting' | 'visited'>();
-  const visit = (moduleId: string, path: string[]): void => {
-    if (state.get(moduleId) === 'visited') return;
-    if (state.get(moduleId) === 'visiting') {
-      const cycleStart = path.indexOf(moduleId);
-      errors.push(`module dependency cycle:${[...path.slice(cycleStart), moduleId].join('->')}`);
-      return;
-    }
-    state.set(moduleId, 'visiting');
-    for (const dependencyId of dependencies.get(moduleId) ?? []) if (dependencyId !== moduleId && dependencies.has(dependencyId)) visit(dependencyId, [...path, moduleId]);
-    state.set(moduleId, 'visited');
-  };
-  for (const moduleId of [...dependencies.keys()].sort()) visit(moduleId, []);
-}
-
-function validateModuleCriterionCoverage(result: BoundedPlannerCompilerResult, modules: PlanningSynthesizedModulePlan[], coverage: PlanningAspectCoverageSummary, errors: string[]): void {
-  if (modules.length === 0) return;
-  const covered = new Set(modules.flatMap((module) => module.criterionIds));
-  // A criterion whose required aspects are all deliberately skipped (with a
-  // reason, per coverage accounting) is complete without executable work, so
-  // it legitimately has no owning module - e.g. "no changes to X are required".
-  const fullySkipped = new Set(coverage.criteria
-    .filter((criterion) => criterion.complete && criterion.requiredAspectIds.length > 0 && criterion.skippedAspectIds.length === criterion.requiredAspectIds.length)
-    .map((criterion) => criterion.criterionId));
-  for (const criterion of result.sourceInventory.criteria) {
-    if (!covered.has(criterion.id) && !fullySkipped.has(criterion.id)) errors.push(`criterion has no module owner:${criterion.id}`);
-  }
+  return [...new Set(errors)].sort();
 }
 
 function validateCoverage(coverage: PlanningAspectCoverageSummary, errors: string[]): void {
@@ -217,14 +165,6 @@ function cloneFragments(fragments: PlanningAtomPlanFragment[]): PlanningAtomPlan
 
 function cloneModules(modules: PlanningAtomModuleCandidate[]): PlanningAtomModuleCandidate[] {
   return modules.map((module) => ({ ...module, criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], dependsOnModuleIds: module.dependsOnModuleIds ? [...module.dependsOnModuleIds] : undefined }));
-}
-
-function validateUnique(kind: string, ids: string[], errors: string[]): void {
-  const seen = new Set<string>();
-  for (const id of ids.filter(nonEmpty)) {
-    if (seen.has(id)) errors.push(`${kind} id duplicated:${id}`);
-    seen.add(id);
-  }
 }
 
 function uniq(values: string[]): string[] { return [...new Set(values.filter(nonEmpty))].sort(); }

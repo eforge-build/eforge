@@ -12,6 +12,7 @@ import {
   deriveSourceInventory,
   MAX_COMPILER_DIAGNOSTICS_BYTES,
   serializeCompilerDiagnostics,
+  synthesizePlanningArtifacts,
   validateCompilerDiagnostics,
   writeCompilerDiagnosticsArtifact,
   writeRescopeFailClosedArtifact,
@@ -53,7 +54,30 @@ describe('planning compiler diagnostics', () => {
     expect(diagnostics.repair.status).toBe('not-needed');
     expect(diagnostics.residue.synthesisBlocked).toBe(false);
     expect(diagnostics.evidenceFailures).toEqual([]);
+    expect(diagnostics.normalization).toEqual({ status: 'not-run', modules: [], fileOwnershipConflicts: [], validationErrors: [] });
     expect(buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set' })).toEqual(diagnostics);
+  });
+
+  it('records proposed intent, fallbacks, normalized stages, and safety escalations', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const reduceOutput = completedReduceOutput(atomOutput);
+    reduceOutput.moduleCandidates = reduceOutput.moduleCandidates?.map((module) => ({ ...module, testWork: 'author-new' as const, testOwnership: 'existing-only' as const, reviewDepth: 'light' as const, reviewRationale: 'Requested light review.' }));
+    const compilerResult = compilerFixture(data, [atomOutput], [reduceOutput]);
+    compilerResult.sourceLocalizationBundle.records = [{ needId: 'need-low-confidence', kind: 'literal-path', query: 'packages/engine/src/a.ts', status: 'partial', candidateFiles: [], confidence: 'low', reason: 'owner path remains uncertain', linkedCriterionIds: ['ac-001'], linkedAspectIds: [], assignedAtomIds: [data.tasks[0].atomId], diagnostics: [], budgetNotes: [] }];
+    const artifacts = synthesizePlanningArtifacts({ compilerResult });
+
+    const diagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set', artifacts });
+
+    expect(validateCompilerDiagnostics(diagnostics)).toEqual({ ok: true, errors: [] });
+    expect(diagnostics.normalization.status).toBe('normalized');
+    expect(diagnostics.normalization.modules[0]).toMatchObject({
+      moduleId: 'module-reduce-000-001',
+      proposed: { testWork: 'author-new', testOwnership: 'existing-only', reviewDepth: 'light' },
+      normalized: { testOwnership: 'test-writer', reviewDepth: 'standard', build: ['implement', 'test-write', 'test-cycle', 'review-cycle'] },
+    });
+    expect(diagnostics.normalization.modules[0]?.changes).toContainEqual(expect.objectContaining({ field: 'testOwnership', kind: 'normalized' }));
+    expect(diagnostics.normalization.modules[0]?.changes).toContainEqual(expect.objectContaining({ field: 'reviewDepth', kind: 'safety-escalation' }));
   });
 
   it('links reduce gaps and conflicts to the residue candidates that represent them', () => {
@@ -254,6 +278,30 @@ describe('planning compiler diagnostics', () => {
     expect(validateCompilerDiagnostics(parsed)).toEqual({ ok: true, errors: [] });
     expect(parsed.reduce.gaps).toHaveLength(128);
     expect(parsed.omitted.descriptionBytes).toBeGreaterThan(diagnostics.omitted.descriptionBytes);
+  });
+
+  it('compacts oversized normalization diagnostics with omission accounting', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const atomOutput = completedOutput(data.tasks[0]);
+    const compilerResult = compilerFixture(data, [atomOutput], [completedReduceOutput(atomOutput)]);
+    const artifacts = synthesizePlanningArtifacts({ compilerResult });
+    const template = artifacts.normalization.modules[0]!;
+    artifacts.normalization.modules = Array.from({ length: 64 }, (_, moduleIndex) => ({
+      ...template,
+      moduleId: `module-${moduleIndex}`,
+      ownedPaths: Array.from({ length: 64 }, (_, pathIndex) => `packages/${moduleIndex}/${pathIndex}/${'path'.repeat(80)}.ts`),
+      normalizationChanges: Array.from({ length: 16 }, (_, changeIndex) => ({ field: 'fileOwnership' as const, kind: 'normalized' as const, reason: `normalized ownership ${changeIndex} ${'reason '.repeat(100)}` })),
+    }));
+
+    const serialized = serializeCompilerDiagnostics(buildCompilerDiagnostics({ compilerResult, planSetName: 'diag-set', artifacts }));
+    const parsed = JSON.parse(serialized) as ReturnType<typeof buildCompilerDiagnostics>;
+
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThanOrEqual(MAX_COMPILER_DIAGNOSTICS_BYTES);
+    expect(validateCompilerDiagnostics(parsed)).toEqual({ ok: true, errors: [] });
+    expect(parsed.normalization.modules).toHaveLength(16);
+    expect(parsed.omitted.normalizationModules).toBeGreaterThan(0);
+    expect(parsed.omitted.normalizationChanges).toBeGreaterThan(0);
+    expect(parsed.omitted.normalizationOwnedPaths).toBeGreaterThan(0);
   });
 
   it('writes the diagnostics artifact to the plan set directory and rejects unsafe path components', async () => {
