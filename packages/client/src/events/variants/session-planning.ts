@@ -39,6 +39,7 @@ import {
   StackLayerStatusSchema,
   TerminalFailureEnvelopeSchema,
   TestIssueSchema,
+  TestOwnershipSchema,
 } from '../shared/schemas.js';
 import {
   CompileScopeContextFailureSchema,
@@ -212,6 +213,7 @@ export const planningEventVariants = [
           id: Type.String(),
           build: Type.Optional(Type.Array(BuildStageSpecSchema)),
           review: Type.Optional(ReviewProfileConfigSchema),
+          testOwnership: Type.Optional(TestOwnershipSchema),
         }),
       ),
     ),

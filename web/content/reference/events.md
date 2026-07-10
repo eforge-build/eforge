@@ -16,7 +16,7 @@ failed-enqueue attention rows; queue items in that snapshot expose required
 
 ## Event Variants
 
-Total variants: 246
+Total variants: 247
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -126,6 +126,7 @@ Total variants: 246
 | `plan:build:doc-author:complete` | `docsAuthored`, `planId` |
 | `plan:build:doc-sync:start` | `planId` |
 | `plan:build:doc-sync:complete` | `docsSynced`, `planId` |
+| `plan:build:test:ownership:violation` | `changedPaths`, `declaredOwner`, `planId`, `reason`, `stage` |
 | `plan:build:test:write:start` | `planId` |
 | `plan:build:test:write:complete` | `planId`, `testsWritten` |
 | `plan:build:test:start` | `planId` |

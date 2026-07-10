@@ -67,6 +67,8 @@ export {
   StackProviderSchema,
   TerminalFailureEnvelopeSchema,
   TerminalFailureScopeSchema,
+  TEST_OWNERSHIP_VALUES,
+  TestOwnershipSchema,
 } from './events/shared/schemas.js';
 export { BuildDecisionSchema, PlanningDecisionEventSchema, PlanningDecisionSchema } from './events/decisions.js';
 export { QueueDispatchFailureStageSchema } from './events/queue-events.js';
@@ -215,6 +217,7 @@ export type {
   TerminalFailureEnvelope,
   TerminalFailureScope,
   TestIssue,
+  TestOwnership,
   ValidationRepairClass,
   EforgeStatus
 } from './events/root.js';

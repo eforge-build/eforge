@@ -1,19 +1,20 @@
 import { Type } from '@sinclair/typebox';
+import { TEST_OWNERSHIP_VALUES, TestOwnershipSchema, type TestOwnership } from '@eforge-build/client';
 import { utf8ByteLength } from './source-analysis.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
 
 export const PLANNING_MODULE_DOCS_WORK_VALUES = ['none', 'sync-existing', 'author-new'] as const;
 export const PLANNING_MODULE_TEST_WORK_VALUES = ['none', 'exercise-existing', 'author-new'] as const;
-export const PLANNING_MODULE_TEST_OWNERSHIP_VALUES = ['builder', 'test-writer', 'existing-only'] as const;
+export const PLANNING_MODULE_TEST_OWNERSHIP_VALUES = TEST_OWNERSHIP_VALUES;
 export const PLANNING_MODULE_REVIEW_DEPTH_VALUES = ['light', 'standard', 'heavy'] as const;
 export type PlanningModuleDocsWork = (typeof PLANNING_MODULE_DOCS_WORK_VALUES)[number];
 export type PlanningModuleTestWork = (typeof PLANNING_MODULE_TEST_WORK_VALUES)[number];
-export type PlanningModuleTestOwnership = (typeof PLANNING_MODULE_TEST_OWNERSHIP_VALUES)[number];
+export type PlanningModuleTestOwnership = TestOwnership;
 export type PlanningModuleReviewDepth = (typeof PLANNING_MODULE_REVIEW_DEPTH_VALUES)[number];
 export const PlanningModuleDocsWorkSchema = Type.Union(PLANNING_MODULE_DOCS_WORK_VALUES.map((value) => Type.Literal(value)));
 export const PlanningModuleTestWorkSchema = Type.Union(PLANNING_MODULE_TEST_WORK_VALUES.map((value) => Type.Literal(value)));
-export const PlanningModuleTestOwnershipSchema = Type.Union(PLANNING_MODULE_TEST_OWNERSHIP_VALUES.map((value) => Type.Literal(value)));
+export const PlanningModuleTestOwnershipSchema = TestOwnershipSchema;
 export const PlanningModuleReviewDepthSchema = Type.Union(PLANNING_MODULE_REVIEW_DEPTH_VALUES.map((value) => Type.Literal(value)));
 
 // Shared structured-submission prompt rules for model-authored plan intent.

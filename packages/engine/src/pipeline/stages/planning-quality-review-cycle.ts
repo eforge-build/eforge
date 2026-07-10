@@ -190,7 +190,7 @@ registerCompileStage({
   }
   const depsById = new Map(orchConfig.plans.map(plan => [plan.id, plan.dependsOn]));
   const enrichedPlans = validation.plans.map(plan => ({ ...plan, dependsOn: depsById.get(plan.id) ?? [] }));
-  const planConfigs = orchConfig.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review }));
+  const planConfigs = orchConfig.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review, testOwnership: plan.testOwnership }));
   ctx.plans = enrichedPlans;
   yield { timestamp: now(), type: 'planning:complete', plans: enrichedPlans, planConfigs };
 });

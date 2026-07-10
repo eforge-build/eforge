@@ -20,8 +20,8 @@ describe('planning compiler artifact writer', () => {
       planMarkdown: '# Plan\n\nBounded compiler plan.',
       acceptanceCoverageMarkdown: '## Acceptance Coverage\n\nComplete criteria: ac-001',
       modulePlans: [
-        { moduleId: 'module-core', title: 'Core module', criterionIds: ['ac-001'], aspectIds: ['ac-001:general:general'], markdown: '# Core\n\nImplement core.', dependsOnModuleIds: [], validationExpectation: 'Core checks pass.', residue: false, build: ['implement'], review: heavyReview(), pipelineRationale: 'risk score 3 (residue-derived, repair-only-residue)' },
-        { moduleId: 'module-docs', title: 'Docs module', criterionIds: ['ac-002'], aspectIds: ['ac-002:general:general'], markdown: '# Docs\n\nUpdate docs.', dependsOnModuleIds: ['module-core'], validationExpectation: 'Docs checks pass.', residue: false, build: ['implement'], review: lightReview(), pipelineRationale: 'no risk factors' },
+        { moduleId: 'module-core', title: 'Core module', criterionIds: ['ac-001'], aspectIds: ['ac-001:general:general'], markdown: '# Core\n\nImplement core.', dependsOnModuleIds: [], validationExpectation: 'Core checks pass.', residue: false, testOwnership: 'builder', build: ['implement'], review: heavyReview(), pipelineRationale: 'risk score 3 (residue-derived, repair-only-residue)' },
+        { moduleId: 'module-docs', title: 'Docs module', criterionIds: ['ac-002'], aspectIds: ['ac-002:general:general'], markdown: '# Docs\n\nUpdate docs.', dependsOnModuleIds: ['module-core'], validationExpectation: 'Docs checks pass.', residue: false, testOwnership: 'existing-only', build: ['implement'], review: lightReview(), pipelineRationale: 'no risk factors' },
       ],
       orchestration: { modules: [] },
       pipelineDefaults: { defaultBuild: ['implement'], defaultReview: heavyReview(), rationale: 'derived defaults follow highest plan risk' },
@@ -37,7 +37,7 @@ describe('planning compiler artifact writer', () => {
     await expect(readFile(path.join(cwd, 'plans/bounded/acceptance-coverage.md'), 'utf8')).resolves.toContain('Complete criteria: ac-001');
     const orchestration = await parseOrchestrationConfig(path.join(cwd, 'plans/bounded/orchestration.yaml'));
     expect(orchestration.pipeline).toMatchObject({ scope: 'excursion', compile: ['planner', 'plan-review-cycle'] });
-    expect(orchestration.plans[1]).toMatchObject({ id: 'module-docs', dependsOn: ['module-core'], build: ['implement'] });
+    expect(orchestration.plans[1]).toMatchObject({ id: 'module-docs', dependsOn: ['module-core'], build: ['implement'], testOwnership: 'existing-only' });
     // Per-plan stamped settings survive the write; the composer default is fallback-only.
     expect(orchestration.plans[0].review).toEqual(heavyReview());
     expect(orchestration.plans[1].review).toEqual(lightReview());

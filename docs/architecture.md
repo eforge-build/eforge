@@ -224,11 +224,13 @@ Artifact-validation failures fail closed: the compile phase emits `planning:erro
 | `review-cycle` | Composite: expands to `review` -> `review-fix` -> `evaluate`. Supports multiple reviewer perspectives: `code`, `security`, `api`, `docs`, `test`, and `verify`. The `verify` perspective runs the plan's verification commands as subprocesses and emits a critical issue per failing command (including full stdout/stderr), so the review-fix loop can repair failures without restarting the build. If normal review rounds exhaust with active-plan review blockers still present, eforge may run one bounded same-plan recovery attempt, emit `plan:build:recovery:*` evidence events, rerun evaluation, and continue only when blockers clear. Sharded plans always include the `verify` perspective. |
 | `doc-author` | Authors plan-specified documentation in parallel with implement |
 | `doc-sync` | Syncs existing documentation against the post-implement diff |
-| `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |
-| `test-cycle` | Composite: iterates `test` then `evaluate` up to `maxRounds`. The tester agent runs tests, debugs failures, and writes production fixes inline; the evaluator then judges those fixes. There is no separate `test-fix` substage. If test-cycle blockers remain after the normal budget, eforge may run one bounded same-plan recovery attempt through the review-fixer path, rerun test/evaluation checks, and fail closed when blockers remain. |
+| `test-write` | Writes acceptance tests after implementation only when the plan's executable `test_ownership` is `test-writer`. Other ownership modes reject this stage before launch. |
+| `test-cycle` | Composite: iterates `test` then `evaluate` up to `maxRounds`. The tester runs and triages tests but cannot create acceptance coverage; it may minimally correct an existing test only when it reports a concrete test bug. Production fixes remain evaluator-gated. If blockers remain after the normal budget, eforge may run one bounded same-plan recovery attempt and fails closed when blockers remain. |
 | `validate` | Runs registered extension validation providers as per-plan quality gates before review. Structured provider failures can route to narrow review-fixer recovery or structural validation-fixer recovery; post-merge command validation remains orchestrator-owned. |
 
 Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-author'], 'doc-sync', 'review-cycle']` runs implement and doc-author in parallel, then doc-sync sequentially, then review-cycle after both complete.
+
+Each compiler-generated plan carries one executable test owner: `builder`, `test-writer`, or `existing-only`. Pipeline preflight and post-stage Git guards enforce that declaration and roll back ownership violations before another stage can consume them.
 
 ## Compile pipeline selection
 

@@ -8900,6 +8900,23 @@
                         ]
                       }
                     }
+                  },
+                  "testOwnership": {
+                    "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                    "anyOf": [
+                      {
+                        "const": "builder",
+                        "type": "string"
+                      },
+                      {
+                        "const": "test-writer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "existing-only",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -10390,6 +10407,76 @@
             },
             "docsSynced": {
               "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "stage",
+            "declaredOwner",
+            "changedPaths",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:test:ownership:violation",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "stage": {
+              "anyOf": [
+                {
+                  "const": "implement",
+                  "type": "string"
+                },
+                {
+                  "const": "test-write",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                }
+              ]
+            },
+            "declaredOwner": {
+              "anyOf": [
+                {
+                  "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                  "anyOf": [
+                    {
+                      "const": "builder",
+                      "type": "string"
+                    },
+                    {
+                      "const": "test-writer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "existing-only",
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "const": "unspecified",
+                  "type": "string"
+                }
+              ]
+            },
+            "changedPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
             }
           }
         },
@@ -17988,6 +18075,23 @@
                           }
                         }
                       },
+                      "testOwnership": {
+                        "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                        "anyOf": [
+                          {
+                            "const": "builder",
+                            "type": "string"
+                          },
+                          {
+                            "const": "test-writer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "existing-only",
+                            "type": "string"
+                          }
+                        ]
+                      },
                       "maxContinuations": {
                         "type": "number"
                       },
@@ -18141,6 +18245,23 @@
                         ]
                       }
                     }
+                  },
+                  "testOwnership": {
+                    "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                    "anyOf": [
+                      {
+                        "const": "builder",
+                        "type": "string"
+                      },
+                      {
+                        "const": "test-writer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "existing-only",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -27436,6 +27557,23 @@
                                       ]
                                     }
                                   }
+                                },
+                                "testOwnership": {
+                                  "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                                  "anyOf": [
+                                    {
+                                      "const": "builder",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "test-writer",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "existing-only",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }
@@ -28926,6 +29064,76 @@
                           },
                           "docsSynced": {
                             "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "planId",
+                          "stage",
+                          "declaredOwner",
+                          "changedPaths",
+                          "reason"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "plan:build:test:ownership:violation",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "stage": {
+                            "anyOf": [
+                              {
+                                "const": "implement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test-write",
+                                "type": "string"
+                              },
+                              {
+                                "const": "test",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "declaredOwner": {
+                            "anyOf": [
+                              {
+                                "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                                "anyOf": [
+                                  {
+                                    "const": "builder",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "test-writer",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "existing-only",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "const": "unspecified",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "changedPaths": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "reason": {
+                            "type": "string"
                           }
                         }
                       },
@@ -36524,6 +36732,23 @@
                                         }
                                       }
                                     },
+                                    "testOwnership": {
+                                      "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                                      "anyOf": [
+                                        {
+                                          "const": "builder",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "test-writer",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "existing-only",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
                                     "maxContinuations": {
                                       "type": "number"
                                     },
@@ -36677,6 +36902,23 @@
                                       ]
                                     }
                                   }
+                                },
+                                "testOwnership": {
+                                  "description": "Exclusive owner of new acceptance-test authoring for a plan",
+                                  "anyOf": [
+                                    {
+                                      "const": "builder",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "test-writer",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "existing-only",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }

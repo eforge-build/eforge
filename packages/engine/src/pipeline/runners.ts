@@ -29,6 +29,7 @@ import type { PipelineContext, BuildStageContext } from './types.js';
 import { getCompileStage, getBuildStage } from './registry.js';
 import { commitPlanArtifacts } from './git-helpers.js';
 import { createToolTracker } from './span-wiring.js';
+import { testOwnershipViolationEvents, validateTestOwnershipPipeline } from './test-ownership.js';
 
 const exec = promisify(execFile);
 
@@ -274,6 +275,13 @@ export async function* runBuildPipeline(
   ctx: BuildStageContext,
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: ctx.planId };
+
+  const ownershipViolation = validateTestOwnershipPipeline(ctx.build, ctx.planEntry?.testOwnership);
+  if (ownershipViolation) {
+    for (const event of testOwnershipViolationEvents(ctx.planId, ownershipViolation)) yield event;
+    ctx.buildFailed = true;
+    return;
+  }
 
   for (const spec of ctx.build) {
     if (Array.isArray(spec)) {

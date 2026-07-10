@@ -10,6 +10,7 @@ import {
   REVIEW_PERSPECTIVES,
   ReviewIssueIdSchema, ReviewFixIssueReferenceSchema,
   ReviewPerspectiveKeySchema,
+  TestOwnershipSchema,
   getSchemaYaml,
   safeParseWithSchema,
   type SafeParseResult,
@@ -519,6 +520,7 @@ const orchestrationPlanSchema = Type.Object({
   review: Type.Optional(Type.Object(pipelineReviewProfileConfigSchema.properties, {
     description: 'Per-plan review configuration; if omitted, the pipeline defaultReview is used as a backfill',
   })),
+  testOwnership: Type.Optional(TestOwnershipSchema),
   buildRationale: Type.Optional(Type.String({
     description: "Why this plan's build stages differ from the default, or confirmation that the default is appropriate",
   })),
@@ -653,6 +655,7 @@ export const planReviewFixSchema = Type.Union([
       branch: Type.String({ minLength: 1, description: 'Git branch name' }),
       build: Type.Optional(Type.Array(pipelineBuildStageSpecSchema, { description: 'Per-plan build stage pipeline' })),
       review: Type.Optional(Type.Object(pipelineReviewProfileConfigSchema.properties, { description: 'Per-plan review configuration' })),
+      testOwnership: Type.Optional(TestOwnershipSchema),
       agents: planAgentsSchema,
     }), { minItems: 1, description: 'Orchestration plan entries' }),
   }, { description: 'Replace the orchestration.yaml content; pipeline is preserved from disk' }),

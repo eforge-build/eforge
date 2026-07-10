@@ -590,6 +590,12 @@ const eventRegistry = {
       e.docsSynced > 0 ? `Plan ${e.planId}: ${e.docsSynced} doc(s) synced` : undefined,
   },
 
+  'plan:build:test:ownership:violation': {
+    scope: 'session',
+    persist: true,
+    summary: (e) => `Plan ${e.planId}: ${e.stage} violated test ownership (${e.declaredOwner}): ${e.reason}`,
+  },
+
   'plan:build:test:write:start': {
     scope: 'session',
     persist: false,

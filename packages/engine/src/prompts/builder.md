@@ -8,6 +8,7 @@ You are working in a git worktree. All changes should be made within this workin
 
 - **Plan ID**: {{plan_id}}
 - **Plan Name**: {{plan_name}}
+- **Executable test ownership**: `{{test_ownership}}`
 {{continuation_context}}
 
 ## Plan Content
@@ -38,7 +39,7 @@ You are working in a git worktree. All changes should be made within this workin
      ```
    - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
    - Cleanup-targeted marker slugs in shared files must match `plan-\d{2}-...` (for example, `plan-01-auth`). Only those temporary plan-ID marker lines are stripped from tracked JavaScript/TypeScript-family source files during successful cleanup; non-plan module slugs are not stripped and must not be used for temporary build-coordination markers in source.
-6. **Honor test ownership** — read the plan's `Test ownership` declaration. When it is `builder`, implement the required tests with the production change. When it is `test-writer` or `existing-only`, do not create or rewrite tests for the acceptance coverage; the dedicated stage or existing suite owns them.
+6. **Honor test ownership** — the executable ownership value above is authoritative. When it is `builder`, implement the required tests with the production change. When it is `test-writer` or `existing-only`, do not create or rewrite tests for the acceptance coverage; the dedicated stage or existing suite owns them. `legacy-unspecified` preserves legacy plan behavior only.
 7. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
 8. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
 9. **Batch independent operations in a single response — one response is one turn regardless of how many operations it contains.** You have a limited turn budget. Reading files one-by-one across sequential turns is the fastest way to burn it.

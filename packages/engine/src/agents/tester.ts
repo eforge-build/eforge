@@ -5,6 +5,7 @@ import { loadPrompt } from '../prompts.js';
 import { getTestIssueSchemaYaml } from '../schemas.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { parseTestIssues } from './common.js';
+import type { TestOwnership } from '@eforge-build/client';
 
 export interface TestWriterOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -12,6 +13,7 @@ export interface TestWriterOptions extends SdkPassthroughConfig {
   planId: string;
   planContent: string;
   implementationContext?: string;
+  testOwnership?: TestOwnership;
   verbose?: boolean;
   abortController?: AbortController;
   maxTurns?: number;
@@ -71,6 +73,7 @@ export async function* runTestWriter(
       plan_id: options.planId,
       plan_content: options.planContent,
       implementation_context: options.implementationContext ?? '',
+      test_ownership: options.testOwnership ?? 'unspecified',
     };
 
     const prompt = await loadPrompt('test-writer', vars, options.promptAppend);
@@ -112,6 +115,7 @@ export interface TesterOptions extends SdkPassthroughConfig {
   cwd: string;
   planId: string;
   planContent: string;
+  testOwnership?: TestOwnership;
   verbose?: boolean;
   abortController?: AbortController;
   maxTurns?: number;
@@ -138,6 +142,7 @@ export async function* runTester(
     const prompt = await loadPrompt('tester', {
       plan_id: options.planId,
       plan_content: options.planContent,
+      test_ownership: options.testOwnership ?? 'unspecified',
       test_issue_schema: getTestIssueSchemaYaml(),
     }, options.promptAppend);
 

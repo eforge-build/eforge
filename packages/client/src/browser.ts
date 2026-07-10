@@ -425,6 +425,7 @@ export type {
   AcceptanceCriterionVerdict,
   AcceptanceCriteriaConflict,
   TestIssue,
+  TestOwnership,
   BuildFailureSummary,
   LandedCommit,
   PlanSummaryEntry,
@@ -485,7 +486,7 @@ export type {
 
 
 export { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, EvaluationIssueOutcomeSchema, PlanningDecisionSchema,
-  AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
+  AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema, TEST_OWNERSHIP_VALUES, TestOwnershipSchema,
   FailedEnqueueInfoSchema, QueueItemCapabilitySchema, QueueItemCapabilitiesSchema, QueueItemHoldSchema,
   ReviewFixIssueReferenceSchema, ReviewFixIssueStatusSchema, ReviewIssueIdSchema,
   ReviewPerspectiveKeySchema,

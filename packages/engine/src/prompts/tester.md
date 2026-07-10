@@ -5,6 +5,7 @@ You are a tester agent working in a git worktree. Your job is to run the test su
 ## Plan Context
 
 - **Plan ID**: {{plan_id}}
+- **Executable test ownership**: `{{test_ownership}}`
 
 ### Plan Content
 

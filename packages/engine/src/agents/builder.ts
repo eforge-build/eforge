@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions, classifyAgentTerminalSubtype } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile, type ReviewIssue } from '../events.js';
-import type { ReviewFixIssueReference } from '@eforge-build/client';
+import type { ReviewFixIssueReference, TestOwnership } from '@eforge-build/client';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml, getEvaluationSubmissionSchemaYaml } from '../schemas.js';
 import type { EvaluationSubmission, EvaluationVerdict, ShardScope } from '../schemas.js';
@@ -31,6 +31,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   maxTurns?: number;
   /** Evaluator strictness level — controls the accept/reject threshold text injected into the prompt */
   strictness?: 'strict' | 'standard' | 'lenient';
+  /** Normalized exclusive owner of new acceptance-test authoring. */
+  testOwnership?: TestOwnership;
   /** Parallel stage groups from the pipeline build config — used for lane awareness */
   parallelStages?: string[][];
   /** Verification scope: 'full' runs all checks, 'build-only' skips tests (handled by test stages) */
@@ -300,6 +302,7 @@ ${formatList(toolResultSnippets)}`
     plan_id: plan.id,
     plan_name: plan.name,
     plan_content: plan.body,
+    test_ownership: options.testOwnership ?? 'legacy-unspecified',
     shardScope: shardScopeText,
     parallelLanes,
     verification_scope: verificationScopeText,

@@ -80,6 +80,8 @@ Unresolved source/localization gaps must not become executable `candidate-reduce
 
 `plan-artifact-synthesis.ts` assembles the final plan set and validates traceability: unique module ids, resolvable and acyclic dependencies, criterion-to-module ownership (criteria whose required aspects are all deliberately skipped need no owner), and aspect coverage. Every module plan - candidate and residue alike - receives a machine-rendered `## Execution Intent` section built from the normalized settings, never patched into agent-authored text.
 
+Normalized test ownership is also written to each orchestration plan as executable metadata. Build preflight rejects incompatible `test-write` wiring, while stage-boundary guards reject builder-authored tests owned elsewhere, test-writer production edits, and tester-created acceptance coverage. Violating stage changes are rolled back and surfaced through a typed ownership-violation event.
+
 ## Repository-agnostic defaults and hints
 
 Default localization is based on generic signals: normalized relative paths, directory names, manifests, entrypoints, docs, tests, configuration, commands, routes, APIs, UI surfaces, extensions, consumer surfaces, subsystem hints, interface keys, and keywords derived from the build source.

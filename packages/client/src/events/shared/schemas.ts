@@ -1,6 +1,5 @@
 import { Type } from '@sinclair/typebox';
 import { MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH } from '../../event-validation.js';
-
 // --- eforge:region core-classification-schemas ---
 export const AgentRoleSchema = Type.Union([
   Type.Literal('planner'),
@@ -51,6 +50,7 @@ export const LandingActionSchema = Type.Union([
 ]);
 export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
 export const ReviewCycleRoundField = { round: Type.Optional(Type.Integer({ minimum: 0 })) } as const;
+export const TEST_OWNERSHIP_VALUES = ['builder', 'test-writer', 'existing-only'] as const; export const TestOwnershipSchema = Type.Union(TEST_OWNERSHIP_VALUES.map(value => Type.Literal(value)), { description: 'Exclusive owner of new acceptance-test authoring for a plan' });
 // --- eforge:region review-issue-traceability ---
 export const ReviewIssueIdSchema = Type.String({ minLength: 1, maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, pattern: '\\S' });
 export const ReviewFixIssueStatusSchema = Type.Union([
@@ -357,7 +357,7 @@ export const PlanFileSchema = Type.Object({
   filePath: Type.String(),
   warnings: Type.Optional(Type.Array(Type.String())),
 });
-export const OrchestrationPlanConfigSchema = Type.Object({ id: Type.String(), name: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.String(), build: Type.Array(BuildStageSpecSchema), review: ReviewProfileConfigSchema, maxContinuations: Type.Optional(Type.Number()), allowNoOpMerge: Type.Optional(Type.Boolean()), agents: Type.Optional(Type.Record(Type.String(), Type.Object({ effort: Type.Optional(Type.String()), thinking: Type.Optional(Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())])), rationale: Type.Optional(Type.String()), tier: Type.Optional(Type.String()) }))) });
+export const OrchestrationPlanConfigSchema = Type.Object({ id: Type.String(), name: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.String(), build: Type.Array(BuildStageSpecSchema), review: ReviewProfileConfigSchema, testOwnership: Type.Optional(TestOwnershipSchema), maxContinuations: Type.Optional(Type.Number()), allowNoOpMerge: Type.Optional(Type.Boolean()), agents: Type.Optional(Type.Record(Type.String(), Type.Object({ effort: Type.Optional(Type.String()), thinking: Type.Optional(Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())])), rationale: Type.Optional(Type.String()), tier: Type.Optional(Type.String()) }))) });
 export const OrchestrationConfigSchema = Type.Object({
   name: Type.String(),
   description: Type.String(),
@@ -370,7 +370,7 @@ export const OrchestrationConfigSchema = Type.Object({
   warnings: Type.Optional(Type.Array(Type.String())),
 });
 export const BuildResumeArtifactSourceSchema = Type.Object({ label: Type.String(), content: Type.Optional(Type.String()), path: Type.Optional(Type.String()) });
-export const BuildResumeArtifactPlanSchema = Type.Object({ id: Type.String(), name: Type.String(), body: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.Optional(Type.String()), build: Type.Optional(Type.Array(BuildStageSpecSchema)), review: Type.Optional(ReviewProfileConfigSchema) });
+export const BuildResumeArtifactPlanSchema = Type.Object({ id: Type.String(), name: Type.String(), body: Type.String(), dependsOn: Type.Array(Type.String()), branch: Type.Optional(Type.String()), build: Type.Optional(Type.Array(BuildStageSpecSchema)), review: Type.Optional(ReviewProfileConfigSchema), testOwnership: Type.Optional(TestOwnershipSchema) });
 export const BuildResumeArtifactsEventSchema = Type.Object({ type: Type.Literal('build:resume:artifacts'), prdId: Type.String(), setName: Type.String(), featureBranch: Type.String(), artifactSource: Type.Union([Type.Literal('merge-worktree'), Type.Literal('branch-history')]), artifactCommit: Type.Optional(Type.String()), source: BuildResumeArtifactSourceSchema, orchestration: OrchestrationConfigSchema, plans: Type.Array(BuildResumeArtifactPlanSchema) });
 export const PlanStatusSchema = Type.Union([
   Type.Literal('pending'),
