@@ -11,7 +11,7 @@ export interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeE
 
 export async function executePlanningReduceNode(input: Pick<RunPlanningReduceInput, 'graph' | 'cwd' | 'harness' | 'agentOptions' | 'abortSignal' | 'onEvent'>, tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): Promise<ReduceRunResult> {
   const node = requireReduceNode(tree, nodeId);
-  const task = buildTaskForReduceNode(tree, nodeId, atomOutputs, reduceOutputs);
+  const task = buildTaskForReduceNode(input.graph, tree, nodeId, atomOutputs, reduceOutputs);
   const promptErrors = validateReduceTaskPromptBudget(task);
   if (promptErrors.length > 0) return { output: failedReduceOutput(node.nodeId, `invalid reduce prompt:${promptErrors.join('; ')}`), events: [], validationErrors: promptErrors };
   try {
@@ -26,13 +26,14 @@ export async function executePlanningReduceNode(input: Pick<RunPlanningReduceInp
   }
 }
 
-function buildTaskForReduceNode(tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): PlanningReduceTask {
+function buildTaskForReduceNode(graph: PlanningAtomGraph, tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): PlanningReduceTask {
   const node = requireReduceNode(tree, nodeId);
   return buildPlanningReduceTask(
     tree,
     node,
     atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)).sort((a, b) => a.atomId.localeCompare(b.atomId)),
     reduceOutputs.filter((output) => node.inputNodeIds.includes(output.nodeId)).sort((a, b) => a.nodeId.localeCompare(b.nodeId)),
+    graph,
   );
 }
 

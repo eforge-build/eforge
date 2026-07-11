@@ -2,6 +2,7 @@ import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
 import { cloneBuildStages, derivePlanPipelineSettings, type DerivedPlanPipelineSettings, type PlanRiskAssessment } from './pipeline-derivation.js';
 import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleTestOwnership, PlanningModuleTestWork } from './reduce-digest-contracts.js';
+import { derivePlanningModuleBoundaryBudget, intersects, planningModuleBoundaryErrors, planningModuleBoundaryUsage, type PlanningModuleBoundaryBudget } from './module-boundary-budget.js';
 
 export type ProposalNormalizationChangeKind = 'fallback' | 'normalized' | 'safety-escalation';
 export interface ProposalNormalizationChange { field: 'docsWork' | 'testWork' | 'testOwnership' | 'reviewDepth' | 'fileOwnership'; kind: ProposalNormalizationChangeKind; reason: string }
@@ -60,6 +61,7 @@ const MAX_NORMALIZED_MODULES = 128;
  * never creates extra modules: invalid boundaries fail closed instead.
  */
 export function normalizePlanningProposal(input: NormalizePlanningProposalInput): PlanningProposalNormalizationResult {
+  const boundaryBudget = derivePlanningModuleBoundaryBudget(input.compilerResult.atomGraph);
   const prepared = input.modules.map(normalizeDeclaredIntent);
   const derivation = derivePlanPipelineSettings({
     modules: prepared.map((entry) => ({ ...entry.module, testOwnershipDeclared: entry.proposedIntent.testOwnership !== undefined })),
@@ -76,7 +78,7 @@ export function normalizePlanningProposal(input: NormalizePlanningProposalInput)
       reviewDepth: settings.reviewDepth,
       reviewFloor: settings.reviewFloor,
       risk: { ...settings.risk, factors: [...settings.risk.factors] },
-      budgetUsage: budgetUsageForModule(input.compilerResult, module),
+      budgetUsage: planningModuleBoundaryUsage(boundaryBudget, module),
       build: cloneBuildStages(settings.build),
       review: cloneReview(settings.review),
       pipelineRationale: settings.rationale,
@@ -91,7 +93,7 @@ export function normalizePlanningProposal(input: NormalizePlanningProposalInput)
     normalizationChanges: [...module.normalizationChanges, ...(ownership.changesByModule.get(module.moduleId) ?? [])],
     ownedPaths: ownership.entries.filter((entry) => entry.ownerModuleId === module.moduleId).map((entry) => entry.path),
   }));
-  const validationErrors = validateNormalizedProposal(input.compilerResult, modulesWithPaths, ownership.conflicts);
+  const validationErrors = validateNormalizedProposal(input.compilerResult, boundaryBudget, modulesWithPaths, ownership.conflicts);
   const changed = modulesWithPaths.some((module) => module.normalizationChanges.length > 0);
   return {
     status: validationErrors.length > 0 ? 'rejected' : changed ? 'normalized' : 'accepted',
@@ -205,13 +207,13 @@ function addClaim(claims: Map<string, { owners: Set<string>; consumers: Set<stri
  * must not reject the proposal here or the diagnostics artifact would blame
  * the model's module boundaries for unrelated compiler failures.
  */
-function validateNormalizedProposal(result: BoundedPlannerCompilerResult, modules: NormalizedPlanningProposalModule[], conflicts: Array<{ path: string; ownerModuleIds: string[] }>): string[] {
+function validateNormalizedProposal(result: BoundedPlannerCompilerResult, boundaryBudget: PlanningModuleBoundaryBudget, modules: NormalizedPlanningProposalModule[], conflicts: Array<{ path: string; ownerModuleIds: string[] }>): string[] {
   const errors: string[] = [];
   if (modules.length > MAX_NORMALIZED_MODULES) errors.push(`normalized module count budget exceeded:${modules.length}>${MAX_NORMALIZED_MODULES}`);
   validateUniqueModules(modules, errors);
   validateDependencies(modules, errors);
   validateModuleCoverage(result, modules, errors);
-  validateModuleBudgets(result, modules, errors);
+  validateModuleBudgets(boundaryBudget, modules, errors);
   for (const conflict of conflicts) errors.push(`file ownership overlap:${conflict.path}:${conflict.ownerModuleIds.join(',')}`);
   for (const module of modules) errors.push(...pipelineCompatibilityErrors(module));
   // Model-controlled ids/paths are interpolated above; collapse whitespace so
@@ -260,21 +262,8 @@ function validateModuleCoverage(result: BoundedPlannerCompilerResult, modules: N
   for (const criterion of result.sourceInventory.criteria) if (!covered.has(criterion.id) && !skipped.has(criterion.id)) errors.push(`criterion has no module owner:${criterion.id}`);
 }
 
-function budgetUsageForModule(result: BoundedPlannerCompilerResult, module: PlanningProposalModuleInput): PlanningProposalBudgetUsage {
-  const atoms = result.atomGraph.atoms.filter((atom) => intersects(module.criterionIds, atom.criterionIds) || intersects(module.aspectIds, atom.facetIds));
-  return {
-    sourceContextBytes: atoms.reduce((total, atom) => total + atom.estimate.sourceBytes, 0),
-    criterionCount: module.criterionIds.length,
-    subsystemCount: new Set(atoms.flatMap((atom) => atom.subsystemHints)).size,
-  };
-}
-
-function validateModuleBudgets(result: BoundedPlannerCompilerResult, modules: NormalizedPlanningProposalModule[], errors: string[]): void {
-  for (const module of modules.filter((candidate) => !candidate.residue)) {
-    if (module.budgetUsage.sourceContextBytes > result.atomGraph.limits.maxPromptSourceBytes) errors.push(`module source context budget exceeded:${module.moduleId}:${module.budgetUsage.sourceContextBytes}>${result.atomGraph.limits.maxPromptSourceBytes}`);
-    if (module.budgetUsage.criterionCount > result.atomGraph.limits.maxCriteriaPerUnit) errors.push(`module criterion budget exceeded:${module.moduleId}:${module.budgetUsage.criterionCount}>${result.atomGraph.limits.maxCriteriaPerUnit}`);
-    if (module.budgetUsage.subsystemCount > result.atomGraph.limits.maxSubsystemsPerUnit) errors.push(`module subsystem budget exceeded:${module.moduleId}:${module.budgetUsage.subsystemCount}>${result.atomGraph.limits.maxSubsystemsPerUnit}`);
-  }
+function validateModuleBudgets(boundaryBudget: PlanningModuleBoundaryBudget, modules: NormalizedPlanningProposalModule[], errors: string[]): void {
+  errors.push(...planningModuleBoundaryErrors(boundaryBudget, modules.filter((candidate) => !candidate.residue)));
 }
 
 function pipelineCompatibilityErrors(module: NormalizedPlanningProposalModule): string[] {
@@ -296,6 +285,5 @@ function requireSettings(moduleId: string, settings: DerivedPlanPipelineSettings
 }
 
 function cloneReview(review: ReviewProfileConfig): ReviewProfileConfig { return { ...review, perspectives: [...review.perspectives] }; }
-function intersects(a: string[], b: string[]): boolean { return a.some((value) => b.includes(value)); }
 function intersectionCount(a: string[], b: string[]): number { return a.filter((value) => b.includes(value)).length; }
 function uniq(values: string[]): string[] { return [...new Set(values.filter((value) => value.trim().length > 0))].sort(); }

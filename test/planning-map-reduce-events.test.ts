@@ -197,7 +197,7 @@ function validReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {
     compactSummary: `Reduced ${node.nodeId}.`,
     reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] },
     planFragments: [{ fragmentId: `fragment-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }],
-    moduleCandidates: [{ moduleId: `module-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: `Implement reduced work for ${node.nodeId}.`, validationExpectation: 'Reduced validation passes.' }],
+    moduleCandidates: node.criterionIds.map((criterionId, index) => ({ moduleId: `module-${node.nodeId}-${index + 1}`, title: `${node.nodeId} ${criterionId}`, criterionIds: [criterionId], aspectIds: node.aspectIds.filter((aspectId) => aspectId.startsWith(`${criterionId}:`)), description: `Implement ${criterionId}.`, validationExpectation: 'Reduced validation passes.' })),
     validationStrategy: 'Run relevant validation.',
   };
 }

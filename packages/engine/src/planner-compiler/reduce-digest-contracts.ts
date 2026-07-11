@@ -98,10 +98,10 @@ export const PlanningReduceDigestSchema = Type.Object({
   sourceKind: Type.Union([Type.Literal('atom'), Type.Literal('reduce')]),
   status: Type.Union([Type.Literal('completed'), Type.Literal('skipped'), Type.Literal('failed'), Type.Literal('incomplete')]),
   summary: boundedString(1_500),
-  criterionIds: Type.Array(boundedString(80), { maxItems: 64 }),
-  aspectIds: Type.Array(boundedString(240), { maxItems: 128 }),
+  criterionIds: Type.Array(boundedString(80), { maxItems: 256 }),
+  aspectIds: Type.Array(boundedString(240), { maxItems: 512 }),
   fragments: Type.Optional(Type.Array(PlanningReduceDigestFragmentSchema, { maxItems: 16 })),
-  modules: Type.Optional(Type.Array(PlanningReduceDigestModuleSchema, { maxItems: 16 })),
+  modules: Type.Optional(Type.Array(PlanningReduceDigestModuleSchema, { maxItems: 32 })),
   issues: Type.Optional(Type.Array(PlanningReduceDigestIssueSchema, { maxItems: 16 })),
 }, { additionalProperties: false });
 
@@ -175,6 +175,67 @@ export function minimumReduceDigestPromptByteLength(input: MinimumReduceDigestPr
     criterionIds: nonEmptyOrFallback(input.criterionIds, 'ac-budget'),
     aspectIds: nonEmptyOrFallback(input.aspectIds, 'ac-budget:general:general'),
   });
+}
+
+export interface CandidateWorkDeclarations {
+  moduleId: string;
+  title: string;
+  description: string;
+  criterionIds: string[];
+  aspectIds: string[];
+  validationExpectation: string;
+  dependsOnModuleIds?: string[];
+  docsWork?: PlanningModuleDocsWork;
+  testWork?: PlanningModuleTestWork;
+  testOwnership?: PlanningModuleTestOwnership;
+  reviewDepth?: PlanningModuleReviewDepth;
+  reviewRationale?: string;
+}
+
+/**
+ * Deterministically rebuild digest modules from schema-validated module candidates
+ * (matched to authored digest modules by moduleId). Producers are prompted to mirror
+ * the declarations into their digests, but this guarantees they survive the
+ * digest-authored reduce path even when a producer omits them; the strongest work
+ * declaration wins and the candidate remains authoritative for exclusive ownership
+ * and review intent. Candidate traceability is authoritative because it is what
+ * artifact synthesis consumes; rebuilding the digest prevents a repaired child
+ * proposal from leaking stale pre-repair boundaries into its parent reducer.
+ * Submission tools must re-validate the rebuilt digest against the same byte and
+ * field budgets as the authored digest, since the rebuild is what parents consume.
+ */
+export function withCandidateWorkDeclarations(digest: PlanningReduceDigest, candidates: CandidateWorkDeclarations[]): PlanningReduceDigest {
+  if (candidates.length === 0) return digest;
+  const digestById = new Map((digest.modules ?? []).map((module) => [module.moduleId, module]));
+  const modules = candidates.map((candidate) => {
+    const authored = digestById.get(candidate.moduleId);
+    const docsWork = strongestWorkDeclaration(PLANNING_MODULE_DOCS_WORK_VALUES, authored?.docsWork, candidate.docsWork);
+    const testWork = strongestWorkDeclaration(PLANNING_MODULE_TEST_WORK_VALUES, authored?.testWork, candidate.testWork);
+    const testOwnership = candidate.testOwnership ?? authored?.testOwnership;
+    const reviewIntent = candidate.reviewDepth !== undefined
+      ? { reviewDepth: candidate.reviewDepth, reviewRationale: candidate.reviewRationale }
+      : { reviewDepth: authored?.reviewDepth, reviewRationale: authored?.reviewRationale };
+    return {
+      moduleId: candidate.moduleId,
+      title: candidate.title,
+      purpose: authored?.purpose ?? boundedOrReference(candidate.description, `Full description retained in module candidate ${candidate.moduleId}.`),
+      criterionIds: [...candidate.criterionIds],
+      aspectIds: [...candidate.aspectIds],
+      validationExpectation: authored?.validationExpectation ?? boundedOrReference(candidate.validationExpectation, `Validation details retained in module candidate ${candidate.moduleId}.`),
+      ...(docsWork !== undefined ? { docsWork } : {}),
+      ...(testWork !== undefined ? { testWork } : {}),
+      ...(testOwnership !== undefined ? { testOwnership } : {}),
+      ...(reviewIntent.reviewDepth !== undefined ? { reviewDepth: reviewIntent.reviewDepth } : {}),
+      ...(reviewIntent.reviewRationale !== undefined ? { reviewRationale: reviewIntent.reviewRationale } : {}),
+      ...(candidate.dependsOnModuleIds ? { dependsOnModuleIds: [...candidate.dependsOnModuleIds] } : {}),
+    };
+  });
+  return { ...digest, modules };
+}
+
+export function boundedOrReference(value: string | undefined, fallback: string): string {
+  if (value && utf8ByteLength(value) <= REDUCE_DIGEST_LIMITS.fragmentIntentBytes) return value;
+  return fallback;
 }
 
 export function clonePlanningReduceDigest(digest: PlanningReduceDigest): PlanningReduceDigest {

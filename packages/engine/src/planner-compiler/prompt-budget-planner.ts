@@ -29,7 +29,7 @@ export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduce
   // instead of re-running the full binary search per node.
   let cap = Math.max(1, tree.limits.maxReducePromptBytes);
   for (const node of levelZeroNodes) {
-    cap = maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }, cap);
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }, cap, input.graph);
   }
   return Math.max(1, cap);
 }
@@ -66,9 +66,9 @@ function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits:
     const candidateBase = normalizePlanningReduceBudget({ ...baseLimits, maxInputsPerReduce: fanIn });
     const initialTree = input.buildTree(candidateBase);
     fallbackTree = initialTree;
-    const budget = deriveTreeDigestPromptBudget(initialTree, input.atomOutputs);
+    const budget = deriveTreeDigestPromptBudget(initialTree, input.atomOutputs, input.graph);
     const tree = withReduceBudget(initialTree, { ...candidateBase, maxReduceDigestPromptBytes: budget });
-    const errors = validatePromptSafeTree(tree, input.atomOutputs);
+    const errors = validatePromptSafeTree(tree, input.atomOutputs, input.graph);
     lastErrors = errors;
     if (errors.length === 0) return { ok: true, tree, validationErrors: [], maxReduceDigestPromptBytes: budget };
   }
@@ -77,7 +77,7 @@ function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits:
   return { ok: false, tree: withReduceBudget(fallbackTree, { ...fallbackTree.limits, maxReduceDigestPromptBytes: budget }), validationErrors: lastErrors.length > 0 ? lastErrors : ['reduce prompt budget planning failed'], maxReduceDigestPromptBytes: budget };
 }
 
-export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[]): string[] {
+export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph): string[] {
   const errors = [...tree.validationErrors];
   const syntheticOutputs = new Map<string, PlanningReduceOutput>();
   for (const depth of reduceDepths(tree)) {
@@ -86,7 +86,7 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
       const atomInputs = atomOutputs
         .filter((output) => node.inputAtomIds.includes(output.atomId))
         .map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', tree.limits.maxReduceDigestPromptBytes, node.criterionIds, node.aspectIds) });
-      const task = buildPlanningReduceTask(tree, node, atomInputs, childOutputs);
+      const task = buildPlanningReduceTask(tree, node, atomInputs, childOutputs, graph);
       const promptBytes = utf8ByteLength(formatPlanningReducerPrompt(task));
       if (promptBytes > task.budget.maxReducePromptBytes) errors.push(`reduce prompt budget exceeded:${node.nodeId}`);
       syntheticOutputs.set(node.nodeId, syntheticReduceOutput(node, task.budget.maxReduceDigestPromptBytes));
@@ -95,7 +95,7 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
   return [...new Set(errors)].sort();
 }
 
-function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[]): number {
+function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph): number {
   if (tree.nodes.length === 0) return tree.limits.maxReduceDigestPromptBytes;
   // Only the minimum slot across nodes matters, so thread it through as the
   // search cap: structurally similar nodes confirm the cap with a single probe
@@ -103,18 +103,19 @@ function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: Pla
   let cap = Math.max(1, Math.min(tree.limits.maxReducePromptBytes, tree.limits.maxReduceDigestPromptBytes));
   for (const node of tree.nodes) {
     const childOutputs = node.inputNodeIds.map((nodeId) => syntheticReduceOutput(requireNode(tree, nodeId), tree.limits.maxReduceDigestPromptBytes));
-    cap = maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs }, cap);
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs }, cap, graph);
   }
   return Math.max(1, cap);
 }
 
-function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }, maxBudget: number): number {
+function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }, maxBudget: number, graph: PlanningAtomGraph): number {
   const fits = (digestBudget: number): boolean => {
     const task = buildPlanningReduceTask(
       withReduceBudget(tree, { ...tree.limits, maxReduceDigestPromptBytes: digestBudget }),
       node,
       inputs.atomOutputs.map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', digestBudget, node.criterionIds, node.aspectIds) }),
       inputs.childOutputs.map((output) => ({ ...output, reduceDigest: syntheticDigest(output.nodeId, 'reduce', digestBudget, node.criterionIds, node.aspectIds) })),
+      graph,
     );
     return utf8ByteLength(formatPlanningReducerPrompt(task)) <= task.budget.maxReducePromptBytes;
   };

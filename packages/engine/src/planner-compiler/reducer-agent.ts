@@ -4,10 +4,11 @@ import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { utf8ByteLength } from './source-analysis.js';
 import type { PlanningAtomOutput } from './atom-planning-contracts.js';
-import { PlanningReduceOutputSchema, type PlanningReduceOutput, type PlanningReduceTask } from './reduce-contracts.js';
-import { minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_DOCS_WORK_VALUES, PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_VALUES, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, REDUCE_DIGEST_LIMITS, strongestWorkDeclaration, validatePlanningReduceDigest, type PlanningModuleDocsWork, type PlanningModuleReviewDepth, type PlanningModuleTestOwnership, type PlanningModuleTestWork, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
+import { PlanningReduceOutputSchema, validatePlanningReduceModuleBoundaries, type PlanningReduceOutput, type PlanningReduceTask } from './reduce-contracts.js';
+import { boundedOrReference, minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, validatePlanningReduceDigest, withCandidateWorkDeclarations, type PlanningReduceDigest, type PlanningReduceDigestIssue } from './reduce-digest-contracts.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { emitPlannerCompilerCheckpointWarning, emitPlannerCompilerRetry, PLANNER_COMPILER_AGENT_MAX_ATTEMPTS, retryablePlannerCompilerSubtype } from './agent-retry.js';
+import type { PlanningModuleBoundaryBudget } from './module-boundary-budget.js';
 
 export interface RunPlanningReducerInput { task: PlanningReduceTask; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReducerResult { output: PlanningReduceOutput; events: EforgeEvent[]; resultText: string; prompt: string }
@@ -74,13 +75,15 @@ function assertFeasibleReduceDigestBudget(task: PlanningReduceTask): void {
 export function formatPlanningReducerPrompt(task: PlanningReduceTask, submitToolName = SUBMIT_REDUCE_OUTPUT_TOOL): string {
   return `You are a bounded reducer for eforge's planner compiler.
 
-Synthesize only the reduce node below. Do not inspect the repository or call repository tools. Deduplicate fragments and modules, reconcile conflicts, preserve criterion/aspect traceability, and complete this turn by calling ${submitToolName} exactly once. Do not return JSON in text.
+Synthesize only this reduce node without repository tools. Deduplicate fragments/modules, reconcile conflicts, preserve traceability, and submit through ${submitToolName}. Correct rejected submissions; stop after the first acceptance. Do not return JSON in text.
 
 Reducer inputs are bounded producer-authored digests. Full artifact markdown and long descriptions are intentionally omitted from this prompt; preserve and reason from the IDs, traceability, intent, purpose, gaps, and conflicts in the digests.
 
 ## Reduce task
 
-${JSON.stringify({ graphId: task.graphId, node: task.node, budget: task.budget }, null, 2)}
+${JSON.stringify({ graphId: task.graphId, node: promptReduceNode(task), budget: task.budget }, null, 2)}
+
+${formatModuleBoundaryCeilings(task.moduleBoundaryBudget)}
 
 ## Atom output reducer digests
 
@@ -99,7 +102,8 @@ Call ${submitToolName} with an object matching its schema.
 - Completed outputs must not contain representationRequired gaps.
 - Source/localization gaps (missing owner paths, missing contract/entrypoint/config/consumer surface evidence, directory-only evidence, missing materialized source, or localization ambiguity) must be emitted as structured gaps with issueKind, sourceLocalizationSignal: true, relevant sourceNeedIds, affectedAtomIds, ownerPaths when known, criterionIds, and aspectIds. Do not convert these gaps into implementation candidates.
 - Only source/localization gaps with concrete ownerPaths, productScopedOutputRefs, and productScopedValidationRefs tied to original criterionIds can later become buildable residue; otherwise they are repair-only compiler diagnostics.
-- Produce the smallest coherent module set. Coalesce input modules when one builder can implement them coherently within the reduce-node budget. Keep a split only for concrete independent ownership, dependency, or context boundaries; generic labels such as test versus general are not boundaries.
+- Produce the smallest coherent module set. Coalesce only within moduleBoundaryBudget; ownership, dependency, or a breached ceiling can require a split, but generic labels cannot.
+- Every module must fit the context, criterion, and subsystem ceilings. On rejection, split or narrow it without dropping coverage, then resubmit.
 - ${PLANNING_MODULE_DOCS_WORK_PROMPT_RULE}
 - ${PLANNING_MODULE_TEST_WORK_PROMPT_RULE}
 - ${PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE}
@@ -111,6 +115,15 @@ Call ${submitToolName} with an object matching its schema.
 - reduceDigest's formatted prompt JSON must fit within ${task.budget.maxReduceDigestPromptBytes} bytes (assigned by the map/reduce budget planner); prefer fewer fragments/modules with concise intent/purpose over long prose.
 - Keep compactSummary within ${task.budget.maxReduceSummaryBytes} bytes.
 `;
+}
+
+function promptReduceNode(task: PlanningReduceTask): Pick<PlanningReduceTask['node'], 'nodeId' | 'depth' | 'inputAtomIds' | 'inputNodeIds'> {
+  const { nodeId, depth, inputAtomIds, inputNodeIds } = task.node;
+  return { nodeId, depth, inputAtomIds, inputNodeIds };
+}
+
+function formatModuleBoundaryCeilings(budget: PlanningModuleBoundaryBudget): string {
+  return `Module ceilings: context=${budget.maxSourceContextBytes} bytes; criteria=${budget.maxCriteriaPerModule}; subsystems=${budget.maxSubsystemsPerModule}.`;
 }
 
 function createReduceOutputSubmissionTool(submitToolName: string, task: PlanningReduceTask, onSubmit: (output: PlanningReduceOutput) => boolean): CustomTool {
@@ -126,7 +139,17 @@ function createReduceOutputSubmissionTool(submitToolName: string, task: Planning
       if (output.reduceDigest) {
         const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.node.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxPromptBytes: task.budget.maxReduceDigestPromptBytes });
         if (errors.length > 0) return `Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`;
+        // Parents consume the digest with modules rebuilt from moduleCandidates, so the
+        // rebuilt projection must satisfy the same budgets as the authored digest or the
+        // prompt-budget planner's safety proof no longer covers execution.
+        const projected = withCandidateWorkDeclarations(output.reduceDigest, output.moduleCandidates ?? []);
+        if (projected !== output.reduceDigest) {
+          const projectedErrors = validatePlanningReduceDigest({ digest: projected, expectedSourceId: task.node.nodeId, expectedSourceKind: 'reduce', allowedCriterionIds: task.node.criterionIds, allowedAspectIds: task.node.aspectIds, maxPromptBytes: task.budget.maxReduceDigestPromptBytes });
+          if (projectedErrors.length > 0) return `Submission rejected: reduceDigest rebuilt from moduleCandidates fails validation: ${projectedErrors.join('; ')}\nParent reducers consume reduceDigest.modules rebuilt from moduleCandidates; trim, split, or mirror the candidates so the rebuilt digest fits its budgets, then call ${submitToolName} again.`;
+        }
       }
+      const moduleErrors = validatePlanningReduceModuleBoundaries(task, output);
+      if (moduleErrors.length > 0) return `Submission rejected: ${moduleErrors.join('; ')}\nSplit or narrow violating modules without dropping criterion/aspect coverage, mirror the repaired candidates in reduceDigest.modules, then call ${submitToolName} again.`;
       if (!onSubmit(output)) return `Error: ${submitToolName} was already called. Only one reduce output submission is allowed.`;
       return 'Reduce output submitted successfully.';
     },
@@ -170,42 +193,8 @@ function reduceDigestForReduceOutput(output: PlanningReduceOutput): PlanningRedu
   };
 }
 
-interface CandidateWorkDeclarations { moduleId: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string }
-
-/**
- * Deterministically stamp model-authored intent from schema-validated module candidates onto
- * producer-authored digest modules (matched by moduleId). Producers are prompted to mirror
- * the declarations into their digests, but this guarantees they survive the digest-authored
- * reduce path even when a producer omits them; the strongest work declaration wins and the
- * candidate remains authoritative for exclusive ownership and review intent.
- */
-function withCandidateWorkDeclarations(digest: PlanningReduceDigest, candidates: CandidateWorkDeclarations[]): PlanningReduceDigest {
-  if (!digest.modules || digest.modules.length === 0 || candidates.length === 0) return digest;
-  const candidatesById = new Map(candidates.map((candidate) => [candidate.moduleId, candidate]));
-  const modules = digest.modules.map((module) => {
-    const candidate = candidatesById.get(module.moduleId);
-    if (!candidate) return module;
-    const docsWork = strongestWorkDeclaration(PLANNING_MODULE_DOCS_WORK_VALUES, module.docsWork, candidate.docsWork);
-    const testWork = strongestWorkDeclaration(PLANNING_MODULE_TEST_WORK_VALUES, module.testWork, candidate.testWork);
-    const testOwnership = candidate.testOwnership ?? module.testOwnership;
-    // Review depth and rationale travel as a pair: a rationale written for one
-    // source's depth must not be attached to the other source's depth.
-    const reviewIntent = candidate.reviewDepth !== undefined
-      ? { reviewDepth: candidate.reviewDepth, reviewRationale: candidate.reviewRationale }
-      : { reviewDepth: module.reviewDepth, reviewRationale: module.reviewRationale };
-    const { reviewDepth, reviewRationale } = reviewIntent;
-    return { ...module, ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}), ...(testOwnership !== undefined ? { testOwnership } : {}), ...(reviewDepth !== undefined ? { reviewDepth } : {}), ...(reviewRationale !== undefined ? { reviewRationale } : {}) };
-  });
-  return { ...digest, modules };
-}
-
 function issueDigest(kind: 'conflict' | 'gap', issueId: string, title: string, description: string, criterionIds: string[], aspectIds: string[], sourceIds?: string[], representationRequired?: boolean): PlanningReduceDigestIssue {
   return { issueId, kind, title, summary: boundedOrReference(description, `Full ${kind} description retained in reduce artifact issue ${issueId}.`), criterionIds: [...criterionIds], aspectIds: [...aspectIds], ...(sourceIds ? { sourceIds: [...sourceIds] } : {}), ...(representationRequired ? { representationRequired } : {}) };
-}
-
-function boundedOrReference(value: string | undefined, fallback: string): string {
-  if (value && utf8ByteLength(value) <= REDUCE_DIGEST_LIMITS.fragmentIntentBytes) return value;
-  return fallback;
 }
 
 function uniq(values: string[]): string[] { return [...new Set(values.filter((value) => value.trim().length > 0))].sort(); }

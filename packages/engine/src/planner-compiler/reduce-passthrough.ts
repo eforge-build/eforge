@@ -28,7 +28,7 @@ export function singleAtomPassthroughOutput(graph: PlanningAtomGraph, tree: Plan
     ...(atomOutput.moduleCandidates && atomOutput.moduleCandidates.length > 0 ? { moduleCandidates: atomOutput.moduleCandidates.map(cloneModule) } : {}),
   };
 
-  const validation = validatePlanningReduceOutput({ graph, tree, task: buildPlanningReduceTask(tree, node, [atomOutput], []), output });
+  const validation = validatePlanningReduceOutput({ graph, tree, task: buildPlanningReduceTask(tree, node, [atomOutput], [], graph), output });
   return validation.ok ? output : undefined;
 }
 

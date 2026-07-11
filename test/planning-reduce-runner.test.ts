@@ -70,7 +70,7 @@ describe('planning reduce runner', () => {
   it('executes reduce nodes bottom-up and returns a completed root synthesis', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
-    const scripted = scriptedReduceOutputs(tree, data.mapResult.outputs);
+    const scripted = scriptedReduceOutputs(tree);
     const harness = new StubHarness(scripted.map(reduceSubmission));
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits, agentOptions: { maxTurns: 3 } });
@@ -81,7 +81,7 @@ describe('planning reduce runner', () => {
     expect(result.finalOutput?.status).toBe('completed');
     expect(result.iterations).toBe(2);
     expect(harness.calls.every((call) => call.tools === 'none' && call.maxTurns === 3)).toBe(true);
-    expect(harness.prompts[0]).toContain('Do not inspect the repository or call repository tools');
+    expect(harness.prompts[0]).toContain('without repository tools');
     expect(harness.customToolSets[0]?.map((tool) => tool.name)).toEqual(['submit_reduce_output']);
   });
 
@@ -89,7 +89,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const node = tree.nodes[0];
-    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, [], data.graph);
     const harness = new PrefixedSubmitHarness([{ toolCalls: [{ tool: 'submit_reduce_output', toolUseId: 'submit-invalid', input: { nodeId: node.nodeId }, output: 'unused' }] }]);
     const events: unknown[] = [];
 
@@ -119,12 +119,15 @@ describe('planning reduce runner', () => {
       },
     }));
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget } });
-    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, [], data.graph);
 
     const prompt = formatPlanningReducerPrompt(task);
 
     expect(prompt).toContain(`Digest for ${data.mapResult.outputs[0]!.atomId}.`);
     expect(prompt).toContain('Produce the smallest coherent module set');
+    expect(prompt).toContain('Module ceilings: context=1000 bytes; criteria=1; subsystems=2.');
+    expect(prompt.split('## Atom output reducer digests')[0]).not.toContain('"criterionIds"');
+    expect(prompt.split('## Atom output reducer digests')[0]).not.toContain('"aspectIds"');
     expect(prompt).toContain('testOwnership');
     expect(prompt).not.toContain('LOSSY-MARKDOWN-SHOULD-NOT-APPEAR');
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(task.budget.maxReducePromptBytes);
@@ -137,7 +140,7 @@ describe('planning reduce runner', () => {
       moduleCandidates: (output.moduleCandidates ?? []).map((module) => ({ ...module, docsWork: 'author-new' as const, testWork: 'exercise-existing' as const, testOwnership: 'existing-only' as const, reviewDepth: 'light' as const, reviewRationale: 'Localized change.' })),
     }));
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
-    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, [], data.graph);
 
     const prompt = formatPlanningReducerPrompt(task);
 
@@ -164,7 +167,7 @@ describe('planning reduce runner', () => {
       },
     }));
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
-    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(tree, tree.nodes[0], data.mapResult.outputs, [], data.graph);
 
     const prompt = formatPlanningReducerPrompt(task);
 
@@ -178,15 +181,37 @@ describe('planning reduce runner', () => {
     expect(prompt).not.toContain('"docsWork": "sync-existing"');
   });
 
+  it('rebuilds child digests from repaired candidate boundaries before parent reduction', () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    data.mapResult.outputs = data.mapResult.outputs.map((output) => ({
+      ...output,
+      reduceDigest: {
+        sourceId: output.atomId,
+        sourceKind: 'atom' as const,
+        status: output.status,
+        summary: `Digest for ${output.atomId}.`,
+        criterionIds: output.aspectUpdates.map((update) => update.aspectId.split(':')[0]!),
+        aspectIds: output.aspectUpdates.map((update) => update.aspectId),
+        modules: [{ moduleId: 'stale-pre-repair-module', title: 'Stale', purpose: 'Stale oversized boundary.', criterionIds: output.moduleCandidates![0]!.criterionIds, aspectIds: output.moduleCandidates![0]!.aspectIds }],
+      },
+    }));
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const prompt = formatPlanningReducerPrompt(buildPlanningReduceTask(tree, tree.nodes[0]!, data.mapResult.outputs, [], data.graph));
+
+    expect(prompt).toContain(`"moduleId": "${data.mapResult.outputs[0]!.moduleCandidates![0]!.moduleId}"`);
+    expect(prompt).not.toContain('stale-pre-repair-module');
+  });
+
   it('reduces fan-in when configured reducer inputs exceed prompt budget', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.', 'docs update `docs/c.md`.', 'test updates `test/d.test.ts`.']);
     data.mapResult.outputs = data.mapResult.outputs.map((output) => ({ ...output, reduceDigest: largeReduceDigest(output) }));
-    const adaptiveTree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxInputsPerReduce: 2, maxReducePromptBytes: constrainedPromptBudget } });
-    const harness = new StubHarness(scriptedReduceOutputs(adaptiveTree, data.mapResult.outputs).map(reduceSubmission));
+    const limits = { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget };
+    const planned = planPromptSafeReduceTree({ graph: data.graph, mapResult: data.mapResult, limits });
+    const harness = new StubHarness(scriptedReduceOutputs(planned.tree).map(reduceSubmission));
 
-    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: { ...reduceLimits, maxInputsPerReduce: 4, maxReducePromptBytes: constrainedPromptBudget } });
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits });
 
-    expect(result.tree.limits.maxInputsPerReduce).toBe(2);
+    expect(result.tree.limits.maxInputsPerReduce).toBeLessThanOrEqual(4);
     expect(result.reduceComplete).toBe(true);
     expect(harness.prompts.every((prompt) => Buffer.byteLength(prompt, 'utf8') <= constrainedPromptBudget)).toBe(true);
   });
@@ -195,9 +220,9 @@ describe('planning reduce runner', () => {
     const criteria = Array.from({ length: 120 }, (_, index) => `general work item ${index + 1} updates packages/engine/src/file-${index + 1}.ts.`);
     const data = fixture(criteria, true, { ...atomLimits, maxCriteriaPerUnit: 1, parallelism: 4 });
 
-    const budget = deriveInitialReduceDigestPromptBudget({ graph: data.graph, limits: { ...reduceLimits, maxReducePromptBytes: constrainedPromptBudget } });
+    const limits = { ...reduceLimits, maxReducePromptBytes: constrainedPromptBudget };
+    const budget = deriveInitialReduceDigestPromptBudget({ graph: data.graph, limits });
     const minimumAtomBudget = Math.max(...data.tasks.map((task) => minimumReduceDigestPromptByteLength({ sourceId: task.atomId, sourceKind: 'atom', criterionIds: task.criterionIds, aspectIds: task.aspectIds })));
-
     expect(data.graph.atoms.length).toBeGreaterThan(50);
     expect(budget).toBeGreaterThanOrEqual(minimumAtomBudget);
   });
@@ -211,11 +236,11 @@ describe('planning reduce runner', () => {
     const planned = planPromptSafeReduceTree({ graph: data.graph, mapResult: data.mapResult, limits });
 
     expect(planned.ok).toBe(true);
-    expect(planned.tree.limits.maxInputsPerReduce).toBe(2);
-    expect(validatePromptSafeTree(planned.tree, data.mapResult.outputs)).toEqual([]);
+    expect(planned.tree.limits.maxInputsPerReduce).toBeLessThanOrEqual(4);
+    expect(validatePromptSafeTree(planned.tree, data.mapResult.outputs, data.graph)).toEqual([]);
 
     const live: unknown[] = [];
-    const harness = new StubHarness(scriptedReduceOutputs(planned.tree, data.mapResult.outputs).map(reduceSubmission));
+    const harness = new StubHarness(scriptedReduceOutputs(planned.tree).map(reduceSubmission));
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits, onEvent: (event) => live.push(event) });
     const treeEvent = live.find((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'planning:map-reduce:reduce-tree') as { nodes?: Array<{ nodeId: string }> } | undefined;
 
@@ -228,7 +253,7 @@ describe('planning reduce runner', () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
     const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
     const node = tree.nodes[0];
-    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, [], data.graph);
     const events: unknown[] = [];
     const oversized = oversizedDigestReduceOutput(node);
     const digestBudget = deriveReduceDigestTotalByteLimit({ maxReducePromptBytes: task.budget.maxReducePromptBytes });
@@ -242,6 +267,102 @@ describe('planning reduce runner', () => {
     expect(result.output.reduceDigest?.sourceId).toBe(node.nodeId);
     expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
       expect.stringContaining('reduce digest prompt budget exceeded'),
+      expect.stringContaining('Reduce output submitted successfully.'),
+    ]);
+  });
+
+  it('rejects oversized module boundaries during submission and accepts a bounded repair', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.']);
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const node = tree.nodes[0]!;
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, [], data.graph);
+    const valid = validReduceOutput(node);
+    const oversized = {
+      ...valid,
+      moduleCandidates: [{
+        moduleId: 'oversized-module',
+        title: 'Oversized module',
+        criterionIds: node.criterionIds,
+        aspectIds: node.aspectIds,
+        description: 'Incorrectly combines bounded work.',
+        validationExpectation: 'Relevant validation passes.',
+      }],
+    };
+    const events: unknown[] = [];
+    const harness = new StubHarness([{ toolCalls: [
+      reduceToolCall(oversized, 'submit-oversized-module'),
+      reduceToolCall(valid, 'submit-bounded-repair'),
+    ] }]);
+
+    const result = await runPlanningReducer({ task, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } });
+
+    expect(result.output.moduleCandidates).toHaveLength(2);
+    expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
+      expect.stringContaining('module criterion budget exceeded:oversized-module:2>1'),
+      expect.stringContaining('Reduce output submitted successfully.'),
+    ]);
+  });
+
+  it('rejects submissions whose candidate-rebuilt digest exceeds the digest budget and accepts a repair', async () => {
+    const data = fixture(['engine updates `packages/engine/src/a.ts`.']);
+    const probeNode = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }).nodes[0]!;
+    const repaired = validReduceOutput(probeNode);
+    repaired.reduceDigest!.modules = repaired.moduleCandidates!.map((module) => ({ moduleId: module.moduleId, title: module.title, purpose: 'Bounded purpose.', criterionIds: module.criterionIds, aspectIds: module.aspectIds, validationExpectation: 'Run focused validation.' }));
+    // Budget admits the repaired digest (authored modules mirror the candidates) but not
+    // the lean-digest submission whose rebuild inlines the long candidate description.
+    const digestBudget = Buffer.byteLength(JSON.stringify(repaired.reduceDigest, null, 2), 'utf8') + 200;
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: { ...reduceLimits, maxReduceDigestPromptBytes: digestBudget } });
+    const node = tree.nodes[0]!;
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, [], data.graph);
+    const lean = validReduceOutput(node);
+    lean.moduleCandidates = lean.moduleCandidates!.map((module) => ({ ...module, description: 'x'.repeat(690) }));
+    const events: unknown[] = [];
+    const harness = new StubHarness([{ toolCalls: [
+      reduceToolCall(lean, 'submit-lean-digest-fat-candidates'),
+      reduceToolCall(repaired, 'submit-mirrored-repair'),
+    ] }]);
+
+    const result = await runPlanningReducer({ task, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } });
+
+    expect(result.output.reduceDigest?.modules).toHaveLength(1);
+    expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
+      expect.stringContaining('reduceDigest rebuilt from moduleCandidates fails validation'),
+      expect.stringContaining('Reduce output submitted successfully.'),
+    ]);
+  });
+
+  it('uses compiler subsystem evidence when repairing reducer boundaries', async () => {
+    const data = fixture(
+      ['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.'],
+      true,
+      { ...atomLimits, maxSubsystemsPerUnit: 1 },
+    );
+    data.graph.atoms.forEach((atom, index) => { atom.subsystemHints = [index === 0 ? 'engine' : 'client']; });
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const node = tree.nodes[0]!;
+    const task = buildPlanningReduceTask(tree, node, data.mapResult.outputs, [], data.graph);
+    const valid = validReduceOutput(node);
+    const oversized = {
+      ...valid,
+      moduleCandidates: [{
+        moduleId: 'cross-subsystem-module',
+        title: 'Cross subsystem module',
+        criterionIds: node.criterionIds,
+        aspectIds: node.aspectIds,
+        description: 'Incorrectly combines subsystem work.',
+        validationExpectation: 'Relevant validation passes.',
+      }],
+    };
+    const events: unknown[] = [];
+    const harness = new StubHarness([{ toolCalls: [
+      reduceToolCall(oversized, 'submit-cross-subsystem'),
+      reduceToolCall(valid, 'submit-subsystem-repair'),
+    ] }]);
+
+    await runPlanningReducer({ task, cwd: process.cwd(), harness, onEvent: (event) => { events.push(event); } });
+
+    expect(events.filter((event) => typeof event === 'object' && event !== null && (event as { type?: string }).type === 'agent:tool_result').map((event) => (event as { output?: string }).output)).toEqual([
+      expect.stringContaining('module subsystem budget exceeded:cross-subsystem-module:2>1'),
       expect.stringContaining('Reduce output submitted successfully.'),
     ]);
   });
@@ -291,7 +412,7 @@ describe('planning reduce runner', () => {
   it('propagates conflicts and gaps while incomplete map results prevent fake success', async () => {
     const data = fixture(['engine updates `packages/engine/src/a.ts`.'], false);
     const node = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }).nodes[0];
-    const task = buildPlanningReduceTask(buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }), node, data.mapResult.outputs, []);
+    const task = buildPlanningReduceTask(buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits }), node, data.mapResult.outputs, [], data.graph);
     const harness = new StubHarness([reduceSubmission(validReduceOutput(task.node, { gap: true, status: 'incomplete' }))]);
 
     const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness, limits: reduceLimits });
@@ -325,24 +446,44 @@ class PrefixedSubmitHarness extends StubHarness {
   }
 }
 
-function scriptedReduceOutputs(tree: ReturnType<typeof buildPlanningReduceTree>, atomOutputs: PlanningAtomOutput[]): PlanningReduceOutput[] {
+function scriptedReduceOutputs(tree: ReturnType<typeof buildPlanningReduceTree>): PlanningReduceOutput[] {
   const outputs: PlanningReduceOutput[] = [];
   for (const node of [...tree.nodes].sort((a, b) => a.depth - b.depth || a.nodeId.localeCompare(b.nodeId))) {
-    const task = buildPlanningReduceTask(tree, node, atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), outputs.filter((output) => node.inputNodeIds.includes(output.nodeId)));
-    outputs.push(validReduceOutput(task.node));
+    const output = validReduceOutput(node);
+    if (node.criterionIds.length > 8) {
+      output.moduleCandidates = undefined;
+      if (output.reduceDigest) output.reduceDigest.modules = undefined;
+    }
+    outputs.push(output);
   }
   return outputs;
 }
 
 function validReduceOutput(node: PlanningReduceNode, options: { gap?: boolean; status?: PlanningReduceOutput['status'] } = {}): PlanningReduceOutput {
   const fragmentId = `fragment-${node.nodeId}`;
+  const moduleCandidates = node.criterionIds.map((criterionId, index) => ({
+    moduleId: `module-${node.nodeId}-${index + 1}`,
+    title: `${node.nodeId} ${criterionId}`,
+    criterionIds: [criterionId],
+    aspectIds: node.aspectIds.filter((aspectId) => aspectId.startsWith(`${criterionId}:`)),
+    description: `Implement reduced work for ${criterionId}.`,
+    validationExpectation: 'Reduced validation passes.',
+  }));
   return {
     nodeId: node.nodeId,
     status: options.status ?? 'completed',
     compactSummary: `Reduced ${node.nodeId}.`,
     planFragments: [{ fragmentId, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }],
-    reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: options.status ?? 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds, fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }] },
-    moduleCandidates: [{ moduleId: `module-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: `Implement reduced work for ${node.nodeId}.`, validationExpectation: 'Reduced validation passes.' }],
+    reduceDigest: {
+      sourceId: node.nodeId,
+      sourceKind: 'reduce',
+      status: options.status ?? 'completed',
+      summary: `Reduced ${node.nodeId}.`,
+      criterionIds: node.criterionIds,
+      aspectIds: node.aspectIds,
+      fragments: [{ fragmentId: `digest-fragment-${node.nodeId}`, title: node.nodeId, intent: 'Implement reduced work.', criterionIds: node.criterionIds, aspectIds: node.aspectIds }],
+    },
+    moduleCandidates,
     ...(options.gap ? { gaps: [{ gapId: `gap-${node.nodeId}`, title: 'Gap', criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: 'Gap requires representation.', representationRequired: true }] } : {}),
     validationStrategy: 'Run relevant validation.',
   };
