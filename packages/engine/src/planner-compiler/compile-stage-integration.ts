@@ -9,7 +9,7 @@ import { AdaptiveRescopeFailClosedError, runAdaptiveExplorationRescope, type Ada
 import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact, writeRescopeFailClosedArtifact } from './compiler-diagnostics.js';
 import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult } from './compiler-runner.js';
-import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults } from './plan-artifact-synthesis.js';
+import { synthesizePlanningArtifacts, type PlanningArtifactPipelineDefaults, type PlanningArtifactSynthesisResult } from './plan-artifact-synthesis.js';
 import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 import { runPlanningSatisfactionGate } from './satisfaction-gate-agent.js';
 import type { PlanningSatisfactionSkipDecision } from './satisfaction-gate-contracts.js';
@@ -58,10 +58,9 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     throw err;
   }
 
-  const compilerDiagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: ctx.planSetName });
-  yield* writeCompilerDiagnosticsBestEffort(ctx, compilerDiagnostics);
-
   if (compilerResult.status === 'failed') {
+    const compilerDiagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: ctx.planSetName });
+    yield* writeCompilerDiagnosticsBestEffort(ctx, compilerDiagnostics);
     const detail = compilerResult.validationErrors.join('; ') || compilerResult.map.failedAtomIds.join(',') || compilerResult.reduce.validationErrors.join('; ') || 'unknown failure';
     const reason = compilerResult.rescopeDiagnostics?.status === 'exhausted-proceeded' && detail.includes('Atom planner did not call')
       ? `Adaptive rescoping exhausted with critical source need(s) unresolved; failing compile instead of producing vague plans. ${detail}`
@@ -70,7 +69,19 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     throw new Error(reason);
   }
 
-  const artifacts = synthesizePlanningArtifacts({ compilerResult });
+  let artifacts: PlanningArtifactSynthesisResult;
+  try {
+    artifacts = synthesizePlanningArtifacts({ compilerResult });
+  } catch (err) {
+    // Safety net: a synthesis throw must not lose the post-mortem diagnostics
+    // artifact, so write an artifact-less snapshot before failing the compile.
+    yield* writeCompilerDiagnosticsBestEffort(ctx, buildCompilerDiagnostics({ compilerResult, planSetName: ctx.planSetName }));
+    const reason = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };
+    throw err;
+  }
+  const compilerDiagnostics = buildCompilerDiagnostics({ compilerResult, planSetName: ctx.planSetName, artifacts });
+  yield* writeCompilerDiagnosticsBestEffort(ctx, compilerDiagnostics);
   if (artifacts.validationErrors.length > 0) {
     const reason = `Bounded planner compiler produced invalid artifacts: ${artifacts.validationErrors.join('; ')}`;
     yield { timestamp: new Date().toISOString(), type: 'planning:error', reason };

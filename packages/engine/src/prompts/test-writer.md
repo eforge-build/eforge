@@ -5,12 +5,17 @@ You are a test-writer agent working in a git worktree. Your job is to write test
 ## Plan Context
 
 - **Plan ID**: {{plan_id}}
+- **Executable test ownership**: `{{test_ownership}}`
 
 ### Plan Content
 
 {{plan_content}}
 
 {{implementation_context}}
+
+## Ownership Boundary
+
+The executable ownership value above is authoritative. Proceed only when it is `test-writer`; otherwise make no changes and emit `count="0"`. Missing ownership is not authorization. Do not rewrite tests already authored by another stage merely to restate the same acceptance coverage.
 
 ## Process
 

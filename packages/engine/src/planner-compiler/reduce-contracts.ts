@@ -5,6 +5,7 @@ import type { PlanningAtomMapResult } from './atom-map-runner.js';
 import { PlanningAtomModuleCandidateSchema, PlanningAtomPlanFragmentSchema, type PlanningAtomModuleCandidate, type PlanningAtomOutput, type PlanningAtomPlanFragment, type PlanningAtomTask } from './atom-planning-contracts.js';
 import { LocalizationIssueKindSchema, type LocalizationIssueKind } from './localization-issue-contracts.js';
 import { clonePlanningReduceDigest, deriveReduceDigestTotalByteLimit, PlanningReduceDigestSchema, validatePlanningReduceDigest, type PlanningReduceDigest } from './reduce-digest-contracts.js';
+import { derivePlanningModuleBoundaryBudget, planningModuleBoundaryErrors, type PlanningModuleBoundaryBudget } from './module-boundary-budget.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
 export const PlanningReduceIssueSchema = Type.Object({ title: boundedString(240), criterionIds: Type.Array(boundedString(80), { maxItems: 64 }), aspectIds: Type.Array(boundedString(240), { maxItems: 128 }), description: boundedString(4_000), sourceIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 32 })) }, { additionalProperties: false });
@@ -21,7 +22,7 @@ export interface PlanningReduceTree { graphId: string; nodes: PlanningReduceNode
 export interface PlanningReduceConflict { conflictId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; sourceIds?: string[] }
 export type PlanningReduceGapIssueKind = LocalizationIssueKind;
 export interface PlanningReduceGap { gapId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; representationRequired: boolean; sourceIds?: string[]; issueKind?: PlanningReduceGapIssueKind; sourceLocalizationSignal?: boolean; sourceNeedIds?: string[]; affectedAtomIds?: string[]; ownerPaths?: string[]; productScopedOutputRefs?: string[]; productScopedValidationRefs?: string[] }
-export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget }
+export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget; moduleBoundaryBudget: PlanningModuleBoundaryBudget }
 export interface PlanningReduceOutput { nodeId: string; status: PlanningReduceOutputStatus; compactSummary: string; reduceDigest?: PlanningReduceDigest; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; conflicts?: PlanningReduceConflict[]; gaps?: PlanningReduceGap[]; validationStrategy?: string; error?: string }
 export interface BuildPlanningReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits }
 export interface BuildPlanningReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits }
@@ -47,8 +48,15 @@ export function buildPlanningReduceTreeFromAtomTasks(input: BuildPlanningReduceT
   return buildReduceTreeFromAtomIds({ graphId: input.graph.graphId, atomIds: tasks.map((task) => task.atomId), limits, nodeForAtomInputs: (nodeId, depth, atomIds, inputNodeIds, priorNodes) => nodeForTaskInputs(nodeId, depth, atomIds, inputNodeIds, taskById, priorNodes) });
 }
 
-export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[]): PlanningReduceTask {
-  return { graphId: tree.graphId, node: cloneNode(node), atomOutputs: atomOutputs.map(cloneAtomOutput), childOutputs: childOutputs.map(cloneReduceOutput), budget: { ...tree.limits } };
+export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[], graph: PlanningAtomGraph): PlanningReduceTask {
+  return {
+    graphId: tree.graphId,
+    node: cloneNode(node),
+    atomOutputs: atomOutputs.map(cloneAtomOutput),
+    childOutputs: childOutputs.map(cloneReduceOutput),
+    budget: { ...tree.limits },
+    moduleBoundaryBudget: derivePlanningModuleBoundaryBudget(graph, node),
+  };
 }
 
 export function validatePlanningReduceOutput(input: ValidatePlanningReduceOutputInput): PlanningReduceOutputValidation {
@@ -142,9 +150,19 @@ function validateReduceOutput(input: ValidatePlanningReduceOutputInput): string[
   validateUniqueIds('reduce gap', output.gaps?.map((gap) => gap.gapId) ?? [], errors);
   for (const fragment of output.planFragments ?? []) validateFragment(task, fragment, output.planFragments ?? [], errors);
   for (const module of output.moduleCandidates ?? []) validateModule(task, module, output.moduleCandidates ?? [], errors);
+  errors.push(...validatePlanningReduceModuleBoundaries(task, output));
   for (const conflict of output.conflicts ?? []) validateIssue(task, 'conflict', conflict.conflictId, conflict.criterionIds, conflict.aspectIds, conflict.description, errors);
   for (const gap of output.gaps ?? []) validateIssue(task, 'gap', gap.gapId, gap.criterionIds, gap.aspectIds, gap.description, errors);
   return errors;
+}
+
+export function validatePlanningReduceModuleBoundaries(task: PlanningReduceTask, output: PlanningReduceOutput): string[] {
+  // Parents consume the digest with modules rebuilt from moduleCandidates when
+  // candidates exist, and the authored digest modules otherwise; check whichever
+  // module set actually flows downstream so no boundary escapes the ceilings.
+  const candidates = output.moduleCandidates ?? [];
+  const consumed = candidates.length > 0 ? candidates : output.reduceDigest?.modules ?? [];
+  return planningModuleBoundaryErrors(task.moduleBoundaryBudget, consumed);
 }
 
 function validateFragment(task: PlanningReduceTask, fragment: PlanningAtomPlanFragment, siblings: PlanningAtomPlanFragment[], errors: string[]): void {

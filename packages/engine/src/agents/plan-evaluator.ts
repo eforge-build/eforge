@@ -59,6 +59,8 @@ interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   modelTracker?: ModelTracker;
   /** Repository-relative directory prefix that all evaluator verdict paths must stay within. */
   allowedPathPrefix?: string;
+  /** Candidate path groups that must receive one all-accept or all-reject verdict. */
+  atomicPathGroups?: string[][];
   /** Override max conversation turns (default: evaluation tier default). */
   maxTurns?: number;
   /** Continuation context when retrying after maxTurns exhaustion */
@@ -70,42 +72,8 @@ interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   lane?: string;
 }
 
-/**
- * Options for the plan evaluator agent.
- */
-interface PlanEvaluatorOptions extends SdkPassthroughConfig {
-  /** Harness for running the agent */
-  harness: AgentHarness;
-  /** The plan set name */
-  planSetName: string;
-  /** The original source/PRD content for context */
-  sourceContent: string;
-  /** Working directory */
-  cwd: string;
-  /** Whether to emit verbose agent-level events */
-  verbose?: boolean;
-  /** AbortController for cancellation */
-  abortController?: AbortController;
-  /** Plan output directory (defaults to 'eforge/plans'). */
-  outputDir?: string;
-  /** Immutable candidate snapshot captured by the engine before evaluation. */
-  evaluationSnapshot?: EvaluationSnapshot;
-  /** Commit message body for accepted compile evaluator fixes. */
-  commitMessage?: string;
-  /** Optional model tracker for Models-Used commit trailers. */
-  modelTracker?: ModelTracker;
-  /** Repository-relative directory prefix that all evaluator verdict paths must stay within. */
-  allowedPathPrefix?: string;
-  /** Override max conversation turns (default: evaluation tier default). */
-  maxTurns?: number;
-  /** Continuation context when retrying after maxTurns exhaustion */
-  continuationContext?: {
-    attempt: number;
-    maxContinuations: number;
-  };
-  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
-  lane?: string;
-}
+/** Options accepted by the public plan/planning-quality evaluator wrappers. */
+type PlanEvaluatorOptions = Omit<PlanPhaseEvaluatorOptions, 'mode'>;
 
 
 // Mode-specific configuration
@@ -119,6 +87,8 @@ const MODE_CONFIG = {
       evaluator_title: 'Plan Fix Evaluator',
       evaluator_context: 'A planner agent generated plan files and committed them. A blind plan reviewer then reviewed the plan files and left fixes as captured candidate changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
       strict_improvement_bullet_1: 'It fixes a genuine, objective issue (missing dependency, incorrect file path, coverage gap, contradictory scope)',
+      restructuring_principle: 'It does NOT restructure or reorganize plans',
+      restructuring_reject: 'The change splits, merges, or reorders plans',
       accept_patterns_table: `| Missing dependency | Plan B uses types from Plan A but doesn't list A in \`depends_on\` |
 | Incorrect file path | Plan references \`src/utils/helper.ts\` but file is at \`src/lib/helper.ts\` |
 | Missing PRD coverage | Source requires auth but no plan covers it — reviewer adds coverage note |
@@ -139,18 +109,23 @@ const MODE_CONFIG = {
     promptVars: {
       evaluator_title: 'Planning Quality Fix Evaluator',
       evaluator_context: 'A bounded planner compiler generated planning artifacts (plan files, orchestration.yaml, architecture.md, acceptance-coverage.md, compiler-diagnostics.json) and committed them. A blind planning quality reviewer then audited coverage, coherence, buildability, traceability, and pipeline sanity — and left fixes as captured candidate changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.',
-      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (uncovered acceptance criterion, missing dependency, artifact disagreement, ownership conflict, review settings mismatched to plan risk)',
+      strict_improvement_bullet_1: 'It fixes a genuine, objective issue (uncovered acceptance criterion, missing dependency, artifact disagreement, ownership conflict, or redundant plan/pipeline structure)',
+      restructuring_principle: 'Typed plan merges, redundant-stage removal, and review-depth reduction are allowed only when the diff preserves all requirements and regenerates the affected artifacts cohesively',
+      restructuring_reject: 'Reject splits or reorders, and reject merges that remove requirements, cross independent ownership boundaries, or leave partially regenerated artifacts',
       accept_patterns_table: `| Missing dependency | Plan B uses outputs of Plan A but doesn't list A in \`depends_on\` |
 | Coverage gap closed | An acceptance criterion had no plan coverage — fix adds concrete plan content covering it |
 | Artifact disagreement | architecture.md contracts or ownership disagree with the plan files — fix aligns them |
 | Ownership conflict resolved | Two plans claim the same file — fix declares a dependency to sequence them |
 | Review settings corrected | A large risky plan carried lighter review settings than a trivial plan |
+| Cohesive plans merged | Two small plans describe one bounded implementation and their regenerated artifacts preserve all criteria, ownership, and dependencies |
+| Redundant stage removed | A stage unsupported by normalized work intent is removed without crossing a safety floor |
+| Review depth reduced | Review is reduced only to the deterministic floor for a low-risk plan |
 | Incorrect file path | Plan references a path that doesn't exist in the repository |`,
       reject_criteria_extra: `
-4. **Coverage weakened or deleted** — The change removes or waters down acceptance coverage entries instead of resolving them with plan content
-5. **Compiler diagnostics modified** — The change edits or deletes compiler-diagnostics.json; diagnostics record what the compiler did and are never a fix target
-6. **PRD semantics changed** — The change alters what the source/PRD requires rather than how the plans satisfy it
-7. **Structurally invalid artifacts** — The change would leave orchestration.yaml or a plan file unparseable or structurally invalid`,
+6. **Coverage weakened or deleted** — The change removes or waters down acceptance coverage entries instead of resolving them with plan content
+7. **Compiler diagnostics modified** — The change edits or deletes compiler-diagnostics.json; diagnostics record what the compiler did and are never a fix target
+8. **PRD semantics changed** — The change alters what the source/PRD requires rather than how the plans satisfy it
+9. **Structurally invalid artifacts** — The change would leave orchestration.yaml or a plan file unparseable or structurally invalid`,
     },
   },
 } as const;
@@ -200,11 +175,26 @@ function validatePathGuard(
   }
 }
 
+/** Structural simplifications regenerate several files and must be adjudicated as one unit. */
+function validateAtomicPathGroups(verdicts: EvaluationVerdict[], groups: string[][] | undefined, snapshot?: EvaluationSnapshot): void {
+  if (!groups || !snapshot) return;
+  const candidatePaths = new Set(snapshot.files.map((file) => file.path));
+  for (const group of groups) {
+    const paths = group.filter((path) => candidatePaths.has(path));
+    if (paths.length < 2) continue;
+    const actions = new Set<string>();
+    for (const path of paths) {
+      const pathVerdicts = verdicts.filter((verdict) => verdict.file === path);
+      if (pathVerdicts.length === 0) throw new Error(`Atomic structural candidate is missing a verdict for: ${path}`);
+      for (const verdict of pathVerdicts) actions.add(verdict.action === 'accept' ? 'accept' : 'reject');
+    }
+    if (actions.size > 1) throw new Error(`Atomic structural candidate requires one verdict across: ${paths.join(', ')}`);
+  }
+}
+
 /**
  * Deterministic backstop for protected planning artifacts: an accepted verdict
  * must never delete (or rename away) one of the compiler's core artifacts.
- * Content edits stay LLM-adjudicated via the prompt's reject criteria; only
- * whole-file removal is blocked here, mirroring validatePathGuard's failure path.
  */
 function validateProtectedArtifacts(
   verdicts: EvaluationVerdict[],
@@ -374,6 +364,7 @@ The previous evaluator run was interrupted before a final verdict submission was
       'protectedArtifacts' in config ? config.protectedArtifacts : undefined,
       options.evaluationSnapshot,
     );
+    validateAtomicPathGroups(verdicts, options.atomicPathGroups, options.evaluationSnapshot);
     const application = await applyEvaluationVerdicts(options.evaluationSnapshot, verdicts, { commit: false });
     // Orchestration is the dependency source of truth once fixes can mutate it;
     // re-derive the machine-managed manifest fence before committing so the

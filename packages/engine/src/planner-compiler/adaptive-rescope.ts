@@ -7,7 +7,7 @@ import { evidenceSlug } from './evidence-hygiene.js';
 import { DEFAULT_EXPLORATION_MAX_TURNS, runRepositoryExplorationAgent } from './exploration-agent.js';
 import { decideExplorationSkip, EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE, type RepositoryExplorationOutcome } from './exploration-contracts.js';
 import { deriveRepositoryIndex } from './repository-index.js';
-import { stableSlug } from './source-analysis.js';
+import { GENERIC_SURFACE_TERMS, stableSlug } from './source-analysis.js';
 import { deriveSourceLocalization } from './source-localization.js';
 import type { SourceLocalizationBundle, SourceLocalizationHint, SourceLocalizationInputHints, SourceLocalizationRecord } from './source-localization-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
@@ -102,13 +102,9 @@ function isCompileBlockingNeed(record: SourceLocalizationRecord): boolean {
   return record.source !== 'project-hint' && CRITICAL_NEED_KINDS.has(record.kind);
 }
 
-function unresolvedInterfaceSignalNeedIds(bundle: SourceLocalizationBundle): string[] {
-  return bundle.records
-    .filter(isUnresolved)
-    .filter((record) => record.kind === 'interface')
-    .map((record) => record.needId)
-    .sort();
-}
+// Derived from the shared generic-surface vocabulary so the two lists cannot
+// diverge; 'general' is the inventory fallback hint, not a surface term.
+const GENERIC_SCOPE_LABELS = new Set([...GENERIC_SURFACE_TERMS, 'general']);
 
 export interface CriticalNeedPartition { rescopable: string[]; unrescopable: string[] }
 
@@ -132,21 +128,25 @@ export interface RescopeRiskClassification { risky: boolean; reasons: string[] }
 
 /**
  * A degraded exploration outcome is risky when existing deterministic signals
- * say localization cannot be trusted: low high-confidence share, a collapsed
- * root atom spanning more subsystems than one planning unit allows, or
- * unresolved needs tied to interface contracts. Rescoping only remedies the
- * collapsed-root pathology, so an already-decomposed graph is never risky
+ * say localization cannot be trusted: a low non-empty high-confidence share or
+ * a collapsed root spanning more concrete subsystems than one planning unit
+ * allows. Generic lexical surfaces and unresolved inferred interface labels
+ * trigger repository inspection, not architectural decomposition. Rescoping
+ * only remedies the collapsed-root pathology, so an already-decomposed graph is never risky
  * here - it keeps today's warning-only degradation.
  */
 export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; inventory: SourceInventory; graph: PlanningAtomGraph; limits: PlanningDecompositionLimits }): RescopeRiskClassification {
   if (input.graph.atoms.length > 1) return { risky: false, reasons: [`already-decomposed (${input.graph.atoms.length} atoms)`] };
   const reasons: string[] = [];
   const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount);
-  if (skip.share < EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE) reasons.push(`low-confidence-share (${skip.highConfidenceCount}/${skip.literalNeedCount})`);
-  const subsystems = new Set(input.inventory.criteria.flatMap((criterion) => criterion.subsystemHints));
-  if (subsystems.size > input.limits.maxSubsystemsPerUnit) reasons.push(`subsystem-diverse-root (${subsystems.size} subsystems)`);
-  const interfaceSignals = unresolvedInterfaceSignalNeedIds(input.bundle);
-  if (interfaceSignals.length > 0) reasons.push(`unresolved-interface-signals (${interfaceSignals.length})`);
+  // A source with no literal path/directory needs requires bounded repository
+  // inspection, but 0/0 is not evidence that the root scope is unsafe. Treating
+  // it as a zero-percent share pre-splits small lexical categories (for example
+  // implementation versus test criteria) before the model can propose a
+  // coherent boundary.
+  if (skip.literalNeedCount > 0 && skip.share < EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE) reasons.push(`low-confidence-share (${skip.highConfidenceCount}/${skip.literalNeedCount})`);
+  const subsystems = new Set(input.inventory.criteria.flatMap((criterion) => criterion.subsystemHints).filter((hint) => !GENERIC_SCOPE_LABELS.has(hint)));
+  if (subsystems.size > input.limits.maxSubsystemsPerUnit) reasons.push(`subsystem-diverse-root (${subsystems.size} concrete subsystems)`);
   return { risky: reasons.length > 0, reasons };
 }
 

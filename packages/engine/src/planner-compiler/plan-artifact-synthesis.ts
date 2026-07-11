@@ -2,33 +2,29 @@ import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { PlanningArchitectureManifest } from './architecture-manifest-contracts.js';
 import { synthesizeArchitecture } from './architecture-synthesis.js';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
-import { derivePlanningAspectCoverage } from './coverage-accounting.js';
+import { derivePlanningAspectCoverage, type PlanningAspectCoverageSummary } from './coverage-accounting.js';
 import type { PlanningAtomModuleCandidate, PlanningAtomPlanFragment } from './atom-planning-contracts.js';
-import { derivePlanPipelineSettings, type DerivedPlanPipelineSettings } from './pipeline-derivation.js';
-import type { PlanningModuleDocsWork, PlanningModuleTestWork } from './reduce-digest-contracts.js';
+import { cloneBuildStages } from './pipeline-derivation.js';
+import { normalizePlanningProposal, type PlanningProposalNormalizationResult } from './proposal-normalization.js';
+import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleTestOwnership, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 
 export interface SynthesizePlanningArtifactsInput { compilerResult: BoundedPlannerCompilerResult }
-export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; docsWork: PlanningModuleDocsWork; testWork: PlanningModuleTestWork; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
+export interface PlanningSynthesizedModulePlan { moduleId: string; title: string; criterionIds: string[]; aspectIds: string[]; markdown: string; dependsOnModuleIds: string[]; validationExpectation: string; residue: boolean; docsWork: PlanningModuleDocsWork; testWork: PlanningModuleTestWork; testOwnership: PlanningModuleTestOwnership; reviewDepth: PlanningModuleReviewDepth; reviewRationale?: string; build: BuildStageSpec[]; review: ReviewProfileConfig; pipelineRationale: string }
 export interface PlanningArtifactOrchestration { modules: Array<{ id: string; dependsOn: string[]; build: BuildStageSpec[]; review: ReviewProfileConfig }> }
 export interface PlanningArtifactPipelineDefaults { defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
-export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; acceptanceCoverageMarkdown: string; validationErrors: string[] }
+export interface PlanningArtifactSynthesisResult { architectureMarkdown: string; architectureManifest: PlanningArchitectureManifest; planMarkdown: string; modulePlans: PlanningSynthesizedModulePlan[]; orchestration: PlanningArtifactOrchestration; pipelineDefaults: PlanningArtifactPipelineDefaults; normalization: PlanningProposalNormalizationResult; acceptanceCoverageMarkdown: string; validationErrors: string[] }
 
-type PlanningSynthesizedModulePlanBase = Omit<PlanningSynthesizedModulePlan, 'build' | 'review' | 'pipelineRationale'>;
+type PlanningSynthesizedModulePlanBase = Omit<PlanningSynthesizedModulePlan, 'build' | 'review' | 'docsWork' | 'testWork' | 'reviewDepth' | 'testOwnership' | 'pipelineRationale'> & { docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth };
 
 export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsInput): PlanningArtifactSynthesisResult {
   const result = input.compilerResult;
   const fragments = selectPlanFragments(result);
   const baseModules = [...candidateModules(result, fragments), ...residueModules(result.residue.candidates)];
-  const derivation = derivePlanPipelineSettings({
-    modules: baseModules.map((module) => ({ moduleId: module.moduleId, criterionIds: module.criterionIds, aspectIds: module.aspectIds, dependsOnModuleIds: module.dependsOnModuleIds, residue: module.residue, docsWork: module.docsWork, testWork: module.testWork })),
-    atoms: result.atomGraph.atoms,
-    localizationRecords: result.sourceLocalizationBundle.records,
-    residueCandidates: result.residue.candidates,
-  });
-  const modules = baseModules.map((module) => stampPipelineSettings(module, derivation.plans));
-  const validationErrors = validateSynthesizedArtifacts(result, modules);
-  const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules });
+  const normalization = normalizePlanningProposal({ compilerResult: result, modules: baseModules });
+  const modules = normalization.modules.map(stampNormalizedModule);
+  const validationErrors = validateSynthesizedArtifacts(result, normalization.validationErrors);
+  const architecture = synthesizeArchitecture({ compilerResult: result, modulePlans: modules, fileOwnership: normalization.fileOwnership });
   const acceptanceCoverageMarkdown = coverageMarkdownFor(result);
   const planMarkdown = planMarkdownFor(result, modules, fragments);
   if (!nonEmpty(architecture.markdown)) validationErrors.push('architecture markdown is empty');
@@ -38,18 +34,32 @@ export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsIn
     architectureManifest: architecture.manifest,
     planMarkdown,
     modulePlans: modules,
-    orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds], build: [...module.build], review: { ...module.review, perspectives: [...module.review.perspectives] } })) },
-    pipelineDefaults: { defaultBuild: derivation.defaultBuild, defaultReview: derivation.defaultReview, rationale: derivation.rationale },
+    orchestration: { modules: modules.map((module) => ({ id: module.moduleId, dependsOn: [...module.dependsOnModuleIds], build: cloneBuildStages(module.build), review: { ...module.review, perspectives: [...module.review.perspectives] } })) },
+    pipelineDefaults: { defaultBuild: normalization.defaultBuild, defaultReview: normalization.defaultReview, rationale: normalization.rationale },
+    normalization,
     acceptanceCoverageMarkdown,
     validationErrors: [...new Set(validationErrors)].sort(),
   };
 }
 
-function stampPipelineSettings(module: PlanningSynthesizedModulePlanBase, plans: DerivedPlanPipelineSettings[]): PlanningSynthesizedModulePlan {
-  const settings = plans.find((plan) => plan.moduleId === module.moduleId);
-  if (!settings) throw new Error(`missing derived pipeline settings for module:${module.moduleId}`);
-  return { ...module, build: [...settings.build], review: { ...settings.review, perspectives: [...settings.review.perspectives] }, pipelineRationale: settings.rationale };
+function stampNormalizedModule(module: PlanningProposalNormalizationResult['modules'][number]): PlanningSynthesizedModulePlan {
+  const { proposedIntent: _proposedIntent, normalizationChanges: _normalizationChanges, ownedPaths: _ownedPaths, reviewFloor: _reviewFloor, risk: _risk, budgetUsage: _budgetUsage, ...normalized } = module;
+  return { ...normalized, markdown: appendNormalizedExecutionIntent(module.markdown, module), build: cloneBuildStages(module.build), review: { ...module.review, perspectives: [...module.review.perspectives] } };
 }
+
+/**
+ * Render the Execution Intent section purely from normalized pipeline settings
+ * and append it as the final section of every plan (candidate and residue).
+ * The block is never regex-patched into agent-authored markdown: agent text
+ * cannot absorb, shadow, or spoof the stamp, replacement-pattern characters
+ * (`$&` etc.) are inert, and the rationale is collapsed to a single line so a
+ * model-authored review rationale cannot inject extra declaration lines.
+ */
+function appendNormalizedExecutionIntent(markdown: string, settings: Pick<PlanningSynthesizedModulePlan, 'testOwnership' | 'reviewDepth' | 'pipelineRationale'>): string {
+  return [markdown, '', '## Execution Intent', '', `Test ownership: ${settings.testOwnership}`, `Review depth: ${settings.reviewDepth}`, `Review rationale: ${singleLine(settings.pipelineRationale)}`].join('\n');
+}
+
+function singleLine(value: string): string { return value.replace(/\s+/g, ' ').trim(); }
 
 function selectPlanFragments(result: BoundedPlannerCompilerResult): PlanningAtomPlanFragment[] {
   const reduceFragments = artifactReduceOutputs(result).flatMap((output) => output.planFragments ?? []);
@@ -78,8 +88,11 @@ function modulePlanFromCandidate(module: PlanningAtomModuleCandidate, fragments:
     dependsOnModuleIds: uniq(module.dependsOnModuleIds ?? []),
     validationExpectation: module.validationExpectation,
     residue: false,
-    docsWork: module.docsWork ?? 'none',
-    testWork: module.testWork ?? 'none',
+    ...(module.docsWork ? { docsWork: module.docsWork } : {}),
+    ...(module.testWork ? { testWork: module.testWork } : {}),
+    ...(module.testOwnership ? { testOwnership: module.testOwnership } : {}),
+    ...(module.reviewDepth ? { reviewDepth: module.reviewDepth } : {}),
+    ...(module.reviewRationale ? { reviewRationale: module.reviewRationale } : {}),
   };
 }
 
@@ -102,37 +115,18 @@ function residueModules(candidates: PlanningResidueCandidate[]): PlanningSynthes
   }));
 }
 
-function validateSynthesizedArtifacts(result: BoundedPlannerCompilerResult, modules: PlanningSynthesizedModulePlan[]): string[] {
-  const errors = [...result.validationErrors];
-  validateModules(modules, errors);
-  validateCoverage(result, errors);
+function validateSynthesizedArtifacts(result: BoundedPlannerCompilerResult, normalizationErrors: string[]): string[] {
+  // Compiler-level validation errors still block artifact synthesis; they are
+  // merged here (not inside normalization) so the normalization verdict stays
+  // scoped to the model's proposal.
+  const errors = [...normalizationErrors, ...result.validationErrors];
+  const coverage = coverageFor(result);
+  validateCoverage(coverage, errors);
   if (result.reduce.finalOutput?.status === 'failed' && result.residue.candidates.length === 0) errors.push('failed reduce output requires residue coverage');
-  return errors;
+  return [...new Set(errors)].sort();
 }
 
-function validateModules(modules: PlanningSynthesizedModulePlan[], errors: string[]): void {
-  const moduleIds = new Set(modules.map((module) => module.moduleId).filter(nonEmpty));
-  validateUnique('module', modules.map((module) => module.moduleId), errors);
-  for (const module of modules) {
-    if (!nonEmpty(module.moduleId)) errors.push('module requires id');
-    if (!nonEmpty(module.title)) errors.push(`module requires title:${module.moduleId}`);
-    if (!nonEmpty(module.markdown)) errors.push(`module requires markdown:${module.moduleId}`);
-    if (module.criterionIds.length === 0) errors.push(`module requires criteria:${module.moduleId}`);
-    if (module.aspectIds.length === 0) errors.push(`module requires aspects:${module.moduleId}`);
-    if (!nonEmpty(module.validationExpectation)) errors.push(`module requires validation expectation:${module.moduleId}`);
-    for (const dependencyId of module.dependsOnModuleIds) {
-      if (dependencyId === module.moduleId) errors.push(`module dependency self-reference:${module.moduleId}`);
-      else if (!moduleIds.has(dependencyId)) errors.push(`module dependency missing:${module.moduleId}:${dependencyId}`);
-    }
-  }
-}
-
-function validateCoverage(result: BoundedPlannerCompilerResult, errors: string[]): void {
-  const coverage = derivePlanningAspectCoverage({
-    graph: result.atomGraph,
-    inventory: result.sourceInventory,
-    updates: [...result.map.outputs.flatMap((output) => output.aspectUpdates), ...result.residue.coverageUpdates],
-  });
+function validateCoverage(coverage: PlanningAspectCoverageSummary, errors: string[]): void {
   errors.push(...coverage.validationErrors);
   for (const criterion of coverage.criteria.filter((item) => !item.complete)) errors.push(`unresolved criterion after artifact synthesis:${criterion.criterionId}:${criterion.pendingAspectIds.join(',')}`);
 }
@@ -141,12 +135,23 @@ function planMarkdownFor(result: BoundedPlannerCompilerResult, modules: Planning
   return ['# Planner Compiler Plan', '', '## Modules', ...modules.map((module) => `- ${module.moduleId}: ${module.title}${module.residue ? ' (residue/follow-up)' : ''}`), '', '## Plan fragments', ...(fragments.length > 0 ? fragments.map((fragment) => `### ${fragment.title || fragment.fragmentId}\n\n${fragment.markdown}`) : ['No standalone plan fragments were produced.']), '', coverageMarkdownFor(result)].join('\n');
 }
 
+function coverageFor(result: BoundedPlannerCompilerResult): PlanningAspectCoverageSummary {
+  return derivePlanningAspectCoverage({
+    graph: result.atomGraph,
+    inventory: result.sourceInventory,
+    updates: [...result.map.outputs.flatMap((output) => output.aspectUpdates), ...result.residue.coverageUpdates],
+  });
+}
+
 function coverageMarkdownFor(result: BoundedPlannerCompilerResult): string {
-  const coverage = derivePlanningAspectCoverage({ graph: result.atomGraph, inventory: result.sourceInventory, updates: [...result.map.outputs.flatMap((output) => output.aspectUpdates), ...result.residue.coverageUpdates] });
+  const coverage = coverageFor(result);
   return ['## Acceptance Coverage', '', `Complete criteria: ${coverage.completeCriteria.join(', ') || '(none)'}`, `Incomplete criteria: ${coverage.incompleteCriteria.join(', ') || '(none)'}`, '', '### Represented residue/follow-up aspects', ...(result.residue.candidates.length > 0 ? result.residue.candidates.map((candidate) => `- ${candidate.candidateId}: ${candidate.aspectIds.join(', ')} (${candidate.reason})`) : ['- (none)'])].join('\n');
 }
 
 function moduleMarkdown(module: PlanningAtomModuleCandidate, fragments: PlanningAtomPlanFragment[]): string {
+  // The Execution Intent section is intentionally absent here: it is rendered
+  // from normalized pipeline settings in appendNormalizedExecutionIntent so the
+  // plan never carries a model-authored declaration the stamp would have to patch.
   return [`# ${module.title || module.moduleId}`, '', module.description, '', '## Traceability', '', `Criteria: ${module.criterionIds.join(', ')}`, `Aspects: ${module.aspectIds.join(', ')}`, '', '## Validation', '', module.validationExpectation, '', ...fragments.map((fragment) => `## Fragment: ${fragment.title || fragment.fragmentId}\n\n${fragment.markdown}`)].join('\n');
 }
 
@@ -160,14 +165,6 @@ function cloneFragments(fragments: PlanningAtomPlanFragment[]): PlanningAtomPlan
 
 function cloneModules(modules: PlanningAtomModuleCandidate[]): PlanningAtomModuleCandidate[] {
   return modules.map((module) => ({ ...module, criterionIds: [...module.criterionIds], aspectIds: [...module.aspectIds], dependsOnModuleIds: module.dependsOnModuleIds ? [...module.dependsOnModuleIds] : undefined }));
-}
-
-function validateUnique(kind: string, ids: string[], errors: string[]): void {
-  const seen = new Set<string>();
-  for (const id of ids.filter(nonEmpty)) {
-    if (seen.has(id)) errors.push(`${kind} id duplicated:${id}`);
-    seen.add(id);
-  }
 }
 
 function uniq(values: string[]): string[] { return [...new Set(values.filter(nonEmpty))].sort(); }

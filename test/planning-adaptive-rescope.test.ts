@@ -81,6 +81,19 @@ describe('rescope risk classification and directives', () => {
     expect(risk.reasons.join(' ')).toContain('low-confidence-share');
   });
 
+  it('does not treat 0/0 literal localization as a low-confidence rescope signal', () => {
+    const content = prd(['Implement the health behavior.', 'Add focused tests for the health behavior.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const genericInventory = { ...inventory, criteria: inventory.criteria.map((criterion, index) => ({ ...criterion, subsystemHints: [index === 0 ? 'general' : 'test'], interfaceKeys: [] })) };
+    const roomyLimits = { ...limits, maxSubsystemsPerUnit: 2 };
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits: roomyLimits, inventory: genericInventory });
+
+    const risk = classifyRescopeRisk({ bundle: bundleWith([]), inventory: genericInventory, graph, limits: roomyLimits });
+
+    expect(graph.atoms).toHaveLength(1);
+    expect(risk).toEqual({ risky: false, reasons: [] });
+  });
+
   it('does not classify as risky when literal needs resolve high-confidence within one subsystem envelope', () => {
     const content = prd(['engine updates `packages/engine/src/one.ts` for grounded flag handling.']);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
@@ -240,23 +253,25 @@ describe('adaptive rescope loop', () => {
     expect(result.hints?.projectHints?.length).toBeGreaterThan(0);
   });
 
-  it('proceeds degraded when generic route and schema interface signals remain unresolved after scoped reruns', async () => {
+  it('inspects generic route and schema labels without treating them as architecture split signals', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-generic-interface-'));
     const content = prd([
-      'The route API and schema contract tests emit a user-visible stop reason when the attempt budget is exhausted.',
-      'Queue/run/auto-build projections expose policy enabled/disabled state.',
-      'Typed event/schema parity tests cover the new variants.',
-      'Console clearly distinguishes auto-resume decisions from user-confirmed actions.',
+      'The route API and schema contract tests emit a user-visible stop reason.',
+      'Configuration behavior exposes enabled and disabled policy state.',
+      'Typed schema parity tests cover the new variants.',
+      'Documentation clearly distinguishes automatic from user-confirmed actions.',
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
     const harness = new StubHarness(Array.from({ length: 8 }, (_, index) => submit(`submit-generic-${index}`, outcome('budget-exhausted', { reasons: ['tool-budget'] }))));
 
     const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
 
-    expect(result.diagnostics.status).toBe('exhausted-proceeded');
+    expect(result.diagnostics.status).toBe('warning-only');
     expect(result.diagnostics.unresolvedCriticalNeedIds).toEqual([]);
     expect(result.outcome?.status).toBe('budget-exhausted');
-    expect(result.diagnostics.riskReasons.join(' ')).toContain('unresolved-interface-signals');
+    expect(result.diagnostics.riskReasons).toEqual([]);
+    expect(result.rescopeDirectives).toBeUndefined();
+    expect(harness.calls).toHaveLength(1);
   });
 
   it('does not let a later budget-skipped scope mask critical needs that remained after a rerun', async () => {
@@ -280,6 +295,22 @@ describe('adaptive rescope loop', () => {
     })).rejects.toThrow(AdaptiveRescopeFailClosedError);
 
     expect(events.some((event) => event.type === 'planning:warning' && event.message.includes('not masking them behind'))).toBe(true);
+  });
+
+  it('inspects a no-literal-path source without pre-splitting generic implementation and test criteria', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-no-literals-'));
+    const content = prd(['Implement the health behavior.', 'Add focused tests for the health behavior.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const harness = new StubHarness([submit('submit-initial', outcome('needs-rescope', { reasons: ['too-broad'] }))]);
+    const events: EforgeEvent[] = [];
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits, onEvent: (event) => events.push(event) });
+
+    expect(result.diagnostics.riskReasons).not.toContain('low-confidence-share (0/0)');
+    expect(result.rescopeDirectives).toBeUndefined();
+    expect(harness.calls).toHaveLength(1);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration starting'))).toBe(true);
+    expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(false);
   });
 
   it('proceeds with a warning instead of rescoping when the degraded source has no split signal', async () => {

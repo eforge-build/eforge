@@ -2,9 +2,10 @@ import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { PlanningReduceGapIssueKindSchema } from './reduce-contracts.js';
 import { LocalizationIssueKindSchema } from './localization-issue-contracts.js';
+import { PlanningModuleDocsWorkSchema, PlanningModuleReviewDepthSchema, PlanningModuleTestOwnershipSchema, PlanningModuleTestWorkSchema } from './reduce-digest-contracts.js';
 
 export const COMPILER_DIAGNOSTICS_ARTIFACT = 'compiler-diagnostics.json';
-export const COMPILER_DIAGNOSTICS_VERSION = 1;
+export const COMPILER_DIAGNOSTICS_VERSION = 2;
 export const MAX_COMPILER_DIAGNOSTICS_BYTES = 262_144;
 
 const boundedString = (maxLength: number) => Type.String({ maxLength });
@@ -155,6 +156,50 @@ const CompilerDiagnosticsRescopeSchema = Type.Object({
   unresolvedCriticalNeedIds: boundedIds(160, 100),
 }, { additionalProperties: false });
 
+const BuildStageSpecSchema = Type.Union([boundedString(80), Type.Array(boundedString(80), { minItems: 1, maxItems: 8 })]);
+const CompilerDiagnosticsRiskFactorSchema = Type.Union([
+  Type.Literal('large-plan'),
+  Type.Literal('residue-derived'),
+  Type.Literal('repair-only-residue'),
+  Type.Literal('low-confidence-localization'),
+  Type.Literal('multi-subsystem'),
+  Type.Literal('dependency-root'),
+]);
+const CompilerDiagnosticsNormalizationChangeSchema = Type.Object({
+  field: Type.Union([Type.Literal('docsWork'), Type.Literal('testWork'), Type.Literal('testOwnership'), Type.Literal('reviewDepth'), Type.Literal('fileOwnership')]),
+  kind: Type.Union([Type.Literal('fallback'), Type.Literal('normalized'), Type.Literal('safety-escalation')]),
+  reason: boundedString(500),
+}, { additionalProperties: false });
+const CompilerDiagnosticsNormalizationModuleSchema = Type.Object({
+  moduleId: boundedString(160),
+  proposed: Type.Object({
+    docsWork: Type.Optional(PlanningModuleDocsWorkSchema),
+    testWork: Type.Optional(PlanningModuleTestWorkSchema),
+    testOwnership: Type.Optional(PlanningModuleTestOwnershipSchema),
+    reviewDepth: Type.Optional(PlanningModuleReviewDepthSchema),
+    reviewRationale: Type.Optional(boundedString(500)),
+    dependsOnModuleIds: boundedIds(160, 16),
+  }, { additionalProperties: false }),
+  normalized: Type.Object({
+    docsWork: PlanningModuleDocsWorkSchema,
+    testWork: PlanningModuleTestWorkSchema,
+    testOwnership: PlanningModuleTestOwnershipSchema,
+    reviewDepth: PlanningModuleReviewDepthSchema,
+    reviewFloor: PlanningModuleReviewDepthSchema,
+    risk: Type.Object({ score: count(), factors: Type.Array(CompilerDiagnosticsRiskFactorSchema, { maxItems: 8 }) }, { additionalProperties: false }),
+    budgetUsage: Type.Object({ sourceContextBytes: count(), criterionCount: count(), subsystemCount: count() }, { additionalProperties: false }),
+    build: Type.Array(BuildStageSpecSchema, { maxItems: 16 }),
+  }, { additionalProperties: false }),
+  ownedPaths: boundedIds(500, 64),
+  changes: Type.Array(CompilerDiagnosticsNormalizationChangeSchema, { maxItems: 16 }),
+}, { additionalProperties: false });
+const CompilerDiagnosticsNormalizationSchema = Type.Object({
+  status: Type.Union([Type.Literal('not-run'), Type.Literal('accepted'), Type.Literal('normalized'), Type.Literal('rejected')]),
+  modules: Type.Array(CompilerDiagnosticsNormalizationModuleSchema, { maxItems: 64 }),
+  fileOwnershipConflicts: Type.Array(Type.Object({ path: boundedString(500), ownerModuleIds: boundedIds(160, 16) }, { additionalProperties: false }), { maxItems: 64 }),
+  validationErrors: Type.Array(boundedString(500), { maxItems: 128 }),
+}, { additionalProperties: false });
+
 export const CompilerDiagnosticsSchema = Type.Object({
   version: Type.Literal(COMPILER_DIAGNOSTICS_VERSION),
   planSetName: boundedString(200),
@@ -162,6 +207,7 @@ export const CompilerDiagnosticsSchema = Type.Object({
   graphId: boundedString(160),
   compilerStatus: CompilerStatusSchema,
   validationErrors: Type.Array(boundedString(500), { maxItems: 128 }),
+  normalization: CompilerDiagnosticsNormalizationSchema,
   coverage: Type.Object({
     completeCriteria: boundedIds(80, 256),
     incompleteCriteria: boundedIds(80, 256),
@@ -196,6 +242,11 @@ export const CompilerDiagnosticsSchema = Type.Object({
     validationErrors: count(),
     descriptionBytes: count(),
     sharedBriefBudget: count(),
+    normalizationModules: count(),
+    normalizationChanges: count(),
+    normalizationOwnedPaths: count(),
+    normalizationValidationErrors: count(),
+    fileOwnershipConflicts: count(),
   }, { additionalProperties: false }),
 }, { additionalProperties: false });
 

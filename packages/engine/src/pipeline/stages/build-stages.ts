@@ -55,17 +55,12 @@ import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../g
 import { toBuildFailedEvent } from '../error-translator.js';
 import { enforceShardScope, shardClaimsFile } from './shard-scope.js';
 import { selectActiveRecoveryIssues } from './recovery-issue-selection.js';
+import { captureTestOwnershipSnapshot, enforceTestOwnershipGuard, hasTestStages } from '../test-ownership.js';
 export { enforceShardScope };
 const exec = promisify(execFile); // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 function runtimeChoiceRouterOptions(ctx: BuildStageContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
-function hasTestStages(build: BuildStageSpec[]): boolean {
-  return build.some((spec) => {
-    if (Array.isArray(spec)) return spec.some((s) => s.startsWith('test'));
-    return spec.startsWith('test');
-  });
-}
 async function hasEvaluationCandidateChanges(cwd: string, options?: { failClosed?: boolean }): Promise<boolean> {
   try {
     const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
@@ -112,7 +107,7 @@ async function* runBuilderAttempt(
       abortController: ctx.abortController,
       ...agentConfig,
       ...builderTb,
-      parallelStages,
+      parallelStages, testOwnership: ctx.planEntry?.testOwnership,
       verificationScope,
       phase: 'build',
       stage: 'implement',
@@ -722,6 +717,7 @@ async function* structuralValidationFixStageInner(ctx: BuildStageContext, valida
   } catch { /* non-critical */ }
 }
 async function* testStageInner(ctx: BuildStageContext, options?: { round?: number }): AsyncGenerator<EforgeEvent> {
+  const ownershipSnapshot = await captureTestOwnershipSnapshot(ctx.worktreePath); let testBugsFixed = 0;
   const { agentConfig, harness: testerHarness, toolbeltSummary: testerTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'tester',
     ctx.config,
@@ -736,7 +732,7 @@ async function* testStageInner(ctx: BuildStageContext, options?: { round?: numbe
     for await (const event of withPeriodicFileCheck(runTester({
       cwd: ctx.worktreePath,
       planId: ctx.planId,
-      planContent: ctx.planFile.body,
+      planContent: ctx.planFile.body, testOwnership: ctx.planEntry?.testOwnership,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
@@ -748,7 +744,7 @@ async function* testStageInner(ctx: BuildStageContext, options?: { round?: numbe
       tracker.handleEvent(event);
       yield event;
       if (event.type === 'plan:build:test:complete') {
-        ctx.reviewIssues = assignReviewIssueIds(event.productionIssues.map(testIssueToReviewIssue), { round: options?.round, lane: 'test' });
+        testBugsFixed = event.testBugsFixed; ctx.reviewIssues = assignReviewIssueIds(event.productionIssues.map(testIssueToReviewIssue), { round: options?.round, lane: 'test' });
       }
     }
     tracker.cleanup();
@@ -758,6 +754,7 @@ async function* testStageInner(ctx: BuildStageContext, options?: { round?: numbe
     span.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
   }
+  yield* enforceTestOwnershipGuard(ctx, ownershipSnapshot, 'test', testBugsFixed);
 }
 // ---------------------------------------------------------------------------
 // Shard helpers
@@ -785,7 +782,7 @@ async function* runBuilderShardAttempt(
       abortController: ctx.abortController,
       ...agentConfig,
       ...shardBuilderTb,
-      parallelStages,
+      parallelStages, testOwnership: ctx.planEntry?.testOwnership,
       phase: 'build',
       stage: 'implement',
       // verificationScope is intentionally omitted: shardScope instructs the agent not to verify
@@ -845,6 +842,7 @@ registerBuildStage({
   costHint: 'high',
   parallelizable: false,
 }, async function* implementStage(ctx) {
+  const ownershipSnapshot = await captureTestOwnershipSnapshot(ctx.worktreePath);
   // Capture the current HEAD before the builder commits — used by the evaluator as reset target
   try {
     const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath });
@@ -1063,7 +1061,7 @@ registerBuildStage({
 
     yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: ctx.planId };
   }
-
+  if (yield* enforceTestOwnershipGuard(ctx, ownershipSnapshot, 'implement')) return;
   yield* emitFilesChanged(ctx);
 });
 
@@ -1435,6 +1433,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
+  const ownershipSnapshot = await captureTestOwnershipSnapshot(ctx.worktreePath);
   const { agentConfig, harness: testWriterHarness, toolbeltSummary: testWriterTb } = await resolveAgentRuntimeForInvocationWithExtensions(
     'test-writer',
     ctx.config,
@@ -1445,7 +1444,6 @@ registerBuildStage({
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
-
   // Get implementation diff for post-implementation context
   let implementationContext = '';
   try {
@@ -1460,7 +1458,7 @@ registerBuildStage({
       cwd: ctx.worktreePath,
       planId: ctx.planId,
       planContent: ctx.planFile.body,
-      implementationContext: implementationContext || undefined,
+      implementationContext: implementationContext || undefined, testOwnership: ctx.planEntry?.testOwnership,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
@@ -1479,6 +1477,7 @@ registerBuildStage({
     span.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
   }
+  if (yield* enforceTestOwnershipGuard(ctx, ownershipSnapshot, 'test-write')) return;
   yield* emitFilesChanged(ctx);
 });
 
@@ -1498,6 +1497,7 @@ registerBuildStage({
   const priorRepairAttempts: string[] = [];
   for (let round = 0; round < maxRounds; round++) {
     yield* testStageInner(ctx, { round });
+    if (ctx.buildFailed) return;
     if (ctx.reviewIssues.length === 0) { cleared = true; break; }
     lastBlockingIssues = [...ctx.reviewIssues];
     yield* evaluateStageInner(ctx, { strictness });
@@ -1516,7 +1516,7 @@ registerBuildStage({
   const recoveryReviewContext = await getSamePlanRecoveryReviewContext(ctx);
   const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'test', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...recoveryReviewContext, maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
     runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
-    runBlockingCheck: async function* () { yield* testStageInner(ctx); if (ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness }); },
+    runBlockingCheck: async function* () { yield* testStageInner(ctx); if (!ctx.buildFailed && ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness }); },
     hasBlockers: () => ctx.reviewIssues.length > 0 && ((latest => !latest?.ran || latest.blockingIssueOutcomes > 0)(getLastBuildEvaluation(ctx))),
   } });
   if (ctx.buildFailed) return;

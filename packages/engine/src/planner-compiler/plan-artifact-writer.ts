@@ -24,7 +24,7 @@ export interface WritePlanningCompilerArtifactsInput {
 
 export interface WritePlanningCompilerArtifactsResult {
   plans: PlanFile[];
-  planConfigs?: Array<{ id: string; build?: unknown; review?: unknown }>;
+  planConfigs?: Array<{ id: string; build?: unknown; review?: unknown; testOwnership?: unknown }>;
   artifactPaths: string[];
 }
 
@@ -48,7 +48,7 @@ export async function writePlanningCompilerArtifacts(input: WritePlanningCompile
   const plans = await Promise.all(orchestration.plans.map(plan => parsePlanFile(resolve(planDir, `${plan.id}.md`), input.tiers)));
   return {
     plans: plans.map(plan => ({ ...plan, dependsOn: orchestration.plans.find(candidate => candidate.id === plan.id)?.dependsOn ?? [] })),
-    planConfigs: orchestration.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review })),
+    planConfigs: orchestration.plans.map(plan => ({ id: plan.id, build: plan.build, review: plan.review, testOwnership: plan.testOwnership })),
     artifactPaths: ['architecture.md', 'acceptance-coverage.md', ...(input.diagnostics ? [COMPILER_DIAGNOSTICS_ARTIFACT] : []), 'orchestration.yaml', ...plans.map(plan => `${plan.id}.md`)],
   };
 }
@@ -64,6 +64,7 @@ function planSetPayload(input: WritePlanningCompilerArtifactsInput, planIds: Map
         dependsOn: module.dependsOnModuleIds.map(id => requirePlanId(planIds, id)),
         build: [...module.build],
         review: { ...module.review, perspectives: [...module.review.perspectives] },
+        testOwnership: module.testOwnership,
         reviewRationale: module.pipelineRationale,
         ...(module.residue ? { allowNoOpMerge: true } : {}),
       })),

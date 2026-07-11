@@ -121,6 +121,7 @@ export async function buildResumeArtifactsProjection(opts: {
         ...(plan.branch ? { branch: plan.branch } : {}),
         build: plan.build,
         review: plan.review,
+        ...(plan.testOwnership ? { testOwnership: plan.testOwnership } : {}),
       };
     }),
   };

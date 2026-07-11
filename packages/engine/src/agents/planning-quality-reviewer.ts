@@ -5,7 +5,7 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
 import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
-import { safeParseWithSchema } from '@eforge-build/client';
+import { safeParseWithSchema, type PlanningDecompositionLimits } from '@eforge-build/client';
 import {
   getPlanningQualityReviewSubmissionSchemaYaml,
   planningQualityReviewSubmissionSchema,
@@ -31,6 +31,10 @@ interface PlanningQualityReviewerOptions extends SdkPassthroughConfig {
   diagnosticsSummary: string;
   /** Bounded summary of the deterministic source inventory for the prompt. */
   inventorySummary: string;
+  /** Hard decomposition ceilings used to validate structural simplifications. */
+  decompositionLimits: PlanningDecompositionLimits;
+  /** Receives the repository-relative files in an atomic structural candidate. */
+  onStructuralCandidatePaths?: (paths: string[]) => void;
   /** Whether to emit verbose agent-level events */
   verbose?: boolean;
   /** AbortController for cancellation */
@@ -140,7 +144,8 @@ export async function* runPlanningQualityReview(
 
   // Apply any captured fixes before parsing issues
   if (captured !== null) {
-    await applyPlanningQualityReviewFixes({ cwd, outputDir, planSetName, fixes: (captured as PlanningQualityReviewSubmission).fixes });
+    const structuralPaths = await applyPlanningQualityReviewFixes({ cwd, outputDir, planSetName, fixes: (captured as PlanningQualityReviewSubmission).fixes, limits: options.decompositionLimits });
+    if (structuralPaths.length > 0) options.onStructuralCandidatePaths?.(structuralPaths);
   }
 
   // Advisory-only: like plan-reviewer, this reviewer uses the fail-open parser.

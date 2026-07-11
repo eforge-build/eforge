@@ -73,6 +73,7 @@ import {
   TerminalFailureEnvelopeSchema,
   TerminalFailureScopeSchema,
   TestIssueSchema,
+  TestOwnershipSchema,
   ValidationRepairClassSchema,
   EforgeStatusSchema,
 } from './shared/schemas.js';
@@ -104,6 +105,7 @@ export type ReviewFixIssueReference = Static<typeof ReviewFixIssueReferenceSchem
 // --- eforge:endregion review-issue-traceability ---
 export type ReviewIssue = Static<typeof ReviewIssueSchema>;
 export type TestIssue = Static<typeof TestIssueSchema>;
+export type TestOwnership = Static<typeof TestOwnershipSchema>;
 export type PlanFile = Static<typeof PlanFileSchema>;
 export type OrchestrationConfig = Static<typeof OrchestrationConfigSchema>;
 export type PlanState = Static<typeof PlanStateSchema>;

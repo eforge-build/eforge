@@ -459,6 +459,7 @@ export type {
   AcceptanceCriterionVerdict,
   AcceptanceCriteriaConflict,
   TestIssue,
+  TestOwnership,
   BuildFailureSummary,
   LandedCommit,
   PlanSummaryEntry,
@@ -516,7 +517,7 @@ export type {
 } from './events.js';
 
 export { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, AgentTerminalSubtypeSchema, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
-  AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
+  AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema, TEST_OWNERSHIP_VALUES, TestOwnershipSchema,
   FailedEnqueueInfoSchema, QueueItemCapabilitySchema, QueueItemCapabilitiesSchema, QueueItemHoldSchema,
   safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
   ReviewFixIssueReferenceSchema, ReviewFixIssueStatusSchema, ReviewIssueIdSchema,

@@ -15,7 +15,7 @@ import {
   validateShardScope,
   type PipelineComposition,
 } from './schemas.js';
-import { safeParseWithSchema, formatSchemaError } from '@eforge-build/client';
+import { TestOwnershipSchema, safeParseWithSchema, formatSchemaError } from '@eforge-build/client';
 import { preserveArchitectureManifestFence } from './planner-compiler/architecture-manifest-contracts.js';
 
 const execAsync = promisify(execFile);
@@ -228,6 +228,12 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
         if (!reviewResult.success) {
           throw new Error(`Plan '${id}' has invalid or missing 'review' field: ${formatSchemaError(reviewResult.error)}`);
         }
+        const testOwnershipResult = p.test_ownership === undefined
+          ? undefined
+          : safeParseWithSchema(TestOwnershipSchema, p.test_ownership);
+        if (testOwnershipResult && !testOwnershipResult.success) {
+          throw new Error(`Plan '${id}' has invalid 'test_ownership' field: ${formatSchemaError(testOwnershipResult.error)}`);
+        }
 
         // Parse optional agents block
         let agents: Record<string, { effort?: string; thinking?: boolean | { [x: string]: unknown }; rationale?: string; tier?: string }> | undefined;
@@ -248,6 +254,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
           branch: typeof p.branch === 'string' ? p.branch : '',
           build: buildResult.data,
           review: reviewResult.data,
+          ...(testOwnershipResult?.success ? { testOwnership: testOwnershipResult.data } : {}),
           ...(typeof p.max_continuations === 'number' ? { maxContinuations: p.max_continuations } : {}),
           ...(p.allow_no_op_merge === true ? { allowNoOpMerge: true } : {}),
           ...(agents && { agents }),
@@ -700,6 +707,7 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
         branch: `${planSetName}/${p.id}`,
         ...(p.build ? { build: p.build } : {}),
         ...(p.review ? { review: p.review } : {}),
+        ...(p.testOwnership ? { test_ownership: p.testOwnership } : {}),
         ...(p.allowNoOpMerge === true ? { allow_no_op_merge: true } : {}),
         ...(planData?.frontmatter.agents ? { agents: planData.frontmatter.agents } : {}),
       };
@@ -755,8 +763,9 @@ export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions)
           };
           if (p.build !== undefined) planEntry.build = p.build;
           if (p.review !== undefined) planEntry.review = p.review;
+          if (p.testOwnership !== undefined) planEntry.test_ownership = p.testOwnership;
           if (p.agents !== undefined) planEntry.agents = p.agents;
-          // Preserve build/review/agents/max_continuations/allow_no_op_merge from existing plan entry if not supplied
+          // Preserve build/review/test ownership/agents/max_continuations/allow_no_op_merge from existing plan entry if not supplied
           const existingPlans = Array.isArray(existing.plans)
             ? (existing.plans as Array<Record<string, unknown>>)
             : [];
@@ -764,6 +773,7 @@ export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions)
           if (existingPlan) {
             if (p.build === undefined && existingPlan.build !== undefined) planEntry.build = existingPlan.build;
             if (p.review === undefined && existingPlan.review !== undefined) planEntry.review = existingPlan.review;
+            if (p.testOwnership === undefined && existingPlan.test_ownership !== undefined) planEntry.test_ownership = existingPlan.test_ownership;
             // Issue #1: preserve agents when not supplied
             if (p.agents === undefined && existingPlan.agents !== undefined) planEntry.agents = existingPlan.agents;
             // Issue #2: preserve max_continuations when present

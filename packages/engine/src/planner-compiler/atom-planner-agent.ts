@@ -4,7 +4,7 @@ import { pickSdkOptions } from '../harness.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningAtomOutputSchema, validatePlanningAtomOutputForTask, type PlanningAtomTask, type PlanningAtomOutput } from './atom-planning-contracts.js';
 import { DEFAULT_PLANNING_REDUCE_LIMITS } from './reduce-contracts.js';
-import { deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, validatePlanningReduceDigest } from './reduce-digest-contracts.js';
+import { deriveReduceDigestTotalByteLimit, minimumReduceDigestPromptByteLength, PLANNING_MODULE_DOCS_WORK_PROMPT_RULE, PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE, PLANNING_MODULE_TEST_WORK_PROMPT_RULE, PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE, validatePlanningReduceDigest, withCandidateWorkDeclarations } from './reduce-digest-contracts.js';
 import { formatPlanningAtomSourceMaterialization, materializePlanningAtomSource, type PlanningAtomSourceMaterialization } from './atom-source-materialization.js';
 import type { PlanningSharedFinding } from './shared-brief-contracts.js';
 import { sourceEvidenceRecordsForAtom, type PlanningSourceEvidenceBundle, type PlanningSourceEvidenceRecord } from './source-evidence-contracts.js';
@@ -93,6 +93,7 @@ ${JSON.stringify({
     localizedEvidence: task.localizedEvidence,
     budget: task.budget,
     estimate: task.estimate,
+    workProfile: task.workProfile,
   }, null, 2)}
 
 ## Source excerpts
@@ -118,8 +119,10 @@ Call ${submitToolName} with an object matching its schema.
 - represented aspect updates require exactly this representation shape: { "kind": "residue" | "follow-up", "moduleId": "one moduleCandidates[].moduleId", "reason": "why representation is needed", "validationExpectation": "how the represented work is validated" }.
 - Do not use moduleIds, moduleCandidateIds, fragmentIds, or prerequisiteAtomIds inside representation.
 - Failed outputs must set aspectUpdates to [] and must not include plan fragments or module candidates.
+- Propose the smallest coherent module set. When workProfile.shape is "single-unit", default to one module unless a concrete independently buildable ownership boundary requires more. Keep tests with the implementation whose contract they validate; generic labels such as test, docs, API, or general are not module boundaries.
 - ${PLANNING_MODULE_DOCS_WORK_PROMPT_RULE}
 - ${PLANNING_MODULE_TEST_WORK_PROMPT_RULE}
+- ${PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE}
 - Include reduceDigest. It is the canonical bounded digest for reducer agents; do not copy full markdown into it.
 - ${PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE}
 - reduceDigest.sourceId must be exactly "${task.atomId}" and reduceDigest.sourceKind must be "atom".
@@ -152,6 +155,13 @@ function createAtomOutputSubmissionTool(submitToolName: string, task: PlanningAt
       if (output.reduceDigest) {
         const errors = validatePlanningReduceDigest({ digest: output.reduceDigest, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxPromptBytes: atomReduceDigestPromptByteLimit(task) });
         if (errors.length > 0) return reject(`Submission rejected: ${errors.join('; ')}\nCall ${submitToolName} again with a compact, semantically valid reduceDigest.`);
+        // Reducers consume the digest with modules rebuilt from moduleCandidates, so the
+        // rebuilt projection must satisfy the same budgets as the authored digest.
+        const projected = withCandidateWorkDeclarations(output.reduceDigest, output.moduleCandidates ?? []);
+        if (projected !== output.reduceDigest) {
+          const projectedErrors = validatePlanningReduceDigest({ digest: projected, expectedSourceId: task.atomId, expectedSourceKind: 'atom', allowedCriterionIds: task.criterionIds, allowedAspectIds: task.aspectIds, maxPromptBytes: atomReduceDigestPromptByteLimit(task) });
+          if (projectedErrors.length > 0) return reject(`Submission rejected: reduceDigest rebuilt from moduleCandidates fails validation: ${projectedErrors.join('; ')}\nReducers consume reduceDigest.modules rebuilt from moduleCandidates; trim, split, or mirror the candidates so the rebuilt digest fits its budgets, then call ${submitToolName} again.`);
+        }
       }
       const validation = validatePlanningAtomOutputForTask({ task, output });
       if (!validation.ok) return reject(`Submission rejected: ${validation.errors.join('; ')}\nCall ${submitToolName} again with a semantically valid atom output.`);

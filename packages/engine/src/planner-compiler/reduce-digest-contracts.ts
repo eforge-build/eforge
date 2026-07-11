@@ -1,20 +1,28 @@
 import { Type } from '@sinclair/typebox';
+import { TEST_OWNERSHIP_VALUES, TestOwnershipSchema, type TestOwnership } from '@eforge-build/client';
 import { utf8ByteLength } from './source-analysis.js';
 
 const boundedString = (maxLength: number): ReturnType<typeof Type.String> => Type.String({ maxLength });
 
 export const PLANNING_MODULE_DOCS_WORK_VALUES = ['none', 'sync-existing', 'author-new'] as const;
 export const PLANNING_MODULE_TEST_WORK_VALUES = ['none', 'exercise-existing', 'author-new'] as const;
+export const PLANNING_MODULE_TEST_OWNERSHIP_VALUES = TEST_OWNERSHIP_VALUES;
+export const PLANNING_MODULE_REVIEW_DEPTH_VALUES = ['light', 'standard', 'heavy'] as const;
 export type PlanningModuleDocsWork = (typeof PLANNING_MODULE_DOCS_WORK_VALUES)[number];
 export type PlanningModuleTestWork = (typeof PLANNING_MODULE_TEST_WORK_VALUES)[number];
+export type PlanningModuleTestOwnership = TestOwnership;
+export type PlanningModuleReviewDepth = (typeof PLANNING_MODULE_REVIEW_DEPTH_VALUES)[number];
 export const PlanningModuleDocsWorkSchema = Type.Union(PLANNING_MODULE_DOCS_WORK_VALUES.map((value) => Type.Literal(value)));
 export const PlanningModuleTestWorkSchema = Type.Union(PLANNING_MODULE_TEST_WORK_VALUES.map((value) => Type.Literal(value)));
+export const PlanningModuleTestOwnershipSchema = TestOwnershipSchema;
+export const PlanningModuleReviewDepthSchema = Type.Union(PLANNING_MODULE_REVIEW_DEPTH_VALUES.map((value) => Type.Literal(value)));
 
-// Shared structured-submission prompt rules for the docsWork/testWork declarations.
+// Shared structured-submission prompt rules for model-authored plan intent.
 // Interpolated by both the atom planner and reducer prompts so the two cannot drift.
 export const PLANNING_MODULE_DOCS_WORK_PROMPT_RULE = 'Set docsWork on each module candidate: "author-new" when the module\'s criteria call for new documentation artifacts (derives doc-author and doc-sync build stages), "sync-existing" when existing docs reference behavior or interfaces the module changes (derives doc-sync), "none" or omitted when there is no documentation impact.';
-export const PLANNING_MODULE_TEST_WORK_PROMPT_RULE = 'Set testWork on each module candidate: "author-new" when the module\'s criteria require writing new tests (derives test-write and test-cycle build stages), "exercise-existing" when existing tests must be kept green without new authoring (derives test-cycle), "none" or omitted when there is no explicit test requirement.';
-export const PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE = 'Mirror each module candidate\'s docsWork/testWork declarations onto the reduceDigest.modules entry with the same moduleId so downstream reducers retain them.';
+export const PLANNING_MODULE_TEST_WORK_PROMPT_RULE = 'Set testWork on each module candidate: "author-new" when its criteria require new tests, "exercise-existing" when existing tests must be kept green without new authoring, and "none" when no test work is needed. Also set exactly one testOwnership: "builder" when implementation and its tests are one cohesive change, "test-writer" only for an independently owned test-authoring stage, or "existing-only" when no new tests may be authored. A separate test module requires an independently buildable ownership boundary and explicit rationale in its description.';
+export const PLANNING_MODULE_REVIEW_INTENT_PROMPT_RULE = 'Set reviewDepth to "light", "standard", or "heavy" and provide reviewRationale grounded in concrete risk. Small criterion counts, test wording, and dependency-root status are not by themselves reasons to split work or select heavy review.';
+export const PLANNING_MODULE_WORK_DIGEST_MIRROR_RULE = 'Mirror each module candidate\'s docsWork, testWork, testOwnership, reviewDepth, and reviewRationale declarations onto the reduceDigest.modules entry with the same moduleId so downstream reducers retain them.';
 
 /**
  * Pick the strongest of two work declarations. Strength follows the order of the
@@ -31,6 +39,7 @@ export const REDUCE_DIGEST_LIMITS = {
   fragmentIntentBytes: 700,
   modulePurposeBytes: 700,
   validationExpectationBytes: 700,
+  reviewRationaleBytes: 1_000,
   issueSummaryBytes: 700,
 } as const;
 
@@ -67,6 +76,9 @@ export const PlanningReduceDigestModuleSchema = Type.Object({
   validationExpectation: Type.Optional(boundedString(1_000)),
   docsWork: Type.Optional(PlanningModuleDocsWorkSchema),
   testWork: Type.Optional(PlanningModuleTestWorkSchema),
+  testOwnership: Type.Optional(PlanningModuleTestOwnershipSchema),
+  reviewDepth: Type.Optional(PlanningModuleReviewDepthSchema),
+  reviewRationale: Type.Optional(boundedString(1_000)),
   dependsOnModuleIds: Type.Optional(Type.Array(boundedString(160), { maxItems: 16 })),
 }, { additionalProperties: false });
 
@@ -86,17 +98,17 @@ export const PlanningReduceDigestSchema = Type.Object({
   sourceKind: Type.Union([Type.Literal('atom'), Type.Literal('reduce')]),
   status: Type.Union([Type.Literal('completed'), Type.Literal('skipped'), Type.Literal('failed'), Type.Literal('incomplete')]),
   summary: boundedString(1_500),
-  criterionIds: Type.Array(boundedString(80), { maxItems: 64 }),
-  aspectIds: Type.Array(boundedString(240), { maxItems: 128 }),
+  criterionIds: Type.Array(boundedString(80), { maxItems: 256 }),
+  aspectIds: Type.Array(boundedString(240), { maxItems: 512 }),
   fragments: Type.Optional(Type.Array(PlanningReduceDigestFragmentSchema, { maxItems: 16 })),
-  modules: Type.Optional(Type.Array(PlanningReduceDigestModuleSchema, { maxItems: 16 })),
+  modules: Type.Optional(Type.Array(PlanningReduceDigestModuleSchema, { maxItems: 32 })),
   issues: Type.Optional(Type.Array(PlanningReduceDigestIssueSchema, { maxItems: 16 })),
 }, { additionalProperties: false });
 
 export type PlanningReduceDigestSourceKind = 'atom' | 'reduce';
 export type PlanningReduceDigestStatus = 'completed' | 'skipped' | 'failed' | 'incomplete';
 export interface PlanningReduceDigestFragment { fragmentId: string; title: string; intent: string; criterionIds: string[]; aspectIds: string[]; dependsOnFragmentIds?: string[] }
-export interface PlanningReduceDigestModule { moduleId: string; title: string; purpose: string; criterionIds: string[]; aspectIds: string[]; validationExpectation?: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; dependsOnModuleIds?: string[] }
+export interface PlanningReduceDigestModule { moduleId: string; title: string; purpose: string; criterionIds: string[]; aspectIds: string[]; validationExpectation?: string; docsWork?: PlanningModuleDocsWork; testWork?: PlanningModuleTestWork; testOwnership?: PlanningModuleTestOwnership; reviewDepth?: PlanningModuleReviewDepth; reviewRationale?: string; dependsOnModuleIds?: string[] }
 export interface PlanningReduceDigestIssue { issueId: string; kind: 'conflict' | 'gap'; title: string; summary: string; criterionIds: string[]; aspectIds: string[]; sourceIds?: string[]; representationRequired?: boolean }
 export interface PlanningReduceDigest { sourceId: string; sourceKind: PlanningReduceDigestSourceKind; status: PlanningReduceDigestStatus; summary: string; criterionIds: string[]; aspectIds: string[]; fragments?: PlanningReduceDigestFragment[]; modules?: PlanningReduceDigestModule[]; issues?: PlanningReduceDigestIssue[] }
 
@@ -118,6 +130,8 @@ export function validatePlanningReduceDigest(input: ValidatePlanningReduceDigest
   for (const module of digest.modules ?? []) {
     validateBytes('reduce digest module purpose', module.moduleId, module.purpose, REDUCE_DIGEST_LIMITS.modulePurposeBytes, errors);
     if (module.validationExpectation) validateBytes('reduce digest module validation', module.moduleId, module.validationExpectation, REDUCE_DIGEST_LIMITS.validationExpectationBytes, errors);
+    if (module.reviewRationale) validateBytes('reduce digest module review rationale', module.moduleId, module.reviewRationale, REDUCE_DIGEST_LIMITS.reviewRationaleBytes, errors);
+    if (module.reviewDepth !== undefined && !module.reviewRationale?.trim()) errors.push(`reduce digest module review depth requires rationale:${module.moduleId}`);
     validateLinkedIds('reduce digest module', module.moduleId, module.criterionIds, module.aspectIds, input, errors);
   }
   for (const issue of digest.issues ?? []) {
@@ -163,6 +177,67 @@ export function minimumReduceDigestPromptByteLength(input: MinimumReduceDigestPr
   });
 }
 
+export interface CandidateWorkDeclarations {
+  moduleId: string;
+  title: string;
+  description: string;
+  criterionIds: string[];
+  aspectIds: string[];
+  validationExpectation: string;
+  dependsOnModuleIds?: string[];
+  docsWork?: PlanningModuleDocsWork;
+  testWork?: PlanningModuleTestWork;
+  testOwnership?: PlanningModuleTestOwnership;
+  reviewDepth?: PlanningModuleReviewDepth;
+  reviewRationale?: string;
+}
+
+/**
+ * Deterministically rebuild digest modules from schema-validated module candidates
+ * (matched to authored digest modules by moduleId). Producers are prompted to mirror
+ * the declarations into their digests, but this guarantees they survive the
+ * digest-authored reduce path even when a producer omits them; the strongest work
+ * declaration wins and the candidate remains authoritative for exclusive ownership
+ * and review intent. Candidate traceability is authoritative because it is what
+ * artifact synthesis consumes; rebuilding the digest prevents a repaired child
+ * proposal from leaking stale pre-repair boundaries into its parent reducer.
+ * Submission tools must re-validate the rebuilt digest against the same byte and
+ * field budgets as the authored digest, since the rebuild is what parents consume.
+ */
+export function withCandidateWorkDeclarations(digest: PlanningReduceDigest, candidates: CandidateWorkDeclarations[]): PlanningReduceDigest {
+  if (candidates.length === 0) return digest;
+  const digestById = new Map((digest.modules ?? []).map((module) => [module.moduleId, module]));
+  const modules = candidates.map((candidate) => {
+    const authored = digestById.get(candidate.moduleId);
+    const docsWork = strongestWorkDeclaration(PLANNING_MODULE_DOCS_WORK_VALUES, authored?.docsWork, candidate.docsWork);
+    const testWork = strongestWorkDeclaration(PLANNING_MODULE_TEST_WORK_VALUES, authored?.testWork, candidate.testWork);
+    const testOwnership = candidate.testOwnership ?? authored?.testOwnership;
+    const reviewIntent = candidate.reviewDepth !== undefined
+      ? { reviewDepth: candidate.reviewDepth, reviewRationale: candidate.reviewRationale }
+      : { reviewDepth: authored?.reviewDepth, reviewRationale: authored?.reviewRationale };
+    return {
+      moduleId: candidate.moduleId,
+      title: candidate.title,
+      purpose: authored?.purpose ?? boundedOrReference(candidate.description, `Full description retained in module candidate ${candidate.moduleId}.`),
+      criterionIds: [...candidate.criterionIds],
+      aspectIds: [...candidate.aspectIds],
+      validationExpectation: authored?.validationExpectation ?? boundedOrReference(candidate.validationExpectation, `Validation details retained in module candidate ${candidate.moduleId}.`),
+      ...(docsWork !== undefined ? { docsWork } : {}),
+      ...(testWork !== undefined ? { testWork } : {}),
+      ...(testOwnership !== undefined ? { testOwnership } : {}),
+      ...(reviewIntent.reviewDepth !== undefined ? { reviewDepth: reviewIntent.reviewDepth } : {}),
+      ...(reviewIntent.reviewRationale !== undefined ? { reviewRationale: reviewIntent.reviewRationale } : {}),
+      ...(candidate.dependsOnModuleIds ? { dependsOnModuleIds: [...candidate.dependsOnModuleIds] } : {}),
+    };
+  });
+  return { ...digest, modules };
+}
+
+export function boundedOrReference(value: string | undefined, fallback: string): string {
+  if (value && utf8ByteLength(value) <= REDUCE_DIGEST_LIMITS.fragmentIntentBytes) return value;
+  return fallback;
+}
+
 export function clonePlanningReduceDigest(digest: PlanningReduceDigest): PlanningReduceDigest {
   return {
     ...digest,
@@ -183,7 +258,9 @@ function coerceDigestModule(value: unknown): PlanningReduceDigestModule {
   const record = objectValue(value, 'reduce digest module');
   const docsWork = optionalLiteralValue(record.docsWork, PLANNING_MODULE_DOCS_WORK_VALUES, 'reduce digest module docsWork');
   const testWork = optionalLiteralValue(record.testWork, PLANNING_MODULE_TEST_WORK_VALUES, 'reduce digest module testWork');
-  return { moduleId: requiredString(record.moduleId, 'reduce digest module id'), title: stringValue(record.title) ?? '', purpose: requiredString(record.purpose, 'reduce digest module purpose'), criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), ...(stringValue(record.validationExpectation) !== undefined ? { validationExpectation: stringValue(record.validationExpectation) } : {}), ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}), ...(stringArrayValue(record.dependsOnModuleIds).length > 0 ? { dependsOnModuleIds: stringArrayValue(record.dependsOnModuleIds) } : {}) };
+  const testOwnership = optionalLiteralValue(record.testOwnership, PLANNING_MODULE_TEST_OWNERSHIP_VALUES, 'reduce digest module testOwnership');
+  const reviewDepth = optionalLiteralValue(record.reviewDepth, PLANNING_MODULE_REVIEW_DEPTH_VALUES, 'reduce digest module reviewDepth');
+  return { moduleId: requiredString(record.moduleId, 'reduce digest module id'), title: stringValue(record.title) ?? '', purpose: requiredString(record.purpose, 'reduce digest module purpose'), criterionIds: stringArrayValue(record.criterionIds), aspectIds: stringArrayValue(record.aspectIds), ...(stringValue(record.validationExpectation) !== undefined ? { validationExpectation: stringValue(record.validationExpectation) } : {}), ...(docsWork !== undefined ? { docsWork } : {}), ...(testWork !== undefined ? { testWork } : {}), ...(testOwnership !== undefined ? { testOwnership } : {}), ...(reviewDepth !== undefined ? { reviewDepth } : {}), ...(stringValue(record.reviewRationale) !== undefined ? { reviewRationale: stringValue(record.reviewRationale) } : {}), ...(stringArrayValue(record.dependsOnModuleIds).length > 0 ? { dependsOnModuleIds: stringArrayValue(record.dependsOnModuleIds) } : {}) };
 }
 
 function coerceDigestIssue(value: unknown): PlanningReduceDigestIssue {

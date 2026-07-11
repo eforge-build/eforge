@@ -55,9 +55,9 @@ describe('per-plan pipeline derivation', () => {
     }));
 
     const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
-    expect(byId.get('module-large')?.risk.factors).toEqual(['large-plan']);
+    expect(byId.get('module-large')?.risk.factors).toEqual([]);
     expect(byId.get('module-bytes')?.risk.factors).toEqual(['large-plan']);
-    expect(byId.get('module-aspects')?.risk.factors).toEqual(['large-plan']);
+    expect(byId.get('module-aspects')?.risk.factors).toEqual([]);
     expect(byId.get('module-lowconf')?.risk.factors).toEqual(['low-confidence-localization']);
     expect(byId.get('module-subsystems')?.risk.factors).toEqual(['multi-subsystem']);
     expect(byId.get('module-root')?.risk.factors).toEqual(['dependency-root']);
@@ -94,7 +94,7 @@ describe('per-plan pipeline derivation', () => {
         module({ moduleId: 'module-trivial', criterionIds: ['ac-200'] }),
       ],
       atoms: [
-        atom({ atomId: 'atom-risky', criterionIds: ['ac-100'], subsystemHints: ['engine', 'monitor', 'client'] }),
+        atom({ atomId: 'atom-risky', criterionIds: ['ac-100'], subsystemHints: ['engine', 'monitor', 'client'], estimate: { sourceBytes: LARGE_PLAN_SOURCE_BYTES, criteriaCount: 3, subsystemCount: 3, evidencePathCount: 0, estimatedPromptBytes: 20_000 } }),
         atom({ atomId: 'atom-trivial', criterionIds: ['ac-200'] }),
       ],
       localizationRecords: [{ confidence: 'low', status: 'partial', linkedCriterionIds: ['ac-100'], linkedAspectIds: [] }],
@@ -125,7 +125,7 @@ describe('per-plan pipeline derivation', () => {
     expect(byId.get('module-author')?.rationale).toContain('declared docs work author-new');
   });
 
-  it('derives test build stages from declared test work', () => {
+  it('derives test build stages from legacy test work declarations', () => {
     const derivation = derivePlanPipelineSettings(inputs({
       modules: [
         module({ moduleId: 'module-author', testWork: 'author-new' }),
@@ -135,8 +135,42 @@ describe('per-plan pipeline derivation', () => {
 
     const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
     expect(byId.get('module-author')?.build).toEqual(['implement', 'test-write', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-author')?.testOwnership).toBe('test-writer');
     expect(byId.get('module-exercise')?.build).toEqual(['implement', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-exercise')?.testOwnership).toBe('existing-only');
     expect(byId.get('module-author')?.rationale).toContain('test work author-new');
+  });
+
+  it('normalizes typed test ownership into one authoring stage', () => {
+    const derivation = derivePlanPipelineSettings(inputs({ modules: [
+      module({ moduleId: 'module-builder', testWork: 'author-new', testOwnership: 'builder' }),
+      module({ moduleId: 'module-writer', criterionIds: ['ac-002'], testWork: 'author-new', testOwnership: 'test-writer' }),
+      module({ moduleId: 'module-existing', criterionIds: ['ac-003'], testWork: 'exercise-existing', testOwnership: 'existing-only' }),
+    ] }));
+
+    const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
+    expect(byId.get('module-builder')?.build).toEqual(['implement', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-writer')?.build).toEqual(['implement', 'test-write', 'test-cycle', 'review-cycle']);
+    expect(byId.get('module-existing')?.build).toEqual(['implement', 'test-cycle', 'review-cycle']);
+    expect(derivation.plans.filter((plan) => plan.build.includes('test-write'))).toHaveLength(1);
+    expect(derivation.defaultBuild).toEqual(['implement', 'test-write', 'test-cycle', 'review-cycle']);
+  });
+
+  it('honors model review intent while retaining deterministic safety floors', () => {
+    const derivation = derivePlanPipelineSettings(inputs({
+      modules: [
+        module({ moduleId: 'module-light', reviewDepth: 'light', reviewRationale: 'Small localized change.' }),
+        module({ moduleId: 'module-heavy', criterionIds: ['ac-002'], reviewDepth: 'heavy', reviewRationale: 'Security-sensitive contract.' }),
+        module({ moduleId: 'candidate-residue', criterionIds: ['ac-003'], residue: true, reviewDepth: 'light', reviewRationale: 'Requested light review.' }),
+      ],
+      residueCandidates: [{ candidateId: 'candidate-residue', buildability: 'repair-only', criterionIds: ['ac-003'] }],
+    }));
+
+    const byId = new Map(derivation.plans.map((plan) => [plan.moduleId, plan]));
+    expect(byId.get('module-light')?.reviewDepth).toBe('light');
+    expect(byId.get('module-heavy')?.reviewDepth).toBe('heavy');
+    expect(byId.get('candidate-residue')?.reviewDepth).toBe('heavy');
+    expect(derivation.defaultReview.evaluatorStrictness).toBe('strict');
   });
 
   it('combines docs and test declarations with heavy risk without duplicating test-cycle', () => {

@@ -41,6 +41,7 @@ import {
   StackLayerStatusSchema,
   TerminalFailureEnvelopeSchema,
   TestIssueSchema,
+  TestOwnershipSchema,
 } from '../shared/schemas.js';
 import { agentStartFields } from '../shared/agent-fields.js';
 import {
@@ -162,6 +163,14 @@ export const buildEventVariants = [
     type: Type.Literal('plan:build:doc-sync:complete'),
     planId: Type.String(),
     docsSynced: Type.Number(),
+  }),
+  Type.Object({
+    type: Type.Literal('plan:build:test:ownership:violation'),
+    planId: Type.String(),
+    stage: Type.Union([Type.Literal('implement'), Type.Literal('test-write'), Type.Literal('test')]),
+    declaredOwner: Type.Union([TestOwnershipSchema, Type.Literal('unspecified')]),
+    changedPaths: Type.Array(Type.String()),
+    reason: Type.String(),
   }),
   Type.Object({ type: Type.Literal('plan:build:test:write:start'), planId: Type.String() }),
   Type.Object({

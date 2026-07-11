@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { AgentHarness, AgentRunOptions } from '@eforge-build/engine/harness';
 import type { AgentRole, EforgeEvent } from '@eforge-build/engine/events';
-import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTreeFromAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, planPromptSafeReduceTreeFromTasks, runPlanningMapReducePipeline, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
+import { buildPlanningAtomTasks, buildPlanningReduceTreeFromAtomTasks, derivePlanningAtomGraph, deriveSharedPlanningBrief, deriveSourceInventory, planPromptSafeReduceTreeFromTasks, runPlanningMapReducePipeline, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const reduceLimits = { maxInputsPerReduce: 2, maxReduceDepth: 4, maxReducePromptBytes: 50_000, maxReduceSummaryBytes: 8_000 };
@@ -29,7 +29,7 @@ describe('planning map/reduce pipeline runner', () => {
     const firstReducer = data.tree.nodes.find((node) => node.depth === 0 && node.inputAtomIds.length === 2)!;
     const outputs = new Map<string, unknown>([
       ...data.tasks.map((task) => [task.atomId, completedAtomOutput(task)] as const),
-      ...scriptedReduceOutputs(data.tree, data.tasks.map(completedAtomOutput)).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
     const live: EforgeEvent[] = [];
@@ -57,7 +57,7 @@ describe('planning map/reduce pipeline runner', () => {
     const root = data.tree.nodes.find((node) => node.nodeId === data.tree.rootNodeId)!;
     const outputs = new Map<string, unknown>([
       ...data.tasks.map((task) => [task.atomId, completedAtomOutput(task)] as const),
-      ...scriptedReduceOutputs(data.tree, data.tasks.map(completedAtomOutput)).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
     const live: EforgeEvent[] = [];
@@ -80,7 +80,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => completedAtomOutput(task));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(data.tree, atomOutputs).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
     const live: EforgeEvent[] = [];
@@ -111,7 +111,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => task.atomId === failingAtomId ? { atomId: task.atomId, status: 'failed', aspectUpdates: [], error: 'boom' } : completedAtomOutput(task));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(data.tree, atomOutputs.filter((output): output is PlanningAtomOutput => output.status === 'completed')).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
     const live: EforgeEvent[] = [];
@@ -138,7 +138,7 @@ describe('planning map/reduce pipeline runner', () => {
     const root = data.tree.nodes.find((node) => node.nodeId === data.tree.rootNodeId)!;
     const runningAtomId = data.tasks.map((task) => task.atomId).find((atomId) => !failingReducer.inputAtomIds.includes(atomId))!;
     const atomOutputs = data.tasks.map((task) => completedAtomOutput(task));
-    const reduceOutputs = scriptedReduceOutputs(data.tree, atomOutputs).map((output) => output.nodeId === failingReducer.nodeId ? { nodeId: output.nodeId, status: 'failed' as const, compactSummary: '', error: 'reducer boom' } : output);
+    const reduceOutputs = scriptedReduceOutputs(data.tree).map((output) => output.nodeId === failingReducer.nodeId ? { nodeId: output.nodeId, status: 'failed' as const, compactSummary: '', error: 'reducer boom' } : output);
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
       ...reduceOutputs.map((output) => [output.nodeId, output] as const),
@@ -168,7 +168,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => task.atomId === skippedTask.atomId ? skippedAtomOutput(task) : completedAtomOutput(task));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(data.tree, atomOutputs.filter((output): output is PlanningAtomOutput => output.status === 'completed')).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
 
@@ -186,7 +186,7 @@ describe('planning map/reduce pipeline runner', () => {
   });
 
   it('does not invoke a reducer when launch-time prompt validation exceeds budget', async () => {
-    const limits = { ...reduceLimits, maxReducePromptBytes: 5_400 };
+    const limits = { ...reduceLimits, maxReducePromptBytes: 7_000 };
     const data = fixture(['engine updates `packages/engine/src/a.ts`.', 'client updates `packages/client/src/b.ts`.']);
     const reducer = data.tree.nodes[0]!;
     const atomOutputs = data.tasks.map((task) => completedAtomOutputWithLargeReducerDigest(task));
@@ -211,7 +211,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => completedAtomOutput(task));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(data.tree, atomOutputs).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
 
@@ -236,7 +236,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => completedAtomOutput(task, task.atomId === primaryTask.atomId ? { sharedFindings: [finding] } : {}));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(data.tree, atomOutputs).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(data.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
     const live: EforgeEvent[] = [];
@@ -317,7 +317,7 @@ describe('planning map/reduce pipeline runner', () => {
     const atomOutputs = data.tasks.map((task) => completedAtomOutput(task));
     const outputs = new Map<string, unknown>([
       ...atomOutputs.map((output) => [output.atomId, output] as const),
-      ...scriptedReduceOutputs(planned.tree, atomOutputs).map((output) => [output.nodeId, output] as const),
+      ...scriptedReduceOutputs(planned.tree).map((output) => [output.nodeId, output] as const),
     ]);
     const harness = new GateHarness(outputs);
 
@@ -386,11 +386,15 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function scriptedReduceOutputs(tree: ReturnType<typeof buildPlanningReduceTreeFromAtomTasks>, atomOutputs: PlanningAtomOutput[]): PlanningReduceOutput[] {
+function scriptedReduceOutputs(tree: ReturnType<typeof buildPlanningReduceTreeFromAtomTasks>): PlanningReduceOutput[] {
   const outputs: PlanningReduceOutput[] = [];
   for (const node of [...tree.nodes].sort((a, b) => a.depth - b.depth || a.nodeId.localeCompare(b.nodeId))) {
-    buildPlanningReduceTask(tree, node, atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), outputs.filter((output) => node.inputNodeIds.includes(output.nodeId)));
-    outputs.push(validReduceOutput(node));
+    const output = validReduceOutput(node);
+    // High-fan-in nodes model a coalescing reducer: per-criterion candidates
+    // rebuilt into the digest would exceed the planned digest slot and be
+    // rejected at submission time.
+    if (node.criterionIds.length > 8) output.moduleCandidates = undefined;
+    outputs.push(output);
   }
   return outputs;
 }
@@ -415,5 +419,12 @@ function skippedAtomOutput(task: PlanningAtomTask): PlanningAtomOutput {
 }
 
 function validReduceOutput(node: PlanningReduceNode): PlanningReduceOutput {
-  return { nodeId: node.nodeId, status: 'completed', compactSummary: `Reduced ${node.nodeId}.`, reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds }, planFragments: [{ fragmentId: `fragment-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }], moduleCandidates: [{ moduleId: `module-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, description: `Implement ${node.nodeId}.`, validationExpectation: 'Relevant checks pass.' }] };
+  return {
+    nodeId: node.nodeId,
+    status: 'completed',
+    compactSummary: `Reduced ${node.nodeId}.`,
+    reduceDigest: { sourceId: node.nodeId, sourceKind: 'reduce', status: 'completed', summary: `Reduced ${node.nodeId}.`, criterionIds: node.criterionIds, aspectIds: node.aspectIds },
+    planFragments: [{ fragmentId: `fragment-${node.nodeId}`, title: node.nodeId, criterionIds: node.criterionIds, aspectIds: node.aspectIds, markdown: `Reduced plan for ${node.nodeId}.` }],
+    moduleCandidates: node.criterionIds.map((criterionId, index) => ({ moduleId: `module-${node.nodeId}-${index + 1}`, title: `${node.nodeId} ${criterionId}`, criterionIds: [criterionId], aspectIds: node.aspectIds.filter((aspectId) => aspectId.startsWith(`${criterionId}:`)), description: `Implement ${criterionId}.`, validationExpectation: 'Relevant checks pass.' })),
+  };
 }

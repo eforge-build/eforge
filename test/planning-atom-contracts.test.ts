@@ -33,6 +33,8 @@ describe('planning atom map contracts', () => {
       'ac-002:interface:command-surface',
     ]);
     expect(tasks.every((task) => task.sourceSlices.every((slice) => slice.byteLength <= limits.maxPromptSourceBytes))).toBe(true);
+    expect(tasks.every((task) => task.workProfile.shape === 'bounded-decomposition')).toBe(true);
+    expect(tasks.every((task) => task.workProfile.planningUnitCount === 2)).toBe(true);
   });
 
   it('validates atom output against owned aspects, links, and compact handoff budget', () => {
@@ -52,13 +54,29 @@ describe('planning atom map contracts', () => {
     expect(valid).toEqual({ ok: true, errors: [] });
   });
 
-  it('accepts declared docs/test work on module candidates and rejects unknown literals', () => {
+  it('accepts typed plan intent on module candidates and rejects unknown literals', () => {
     const candidate = { moduleId: 'module-engine', title: 'Engine module', criterionIds: ['ac-001'], aspectIds: ['ac-001:general:general'], description: 'Update engine config.', validationExpectation: 'Config tests pass.' };
+    const intent = { docsWork: 'author-new', testWork: 'author-new', testOwnership: 'builder', reviewDepth: 'light', reviewRationale: 'Localized single-module change.' };
 
-    expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, docsWork: 'author-new', testWork: 'exercise-existing' }).success).toBe(true);
+    expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, ...intent }).success).toBe(true);
     expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, candidate).success).toBe(true);
     expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, docsWork: 'docs-please' }).success).toBe(false);
     expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, testWork: 'sync-existing' }).success).toBe(false);
+    expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, testOwnership: 'tester' }).success).toBe(false);
+    expect(safeParseWithSchema(PlanningAtomModuleCandidateSchema, { ...candidate, reviewDepth: 'extreme' }).success).toBe(false);
+  });
+
+  it('requires rationale when a module candidate declares review depth', () => {
+    const { graph, inventory } = graphFrom(['engine updates `packages/engine/src/config.ts`.']);
+    const [task] = buildPlanningAtomTasks({ graph, inventory });
+    const output: PlanningAtomOutput = {
+      atomId: task.atomId,
+      status: 'completed',
+      aspectUpdates: resolvedUpdates(task),
+      moduleCandidates: [{ moduleId: 'module-engine', title: 'Engine', criterionIds: task.criterionIds, aspectIds: task.aspectIds, description: 'Update engine config.', validationExpectation: 'Checks pass.', testOwnership: 'builder', reviewDepth: 'light' }],
+    };
+
+    expect(validatePlanningAtomOutputForTask({ task, output })).toEqual({ ok: false, errors: ['module candidate review depth requires rationale:module-engine'] });
   });
 
   it('rejects unknown aspects and resolved aspects that do not cite the producing atom', () => {

@@ -21,6 +21,7 @@ export * from './runtime-choice.js';
 export * from './agent-runtime.js';
 export * from './path-globs.js';
 export * from './git-helpers.js';
+export * from './test-ownership.js';
 export * from './error-translator.js';
 export * from './span-wiring.js';
 export * from './misc.js';

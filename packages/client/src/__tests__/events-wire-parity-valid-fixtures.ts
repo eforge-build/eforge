@@ -80,6 +80,7 @@ export const validPayloads: EventWireParityFixture[] = [
   {label: 'plan:build:doc-author:complete',payload: {type: 'plan:build:doc-author:complete',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01',docsAuthored: 2,},},
   {label: 'plan:build:doc-sync:start',payload: {type: 'plan:build:doc-sync:start',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01'},},
   {label: 'plan:build:doc-sync:complete',payload: {type: 'plan:build:doc-sync:complete',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01',docsSynced: 1,},},
+  {label: 'plan:build:test:ownership:violation',payload: {type: 'plan:build:test:ownership:violation',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01',stage: 'implement',declaredOwner: 'test-writer',changedPaths: ['test/health.test.ts'],reason: 'implement changed test files owned by test-writer'},},
   {label: 'plan:build:test:write:start',payload: {type: 'plan:build:test:write:start',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01'},},
   {label: 'plan:build:test:write:complete',payload: {type: 'plan:build:test:write:complete',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01',testsWritten: 4,},},
   {label: 'plan:build:test:start',payload: {type: 'plan:build:test:start',timestamp: '2025-01-01T00:00:00.000Z',planId: 'plan-01'},},

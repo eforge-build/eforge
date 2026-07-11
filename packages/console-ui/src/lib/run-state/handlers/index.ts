@@ -246,6 +246,7 @@ export const IGNORED_EVENT_TYPES = [
   'plan:build:review:fix:continuation',
   'plan:build:evaluate:continuation',
   'plan:build:evaluate:complete',
+  'plan:build:test:ownership:violation',
   'plan:build:progress',
   'schedule:start',
   'plan:schedule:ready',

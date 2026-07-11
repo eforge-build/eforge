@@ -38,6 +38,9 @@ describe('planning atom map runner', () => {
     expect(result.coverage.completeCriteria).toEqual(['ac-001', 'ac-002', 'ac-003']);
     expect(harness.calls.every((call) => call.tools === 'none' && call.maxTurns === 3)).toBe(true);
     expect(harness.prompts[0]).toContain('Do not inspect the repository or call repository tools');
+    expect(harness.prompts[0]).toContain('Propose the smallest coherent module set');
+    expect(harness.prompts[0]).toContain('"workProfile"');
+    expect(harness.prompts[0]).toContain('testOwnership');
     expect(harness.customToolSets[0]?.map((tool) => tool.name)).toEqual(['submit_atom_output']);
   });
 

@@ -6,6 +6,7 @@ import { derivePlanningAspectCoverage } from './coverage-accounting.js';
 import type { PlanningReduceConflict, PlanningReduceGap, PlanningReduceOutput } from './reduce-contracts.js';
 import type { PlanningResidueCandidate } from './residue-contracts.js';
 import { utf8ByteLength } from './source-analysis.js';
+import type { PlanningArtifactSynthesisResult } from './plan-artifact-synthesis.js';
 import type { SourceLocalizationRepairCoverageStatus, SourceLocalizationRepairDiagnostic } from './source-localization-repair.js';
 import {
   COMPILER_DIAGNOSTICS_ARTIFACT,
@@ -18,7 +19,7 @@ import {
   type CompilerDiagnosticsRepairAttempt,
 } from './compiler-diagnostics-contracts.js';
 
-export interface BuildCompilerDiagnosticsInput { compilerResult: BoundedPlannerCompilerResult; planSetName: string }
+export interface BuildCompilerDiagnosticsInput { compilerResult: BoundedPlannerCompilerResult; planSetName: string; artifacts?: PlanningArtifactSynthesisResult }
 export interface WriteCompilerDiagnosticsArtifactInput { cwd: string; outputDir: string; planSetName: string; diagnostics: CompilerDiagnostics; fileName?: string }
 export interface WriteRescopeFailClosedArtifactInput { cwd: string; outputDir: string; planSetName: string; reason: string; rescope: NonNullable<BoundedPlannerCompilerResult['rescopeDiagnostics']> }
 
@@ -39,6 +40,7 @@ export function buildCompilerDiagnostics(input: BuildCompilerDiagnosticsInput): 
     graphId: bounded(result.atomGraph.graphId, 160),
     compilerStatus: result.status,
     validationErrors: cap(result.validationErrors.map((error) => bounded(error, 500)), 128, omitted, 'validationErrors'),
+    normalization: normalizationSection(input.artifacts, omitted),
     coverage: coverageSection(result, omitted),
     reduce: {
       gaps: cap(gapEntries(reduceOutputs, representedBy, omitted), 128, omitted, 'gaps'),
@@ -66,7 +68,7 @@ function sharedBriefBudgetEntries(result: BoundedPlannerCompilerResult): Compile
 
 export function serializeCompilerDiagnostics(diagnostics: CompilerDiagnostics): string {
   let current = diagnostics;
-  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, compactExploration, compactRescope, dropCoverageCriteria]) {
+  for (const compact of [dropCoverageAspects, dropRepairCoverageAspects, truncateDescriptions, compactExploration, compactRescope, compactNormalization, dropCoverageCriteria]) {
     const text = `${JSON.stringify(current, null, 2)}\n`;
     if (utf8ByteLength(text) <= MAX_COMPILER_DIAGNOSTICS_BYTES) return text;
     current = compact(current);
@@ -108,6 +110,53 @@ export async function writeRescopeFailClosedArtifact(input: WriteRescopeFailClos
 // --- eforge:endregion compiler-diagnostics-entrypoints ---
 
 // --- eforge:region compiler-diagnostics-projections ---
+function normalizationSection(artifacts: PlanningArtifactSynthesisResult | undefined, omitted: CompilerDiagnosticsOmittedCounts): CompilerDiagnostics['normalization'] {
+  if (!artifacts) return { status: 'not-run', modules: [], fileOwnershipConflicts: [], validationErrors: [] };
+  const normalization = artifacts.normalization;
+  // Same accounting convention as compactNormalization: dropped modules fold
+  // their changes and owned paths into the per-field omission counters.
+  if (normalization.modules.length > 64) {
+    const dropped = normalization.modules.slice(64);
+    omitted.normalizationModules += dropped.length;
+    omitted.normalizationChanges += dropped.reduce((total, module) => total + module.normalizationChanges.length, 0);
+    omitted.normalizationOwnedPaths += dropped.reduce((total, module) => total + module.ownedPaths.length, 0);
+  }
+  const modules = normalization.modules.slice(0, 64).map((module) => {
+    if (module.normalizationChanges.length > 16) omitted.normalizationChanges += module.normalizationChanges.length - 16;
+    if (module.ownedPaths.length > 64) omitted.normalizationOwnedPaths += module.ownedPaths.length - 64;
+    return {
+      moduleId: bounded(module.moduleId, 160),
+      proposed: {
+        ...(module.proposedIntent.docsWork ? { docsWork: module.proposedIntent.docsWork } : {}),
+        ...(module.proposedIntent.testWork ? { testWork: module.proposedIntent.testWork } : {}),
+        ...(module.proposedIntent.testOwnership ? { testOwnership: module.proposedIntent.testOwnership } : {}),
+        ...(module.proposedIntent.reviewDepth ? { reviewDepth: module.proposedIntent.reviewDepth } : {}),
+        ...(module.proposedIntent.reviewRationale ? { reviewRationale: bounded(module.proposedIntent.reviewRationale, 500) } : {}),
+        dependsOnModuleIds: boundedIds(module.proposedIntent.dependsOnModuleIds, 160, 16),
+      },
+      normalized: {
+        docsWork: module.docsWork,
+        testWork: module.testWork,
+        testOwnership: module.testOwnership,
+        reviewDepth: module.reviewDepth,
+        reviewFloor: module.reviewFloor,
+        risk: { score: module.risk.score, factors: [...module.risk.factors] },
+        budgetUsage: { ...module.budgetUsage },
+        build: module.build.slice(0, 16).map((stage) => Array.isArray(stage) ? stage.slice(0, 8).map((value) => bounded(value, 80)) : bounded(stage, 80)),
+      },
+      ownedPaths: boundedIds(module.ownedPaths, 500, 64),
+      changes: module.normalizationChanges.slice(0, 16).map((change) => ({ ...change, reason: bounded(change.reason, 500) })),
+    };
+  });
+  if (normalization.fileOwnershipConflicts.length > 64) omitted.fileOwnershipConflicts += normalization.fileOwnershipConflicts.length - 64;
+  return {
+    status: normalization.status,
+    modules,
+    fileOwnershipConflicts: normalization.fileOwnershipConflicts.slice(0, 64).map((conflict) => ({ path: bounded(conflict.path, 500), ownerModuleIds: boundedIds(conflict.ownerModuleIds, 160, 16) })),
+    validationErrors: cap(normalization.validationErrors.map((error) => bounded(error, 500)), 128, omitted, 'normalizationValidationErrors'),
+  };
+}
+
 function coverageSection(result: BoundedPlannerCompilerResult, omitted: CompilerDiagnosticsOmittedCounts): CompilerDiagnostics['coverage'] {
   const coverage = derivePlanningAspectCoverage({
     graph: result.atomGraph,
@@ -365,6 +414,33 @@ function truncateDescriptions(diagnostics: CompilerDiagnostics): CompilerDiagnos
   };
 }
 
+function compactNormalization(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
+  const keptModules = diagnostics.normalization.modules.slice(0, 16);
+  const droppedModules = diagnostics.normalization.modules.slice(16);
+  return {
+    ...diagnostics,
+    normalization: {
+      ...diagnostics.normalization,
+      modules: keptModules.map((module) => ({
+        ...module,
+        proposed: { ...module.proposed, ...(module.proposed.reviewRationale ? { reviewRationale: bounded(module.proposed.reviewRationale, 240) } : {}) },
+        ownedPaths: module.ownedPaths.slice(0, 8),
+        changes: module.changes.slice(0, 8).map((change) => ({ ...change, reason: bounded(change.reason, 240) })),
+      })),
+      fileOwnershipConflicts: diagnostics.normalization.fileOwnershipConflicts.slice(0, 16),
+      validationErrors: diagnostics.normalization.validationErrors.slice(0, 64),
+    },
+    omitted: {
+      ...diagnostics.omitted,
+      normalizationModules: diagnostics.omitted.normalizationModules + droppedModules.length,
+      normalizationChanges: diagnostics.omitted.normalizationChanges + keptModules.reduce((total, module) => total + Math.max(0, module.changes.length - 8), 0) + droppedModules.reduce((total, module) => total + module.changes.length, 0),
+      normalizationOwnedPaths: diagnostics.omitted.normalizationOwnedPaths + keptModules.reduce((total, module) => total + Math.max(0, module.ownedPaths.length - 8), 0) + droppedModules.reduce((total, module) => total + module.ownedPaths.length, 0),
+      fileOwnershipConflicts: diagnostics.omitted.fileOwnershipConflicts + Math.max(0, diagnostics.normalization.fileOwnershipConflicts.length - 16),
+      normalizationValidationErrors: diagnostics.omitted.normalizationValidationErrors + Math.max(0, diagnostics.normalization.validationErrors.length - 64),
+    },
+  };
+}
+
 function dropCoverageCriteria(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
   return {
     ...diagnostics,
@@ -408,7 +484,7 @@ function compactRescope(diagnostics: CompilerDiagnostics): CompilerDiagnostics {
 }
 
 function emptyOmittedCounts(): CompilerDiagnosticsOmittedCounts {
-  return { gaps: 0, conflicts: 0, repairAttempts: 0, evidenceFailures: 0, coverageAspects: 0, coverageCriteria: 0, residueCandidates: 0, validationErrors: 0, descriptionBytes: 0, sharedBriefBudget: 0 };
+  return { gaps: 0, conflicts: 0, repairAttempts: 0, evidenceFailures: 0, coverageAspects: 0, coverageCriteria: 0, residueCandidates: 0, validationErrors: 0, descriptionBytes: 0, sharedBriefBudget: 0, normalizationModules: 0, normalizationChanges: 0, normalizationOwnedPaths: 0, normalizationValidationErrors: 0, fileOwnershipConflicts: 0 };
 }
 
 function cap<T>(items: T[], maxItems: number, omitted: CompilerDiagnosticsOmittedCounts, key: Exclude<keyof CompilerDiagnosticsOmittedCounts, 'descriptionBytes'>): T[] {
