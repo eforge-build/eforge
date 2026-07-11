@@ -51,7 +51,7 @@ Plan content is traceable to inventory criterion/aspect ids: each plan's traceab
 
 ## Pipeline Sanity
 
-Per-plan `build`/`review` settings in `orchestration.yaml` were derived deterministically from plan risk. Audit them: a large or risky plan (many files, residue-derived, low-confidence localization, several subsystems) should not carry lighter review settings than a trivial plan. Correct clear mismatches with a `replace_orchestration` fix; report judgment calls as `suggestion` / `scope` issues.
+Per-plan `build`/`review` settings in `orchestration.yaml` were derived deterministically from plan risk. Audit them in both directions: a large or risky plan must not fall below its safety floor, while a small cohesive plan should not carry redundant stages or unjustified review depth. Use the typed structural operations for clear simplifications; deterministic validation rejects changes that cross ownership, coverage, budget, dependency, or risk-floor invariants.
 
 # Severity Mapping
 
@@ -74,15 +74,19 @@ When you identify an issue that has a clear, unambiguous fix:
 # Fix Criteria
 
 A fix is appropriate when:
-- The correct change is unambiguous (wrong file path, missing dependency, coverage note, contract entry, review-setting mismatch)
-- The fix does not alter the compiler's technical approach or plan decomposition
+- The correct change is unambiguous (wrong file path, missing dependency, coverage note, contract entry, or a clearly redundant structural boundary)
+- The fix preserves the compiler's technical approach and all source requirements
+- A plan merge combines scopes that are demonstrably one cohesive implementation boundary
+- A stage or review reduction removes work unsupported by declared intent or concrete risk
 - The fix is minimal — only changes what is necessary to resolve the issue
 
 A fix is NOT appropriate when:
-- Multiple valid approaches exist
-- The fix would restructure plans (split, merge, reorder) or change scope boundaries
+- Multiple valid technical approaches exist
+- A merge would combine independently owned subsystems, residue/follow-up work, or plans that should remain separately buildable
 - The fix would weaken or delete acceptance coverage instead of resolving it
-- The fix requires understanding why the compiler made a particular decision
+- The fix requires guessing about ownership, budget, or safety evidence
+
+Do not mix typed structural operations with whole-file replacement variants in one submission. Structural operations regenerate all affected artifacts as one candidate change.
 
 # Fix Submission Schema
 
@@ -98,6 +102,9 @@ The following YAML documents the schema for `{{submitTool}}`:
 - `replace_plan_body` — supply `planId` and `body`. The existing frontmatter is preserved byte-identically.
 - `replace_architecture` — supply `content` for the entire `architecture.md` file. The fenced `eforge-architecture-manifest` JSON block is machine-managed — edits to it are discarded; only prose changes take effect.
 - `replace_acceptance_coverage` — supply `content` for the entire `acceptance-coverage.md` file.
+- `merge_plans` — supply the retained `targetPlanId`, one or more `absorbedPlanIds`, and a concrete cohesion `rationale`. The engine redirects dependencies and regenerates all affected artifacts.
+- `remove_redundant_stage` — supply `planId`, the non-core `stage`, and `rationale`. Required docs/test/safety stages cannot be removed.
+- `reduce_review_depth` — supply `planId`, the lower `reviewDepth`, and `rationale`. The deterministic risk floor remains mandatory.
 
 There is **no fix variant for `compiler-diagnostics.json`** — the diagnostics record what the compiler did and must never be edited or deleted.
 
@@ -140,4 +147,4 @@ Rules:
 - Do NOT modify files outside `{{outputDir}}/{{plan_set_name}}/`
 - Do NOT modify or delete `{{outputDir}}/{{plan_set_name}}/compiler-diagnostics.json` under any circumstances
 - Review ONLY the planning artifacts — do not review or modify source code
-- Do NOT restructure plans (split, merge, reorder) — only fix individual issues within existing artifacts
+- Do NOT split or reorder plans; merge plans only through `merge_plans` when they are clearly one cohesive bounded unit

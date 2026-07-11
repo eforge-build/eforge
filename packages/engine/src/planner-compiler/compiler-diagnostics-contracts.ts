@@ -157,6 +157,14 @@ const CompilerDiagnosticsRescopeSchema = Type.Object({
 }, { additionalProperties: false });
 
 const BuildStageSpecSchema = Type.Union([boundedString(80), Type.Array(boundedString(80), { minItems: 1, maxItems: 8 })]);
+const CompilerDiagnosticsRiskFactorSchema = Type.Union([
+  Type.Literal('large-plan'),
+  Type.Literal('residue-derived'),
+  Type.Literal('repair-only-residue'),
+  Type.Literal('low-confidence-localization'),
+  Type.Literal('multi-subsystem'),
+  Type.Literal('dependency-root'),
+]);
 const CompilerDiagnosticsNormalizationChangeSchema = Type.Object({
   field: Type.Union([Type.Literal('docsWork'), Type.Literal('testWork'), Type.Literal('testOwnership'), Type.Literal('reviewDepth'), Type.Literal('fileOwnership')]),
   kind: Type.Union([Type.Literal('fallback'), Type.Literal('normalized'), Type.Literal('safety-escalation')]),
@@ -177,6 +185,9 @@ const CompilerDiagnosticsNormalizationModuleSchema = Type.Object({
     testWork: PlanningModuleTestWorkSchema,
     testOwnership: PlanningModuleTestOwnershipSchema,
     reviewDepth: PlanningModuleReviewDepthSchema,
+    reviewFloor: PlanningModuleReviewDepthSchema,
+    risk: Type.Object({ score: count(), factors: Type.Array(CompilerDiagnosticsRiskFactorSchema, { maxItems: 8 }) }, { additionalProperties: false }),
+    budgetUsage: Type.Object({ sourceContextBytes: count(), criterionCount: count(), subsystemCount: count() }, { additionalProperties: false }),
     build: Type.Array(BuildStageSpecSchema, { maxItems: 16 }),
   }, { additionalProperties: false }),
   ownedPaths: boundedIds(500, 64),

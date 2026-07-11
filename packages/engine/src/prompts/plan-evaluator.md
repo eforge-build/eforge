@@ -37,7 +37,7 @@ A change is a **strict improvement** if and only if:
 1. {{strict_improvement_bullet_1}}
 2. It does NOT alter the planner's architectural decisions or technical approach
 3. It does NOT remove scope items the planner intentionally included
-4. It does NOT restructure or reorganize plans
+4. {{restructuring_principle}}
 5. The fix is minimal — it addresses only the identified issue
 
 ### Verdict Categories
@@ -71,9 +71,9 @@ Patterns that qualify as Accept:
 
 1. **Approach alteration** — The change modifies the planner's chosen technical strategy
 2. **Scope removal** — The change removes items the planner intentionally included
-3. **Plan restructuring** — The change splits, merges, or reorders plans{{reject_criteria_extra}}
+3. **Plan restructuring** — {{restructuring_reject}}
 4. **Assumption-based** — The reviewer assumed context the planner may have had
-5. **Style-only** — The change only affects wording or formatting without fixing an issue
+5. **Style-only** — The change only affects wording or formatting without fixing an issue{{reject_criteria_extra}}
 
 ### Review Criteria
 
@@ -84,7 +84,7 @@ Characteristics of ambiguous cases:
 | Adds more verification criteria | Helpful but planner may have deemed them unnecessary |
 | Rephrases key decisions | Clearer but may alter nuance |
 | Adds implementation detail | Useful but may conflict with builder's exploration |
-| Changes scope boundaries | Might be more correct but planner had reasons for current boundaries |
+| Changes scope boundaries | Ambiguous unless this mode explicitly permits a typed structural simplification with cohesive regenerated artifacts |
 
 ## Evaluation Verdict Schema
 

@@ -1,6 +1,6 @@
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import type { BoundedPlannerCompilerResult } from './compiler-runner.js';
-import { cloneBuildStages, derivePlanPipelineSettings, type DerivedPlanPipelineSettings } from './pipeline-derivation.js';
+import { cloneBuildStages, derivePlanPipelineSettings, type DerivedPlanPipelineSettings, type PlanRiskAssessment } from './pipeline-derivation.js';
 import type { PlanningModuleDocsWork, PlanningModuleReviewDepth, PlanningModuleTestOwnership, PlanningModuleTestWork } from './reduce-digest-contracts.js';
 
 export type ProposalNormalizationChangeKind = 'fallback' | 'normalized' | 'safety-escalation';
@@ -22,11 +22,15 @@ export interface PlanningProposalModuleInput {
   reviewDepth?: PlanningModuleReviewDepth;
   reviewRationale?: string;
 }
+export interface PlanningProposalBudgetUsage { sourceContextBytes: number; criterionCount: number; subsystemCount: number }
 export interface NormalizedPlanningProposalModule extends Omit<PlanningProposalModuleInput, 'docsWork' | 'testWork' | 'testOwnership' | 'reviewDepth'> {
   docsWork: PlanningModuleDocsWork;
   testWork: PlanningModuleTestWork;
   testOwnership: PlanningModuleTestOwnership;
   reviewDepth: PlanningModuleReviewDepth;
+  reviewFloor: PlanningModuleReviewDepth;
+  risk: PlanRiskAssessment;
+  budgetUsage: PlanningProposalBudgetUsage;
   build: BuildStageSpec[];
   review: ReviewProfileConfig;
   pipelineRationale: string;
@@ -70,6 +74,9 @@ export function normalizePlanningProposal(input: NormalizePlanningProposalInput)
       ...module,
       testOwnership: settings.testOwnership,
       reviewDepth: settings.reviewDepth,
+      reviewFloor: settings.reviewFloor,
+      risk: { ...settings.risk, factors: [...settings.risk.factors] },
+      budgetUsage: budgetUsageForModule(input.compilerResult, module),
       build: cloneBuildStages(settings.build),
       review: cloneReview(settings.review),
       pipelineRationale: settings.rationale,
@@ -253,14 +260,20 @@ function validateModuleCoverage(result: BoundedPlannerCompilerResult, modules: N
   for (const criterion of result.sourceInventory.criteria) if (!covered.has(criterion.id) && !skipped.has(criterion.id)) errors.push(`criterion has no module owner:${criterion.id}`);
 }
 
+function budgetUsageForModule(result: BoundedPlannerCompilerResult, module: PlanningProposalModuleInput): PlanningProposalBudgetUsage {
+  const atoms = result.atomGraph.atoms.filter((atom) => intersects(module.criterionIds, atom.criterionIds) || intersects(module.aspectIds, atom.facetIds));
+  return {
+    sourceContextBytes: atoms.reduce((total, atom) => total + atom.estimate.sourceBytes, 0),
+    criterionCount: module.criterionIds.length,
+    subsystemCount: new Set(atoms.flatMap((atom) => atom.subsystemHints)).size,
+  };
+}
+
 function validateModuleBudgets(result: BoundedPlannerCompilerResult, modules: NormalizedPlanningProposalModule[], errors: string[]): void {
   for (const module of modules.filter((candidate) => !candidate.residue)) {
-    const atoms = result.atomGraph.atoms.filter((atom) => intersects(module.criterionIds, atom.criterionIds) || intersects(module.aspectIds, atom.facetIds));
-    const sourceBytes = atoms.reduce((total, atom) => total + atom.estimate.sourceBytes, 0);
-    const subsystems = new Set(atoms.flatMap((atom) => atom.subsystemHints)).size;
-    if (sourceBytes > result.atomGraph.limits.maxPromptSourceBytes) errors.push(`module source context budget exceeded:${module.moduleId}:${sourceBytes}>${result.atomGraph.limits.maxPromptSourceBytes}`);
-    if (module.criterionIds.length > result.atomGraph.limits.maxCriteriaPerUnit) errors.push(`module criterion budget exceeded:${module.moduleId}:${module.criterionIds.length}>${result.atomGraph.limits.maxCriteriaPerUnit}`);
-    if (subsystems > result.atomGraph.limits.maxSubsystemsPerUnit) errors.push(`module subsystem budget exceeded:${module.moduleId}:${subsystems}>${result.atomGraph.limits.maxSubsystemsPerUnit}`);
+    if (module.budgetUsage.sourceContextBytes > result.atomGraph.limits.maxPromptSourceBytes) errors.push(`module source context budget exceeded:${module.moduleId}:${module.budgetUsage.sourceContextBytes}>${result.atomGraph.limits.maxPromptSourceBytes}`);
+    if (module.budgetUsage.criterionCount > result.atomGraph.limits.maxCriteriaPerUnit) errors.push(`module criterion budget exceeded:${module.moduleId}:${module.budgetUsage.criterionCount}>${result.atomGraph.limits.maxCriteriaPerUnit}`);
+    if (module.budgetUsage.subsystemCount > result.atomGraph.limits.maxSubsystemsPerUnit) errors.push(`module subsystem budget exceeded:${module.moduleId}:${module.budgetUsage.subsystemCount}>${result.atomGraph.limits.maxSubsystemsPerUnit}`);
   }
 }
 

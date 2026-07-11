@@ -43,7 +43,7 @@ export function synthesizePlanningArtifacts(input: SynthesizePlanningArtifactsIn
 }
 
 function stampNormalizedModule(module: PlanningProposalNormalizationResult['modules'][number]): PlanningSynthesizedModulePlan {
-  const { proposedIntent: _proposedIntent, normalizationChanges: _normalizationChanges, ownedPaths: _ownedPaths, ...normalized } = module;
+  const { proposedIntent: _proposedIntent, normalizationChanges: _normalizationChanges, ownedPaths: _ownedPaths, reviewFloor: _reviewFloor, risk: _risk, budgetUsage: _budgetUsage, ...normalized } = module;
   return { ...normalized, markdown: appendNormalizedExecutionIntent(module.markdown, module), build: cloneBuildStages(module.build), review: { ...module.review, perspectives: [...module.review.perspectives] } };
 }
 

@@ -74,7 +74,14 @@ describe('planning compiler diagnostics', () => {
     expect(diagnostics.normalization.modules[0]).toMatchObject({
       moduleId: 'module-reduce-000-001',
       proposed: { testWork: 'author-new', testOwnership: 'existing-only', reviewDepth: 'light' },
-      normalized: { testOwnership: 'test-writer', reviewDepth: 'standard', build: ['implement', 'test-write', 'test-cycle', 'review-cycle'] },
+      normalized: {
+        testOwnership: 'test-writer',
+        reviewDepth: 'standard',
+        reviewFloor: 'standard',
+        risk: { score: 1, factors: ['low-confidence-localization'] },
+        budgetUsage: { criterionCount: 1, subsystemCount: 1, sourceContextBytes: expect.any(Number) },
+        build: ['implement', 'test-write', 'test-cycle', 'review-cycle'],
+      },
     });
     expect(diagnostics.normalization.modules[0]?.changes).toContainEqual(expect.objectContaining({ field: 'testOwnership', kind: 'normalized' }));
     expect(diagnostics.normalization.modules[0]?.changes).toContainEqual(expect.objectContaining({ field: 'reviewDepth', kind: 'safety-escalation' }));

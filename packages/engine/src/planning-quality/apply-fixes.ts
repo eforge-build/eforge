@@ -8,10 +8,12 @@
  */
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
+import type { PlanningDecompositionLimits } from '@eforge-build/client';
 
 import { applyArchitectureReviewFixes, applyPlanReviewFixes } from '../plan.js';
 import type { ArchitectureReviewSubmission, PlanReviewSubmission } from '../schemas.js';
-import type { PlanningQualityReviewSubmission } from './schemas.js';
+import type { PlanningQualityReviewSubmission, PlanningQualityStructuralFix } from './schemas.js';
+import { applyStructuralPlanningQualityFixes } from './structural-transforms.js';
 
 type PlanningQualityReviewFix = PlanningQualityReviewSubmission['fixes'][number];
 
@@ -20,6 +22,7 @@ interface ApplyPlanningQualityReviewFixesOptions {
   outputDir: string;
   planSetName: string;
   fixes: PlanningQualityReviewSubmission['fixes'];
+  limits?: PlanningDecompositionLimits;
 }
 
 function isPlanFix(fix: PlanningQualityReviewFix): fix is PlanReviewSubmission['fixes'][number] {
@@ -30,14 +33,26 @@ function isArchitectureFix(fix: PlanningQualityReviewFix): fix is ArchitectureRe
   return fix.kind === 'replace_architecture';
 }
 
+function isStructuralFix(fix: PlanningQualityReviewFix): fix is PlanningQualityStructuralFix {
+  return fix.kind === 'merge_plans' || fix.kind === 'remove_redundant_stage' || fix.kind === 'reduce_review_depth';
+}
+
 /**
  * Apply fixes emitted by the planning quality reviewer to compiler planning
  * artifacts. compiler-diagnostics.json has no fix variant by design — the
- * reviewer cannot modify diagnostics. Does NOT run git add.
+ * reviewer cannot modify diagnostics. Returns the repository-relative atomic
+ * path group for structural fixes and does NOT run git add.
  */
-export async function applyPlanningQualityReviewFixes(options: ApplyPlanningQualityReviewFixesOptions): Promise<void> {
+export async function applyPlanningQualityReviewFixes(options: ApplyPlanningQualityReviewFixesOptions): Promise<string[]> {
   const { cwd, outputDir, planSetName, fixes } = options;
-  if (fixes.length === 0) return;
+  if (fixes.length === 0) return [];
+
+  const structuralFixes = fixes.filter(isStructuralFix);
+  if (structuralFixes.length > 0) {
+    if (structuralFixes.length !== fixes.length) throw new Error('Structural planning fixes cannot be mixed with whole-file replacement fixes');
+    if (!options.limits) throw new Error('Structural planning fixes require decomposition limits');
+    return applyStructuralPlanningQualityFixes({ cwd, outputDir, planSetName, fixes: structuralFixes, limits: options.limits });
+  }
 
   const planFixes = fixes.filter(isPlanFix);
   const architectureFixes = fixes.filter(isArchitectureFix);
@@ -74,4 +89,5 @@ export async function applyPlanningQualityReviewFixes(options: ApplyPlanningQual
     const messages = errors.map((e, i) => `  Fix group ${i + 1}: ${e.message}`).join('\n');
     throw new Error(`applyPlanningQualityReviewFixes encountered ${errors.length} error(s):\n${messages}`);
   }
+  return [];
 }

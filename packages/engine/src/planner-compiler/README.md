@@ -84,6 +84,8 @@ Unresolved source/localization gaps must not become executable `candidate-reduce
 
 Normalized test ownership is also written to each orchestration plan as executable metadata. Build preflight rejects incompatible `test-write` wiring, while stage-boundary guards reject builder-authored tests owned elsewhere, test-writer production edits, and tester-created acceptance coverage. Violating stage changes are rolled back and surfaced through a typed ownership-violation event.
 
+The unconditional planning-quality gate may submit narrow semantic simplifications: merge cohesive non-residue plans, remove a redundant non-core stage, or reduce review depth. Structural fixes cannot be mixed with whole-file replacement fixes in one submission. `planning-quality/structural-transforms.ts` applies them as one candidate transaction, checks compiler-recorded budget usage and review floors, redirects dependencies, preserves exclusive test ownership, and regenerates only the artifacts the fixes actually change (touched plan files, orchestration, and, on merges, architecture prose/manifest); acceptance coverage and untouched plan files are preserved byte-for-byte. Evaluator verdicts for the generated path group are all-or-none; post-fix compiler cohesion validation remains the final fail-closed gate.
+
 ## Repository-agnostic defaults and hints
 
 Default localization is based on generic signals: normalized relative paths, directory names, manifests, entrypoints, docs, tests, configuration, commands, routes, APIs, UI surfaces, extensions, consumer surfaces, subsystem hints, interface keys, and keywords derived from the build source.
@@ -92,7 +94,7 @@ Project-specific knowledge belongs in optional hints supplied through `SourceLoc
 
 ## Diagnostics and events
 
-Compiler diagnostics should be machine-readable and stable enough for tests and callers to inspect. Version 2 adds proposal normalization status, per-module proposed and normalized intent, fallback/normalization/safety-escalation reasons, normalized stages, owned paths, ownership conflicts, and normalization validation errors. Diagnostics also include repository exploration outcome status, unresolved needs, shared reasons, attempted queries, candidate paths, rescope hints, notes, unknown-id drops, and tool-use count when exploration runs. Prefer returning diagnostics through compiler results. Add planning events only when existing observable results cannot carry the required repair or exploration diagnostics; event wire shapes are owned by `@eforge-build/client`.
+Compiler diagnostics should be machine-readable and stable enough for tests and callers to inspect. Version 2 adds proposal normalization status, per-module proposed and normalized intent, deterministic review floors, risk factors, budget usage, fallback/normalization/safety-escalation reasons, normalized stages, owned paths, ownership conflicts, and normalization validation errors. Diagnostics also include repository exploration outcome status, unresolved needs, shared reasons, attempted queries, candidate paths, rescope hints, notes, unknown-id drops, and tool-use count when exploration runs. Prefer returning diagnostics through compiler results. Add planning events only when existing observable results cannot carry the required repair or exploration diagnostics; event wire shapes are owned by `@eforge-build/client`.
 
 ## Invariants
 

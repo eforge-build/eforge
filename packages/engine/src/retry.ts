@@ -988,6 +988,8 @@ export interface EvaluatorContinuationInput {
   /** Immutable evaluation snapshot prepared before the evaluator attempt; preserved across continuations. */
   evaluationSnapshot?: EvaluationSnapshot;
   evaluatorOptions: Record<string, unknown> & {
+    /** Structural-candidate path groups the evaluator must adjudicate all-or-none. */
+    atomicPathGroups?: string[][];
     evaluatorContinuationContext?: {
       attempt: number;
       maxContinuations: number;

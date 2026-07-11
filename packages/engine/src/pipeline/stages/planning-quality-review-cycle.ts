@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import type { EforgeEvent } from '../../events.js';
+import { resolvePlanningDecompositionLimits } from '../../config.js';
 import { runPlanningQualityReview } from '../../agents/planning-quality-reviewer.js';
 import { runPlanningQualityEvaluate } from '../../agents/plan-evaluator.js';
 import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
@@ -112,6 +113,7 @@ registerCompileStage({
   const { agentConfig: evaluatorConfig, harness: evaluatorHarness } = await resolveAgentRuntimeForInvocationWithExtensions('plan-evaluator', ctx.config, ctx.agentRuntimes, undefined, { phase: 'compile', stage: 'planning-quality-evaluate' }, runtimeChoiceRouterOptions(ctx));
   const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
   const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
+  let atomicStructuralPaths: string[] = [];
 
   // Review + evaluate: infrastructure failures are non-fatal (fail-open).
   try {
@@ -128,6 +130,8 @@ registerCompileStage({
           cwd: ctx.cwd,
           diagnosticsSummary,
           inventorySummary,
+          decompositionLimits: resolvePlanningDecompositionLimits(ctx.config),
+          onStructuralCandidatePaths: (paths) => { atomicStructuralPaths = [...paths]; },
           verbose: ctx.verbose,
           abortController: ctx.abortController,
           outputDir: ctx.config.plan.outputDir,
@@ -142,7 +146,7 @@ registerCompileStage({
         metadata: { planSet: ctx.planSetName, stage: 'planning-quality-evaluate' },
         prepareInput: async () => ({
           evaluationSnapshot: await prepareEvaluationSnapshot(ctx.cwd, 'HEAD~1'),
-          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage },
+          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage, atomicPathGroups: atomicStructuralPaths.length > 0 ? [atomicStructuralPaths] : undefined },
         }),
         run: (input) => runPlanningQualityEvaluate({
           ...evaluatorConfig,
@@ -155,6 +159,7 @@ registerCompileStage({
           evaluationSnapshot: input.evaluationSnapshot,
           allowedPathPrefix: planSetPath,
           commitMessage: evaluationCommitMessage,
+          atomicPathGroups: input.evaluatorOptions.atomicPathGroups,
           modelTracker: ctx.modelTracker,
           continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
           phase: 'compile',
