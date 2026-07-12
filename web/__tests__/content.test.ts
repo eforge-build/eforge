@@ -105,9 +105,10 @@ describe('loadDocPage', () => {
       navGroups.set(item.group, [...(navGroups.get(item.group) ?? []), item.slug]);
     }
     expect(navGroups.get('Core kernel')).toEqual(expect.arrayContaining(['getting-started', 'concepts']));
-    expect(navGroups.get('Optional workflows')).toEqual(expect.arrayContaining(['playbooks']));
+    expect(navGroups.get('Optional workflows')).toEqual(expect.arrayContaining(['stacking']));
+    expect(navGroups.get('Optional workflows')).not.toContain('playbooks');
     expect(navGroups.get('Extension platform')).toEqual(expect.arrayContaining(['extensions', 'extensions-api']));
-    expect(navGroups.get('First-party extensions')).toEqual(expect.arrayContaining(['eforge-plan']));
+    expect(navGroups.get('First-party extensions')).toEqual(expect.arrayContaining(['playbooks', 'eforge-plan']));
   });
 
   it('keeps every public guide structurally valid and mirrored by slug', async () => {
@@ -167,8 +168,8 @@ describe('loadDocPage', () => {
         'Guided Toolbelt Presets',
       ],
       profiles: ['.eforge/profiles/', 'eforge/profiles/', '~/.config/eforge/profiles/', 'eforge build --profile'],
-      playbooks: ['mode: autonomous', 'mode: planning', 'eforge-playbooks:run-playbook', 'eforge-playbooks:promote-playbook'],
-      'eforge-plan': ['optional first-party', 'Revise with AI', 'planRevisionTurn', 'backlogCurationDraft'],
+      playbooks: ['@eforge-build/eforge-playbooks', 'extension trust eforge-playbooks', 'mode: autonomous', 'mode: planning', 'eforge-playbooks:run-playbook', 'eforge-playbooks:promote-playbook'],
+      'eforge-plan': ['optional first-party', 'Start a planning workflow', 'Revise with AI', 'planRevisionTurn', 'backlogCurationDraft'],
       extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'registerAction', 'registerConsoleWorkstation', 'LLM-first extension authoring checklist', 'fetchExtensionContributionManifest', 'not sandboxed'],
       'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'registerConsoleContribution', 'defineConsoleWorkstation', 'SDK stability and migration guidance', 'Runtime support status'],
       integrations: [

@@ -188,8 +188,11 @@ describe('plan-06 generated reference artifact contracts', () => {
     expect(llms).toContain('## Core kernel guides');
     expect(llms).toContain('## Optional workflow guides');
     expect(llms).toContain('## Extension platform guides');
-    expect(llms).toContain('## Optional first-party extension guides');
+    expect(llms).toContain('## First-party extension guides');
+    expect(llms).toContain('/docs/playbooks.md');
     expect(llms).toContain('/docs/eforge-plan.md');
+    expect(llms).toContain('https://www.npmjs.com/package/@eforge-build/eforge-playbooks');
+    expect(llms).toContain('https://www.npmjs.com/package/@eforge-build/eforge-plan');
 
     const full = readRepoFile('web/public/llms-full.txt');
     expect(full).toContain('<!-- section: guide:eforge-plan -->');

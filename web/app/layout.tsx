@@ -6,8 +6,8 @@ export const metadata: Metadata = {
   title: 'eforge - extensible build engine',
   description: 'eforge is an extensible build-engine kernel for delegated planning, implementation, review, and validation.',
   icons: {
-    icon: '/favicon.ico?v=3',
-    shortcut: '/favicon.ico?v=3',
+    icon: '/favicon.ico?v=4',
+    shortcut: '/favicon.ico?v=4',
   },
 };
 
@@ -17,11 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <nav className="site-nav">
           <a href="/" className="nav-brand">
-            <img
-              src="https://avatars.githubusercontent.com/u/272340669?v=4"
-              alt="eforge logo"
-              style={{ width: '28px', height: '28px', borderRadius: '4px', marginRight: '0.5rem' }}
-            />
+            <img src="/eforge-logo.svg" alt="eforge logo" width={28} height={28} className="nav-brand-logo" />
             eforge
           </a>
           <ul className="nav-links">

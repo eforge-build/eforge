@@ -226,6 +226,10 @@ a:hover {
   text-decoration: none;
 }
 
+.site-nav .nav-brand-logo {
+  margin-right: var(--spacing-sm);
+}
+
 .site-nav .nav-links {
   display: flex;
   gap: var(--spacing-md);

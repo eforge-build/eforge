@@ -212,9 +212,9 @@ export default function HomePage() {
                 'Choose agent runtimes, model tiers, and execution defaults for planning, building, review, and validation.',
             },
             {
-              title: 'Playbooks',
+              title: 'eforge-playbooks',
               description:
-                'Capture recurring workflows as reusable input templates outside the engine kernel so common engineering tasks start with the right structure.',
+                'Install the first-party extension to capture recurring workflows as reusable input templates outside the engine kernel.',
             },
             {
               title: 'Toolbelts',

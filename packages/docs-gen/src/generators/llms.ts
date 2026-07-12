@@ -26,7 +26,7 @@ const GUIDE_CATEGORY_HEADINGS: Array<{ category: LlmsGuideCategory; heading: str
   { category: 'core-kernel', heading: 'Core kernel guides' },
   { category: 'optional-workflow', heading: 'Optional workflow guides' },
   { category: 'extension-platform', heading: 'Extension platform guides' },
-  { category: 'first-party-extension', heading: 'Optional first-party extension guides' },
+  { category: 'first-party-extension', heading: 'First-party extension guides' },
   { category: 'integration', heading: 'Integration guides' },
   { category: 'operation', heading: 'Operations guides' },
   { category: 'reference', heading: 'Reference guides' },
