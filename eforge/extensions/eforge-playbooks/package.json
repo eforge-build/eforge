@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/eforge-playbooks",
-  "version": "0.7.21",
+  "version": "0.8.0",
   "description": "First-party eforge playbooks extension with scoped management actions, planning-mode handoff metadata, and autonomous queue handoff.",
   "license": "Apache-2.0",
   "type": "module",
