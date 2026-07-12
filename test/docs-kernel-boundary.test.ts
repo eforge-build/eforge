@@ -108,9 +108,10 @@ describe('docs kernel boundary', () => {
     for (const item of DOCS_NAV) groups.get(item.group)?.push(item.slug);
 
     expect(groups.get('Core kernel')).toEqual(expect.arrayContaining(['getting-started', 'concepts']));
-    expect(groups.get('Optional workflows')).toEqual(expect.arrayContaining(['playbooks']));
+    expect(groups.get('Optional workflows')).toEqual(expect.arrayContaining(['stacking']));
+    expect(groups.get('Optional workflows')).not.toContain('playbooks');
     expect(groups.get('Extension platform')).toEqual(expect.arrayContaining(['extensions', 'extensions-api']));
-    expect(groups.get('First-party extensions')).toEqual(expect.arrayContaining(['eforge-plan']));
+    expect(groups.get('First-party extensions')).toEqual(expect.arrayContaining(['playbooks', 'eforge-plan']));
   });
 
   it('categorizes the LLM manifest across required guide boundaries', () => {
@@ -123,9 +124,10 @@ describe('docs kernel boundary', () => {
       byCategory.set(guide.category ?? 'missing', [...(byCategory.get(guide.category ?? 'missing') ?? []), guide.url]);
     }
     expect(byCategory.get('core-kernel')).toEqual(expect.arrayContaining(['/docs/getting-started.md', '/docs/configuration.md']));
-    expect(byCategory.get('optional-workflow')).toEqual(expect.arrayContaining(['/docs/playbooks.md']));
+    expect(byCategory.get('optional-workflow')).toEqual(expect.arrayContaining(['/docs/stacking.md']));
+    expect(byCategory.get('optional-workflow')).not.toContain('/docs/playbooks.md');
     expect(byCategory.get('extension-platform')).toEqual(expect.arrayContaining(['/docs/extensions.md', '/docs/extensions-api.md']));
-    expect(byCategory.get('first-party-extension')).toEqual(expect.arrayContaining(['/docs/eforge-plan.md']));
+    expect(byCategory.get('first-party-extension')).toEqual(expect.arrayContaining(['/docs/playbooks.md', '/docs/eforge-plan.md']));
     expect(LLMS_MANIFEST.summary).toContain('build-engine kernel');
     expect(LLMS_MANIFEST.overview).toContain('normalized build source');
   });

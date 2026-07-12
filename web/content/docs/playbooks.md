@@ -1,11 +1,39 @@
 ---
-title: Playbooks
-description: Create and run reusable workflow templates for recurring eforge builds.
+title: eforge-playbooks
+description: Install the first-party extension and run reusable workflow templates for recurring eforge builds.
 ---
 
-# Playbooks
+# eforge-playbooks
 
-A playbook is an optional workflow artifact around the eforge build-engine kernel. Instead of re-describing recurring work each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either normalizes it to build source for enqueue or routes to an investigation-first planning extension before a later handoff.
+`eforge-playbooks` is the optional first-party extension for reusable Markdown workflow templates. Instead of re-describing recurring work each time, you write a playbook once and run it on demand. The extension resolves the playbook, optionally routes it to a specific agent runtime profile, and either normalizes it to build source for enqueue or routes it to an investigation-first planning extension before a later handoff.
+
+## Install
+
+Install the package in the default project-local extension scope, validate it, and reload extension discovery:
+
+```bash
+eforge extension install @eforge-build/eforge-playbooks
+eforge extension validate eforge-playbooks
+eforge extension reload
+```
+
+A project-local install lives under `.eforge/extensions/` and does not require a team trust record. For a committed project/team installation, inspect the installed package before trusting it:
+
+```bash
+eforge extension install @eforge-build/eforge-playbooks --scope project
+# Inspect the installed package, then trust and reload it.
+eforge extension trust eforge-playbooks
+eforge extension reload
+```
+
+Confirm that the extension is loaded and discover its commands before creating a playbook:
+
+```bash
+eforge extension show eforge-playbooks
+eforge extension contributions list --extension-name eforge-playbooks
+```
+
+Extensions run as trusted, unsandboxed code in the daemon process. Team installations require each user to trust the reviewed package, and code changes invalidate the stored trust hash until the extension is trusted again.
 
 ## Boundary and ownership
 
@@ -171,7 +199,9 @@ eforge extension contributions invoke eforge-playbooks:run-playbook --kind comma
 
 ## Where to look next
 
+- [eforge-plan](/docs/eforge-plan) - the first-party planning extension used by planning-mode playbooks
 - [Profiles](/docs/profiles) - agent runtime profiles that playbooks can reference
 - [Configuration](/docs/configuration#playbook-profiles) - playbook profile frontmatter and precedence
-- [Integrations](/docs/integrations) - how to run playbooks from the Claude Code plugin and Pi extension
+- [Integrations](/docs/integrations) - how to discover and invoke extension contributions from Claude Code, Pi, and the CLI
+- [Extensions](/docs/extensions) - extension scopes, package management, and the trust model
 - [Glossary](/docs/glossary) - short definitions for playbook, session plan, and PRD

@@ -7,20 +7,7 @@ description: Optional first-party planning, backlog, recommendation, and revisio
 
 `eforge-plan` is an optional first-party extension package around the eforge build-engine kernel. The kernel still consumes normalized build source and produces reviewed, validated code; `eforge-plan` owns planning-product workflows that help teams decide what build source to hand to the kernel.
 
-The detailed, canonical product documentation lives in [`eforge/extensions/eforge-plan/README.md`](https://github.com/eforge-build/eforge/blob/main/eforge/extensions/eforge-plan/README.md). This page summarizes the public boundary for users browsing the docs site.
-
-## What it adds
-
-Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:
-
-- Project-local backlog capture, body-safe backlog item updates, SQL/FTS search, board rendering, epics, dependencies, and promotion, backed by canonical private SQLite rows, with direct compact agent operations (`search-items`, `search-planning-records`, `get-item`, `get-epic`, `capture-item`, and `update-item`) and projection flags for smaller payloads (epics, lane counts, sections, lifecycle rows, dependencies, dependents, selected search fields, and body text remain opt-in or omittable where supported). Compact item and detail projections include backend `planEligible` and eligibility reason/link fields. For title or section edits, callers read `bodySha256` with `get-item` and send it back as `expectedBodySha256` on `update-item`; metadata-only updates preserve body content and do not require that lock.
-- Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks, with server-derived recommendation actionability dispositions, SQL lifecycle evidence, backend planning eligibility, and duplicate planning guards.
-- A Console planning workstation for investigation-first planning and handoff, including a Backlog all-domain planning search panel and Roadmap store status/maintenance card backed only by extension actions.
-- Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, persistence of the task summary as a leading `## Executive Summary`, visible failed apply attempts, readiness checks with cache/Markdown freshness metadata, handoff into ordinary eforge builds, and resubmission of submitted or removed plans with terminal failed or removed queue/build evidence.
-- Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
-- Explicit local store import and maintenance actions for dry-run-first legacy import, status, dry-run-first retention compaction, FTS rebuild/optimize, and SQLite `VACUUM`.
-
-These are extension-owned product semantics, not kernel behavior. The engine receives the resulting normalized build source the same way it receives a prompt, PRD file, playbook output, or wrapper-app artifact.
+This public guide covers installation, the first planning handoff, storage and trust, host invocation, and the extension-owned workflow boundary. The package [`README.md`](https://github.com/eforge-build/eforge/blob/main/eforge/extensions/eforge-plan/README.md) is the exhaustive reference for action inputs and maintainer-level implementation details.
 
 ## Install
 
@@ -38,6 +25,39 @@ eforge extension install @eforge-build/eforge-plan --scope project
 eforge extension trust eforge-plan
 eforge extension reload
 ```
+
+Extensions run as trusted, unsandboxed code in the daemon process. A project-local install does not require a team trust record. Each user must trust a committed project/team installation, and package changes invalidate the stored trust hash until it is reviewed and trusted again.
+
+## What it adds
+
+Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:
+
+- Project-local backlog capture, body-safe backlog item updates, SQL/FTS search, board rendering, epics, dependencies, and promotion, backed by canonical private SQLite rows, with direct compact agent operations (`search-items`, `search-planning-records`, `get-item`, `get-epic`, `capture-item`, and `update-item`) and projection flags for smaller payloads (epics, lane counts, sections, lifecycle rows, dependencies, dependents, selected search fields, and body text remain opt-in or omittable where supported). Compact item and detail projections include backend `planEligible` and eligibility reason/link fields. For title or section edits, callers read `bodySha256` with `get-item` and send it back as `expectedBodySha256` on `update-item`; metadata-only updates preserve body content and do not require that lock.
+- Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks, with server-derived recommendation actionability dispositions, SQL lifecycle evidence, backend planning eligibility, and duplicate planning guards.
+- A Console planning workstation for investigation-first planning and handoff, including a Backlog all-domain planning search panel and Roadmap store status/maintenance card backed only by extension actions.
+- Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, persistence of the task summary as a leading `## Executive Summary`, visible failed apply attempts, readiness checks with cache/Markdown freshness metadata, handoff into ordinary eforge builds, and resubmission of submitted or removed plans with terminal failed or removed queue/build evidence.
+- Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
+- Explicit local store import and maintenance actions for dry-run-first legacy import, status, dry-run-first retention compaction, FTS rebuild/optimize, and SQLite `VACUUM`.
+
+These are extension-owned product semantics, not kernel behavior. The engine receives the resulting normalized build source the same way it receives a prompt, PRD file, playbook output, or wrapper-app artifact.
+
+## Start a planning workflow
+
+Confirm that the extension loaded, then discover its planning contribution:
+
+```bash
+eforge extension show eforge-plan
+eforge extension contributions list --extension-name eforge-plan --search planning
+eforge extension contributions show eforge-plan:open-planning-entry --kind command
+```
+
+Invoke the planning entry from the CLI, or open the contributed `eforge-plan:planning-workstation` from Console's Workstations surface:
+
+```bash
+eforge extension contributions invoke eforge-plan:open-planning-entry --kind command
+```
+
+The workstation investigates the change, drafts or resumes a Markdown session plan under `.eforge/session-plans/`, supports annotations and Revise with AI, and checks readiness before handoff. A ready session plan is submitted through the ordinary `/eforge:build` or `eforge build <path>` flow, so the kernel receives the same normalized build source as any other build. If a previously submitted plan has terminal failed or removed queue/build evidence, use the contributed `resubmit-session-plan` action to preserve the plan's identity and source provenance while creating a new handoff.
 
 ## Storage and trust boundary
 
@@ -68,4 +88,4 @@ CLI, MCP, Claude Code, Pi, and other hosts should discover and invoke the same e
 
 `eforge-plan` does not turn the daemon into a generic multi-turn chat runtime. Its planning and revision workflows are bounded extension UX built on daemon-owned single-shot tasks.
 
-Use the canonical extension README for full action inputs, storage paths, workstation behavior, and revision workflow details.
+Use the package README for the exhaustive action-input reference and maintainer-level storage and workstation details.

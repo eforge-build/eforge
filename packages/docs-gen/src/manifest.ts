@@ -88,10 +88,10 @@ export const LLMS_MANIFEST: LlmsManifest = {
       category: 'core-kernel',
     },
     {
-      title: 'Playbooks guide',
+      title: 'eforge-playbooks guide',
       url: '/docs/playbooks.md',
-      description: 'Create, manage, and run optional workflow playbooks through first-party eforge-playbooks extension actions',
-      category: 'optional-workflow',
+      description: 'Install, manage, and run reusable playbooks through the first-party eforge-playbooks extension',
+      category: 'first-party-extension',
     },
     {
       title: 'Stacked PRs',
@@ -172,6 +172,26 @@ export const LLMS_MANIFEST: LlmsManifest = {
       title: 'Pi extension npm package',
       url: 'https://www.npmjs.com/package/@eforge-build/pi-eforge',
       description: 'npm package for the native Pi integration',
+    },
+    {
+      title: 'eforge-playbooks npm package',
+      url: 'https://www.npmjs.com/package/@eforge-build/eforge-playbooks',
+      description: 'First-party extension for scoped playbook management and execution handoff',
+    },
+    {
+      title: 'eforge-plan npm package',
+      url: 'https://www.npmjs.com/package/@eforge-build/eforge-plan',
+      description: 'First-party extension for planning, backlog, recommendation, and revision workflows',
+    },
+    {
+      title: 'Extension SDK npm package',
+      url: 'https://www.npmjs.com/package/@eforge-build/extension-sdk',
+      description: 'Public SDK for authoring native eforge extensions and Console workstations',
+    },
+    {
+      title: 'Typed client npm package',
+      url: 'https://www.npmjs.com/package/@eforge-build/client',
+      description: 'Typed daemon routes, wire contracts, events, and browser-safe client helpers',
     },
   ],
   schemas: [

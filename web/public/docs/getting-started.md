@@ -77,18 +77,28 @@ The daemon normalizes the prompt, PRD, or file into build source, queues it, and
 
 Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
 
-## Optional planning and workflow surfaces
+## Optional first-party workflow extensions
 
-Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts owned by the first-party `eforge-playbooks` extension: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension provides the `eforge.plan.planning-workstation` capability. Discover playbook actions through generic extension contribution list/show/invoke surfaces, not host-specific commands. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
+Optional producers can prepare build source before the kernel sees it. The first-party [`eforge-playbooks`](./playbooks) extension provides reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to `eforge-plan` when that extension provides the `eforge.plan.planning-workstation` capability.
 
-When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list --search planning`, `eforge extension contributions show eforge-plan:open-planning-entry --kind command`, and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
+Install either extension only when you want its workflow:
+
+```bash
+eforge extension install @eforge-build/eforge-playbooks
+eforge extension install @eforge-build/eforge-plan
+eforge extension reload
+```
+
+The default installation scope is project-local. Committed project/team installs require inspection and an explicit trust record; follow the [eforge-playbooks](./playbooks#install) or [eforge-plan](./eforge-plan#install) guide for the complete flow.
+
+Discover extension actions through generic contribution list/show/invoke surfaces rather than host-specific workflow commands. For example, list playbook contributions with `eforge extension contributions list --extension-name eforge-playbooks`. When `eforge-plan` is loaded and trusted, use `eforge extension contributions list --search planning`, `eforge extension contributions show eforge-plan:open-planning-entry --kind command`, and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. The [eforge-plan guide](./eforge-plan) covers investigation, session-plan drafting and revision, and handoff; ready build source is still submitted through the ordinary build path.
 
 ## What Happens Next
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
 2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
 3. **Compile preflight compaction** - eforge may compact generated or machine-readable bulk in planner prompts while preserving the full source for artifacts and validation. Oversized inputs decompose into bounded context-managed planning units governed by the `compile.planningUnit*` limits.
-4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry context metadata and effective output reserves when available, while prompt byte defaults remain static byte guards. The [bounded planner compiler](./concepts#one-planning-path-sized-deterministically) sizes the work deterministically and writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
+4. **Planning** - Planner-family agents enforce prompt and live context-budget guardrails before provider context-window failures. Pi-backed live context guards use ModelRegistry context metadata and effective output reserves when available, while prompt byte defaults remain static byte guards. The [bounded planner compiler](./concepts#one-planning-path-with-model-intent-and-deterministic-floors) combines model-proposed module intent with deterministic safety constraints and writes a detailed plan or set of plans. eforge validates the persisted `orchestration.yaml` and plan files before reporting compile success.
 5. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 6. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 7. **Merge** - Completed plans merge back to your branch in topological order.
@@ -99,8 +109,8 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 - [Concepts](./concepts) - How the pipeline works, what blind review means, and what harnesses do
 - [Configuration](./configuration) - The most important config options and how to tune them
 - [Profiles](./profiles) - Create and switch agent runtime profiles that control harness, model, and effort
-- [Playbooks](./playbooks) - Optional workflow artifacts that prepare build source for recurring work
-- [eforge-plan](./eforge-plan) - Optional first-party extension behavior
+- [eforge-playbooks](./playbooks) - First-party extension for reusable playbook management and execution
+- [eforge-plan](./eforge-plan) - First-party extension for planning, backlog, recommendation, and revision workflows
 - [Integrations](./integrations) - How to use eforge from Claude Code, Pi, the CLI, and external issue trackers
 - [Troubleshooting](./troubleshooting) - Daemon startup, failed builds, and common error remedies
 - [Glossary](./glossary) - Definitions for eforge-specific terms such as profiles, worktrees, and playbooks

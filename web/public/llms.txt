@@ -13,7 +13,6 @@ eforge is an autonomous build-and-review kernel for code generation. It accepts 
 
 ## Optional workflow guides
 
-- [Playbooks guide](/docs/playbooks.md): Create, manage, and run optional workflow playbooks through first-party eforge-playbooks extension actions
 - [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
 
 ## Extension platform guides
@@ -21,8 +20,9 @@ eforge is an autonomous build-and-review kernel for code generation. It accepts 
 - [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, and bounded without product-specific first-party workflow semantics
 - [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation APIs, frameBundle workstations, browser bridge helpers, SDK stability, hook registration, context objects, runtime support, and unsupported boundaries
 
-## Optional first-party extension guides
+## First-party extension guides
 
+- [eforge-playbooks guide](/docs/playbooks.md): Install, manage, and run reusable playbooks through the first-party eforge-playbooks extension
 - [eforge-plan guide](/docs/eforge-plan.md): Optional first-party eforge-plan extension documentation for planning, backlog, recommendation, workstation, and revision workflows
 
 ## Integration guides
@@ -50,6 +50,10 @@ eforge is an autonomous build-and-review kernel for code generation. It accepts 
 - [GitHub repository](https://github.com/eforge-build/eforge): Source repository for the engine, daemon, docs, Claude Code plugin, and Pi extension
 - [Standalone CLI npm package](https://www.npmjs.com/package/@eforge-build/eforge): npm package for the eforge CLI and daemon runtime
 - [Pi extension npm package](https://www.npmjs.com/package/@eforge-build/pi-eforge): npm package for the native Pi integration
+- [eforge-playbooks npm package](https://www.npmjs.com/package/@eforge-build/eforge-playbooks): First-party extension for scoped playbook management and execution handoff
+- [eforge-plan npm package](https://www.npmjs.com/package/@eforge-build/eforge-plan): First-party extension for planning, backlog, recommendation, and revision workflows
+- [Extension SDK npm package](https://www.npmjs.com/package/@eforge-build/extension-sdk): Public SDK for authoring native eforge extensions and Console workstations
+- [Typed client npm package](https://www.npmjs.com/package/@eforge-build/client): Typed daemon routes, wire contracts, events, and browser-safe client helpers
 
 ## Schemas
 
