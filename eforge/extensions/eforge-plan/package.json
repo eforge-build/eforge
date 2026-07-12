@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/eforge-plan",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "First-party eforge planning extension with backlog, session-plan, recommendation, and workstation contributions.",
   "license": "Apache-2.0",
   "type": "module",

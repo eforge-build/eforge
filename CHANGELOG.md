@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.1] - 2026-07-12
+
+### Bug Fixes
+
+- **release**: remove stale exact-version assertions from host-surface tests
+- **release**: run the full test suite on version-bumped release PRs
+- **release**: preserve complete changelog sections in GitHub Release notes
+
+This release supersedes the incomplete `v0.8.0` publication.
+
 ## [0.8.0] - 2026-07-12
 
 ### Features
