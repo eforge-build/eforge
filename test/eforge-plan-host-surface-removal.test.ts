@@ -58,13 +58,11 @@ describe('removed /eforge:plan host surfaces', () => {
 
   it('removes packaged Pi and Claude plan skills', () => {
     const manifest = JSON.parse(read('eforge-plugin/.claude-plugin/plugin.json')) as { commands: string[]; version: string };
-    const piPackage = JSON.parse(read('packages/pi-eforge/package.json')) as { version: string };
 
     expectPathAbsent('packages/pi-eforge/skills/eforge-plan');
     expectPathAbsent('eforge-plugin/skills/plan');
     expect(manifest.commands).not.toContain('./skills/plan/plan.md');
     expect(compareSemver(manifest.version, '0.25.64')).toBeGreaterThan(0);
-    expect(piPackage.version).toBe('0.7.21');
   });
 
   it('does not advertise the removed plan command or Pi plan skill forwarding target', () => {

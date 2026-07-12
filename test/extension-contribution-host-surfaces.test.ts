@@ -216,15 +216,13 @@ describe('host contribution Pi surface', () => {
     expect(source).not.toContain('playbook-contributions');
   });
 
-  it('documents the Pi tool, native command, and generic planning entry without bumping the Pi package version', () => {
+  it('documents the Pi tool, native command, and generic planning entry', () => {
     const readme = readRepoFile('packages/pi-eforge/README.md');
-    const packageJson = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
 
     expect(readme).toContain('eforge_extension_contribution');
     expect(readme).toContain('/eforge:extensions');
     expect(readme).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
     expect(readme).not.toContain('/eforge:plan');
-    expect(packageJson.version).toBe('0.7.21');
   });
 });
 

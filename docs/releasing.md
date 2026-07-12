@@ -39,7 +39,7 @@ The wizard:
 4. Generates release notes from commits since the previous tag.
 5. Updates and commits `CHANGELOG.md`.
 6. Runs `pnpm release patch|minor|major --no-tag` to commit the lockstep version bump without tagging.
-7. Opens a PR to `main` and enables auto-merge.
+7. Opens a PR to `main`, where CI reruns the full test suite against the bumped versions, and enables auto-merge.
 8. After the PR merges, tags the merged `main` commit.
 9. Pushes only `refs/tags/vX.Y.Z`.
 10. Creates the GitHub Release from the changelog notes.

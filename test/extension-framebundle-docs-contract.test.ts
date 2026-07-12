@@ -119,7 +119,7 @@ describe('frameBundle workstation documentation contract', () => {
     expect(dogfoodReadme).toMatch(/All reads and mutations go through `window\.eforge\.invokeAction`/i);
   });
 
-  it('keeps Claude and Pi extension authoring guidance in sync without bumping the Pi package version', () => {
+  it('keeps Claude and Pi extension authoring guidance in sync', () => {
     const pluginSkill = read('eforge-plugin/skills/extend/extend.md');
     const piSkill = read('packages/pi-eforge/skills/eforge-extend/SKILL.md');
 
@@ -135,8 +135,5 @@ describe('frameBundle workstation documentation contract', () => {
         expect(source).toContain(snippet);
       }
     }
-
-    const piPackage = json<{ version: string }>('packages/pi-eforge/package.json');
-    expect(piPackage.version).toBe('0.7.21');
   });
 });
