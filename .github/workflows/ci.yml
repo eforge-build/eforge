@@ -31,9 +31,10 @@ jobs:
       - run: pnpm type-check
 
       # PRs are normally validated by eForge locally before the branch is pushed.
-      # Keep the GitHub PR gate fast, but allow an explicit full run by adding the
-      # `full-ci` label. Full tests still run on main, nightly, and manual runs.
-      - if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+      # Keep the GitHub PR gate fast, but always test release branches after their
+      # version bump. Other PRs can request a full run with the `full-ci` label.
+      # Full tests also run on main, nightly, and manual runs.
+      - if: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/') || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: pnpm test
 
       # pnpm build already builds @eforge-build/docs-gen and the web docs site.

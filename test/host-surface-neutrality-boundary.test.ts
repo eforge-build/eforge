@@ -104,13 +104,11 @@ describe('host surface neutrality boundary', () => {
 
   it('removes playbook skills from Claude plugin registration, Pi skills, docs generation, and parity checks', () => {
     const plugin = JSON.parse(read('eforge-plugin/.claude-plugin/plugin.json')) as { version: string; commands: string[] };
-    const piPackage = JSON.parse(read('packages/pi-eforge/package.json')) as { version: string };
     const docsGenerator = read('packages/docs-gen/src/generators/tools.ts');
     const parity = read('scripts/check-skill-parity.mjs');
 
     expect(plugin.commands).not.toContain('./skills/playbook/playbook.md');
     expect(plugin.version.localeCompare('0.25.76', undefined, { numeric: true })).toBeGreaterThan(0);
-    expect(piPackage.version).toBe('0.7.21');
     expect(docsGenerator).not.toContain("plugin: 'playbook'");
     expect(docsGenerator).not.toContain('eforge-playbook');
     expect(parity).not.toContain('plugin: "playbook"');

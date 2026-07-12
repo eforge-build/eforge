@@ -485,12 +485,10 @@ describe('docs/config.md — planning playbook prose', () => {
 // ---------------------------------------------------------------------------
 
 describe('plan-skill removal versioning', () => {
-  it('bumps the Claude plugin patch version and leaves the Pi package version unchanged', () => {
+  it('bumps the Claude plugin patch version', () => {
     const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
-    const piPackage = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
 
     expect(compareSemver(plugin.version, '0.25.64')).toBeGreaterThan(0);
-    expect(piPackage.version).toBe('0.7.21');
   });
 });
 
