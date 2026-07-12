@@ -51,13 +51,13 @@ const debug = process.env.EFORGE_DEBUG === "1" || /\beforge\b/.test(process.env.
 // not edit it by hand without updating the source-of-truth version.
 const [command, args] = useWorkspace
   ? ["node", [workspaceCli, "mcp-proxy", ...forwardedArgs]]
-  : ["npx", ["-y", "@eforge-build/eforge@^0.7.0", "mcp-proxy", ...forwardedArgs]];
+  : ["npx", ["-y", "@eforge-build/eforge@^0.8.0", "mcp-proxy", ...forwardedArgs]];
 
 if (debug) {
   process.stderr.write(
     useWorkspace
       ? `eforge-mcp-proxy: workspace build at ${workspaceCli}\n`
-      : `eforge-mcp-proxy: npx -y @eforge-build/eforge@^0.7.0 (no workspace detected)\n`,
+      : `eforge-mcp-proxy: npx -y @eforge-build/eforge@^0.8.0 (no workspace detected)\n`,
   );
 }
 
