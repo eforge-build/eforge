@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, type SelectItem, SelectList, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { showExtensionEventsTail, showMonitorEventsTail } from "./event-tail";
+import { readChangelogReleaseNotes } from "./release-notes";
 
 type CheckStatus = "pending" | "running" | "passed" | "failed" | "skipped";
 
@@ -783,17 +784,6 @@ async function updateChangelogAndCommit(pi: ExtensionAPI, ctx: ExtensionContext,
 		{ label: "Commit changelog", command: "git", args: ["commit", "-m", `docs: update CHANGELOG.md for v${version}`], timeout: 30_000 },
 	]);
 	return results.every((result) => result.status === "passed");
-}
-
-async function readChangelogReleaseNotes(cwd: string, version: string): Promise<string | undefined> {
-	try {
-		const changelog = await readFile(join(cwd, "CHANGELOG.md"), "utf8");
-		const escaped = version.replace(/\./g, "\\.");
-		const match = new RegExp(`^## \\[${escaped}\\][^\n]*\n\n([\\s\\S]*?)(?=\n## \\[|\n---|$)`, "m").exec(changelog);
-		return match?.[1]?.trim();
-	} catch {
-		return undefined;
-	}
 }
 
 async function waitForReleasePrMerge(pi: ExtensionAPI, ctx: ExtensionContext, branch: string, tag: string): Promise<boolean> {
