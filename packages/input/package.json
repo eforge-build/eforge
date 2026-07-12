@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/input",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Reusable domain-neutral input-artifact protocols for eforge session plans and build-source preprocessing.",
   "license": "Apache-2.0",
   "type": "module",
