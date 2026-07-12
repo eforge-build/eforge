@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <title>eforge</title>
+  <path
+    d="M 37.1 33.2 A 16 16 0 1 1 37.1 14.8"
+    stroke="#67f553"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 15 24 H 31"
+    stroke="#67f553"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+</svg>
