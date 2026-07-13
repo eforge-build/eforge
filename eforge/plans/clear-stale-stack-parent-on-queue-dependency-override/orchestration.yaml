@@ -1,0 +1,56 @@
+name: clear-stale-stack-parent-on-queue-dependency-override
+description: Bounded planner compiler artifacts for
+  clear-stale-stack-parent-on-queue-dependency-override
+base_branch: main
+validate: []
+plans:
+  - id: queue-dependency-override
+    name: Clear matching stack parent during queue dependency override
+    depends_on: []
+    branch: clear-stale-stack-parent-on-queue-dependency-override/queue-dependency-override
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    test_ownership: builder
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings normalize typed model intent against
+    deterministic compiler safety signals.
+
+    Set-level review follows the deepest normalized review; build defaults
+    follow the broadest normalized plan pipeline (highest risk score 1).
+
+    - queue-dependency-override: risk score 1 (low-confidence-localization);
+    declared docs work none, test work author-new, test owner builder; model
+    review intent standard (The edit is localized but changes persisted queue
+    state under locking and claiming, so review must verify atomic semantics and
+    that race guards, notifications, and audit events are unchanged.); derived
+    build implement -> test-cycle -> review-cycle and auto review with
+    perspectives code, test, 1 round(s), standard evaluation
+diff_base_ref: 738b3c4a86e67d564fef63f3359ba81d4cb9cb3a
