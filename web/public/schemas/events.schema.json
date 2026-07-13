@@ -17887,6 +17887,9 @@
                 "diffBaseRef": {
                   "type": "string"
                 },
+                "stackedValidationPinRequired": {
+                  "type": "boolean"
+                },
                 "pipeline": {
                   "type": "object",
                   "required": [
@@ -36543,6 +36546,9 @@
                               },
                               "diffBaseRef": {
                                 "type": "string"
+                              },
+                              "stackedValidationPinRequired": {
+                                "type": "boolean"
                               },
                               "pipeline": {
                                 "type": "object",

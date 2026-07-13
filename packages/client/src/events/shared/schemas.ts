@@ -47,8 +47,7 @@ export const LandingActionSchema = Type.Union([
   Type.Literal('pr'),
   Type.Literal('merge'),
   Type.Literal('leave'),
-]);
-export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
+]); export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
 export const ReviewCycleRoundField = { round: Type.Optional(Type.Integer({ minimum: 0 })) } as const;
 export const TEST_OWNERSHIP_VALUES = ['builder', 'test-writer', 'existing-only'] as const; export const TestOwnershipSchema = Type.Union(TEST_OWNERSHIP_VALUES.map(value => Type.Literal(value)), { description: 'Exclusive owner of new acceptance-test authoring for a plan' });
 // --- eforge:region review-issue-traceability ---

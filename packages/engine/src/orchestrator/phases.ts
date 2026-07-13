@@ -1297,22 +1297,21 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // Policy gate applies only to merge; stays here per plan spec.
     if (action === 'merge' && hasPolicyGates(ctx, 'final-merge')) {
-      // Policy gates must consume the same proven base as validation. In
-      // particular, a deleted logical parent cannot turn a persisted pin into
-      // an attacker-selected diff range.
-      // engineConfig is optional for programmatic orchestrator callers; its
-      // documented branch policy defaults are identical to DEFAULT_CONFIG.
-      const validationBase = await resolveValidationBase({ cwd: ctx.mergeWorktreePath, baseBranch: config.baseBranch, diffBaseRef: config.diffBaseRef, stackedValidationPinRequired: config.stackedValidationPinRequired, config: ctx.engineConfig ?? DEFAULT_CONFIG });
-      if (!validationBase.available) {
-        const reason = `Final merge policy evidence unavailable: ${validationBase.reason}`;
-        yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
-        yield* recordFinalPolicyFailure(ctx, action, reason);
-        state.status = 'failed';
-        state.completedAt = new Date().toISOString();
-        return;
+      let policyDiffBase = config.baseBranch;
+      // Pinned stacked builds need the same immutable base proof as validation.
+      if (config.diffBaseRef || config.stackedValidationPinRequired) {
+        const validationBase = await resolveValidationBase({ cwd: ctx.mergeWorktreePath, baseBranch: config.baseBranch, diffBaseRef: config.diffBaseRef, stackedValidationPinRequired: config.stackedValidationPinRequired, config: ctx.engineConfig ?? DEFAULT_CONFIG });
+        if (!validationBase.available) {
+          const reason = `Final merge policy evidence unavailable: ${validationBase.reason}`;
+          yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          yield* recordFinalPolicyFailure(ctx, action, reason);
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          return;
+        }
+        policyDiffBase = validationBase.baseRef;
       }
-      const policyDiffBase = validationBase.baseRef;
       let diff: Awaited<ReturnType<WorktreeManager['getFinalMergeDiff']>>;
       try {
         diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch, policyDiffBase);
@@ -1348,40 +1347,9 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
         yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason };
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
-        // Record skipped landing metadata when policy gate blocks the build.
-        if (ctx.prdId) {
-          try {
-            await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
-              landingStatus: 'skipped',
-              landingFailureReason: reason,
-              landingCompletedAt: new Date().toISOString(),
-            });
-          } catch {
-            // Non-fatal.
-          }
-        }
+        yield* recordFinalPolicyFailure(ctx, action, reason);
         state.status = 'failed';
         state.completedAt = new Date().toISOString();
-        if (ctx.stackContext) {
-          const now = new Date().toISOString();
-          await updateStackLayerStatusAndLanding(ctx.repoRoot, ctx.stackContext.prdId, 'failed', {
-            action,
-            status: 'failed',
-            reason,
-            startedAt: now,
-            completedAt: now,
-          });
-          yield {
-            timestamp: now,
-            type: 'stack:landing:update',
-            prdId: ctx.stackContext.prdId,
-            stackId: ctx.stackContext.stackId,
-            action,
-            branch: ctx.stackContext.branch,
-            status: 'failed',
-            reason,
-          } as EforgeEvent;
-        }
         return;
       }
     }
