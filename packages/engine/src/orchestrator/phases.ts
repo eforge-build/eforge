@@ -3,12 +3,9 @@
  * Each phase is an async generator that yields EforgeEvents.
  * The orchestrator's execute() method calls these in sequence via yield*.
  */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-
 const exec = promisify(execFile);
-
 import type { EforgeEvent, OrchestrationConfig, EforgeState } from '../events.js';
 import { transitionPlan } from './plan-lifecycle.js';
 import { WorktreeManager } from '../worktree-manager.js';
@@ -31,13 +28,14 @@ import {
 } from '../direct-pr-base-sync.js';
 import { renderPullRequestMetadata } from '../pr-metadata.js';
 import { collectBuildArtifactProvenance } from '../provenance.js';
-import type { EforgeConfig, LandingConfig, ValidationConfig } from '../config.js';
+import { DEFAULT_CONFIG, type EforgeConfig, type LandingConfig, type ValidationConfig } from '../config.js';
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
 import { type AcceptanceValidationEvent } from '../validation/acceptance-unknown-resolution.js';
 import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unknown-resolution-runner.js';
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
 import { detectValidationDirtyWorktree } from './validation-dirty-worktree.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
+import { resolveValidationBase } from '../validation/validation-base.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
 import { getRefSha, getWorktreeDirtyFiles } from '../worktree-ops.js';
@@ -52,7 +50,6 @@ import {
   type PolicyGateFailurePolicy,
 } from '../extensions/policy-gate-runtime.js';
 import type { NativeExtensionRegistry } from '../extensions/types.js';
-
 /**
  * Shared context passed between phase functions.
  * Carries all state and configuration needed by each phase.
@@ -128,7 +125,6 @@ export interface PhaseContext {
   /** Latest successful direct non-stacked PR base synchronization point. */
   directPrBaseSync?: DirectPrBaseSyncPoint;
 }
-
 /**
  * Walk the dependency graph from a failed plan and mark all transitive
  * dependents as blocked. Returns lifecycle/error events for each blocked plan.
@@ -139,7 +135,6 @@ export function propagateFailure(
   plans: OrchestrationConfig['plans'],
 ): EforgeEvent[] {
   const events: EforgeEvent[] = [];
-
   // Build adjacency: planId → direct dependents
   const dependents = new Map<string, string[]>();
   for (const plan of plans) {
@@ -148,17 +143,14 @@ export function propagateFailure(
       dependents.get(dep)!.push(plan.id);
     }
   }
-
   // BFS for transitive dependents
   const queue = [failedPlanId];
   const blocked = new Set<string>();
-
   while (queue.length > 0) {
     const current = queue.shift()!;
     for (const dep of dependents.get(current) ?? []) {
       if (blocked.has(dep)) continue;
       blocked.add(dep);
-
       const planState = state.plans[dep];
       if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
         const blockedError = `Blocked by failed dependency: ${failedPlanId}`;
@@ -168,10 +160,8 @@ export function propagateFailure(
       queue.push(dep);
     }
   }
-
   return events;
 }
-
 /**
  * Check if a plan's merge should be skipped because one of its dependencies
  * is in the failedMerges set. Returns null to proceed, or a skip reason string.
@@ -183,25 +173,20 @@ export function shouldSkipMerge(
 ): string | null {
   const plan = plans.find((p) => p.id === planId);
   if (!plan) return null;
-
   for (const dep of plan.dependsOn) {
     if (failedMerges.has(dep)) {
       return `Skipped: dependency "${dep}" failed to merge`;
     }
   }
-
   return null;
 }
-
 function policyBlockReason(prefix: string, decision: { decision: string; reason?: string }): string {
   const reason = decision.reason ?? decision.decision;
   return `${prefix}: ${reason}`;
 }
-
 function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge'): boolean {
   return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
 }
-
 export function isDirectPrBaseSyncApplicable(ctx: PhaseContext): boolean { return ctx.landingAction === 'pr' && ctx.stackContext === undefined; }
 export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   if (!isDirectPrBaseSyncApplicable(ctx)) return;
@@ -215,18 +200,15 @@ export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): Asyn
     conflictAttempts: ctx.engineConfig?.landing?.directPrBaseSync.conflictAttempts ?? resolveDirectPrBaseSyncConflictAttempts(ctx.engineConfig?.compile?.directPrBaseSyncConflictAttempts),
     onEvent: (event) => { baseSyncEvents.push(event); wake(); },
   });
-
   let settled = false;
   const markSettled = (): void => { settled = true; wake(); };
   void syncPromise.then(markSettled, markSettled);
-
   let completed = false;
   try {
     for (let emitted = 0; !settled || emitted < baseSyncEvents.length;) {
       while (emitted < baseSyncEvents.length) yield baseSyncEvents[emitted++]!;
       if (!settled) await nextEvent();
     }
-
     const result = await syncPromise;
     if (result.ok) {
       ctx.directPrBaseSync = result.point;
@@ -241,7 +223,6 @@ export async function* syncDirectPrBaseBeforeValidation(ctx: PhaseContext): Asyn
     completed = true;
   } finally { if (!completed) await syncPromise.catch(() => undefined); }
 }
-
 /**
  * Compute the maximum number of plans that could run concurrently
  * based on the dependency graph's wave structure.
@@ -254,25 +235,20 @@ export function computeMaxConcurrency(
   plans: OrchestrationConfig['plans'],
 ): number {
   if (plans.length === 0) return 0;
-
   // Assign each plan to a wave based on its dependencies
   const waveOf = new Map<string, number>();
-
   // Iteratively resolve waves — a plan's wave is max(wave of deps) + 1
   // For plans with no deps, wave is 0.
   const planMap = new Map(plans.map((p) => [p.id, p]));
-
   const resolveWave = (planId: string, visited: Set<string>): number => {
     if (waveOf.has(planId)) return waveOf.get(planId)!;
     if (visited.has(planId)) return 0; // cycle guard
     visited.add(planId);
-
     const plan = planMap.get(planId);
     if (!plan || plan.dependsOn.length === 0) {
       waveOf.set(planId, 0);
       return 0;
     }
-
     let maxDepWave = 0;
     for (const dep of plan.dependsOn) {
       maxDepWave = Math.max(maxDepWave, resolveWave(dep, visited));
@@ -281,26 +257,21 @@ export function computeMaxConcurrency(
     waveOf.set(planId, wave);
     return wave;
   };
-
   for (const plan of plans) {
     resolveWave(plan.id, new Set());
   }
-
   // Count plans per wave, return the max (only count actual plans, not phantom deps)
   const waveCounts = new Map<number, number>();
   for (const plan of plans) {
     const wave = waveOf.get(plan.id) ?? 0;
     waveCounts.set(wave, (waveCounts.get(wave) ?? 0) + 1);
   }
-
   let maxConcurrency = 0;
   for (const count of waveCounts.values()) {
     maxConcurrency = Math.max(maxConcurrency, count);
   }
-
   return maxConcurrency;
 }
-
 /**
  * Execute all plans: greedy scheduling, plan running, merging completed plans.
  * Yields schedule, build, and merge events.
@@ -308,23 +279,17 @@ export function computeMaxConcurrency(
 export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, config, planRunner, signal } = ctx;
   const planMap = new Map(config.plans.map((p) => [p.id, p]));
-
   // Determine if plan worktrees are needed based on dependency graph concurrency
   const maxConcurrency = computeMaxConcurrency(config.plans);
   const needsPlanWorktrees = maxConcurrency > 1;
-
   const allPlanIds = config.plans.map((p) => p.id);
   yield { timestamp: new Date().toISOString(), type: 'schedule:start', planIds: allPlanIds };
-
   const semaphore = new Semaphore(ctx.parallelism);
   const eventQueue = new AsyncEventQueue<EforgeEvent>();
-
   // Track running plans: planId → Promise that resolves when the plan finishes
   const running = new Map<string, Promise<void>>();
-
   // Per-plan model trackers: planId → ModelTracker (populated by observing agent:start events)
   const perPlanTrackers = new Map<string, ModelTracker>();
-
   /**
    * Check if a plan is ready to start: pending status and all deps merged.
    */
@@ -336,7 +301,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
       return depState && depState.status === 'merged';
     });
   };
-
   /**
    * Launch a single plan: acquire semaphore, create worktree, run, update state.
    * Pushes events into the shared eventQueue. Returns a promise that resolves
@@ -344,19 +308,15 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
    */
   const launchPlan = (planId: string): Promise<void> => {
     eventQueue.addProducer();
-
     // Create a per-plan tracker to record models for this plan's squash-merge commit
     const perPlanTracker = new ModelTracker();
     perPlanTrackers.set(planId, perPlanTracker);
-
     const planPromise = (async () => {
       const plan = planMap.get(planId)!;
       let worktreePath: string | undefined;
       let buildFailedError: string | undefined;
-
       try {
         await semaphore.acquire();
-
         worktreePath = await ctx.worktreeManager.acquireForPlan(planId, plan.branch, needsPlanWorktrees);
 
         state.plans[planId].worktreePath = worktreePath;
@@ -834,8 +794,17 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
 
       // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
+        // Unavailable evidence is a terminal safety failure, not a repairable
+        // implementation gap. Never let the mutating gap agent retry Git/base
+        // construction after this verdict.
+        const unavailableEvidence = event.gaps.some((gap) => gap.requirement === 'Implementation diff unavailable');
+        if (unavailableEvidence) {
+          const reason = event.gaps.map((gap) => gap.explanation).join('; ');
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD validation evidence unavailable; skipping gap closing: ${reason}` } as EforgeEvent;
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
         // Viability gate: if completionPercent is defined and below threshold, fail immediately
-        if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
+        } else if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
           yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
@@ -851,7 +820,9 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
             }
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;
-            // Gap closer errors fail the build
+            const reason = err instanceof Error ? err.message : String(err);
+            yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Gap closing failed: ${reason}` } as EforgeEvent;
+            // Gap closer errors fail the build.
             state.status = 'failed';
             state.completedAt = new Date().toISOString();
           }
@@ -1290,6 +1261,22 @@ async function* runFinalizeLanding(ctx: PhaseContext, input: FinalizeLandingInpu
     : yield* runFinalizeLandingAttempt(ctx, input, false);
 }
 
+/** Persist terminal final-policy evidence failures just like policy blocks. */
+async function* recordFinalPolicyFailure(ctx: PhaseContext, action: LandingConfig['action'], reason: string): AsyncGenerator<EforgeEvent> {
+  if (ctx.prdId) {
+    try {
+      await updateArtifactRecord(ctx.repoRoot, ctx.prdId, { landingStatus: 'skipped', landingFailureReason: reason, landingCompletedAt: new Date().toISOString() });
+    } catch {
+      // Artifact persistence must not turn a fail-closed decision into a throw.
+    }
+  }
+  if (ctx.stackContext) {
+    const now = new Date().toISOString();
+    await updateStackLayerStatusAndLanding(ctx.repoRoot, ctx.stackContext.prdId, 'failed', { action, status: 'failed', reason, startedAt: now, completedAt: now });
+    yield { timestamp: now, type: 'stack:landing:update', prdId: ctx.stackContext.prdId, stackId: ctx.stackContext.stackId, action, branch: ctx.stackContext.branch, status: 'failed', reason } as EforgeEvent;
+  }
+}
+
 /**
  * Final landing of the feature branch and status determination.
  * Dispatches on ctx.landingAction to run pr, merge, or leave.
@@ -1310,7 +1297,34 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // Policy gate applies only to merge; stays here per plan spec.
     if (action === 'merge' && hasPolicyGates(ctx, 'final-merge')) {
-      const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
+      let policyDiffBase = config.baseBranch;
+      // Pinned stacked builds need the same immutable base proof as validation.
+      if (config.diffBaseRef || config.stackedValidationPinRequired) {
+        const validationBase = await resolveValidationBase({ cwd: ctx.mergeWorktreePath, baseBranch: config.baseBranch, diffBaseRef: config.diffBaseRef, stackedValidationPinRequired: config.stackedValidationPinRequired, config: ctx.engineConfig ?? DEFAULT_CONFIG });
+        if (!validationBase.available) {
+          const reason = `Final merge policy evidence unavailable: ${validationBase.reason}`;
+          yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          yield* recordFinalPolicyFailure(ctx, action, reason);
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          return;
+        }
+        policyDiffBase = validationBase.baseRef;
+      }
+      let diff: Awaited<ReturnType<WorktreeManager['getFinalMergeDiff']>>;
+      try {
+        diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch, policyDiffBase);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const reason = `Final merge policy evidence unavailable: ${detail}`;
+        yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+        yield* recordFinalPolicyFailure(ctx, action, reason);
+        state.status = 'failed';
+        state.completedAt = new Date().toISOString();
+        return;
+      }
       const policyResult = await executePolicyGate({
         registry: ctx.extensionRegistry,
         gateKind: 'final-merge',
@@ -1333,40 +1347,9 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
         yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason };
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
-        // Record skipped landing metadata when policy gate blocks the build.
-        if (ctx.prdId) {
-          try {
-            await updateArtifactRecord(ctx.repoRoot, ctx.prdId, {
-              landingStatus: 'skipped',
-              landingFailureReason: reason,
-              landingCompletedAt: new Date().toISOString(),
-            });
-          } catch {
-            // Non-fatal.
-          }
-        }
+        yield* recordFinalPolicyFailure(ctx, action, reason);
         state.status = 'failed';
         state.completedAt = new Date().toISOString();
-        if (ctx.stackContext) {
-          const now = new Date().toISOString();
-          await updateStackLayerStatusAndLanding(ctx.repoRoot, ctx.stackContext.prdId, 'failed', {
-            action,
-            status: 'failed',
-            reason,
-            startedAt: now,
-            completedAt: now,
-          });
-          yield {
-            timestamp: now,
-            type: 'stack:landing:update',
-            prdId: ctx.stackContext.prdId,
-            stackId: ctx.stackContext.stackId,
-            action,
-            branch: ctx.stackContext.branch,
-            status: 'failed',
-            reason,
-          } as EforgeEvent;
-        }
         return;
       }
     }

@@ -62,49 +62,18 @@ export async function resolveStackBaseContext(options: {
   }
 
   const stackId = prd.frontmatter.stack_id ?? parentLayer?.stackId ?? parentPrdId;
-  const parentArtifactCommit = await resolveRefCommit(cwd, artifactRef);
-  if (parentArtifactCommit) {
-    if (await isAncestor(cwd, parentArtifactCommit, trunkIntegrationRef)) {
-      return baseContext({
-        prdId,
-        stackId,
-        parentPrdId,
-        provider,
-        branch,
-        baseBranch: trunkBranch,
-        artifactRef,
-        parentArtifactCommit,
-        originalBaseBranch: artifactRef,
-        effectiveBaseBranch: trunkBranch,
-        trunkBranch,
-        trunkRemote,
-        trunkIntegrationRef,
-        repaired: true,
-      });
-    }
-
-    return baseContext({
-      prdId,
-      stackId,
-      parentPrdId,
-      provider,
-      branch,
-      baseBranch: artifactRef,
-      artifactRef,
-      parentArtifactCommit,
-      originalBaseBranch: artifactRef,
-      effectiveBaseBranch: artifactRef,
-      trunkBranch,
-      trunkRemote,
-      trunkIntegrationRef,
-      repaired: false,
-    });
-  }
-
-  // Try commitSha from registry first, then stack layer fallback.
+  // The recorded SHA is immutable artifact provenance. The branch only retains
+  // its role as the logical landing base and must never replace this child pin.
   const recordedCommitSha = parentArtifactRecord?.commitSha ?? parentLayer?.artifact?.commitSha;
   const recordedCommit = recordedCommitSha ? await resolveRefCommit(cwd, recordedCommitSha) : undefined;
-  if (recordedCommit && await isAncestor(cwd, recordedCommit, trunkIntegrationRef)) {
+  if (!recordedCommit) {
+    throw new Error(
+      `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact commit '${recordedCommitSha ?? 'none'}' cannot be resolved locally. ` +
+      `Fetch or restore the recorded artifact commit before dispatching the child.`,
+    );
+  }
+
+  if (await isAncestor(cwd, recordedCommit, trunkIntegrationRef)) {
     return baseContext({
       prdId,
       stackId,
@@ -123,9 +92,30 @@ export async function resolveStackBaseContext(options: {
     });
   }
 
+  // A live branch remains the logical landing base, but the child starts from
+  // recordedCommit above rather than from this mutable branch tip.
+  if (await resolveRefCommit(cwd, artifactRef)) {
+    return baseContext({
+      prdId,
+      stackId,
+      parentPrdId,
+      provider,
+      branch,
+      baseBranch: artifactRef,
+      artifactRef,
+      parentArtifactCommit: recordedCommit,
+      originalBaseBranch: artifactRef,
+      effectiveBaseBranch: artifactRef,
+      trunkBranch,
+      trunkRemote,
+      trunkIntegrationRef,
+      repaired: false,
+    });
+  }
+
   throw new Error(
     `Cannot resolve stack base for PRD '${prdId}': parent PRD '${parentPrdId}' recorded artifact ref '${artifactRef}' ` +
-    `is missing locally, and recorded commit '${recordedCommitSha ?? 'none'}' is not proven integrated into trunk via '${trunkIntegrationRef}'. ` +
+    `is missing locally, and recorded commit '${recordedCommitSha}' is not proven integrated into trunk via '${trunkIntegrationRef}'. ` +
     `Fetch or restore the parent artifact branch, rebuild the parent artifact, or repair stack topology by retargeting the child to trunk '${trunkBranch}' after confirming the parent has landed.`,
   );
 }

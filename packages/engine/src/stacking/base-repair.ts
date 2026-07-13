@@ -139,13 +139,27 @@ export async function resolveTrunkIntegrationRef(
  *
  * Non-zero git results fail closed as false, including missing refs.
  */
-export async function isAncestor(cwd: string, potentialAncestor: string, descendant: string): Promise<boolean> {
+export type AncestorProof =
+  | { result: 'ancestor' }
+  | { result: 'not-ancestor' }
+  | { result: 'failed'; reason: string };
+
+/** Prove ancestry while preserving Git execution failures separately from no. */
+export async function proveAncestor(cwd: string, potentialAncestor: string, descendant: string): Promise<AncestorProof> {
   try {
     await exec('git', ['merge-base', '--is-ancestor', potentialAncestor, descendant], { cwd });
-    return true;
-  } catch {
-    return false;
+    return { result: 'ancestor' };
+  } catch (err) {
+    const exitCode = (err as { code?: unknown }).code;
+    // git merge-base uses 1 for a successfully established negative proof.
+    if (exitCode === 1) return { result: 'not-ancestor' };
+    const stderr = (err as { stderr?: unknown }).stderr;
+    return { result: 'failed', reason: typeof stderr === 'string' && stderr.trim() ? stderr.trim() : err instanceof Error ? err.message : String(err) };
   }
+}
+
+export async function isAncestor(cwd: string, potentialAncestor: string, descendant: string): Promise<boolean> {
+  return (await proveAncestor(cwd, potentialAncestor, descendant)).result === 'ancestor';
 }
 
 /**

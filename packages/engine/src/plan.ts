@@ -281,6 +281,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     created: (data.created as string) ?? '',
     baseBranch: (data.base_branch as string) ?? 'main',
     ...(typeof data.diff_base_ref === 'string' && data.diff_base_ref ? { diffBaseRef: data.diff_base_ref } : {}),
+    ...(data.stacked_validation_pin_required === true ? { stackedValidationPinRequired: true } : {}),
     pipeline: pipelineResult.data,
     plans: transitiveReduce(plans),
     ...(validate && validate.length > 0 && { validate }),
@@ -869,6 +870,7 @@ export async function injectPipelineIntoOrchestrationYaml(
   pipeline: PipelineComposition,
   baseBranch?: string,
   diffBaseRef?: string,
+  stackedValidationPinRequired?: boolean,
 ): Promise<void> {
   const absPath = resolve(orchestrationYamlPath);
   const raw = await readFile(absPath, 'utf-8');
@@ -879,6 +881,9 @@ export async function injectPipelineIntoOrchestrationYaml(
   }
   if (diffBaseRef) {
     data.diff_base_ref = diffBaseRef;
+  }
+  if (stackedValidationPinRequired) {
+    data.stacked_validation_pin_required = true;
   }
   // Backfill per-plan build/review from pipeline defaults for any plan that
   // omitted them. Planner submissions may now include per-plan build/review

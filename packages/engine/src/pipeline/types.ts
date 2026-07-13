@@ -54,6 +54,9 @@ export interface PipelineContext {
    */
   diffBaseRef?: string;
 
+  /** Persisted provenance: this orchestration is a stacked child and needs its pin. */
+  stackedValidationPinRequired?: boolean;
+
   /** Accumulates model IDs from agent:start events during this pipeline run. Used for Models-Used: commit trailer. */
   modelTracker: ModelTracker;
 

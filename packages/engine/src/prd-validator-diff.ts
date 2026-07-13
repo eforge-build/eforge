@@ -55,27 +55,24 @@ export interface BuildPrdDiffOptions {
   globalBudgetBytes?: number;
 }
 
-export interface BuildPrdDiffResult {
+interface BuildPrdDiffEvidence {
   /** Output of `git diff --name-status` + `git diff --numstat` concatenated. */
   summary: string;
   /** One entry per changed file, in enumeration order. */
   files: DiffFile[];
-  /**
-   * Concatenation of `summary` followed by every file's `body`, separated by
-   * blank lines. The exact string passed to the PRD validator agent.
-   */
+  /** Concatenation passed to the PRD validator agent. */
   renderedText: string;
-  /** Total byte length of `renderedText`. */
   totalBytes: number;
-  /** Count of files whose bodies were replaced with a summary marker. */
   summarizedCount: number;
-  /** Effective global byte cap applied to `renderedText`. */
   globalBudgetBytes: number;
-  /** Files summarized because their per-file body exceeded the per-file budget (or the changed-line threshold, or binary). */
   summarizedByPerFileBudget: number;
-  /** Files additionally demoted to a summary marker because the total exceeded `globalBudgetBytes`. */
   summarizedByGlobalCap: number;
 }
+
+export type BuildPrdDiffResult =
+  | ({ available: true } & BuildPrdDiffEvidence)
+  | ({ available: false; /** Actionable reason for unavailable evidence. */ reason: string; /** Git operation that failed. */ stage: 'enumeration' | 'file-diff' } & BuildPrdDiffEvidence);
+
 
 /**
  * Build a per-file-budgeted diff between `baseRef` and `HEAD` inside `cwd`.
@@ -115,25 +112,17 @@ export async function buildPrdValidatorDiff(
     numstatRaw = nm.stdout;
     nameStatusHuman = nsh.stdout;
     numstatHuman = nmh.stdout;
-  } catch {
-    // No changes or git failure — empty result
-    return {
-      summary: '',
-      files: [],
-      renderedText: '',
-      totalBytes: 0,
-      summarizedCount: 0,
-      globalBudgetBytes,
-      summarizedByPerFileBudget: 0,
-      summarizedByGlobalCap: 0,
-    };
+  } catch (err) {
+    return unavailableDiff('enumeration', `Could not enumerate implementation diff: ${err instanceof Error ? err.message : String(err)}`, globalBudgetBytes);
   }
+
 
   const statusByPath = parseNameStatusZ(nameStatusRaw);
   const numstatEntries = parseNumstatZ(numstatRaw);
 
   if (numstatEntries.length === 0) {
     return {
+      available: true,
       summary: '',
       files: [],
       renderedText: '',
@@ -178,8 +167,8 @@ export async function buildPrdValidatorDiff(
     try {
       const { stdout } = await exec('git', ['diff', range, '--', entry.path], { cwd, maxBuffer: GIT_MAX_BUFFER });
       body = stdout;
-    } catch {
-      body = '';
+    } catch (err) {
+      return unavailableDiff('file-diff', `Could not construct implementation diff for '${entry.path}': ${err instanceof Error ? err.message : String(err)}`, globalBudgetBytes);
     }
 
     if (body.length > perFileBudgetBytes) {
@@ -234,6 +223,7 @@ export async function buildPrdValidatorDiff(
   const summarizedCount = summarizedByPerFileBudget + summarizedByGlobalCap;
 
   return {
+    available: true,
     summary,
     files,
     renderedText,
@@ -242,6 +232,22 @@ export async function buildPrdValidatorDiff(
     globalBudgetBytes,
     summarizedByPerFileBudget,
     summarizedByGlobalCap,
+  };
+}
+
+function unavailableDiff(stage: 'enumeration' | 'file-diff', reason: string, globalBudgetBytes: number): Extract<BuildPrdDiffResult, { available: false }> {
+  return {
+    available: false,
+    reason,
+    stage,
+    summary: '',
+    files: [],
+    renderedText: '',
+    totalBytes: 0,
+    summarizedCount: 0,
+    globalBudgetBytes,
+    summarizedByPerFileBudget: 0,
+    summarizedByGlobalCap: 0,
   };
 }
 

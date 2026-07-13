@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -33,10 +33,42 @@ describe('buildPrdValidatorDiff', () => {
 
   it('returns empty result when base and head are identical', async () => {
     const result = await buildPrdValidatorDiff({ cwd: repoDir, baseRef: 'main' });
+    expect(result.available).toBe(true);
+    if (!result.available) throw new Error(result.reason);
     expect(result.files.length).toBe(0);
     expect(result.renderedText.trim()).toBe('');
     expect(result.totalBytes).toBe(0);
     expect(result.summarizedCount).toBe(0);
+  });
+
+  it('reports unavailable enumeration evidence instead of fabricating an empty diff', async () => {
+    const result = await buildPrdValidatorDiff({ cwd: repoDir, baseRef: 'does-not-exist' });
+    expect(result).toMatchObject({ available: false, stage: 'enumeration' });
+    expect(result.reason).toContain('Could not enumerate implementation diff');
+    expect(result.files).toEqual([]);
+  });
+
+  it('reports unavailable per-file evidence when Git cannot construct a file diff', async () => {
+    await writeFile(join(repoDir, 'foo.ts'), 'export const foo = 1;\n');
+    git(repoDir, 'add', '.');
+    git(repoDir, 'commit', '-m', 'change');
+    const binDir = await mkdtemp(join(tmpdir(), 'eforge-git-wrapper-'));
+    const wrapper = join(binDir, 'git');
+    // Enumeration always includes --name-status or --numstat; body construction
+    // does not. This is a real Git fixture which deterministically fails only
+    // the per-file operation.
+    await writeFile(wrapper, '#!/bin/sh\ncase "$*" in *--name-status*|*--numstat*) exec /usr/bin/git "$@";; *) exit 17;; esac\n');
+    await chmod(wrapper, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${previousPath}`;
+    try {
+      const result = await buildPrdValidatorDiff({ cwd: repoDir, baseRef: 'main' });
+      expect(result).toMatchObject({ available: false, stage: 'file-diff' });
+      expect(result.reason).toContain("Could not construct implementation diff for 'foo.ts'");
+    } finally {
+      process.env.PATH = previousPath;
+      await rm(binDir, { recursive: true, force: true });
+    }
   });
 
   it('renders small changesets verbatim', async () => {
