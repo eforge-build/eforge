@@ -20,8 +20,12 @@ export async function executePlanningReduceNode(input: Pick<RunPlanningReduceInp
     const normalized = normalizePlanningReduceOutput(result.output);
     const { output, diagnostics } = quarantineGapCatalogIds(normalized, task);
     const validation = validatePlanningReduceOutput({ graph: input.graph as PlanningAtomGraph, tree, task, output });
-    if (!validation.ok) return { output: failedReduceOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: result.events, validationErrors: validation.errors, warnings: diagnostics };
-    return { output, events: [...result.events, ...diagnostics.map((message) => ({ timestamp: new Date().toISOString(), type: 'planning:warning' as const, message, source: 'reduce-catalog-quarantine' }))], validationErrors: [], warnings: diagnostics };
+    const warningEvents = diagnostics.map((message) => ({ timestamp: new Date().toISOString(), type: 'planning:warning' as const, message, source: 'reduce-catalog-quarantine' as const }));
+    // Quarantine is a warning, not a validation failure, but it must reach
+    // live observers as well as the returned event transcript.
+    for (const event of warningEvents) input.onEvent?.(event);
+    if (!validation.ok) return { output: failedReduceOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: [...result.events, ...warningEvents], validationErrors: validation.errors, warnings: diagnostics };
+    return { output, events: [...result.events, ...warningEvents], validationErrors: [], warnings: diagnostics };
   } catch (err) {
     if (isAbortError(err)) throw err;
     return { output: failedReduceOutput(node.nodeId, err instanceof Error ? err.message : String(err)), events: [], validationErrors: [`reduce failed:${node.nodeId}:${err instanceof Error ? err.message : String(err)}`], warnings: [] };
@@ -69,17 +73,23 @@ function quarantineGapCatalogIds(output: PlanningReduceOutput, task: PlanningRed
   const gaps = output.gaps?.map((gap) => {
     const sourceNeedIds = gap.sourceNeedIds?.filter((id) => {
       const valid = task.validSourceNeedIds.includes(id);
-      if (!valid) diagnostics.push(`dropped unknown source need for reduce gap:${gap.gapId}:${id}`);
+      if (!valid) diagnostics.push(`dropped unknown source need for reduce gap:${safeDiagnosticValue(gap.gapId)}:${safeDiagnosticValue(id)}`);
       return valid;
     });
     const affectedAtomIds = gap.affectedAtomIds?.filter((id) => {
       const valid = task.validAffectedAtomIds.includes(id);
-      if (!valid) diagnostics.push(`dropped unknown affected atom for reduce gap:${gap.gapId}:${id}`);
+      if (!valid) diagnostics.push(`dropped unknown affected atom for reduce gap:${safeDiagnosticValue(gap.gapId)}:${safeDiagnosticValue(id)}`);
       return valid;
     });
     return { ...gap, ...(gap.sourceNeedIds ? { sourceNeedIds } : {}), ...(gap.affectedAtomIds ? { affectedAtomIds } : {}) };
   });
   return { output: gaps ? { ...output, gaps } : output, diagnostics: diagnostics.slice(0, 128) };
+}
+
+function safeDiagnosticValue(value: string): string {
+  // JSON escaping prevents reducer-controlled terminal control sequences from
+  // being interpreted when warnings are rendered by a CLI.
+  return JSON.stringify(value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?')).slice(0, 256);
 }
 
 export function validateReduceTaskPromptBudget(task: PlanningReduceTask): string[] {

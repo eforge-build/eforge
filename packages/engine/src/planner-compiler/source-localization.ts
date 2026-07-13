@@ -34,12 +34,22 @@ export async function deriveSourceLocalization(input: DeriveSourceLocalizationIn
   const normalizedInput = { ...input, hints: normalized.hints, limits };
   const index = input.index ?? await deriveRepositoryIndex({ cwd: input.cwd, hints: normalized.hints, limits });
   const needs = deriveSourceLocalizationNeeds(normalizedInput);
-  const proposedRecords = await Promise.all(needs.map(async (need) => addProposedNewFileCandidate(resolveNeed(need, index, limits), need, input.cwd, index, limits)));
+  const proposedRecords = await Promise.all(needs.map(async (need) => addProposedNewFileCandidate(resolveNeed(need, index, limits), need, input.cwd, index, limits, input.graph)));
   // A PRD path can yield both criterion and inventory needs. A validated
   // proposal is authoritative evidence for every equivalent path need, while
   // preserving each need's own provenance and identifier.
   const records = propagateProposedNewFileEvidence(proposedRecords);
-  const bundle: SourceLocalizationBundle = { sourceHash: input.inventory?.sourceHash ?? input.graph?.sourceHash, graphId: input.graph?.graphId, records: records.sort((a, b) => a.needId.localeCompare(b.needId)), byAtomId: byAtom(records), diagnostics: [...normalized.diagnostics, ...records.flatMap((record) => record.diagnostics), ...index.diagnostics], limits, indexDiagnostics: index.diagnostics };
+  const knownNeedIds = new Set(needs.map((need) => need.id));
+  const unknownHintNeedDiagnostics = (normalized.hints.projectHints ?? [])
+    .filter((hint) => hint.needId && !knownNeedIds.has(hint.needId))
+    .slice(0, 64)
+    .map((hint) => ({ code: 'unknown-source-need-id', message: `Ignored unknown source need id ${hint.needId}.`, severity: 'warning' as const, needId: hint.needId }));
+  const graphAtomIds = new Set(input.graph?.atoms.map((atom) => atom.atomId) ?? []);
+  const unknownHintAtomDiagnostics = input.graph ? (normalized.hints.projectHints ?? [])
+    .flatMap((hint) => (hint.atomIds ?? []).filter((atomId) => !graphAtomIds.has(atomId)))
+    .slice(0, 64)
+    .map((atomId) => ({ code: 'unknown-atom-id', message: `Ignored unknown atom id ${atomId}.`, severity: 'warning' as const })) : [];
+  const bundle: SourceLocalizationBundle = { sourceHash: input.inventory?.sourceHash ?? input.graph?.sourceHash, graphId: input.graph?.graphId, records: records.sort((a, b) => a.needId.localeCompare(b.needId)), byAtomId: byAtom(records), diagnostics: [...normalized.diagnostics, ...unknownHintNeedDiagnostics, ...unknownHintAtomDiagnostics, ...records.flatMap((record) => record.diagnostics), ...index.diagnostics], limits, indexDiagnostics: index.diagnostics };
   const validation = validateSourceLocalizationBundle(bundle);
   return validation.ok ? bundle : { ...bundle, diagnostics: [...bundle.diagnostics, ...validation.errors.map((message) => ({ code: 'localization-validation', message, severity: 'error' as const }))] };
 }
@@ -62,8 +72,15 @@ export function deriveSourceLocalizationNeeds(input: Pick<DeriveSourceLocalizati
 }
 
 export function assignNeedsToAtoms(needs: SourceLocalizationNeed[], graph?: PlanningAtomGraph): SourceLocalizationNeed[] {
-  if (!graph) return needs;
-  return needs.map((item) => ({ ...item, assignedAtomIds: [...new Set([...item.assignedAtomIds, ...graph.atoms.filter((atom) => needMatchesAtom(item, atom)).map((atom) => atom.atomId)])].sort() }));
+  // Caller-supplied atom ids are claims, not authority. Without a graph there
+  // is no ownership domain in which to validate them.
+  if (!graph) return needs.map((item) => ({ ...item, assignedAtomIds: [] }));
+  const graphAtomIds = new Set(graph.atoms.map((atom) => atom.atomId));
+  return needs.map((item) => {
+    const affinityAtoms = graph.atoms.filter((atom) => needMatchesAtom({ ...item, assignedAtomIds: [] }, atom)).map((atom) => atom.atomId);
+    const suppliedWithAffinity = item.assignedAtomIds.filter((atomId) => graphAtomIds.has(atomId) && affinityAtoms.includes(atomId));
+    return { ...item, assignedAtomIds: [...new Set([...suppliedWithAffinity, ...affinityAtoms])].sort() };
+  });
 }
 
 function resolveNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits: SourceLocalizationLimits): SourceLocalizationRecord {
@@ -90,8 +107,13 @@ function candidateCapForNeed(need: SourceLocalizationNeed, limits: SourceLocaliz
 function scoreNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits: SourceLocalizationLimits, diagnostics: SourceLocalizationDiagnostic[]): SourceLocalizationCandidate[] {
   const witnesses = witnessCandidates(need, index, diagnostics);
   const query = normalizeEvidenceValue(need.query);
+  // Exact paths and bounded directory expansion are ownership evidence, not
+  // lexical category queries. Generic suppression applies only below.
   if (need.kind === 'literal-path') return [...witnesses, ...literalCandidates(query, index)];
   if (need.kind === 'directory') return [...witnesses, ...directoryCandidates(need, query, index, limits, diagnostics)];
+  // Planner category words are not ownership queries. They may be refined by
+  // concrete criterion context, but must never broadcast lexical matches.
+  if (isGenericQuery(need.query) && concreteSubsystemHints(need.subsystemHints).length === 0 && concreteInterfaceKeys(need.interfaceKeys).length === 0) return witnesses;
   const manifestEntrypointTargets = new Set(index.files.flatMap((file) => file.manifestEntrypoints));
   return [...witnesses, ...index.files.flatMap((file) => scoreFileForNeed(file, need, manifestEntrypointTargets))];
 }
@@ -136,7 +158,7 @@ function scoreFileForNeed(file: RepositoryIndexFile, need: SourceLocalizationNee
     ? concreteSubsystemHints([need.query]).flatMap(tokenSet)
     : need.kind === 'interface'
       ? concreteInterfaceKeys([need.query]).flatMap(tokenSet)
-      : SURFACE_KINDS.has(need.kind) ? [] : tokenSet(need.query);
+      : SURFACE_KINDS.has(need.kind) || isGenericQuery(need.query) ? [] : tokenSet(need.query);
   const signals: string[] = [];
   let score = 0;
   if (need.kind === 'manifest' && file.surfaces.includes('manifest')) { signals.push('manifest file'); score += 70; }
@@ -171,7 +193,6 @@ function matchedSignals(file: RepositoryIndexFile, need: SourceLocalizationNeed)
 
 function needMatchesAtom(need: SourceLocalizationNeed, atom: PlanningAtom): boolean {
   if (need.criterionIds.some((id) => atom.criterionIds.includes(id))) return true;
-  if (need.assignedAtomIds.includes(atom.atomId)) return true;
   if (overlap(concreteSubsystemHints(need.subsystemHints), concreteSubsystemHints(atom.subsystemHints))) return true;
   if (overlap(concreteInterfaceKeys(need.interfaceKeys), concreteInterfaceKeys(atom.interfaceKeys))) return true;
   if (need.kind === 'literal-path' || need.kind === 'directory') return atom.evidencePaths.some((path) => path === need.query || path.startsWith(`${need.query}/`) || need.query.startsWith(`${path}/`));
@@ -276,32 +297,44 @@ function surfaceKindsForText(value: string): SourceLocalizationNeedKind[] {
   return SURFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([kind]) => kind);
 }
 
-async function addProposedNewFileCandidate(record: SourceLocalizationRecord, need: SourceLocalizationNeed, cwd: string, index: RepositoryIndex, limits: SourceLocalizationLimits): Promise<SourceLocalizationRecord> {
+async function addProposedNewFileCandidate(record: SourceLocalizationRecord, need: SourceLocalizationNeed, cwd: string, index: RepositoryIndex, limits: SourceLocalizationLimits, graph?: PlanningAtomGraph): Promise<SourceLocalizationRecord> {
   // A nonexistent path is ownership only when the PRD/hint explicitly names a
   // bounded file below a real directory in this checkout. Existing files keep
   // the normal index-backed, fail-closed ownership path.
   if (need.kind !== 'literal-path' || !need.newFileIntent) return record;
   const candidatePath = normalizeEvidenceValue(need.query);
-  if (!candidatePath || BROAD_ROOTS.has(candidatePath) || candidatePath.includes('..') || path.isAbsolute(candidatePath) || !isRepositorySafeProposal(candidatePath, index) || record.candidateFiles.some((candidate) => candidate.path === candidatePath)) return record;
+  // Hints may not mint arbitrary ownership: a proposal must be explicit PRD
+  // intent or be tied to a concrete, graph-scoped owner context.
+  if (!hasScopedNewFileAuthority(need, candidatePath, graph)) return rejectedProposal(record, need.id, candidatePath || need.query);
+  if (!candidatePath || BROAD_ROOTS.has(candidatePath) || candidatePath.includes('..') || path.isAbsolute(candidatePath) || !isRepositorySafeProposal(candidatePath, index) || record.candidateFiles.some((candidate) => candidate.path === candidatePath)) {
+    return rejectedProposal(record, need.id, candidatePath || need.query);
+  }
   const parent = path.dirname(candidatePath);
   // A filename at checkout root is not enough ownership context. A named
   // existing subdirectory is: it bounds the proposal without treating src/
   // or packages/ themselves as proposed files.
-  if (parent === '.') return record;
+  if (parent === '.') return rejectedProposal(record, need.id, candidatePath);
   try {
     const root = await realpath(cwd);
     const resolvedTarget = path.resolve(root, candidatePath);
     const resolvedParent = path.resolve(root, parent);
-    if (!resolvedTarget.startsWith(`${root}${path.sep}`) || !resolvedParent.startsWith(`${root}${path.sep}`)) return record;
+    if (!resolvedTarget.startsWith(`${root}${path.sep}`) || !resolvedParent.startsWith(`${root}${path.sep}`)) return rejectedProposal(record, need.id, candidatePath);
     // This is specifically a proposed *new* file. Do not turn an unindexed
     // existing file into a proposal and resolve parent symlinks before the
     // containment check so a worktree cannot escape through one.
-    try { await lstat(resolvedTarget); return record; } catch (err) { if (!isNotFound(err)) return record; }
+    try { await lstat(resolvedTarget); return rejectedProposal(record, need.id, candidatePath); } catch (err) { if (!isNotFound(err)) return rejectedProposal(record, need.id, candidatePath); }
     const realParent = await realpath(resolvedParent);
-    if (!realParent.startsWith(`${root}${path.sep}`) || !(await stat(realParent)).isDirectory() || !index.files.some((file) => file.path.startsWith(`${parent}/`))) return record;
+    const canonicalParent = path.relative(root, realParent).replaceAll(path.sep, '/');
+    // Do not allow an apparently harmless path to enter a protected directory
+    // through a symlink (including case aliases on case-insensitive volumes).
+    if (!realParent.startsWith(`${root}${path.sep}`) || canonicalParent !== parent || !isRepositorySafeProposal(`${canonicalParent}/placeholder`, index) || !(await stat(realParent)).isDirectory()) return rejectedProposal(record, need.id, candidatePath);
     const proposed = candidate(candidatePath, 90, 'explicit in-root proposed new file', ['explicit-path', 'proposed-new-file']);
     return withProposedCandidate(record, proposed, candidateCapForNeed(need, limits));
-  } catch { return record; }
+  } catch { return rejectedProposal(record, need.id, candidatePath); }
+}
+
+function rejectedProposal(record: SourceLocalizationRecord, needId: string, candidatePath: string): SourceLocalizationRecord {
+  return { ...record, diagnostics: [...record.diagnostics, { code: 'proposed-new-file-rejected', message: `Rejected unsafe or unbounded proposed new-file path ${candidatePath}.`, severity: 'warning', needId, path: candidatePath }] };
 }
 
 function explicitlyCreatesFile(text: string, evidencePath: string): boolean {
@@ -333,15 +366,51 @@ function withProposedCandidate(record: SourceLocalizationRecord, proposed: Sourc
   return { ...record, candidateFiles: bounded, status: 'resolved', confidence: 'high', reason: proposed.reason };
 }
 
+function hasScopedNewFileAuthority(need: SourceLocalizationNeed, candidatePath: string, graph?: PlanningAtomGraph): boolean {
+  if (need.source === 'criterion') return true;
+  // A project hint must prove the proposed path belongs to a validated atom,
+  // not merely claim its id or repeat its subsystem label. Concrete evidence
+  // scopes take precedence; a concrete atom subsystem may also bound a path
+  // when its own normalized label is an actual path segment.
+  return need.source === 'project-hint' && Boolean(graph) && need.assignedAtomIds.some((atomId) => {
+    const atom = graph!.atoms.find((item) => item.atomId === atomId);
+    return atom !== undefined && proposedPathMatchesAtomScope(candidatePath, atom);
+  });
+}
+
+function proposedPathMatchesAtomScope(candidatePath: string, atom: PlanningAtom): boolean {
+  const pathSegments = candidatePath.split('/').filter(Boolean);
+  return atom.evidencePaths.some((evidencePath) => {
+    const evidence = normalizeEvidenceValue(evidencePath).replace(/\/$/, '');
+    const scope = path.extname(evidence) ? path.posix.dirname(evidence) : evidence;
+    return scope !== '.' && scope !== '' && (candidatePath === scope || candidatePath.startsWith(`${scope}/`));
+  }) || concreteSubsystemHints(atom.subsystemHints).some((subsystem) => pathSegments.includes(stableSlug(subsystem)));
+}
+
+function canonicalGenericToken(token: string): string {
+  if (token === 'tests') return 'test';
+  if (token === 'criteria') return 'criterion';
+  return token.endsWith('s') && GENERIC_SUBSYSTEM_HINTS.has(token.slice(0, -1)) ? token.slice(0, -1) : token;
+}
+
+function hasGenericToken(value: string): boolean {
+  return tokenSet(value).some((token) => GENERIC_SUBSYSTEM_HINTS.has(canonicalGenericToken(token)));
+}
+
+function isGenericQuery(value: string): boolean {
+  const tokens = tokenSet(value);
+  return tokens.length > 0 && hasGenericToken(value);
+}
+
 function concreteSubsystemHints(hints: string[]): string[] {
   // Composite labels such as "shared test" are category labels too; allowing
   // their remaining token to match turns generic planner vocabulary into an
   // ownership broadcast across otherwise unrelated atoms.
-  return hints.filter((hint) => !tokenSet(hint).some((token) => GENERIC_SUBSYSTEM_HINTS.has(token)));
+  return hints.filter((hint) => !hasGenericToken(hint));
 }
 
 function concreteInterfaceKeys(keys: string[]): string[] {
-  return keys.filter((key) => !tokenSet(key).some((token) => GENERIC_SUBSYSTEM_HINTS.has(token)));
+  return keys.filter((key) => !hasGenericToken(key));
 }
 
 function isNotFound(err: unknown): boolean {
