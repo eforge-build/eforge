@@ -81,7 +81,7 @@ Reducer inputs are bounded producer-authored digests. Full artifact markdown and
 
 ## Reduce task
 
-${JSON.stringify({ graphId: task.graphId, node: promptReduceNode(task), budget: task.budget }, null, 2)}
+${JSON.stringify({ graphId: task.graphId, node: promptReduceNode(task), budget: task.budget, validSourceNeedIds: task.validSourceNeedIds, validAffectedAtomIds: task.validAffectedAtomIds }, null, 2)}
 
 ${formatModuleBoundaryCeilings(task.moduleBoundaryBudget)}
 
@@ -100,7 +100,7 @@ Call ${submitToolName} with an object matching its schema.
 - nodeId must be exactly "${task.node.nodeId}".
 - Link every fragment, module, conflict, and gap to provided criterionIds and aspectIds.
 - Completed outputs must not contain representationRequired gaps.
-- Source/localization gaps (missing owner paths, missing contract/entrypoint/config/consumer surface evidence, directory-only evidence, missing materialized source, or localization ambiguity) must be emitted as structured gaps with issueKind, sourceLocalizationSignal: true, relevant sourceNeedIds, affectedAtomIds, ownerPaths when known, criterionIds, and aspectIds. Do not convert these gaps into implementation candidates.
+- Source/localization gaps (missing owner paths, missing contract/entrypoint/config/consumer surface evidence, directory-only evidence, missing materialized source, or localization ambiguity) must be emitted as structured gaps with issueKind, sourceLocalizationSignal: true, relevant sourceNeedIds, affectedAtomIds, ownerPaths when known, criterionIds, and aspectIds. sourceNeedIds and affectedAtomIds must be selected only from the supplied catalogs; sourceIds are provenance paths, never ids from either catalog. Do not convert these gaps into implementation candidates.
 - Only source/localization gaps with concrete ownerPaths, productScopedOutputRefs, and productScopedValidationRefs tied to original criterionIds can later become buildable residue; otherwise they are repair-only compiler diagnostics.
 - Produce the smallest coherent module set. Coalesce only within moduleBoundaryBudget; ownership, dependency, or a breached ceiling can require a split, but generic labels cannot.
 - Every module must fit the context, criterion, and subsystem ceilings. On rejection, split or narrow it without dropping coverage, then resubmit.

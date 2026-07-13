@@ -5,10 +5,10 @@ type SourceLocalizationDiagnosticSeverity = 'info' | 'warning' | 'error';
 
 export interface SourceLocalizationDiagnostic { code: string; message: string; severity: SourceLocalizationDiagnosticSeverity; needId?: string; path?: string }
 export interface SourceLocalizationCandidate { path: string; confidence: SourceLocalizationConfidence; score: number; reason: string; signals: string[] }
-export interface SourceLocalizationNeed { id: string; kind: SourceLocalizationNeedKind; query: string; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; interfaceKeys: string[]; assignedAtomIds: string[]; source: 'criterion' | 'inventory' | 'atom' | 'project-hint'; witnessPaths: string[] }
+export interface SourceLocalizationNeed { id: string; kind: SourceLocalizationNeedKind; query: string; criterionIds: string[]; aspectIds: string[]; subsystemHints: string[]; interfaceKeys: string[]; assignedAtomIds: string[]; source: 'criterion' | 'inventory' | 'atom' | 'project-hint'; witnessPaths: string[]; newFileIntent: boolean }
 export interface SourceLocalizationRecord { needId: string; kind: SourceLocalizationNeedKind; query: string; status: SourceLocalizationStatus; candidateFiles: SourceLocalizationCandidate[]; confidence: SourceLocalizationConfidence; reason: string; linkedCriterionIds: string[]; linkedAspectIds: string[]; assignedAtomIds: string[]; diagnostics: SourceLocalizationDiagnostic[]; budgetNotes: string[]; source?: SourceLocalizationNeed['source']; subsystemHints?: string[]; interfaceKeys?: string[] }
 export interface SourceLocalizationBundle { sourceHash?: string; graphId?: string; records: SourceLocalizationRecord[]; byAtomId: Record<string, string[]>; diagnostics: SourceLocalizationDiagnostic[]; limits: SourceLocalizationLimits; indexDiagnostics: SourceLocalizationDiagnostic[] }
-export interface SourceLocalizationHint { needId?: string; kind: SourceLocalizationNeedKind; query: string; paths?: string[]; keywords?: string[]; subsystemHints?: string[]; interfaceKeys?: string[]; criterionIds?: string[]; aspectIds?: string[]; atomIds?: string[] }
+export interface SourceLocalizationHint { needId?: string; kind: SourceLocalizationNeedKind; query: string; paths?: string[]; keywords?: string[]; subsystemHints?: string[]; interfaceKeys?: string[]; criterionIds?: string[]; aspectIds?: string[]; atomIds?: string[]; newFile?: boolean }
 export interface SourceLocalizationInputHints { ignorePrefixes?: string[]; ignoreGlobs?: string[]; projectHints?: SourceLocalizationHint[] }
 export interface SourceLocalizationLimits { maxIndexedFiles: number; maxCandidateFilesPerNeed: number; maxSurfaceCandidatesPerNeed: number; maxDirectoryExpansionFiles: number; maxBytesPerScannedFile: number; maxTotalScannedBytes: number }
 interface NormalizedSourceLocalizationInputs { hints: SourceLocalizationInputHints; limits: SourceLocalizationLimits; diagnostics: SourceLocalizationDiagnostic[] }
@@ -80,6 +80,7 @@ function normalizeProjectHints(hints: SourceLocalizationHint[] | undefined, diag
       criterionIds: normalizeStringList(hint.criterionIds, `projectHints[${index}].criterionIds`, diagnostics),
       aspectIds: normalizeStringList(hint.aspectIds, `projectHints[${index}].aspectIds`, diagnostics),
       atomIds: normalizeStringList(hint.atomIds, `projectHints[${index}].atomIds`, diagnostics),
+      ...(hint.newFile === true ? { newFile: true } : {}),
     }];
   });
 }

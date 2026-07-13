@@ -1,7 +1,7 @@
-import { readFile, readdir, writeFile, mkdir, rm, open, rename, copyFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, open, rename, copyFile, lstat, chmod, unlink } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { resolve, basename } from 'node:path';
+import { resolve, basename, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod/v4';
 import { resolveDependencyGraph } from './plan.js';
@@ -707,9 +707,21 @@ export function setQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fields
 }
 
 async function writeExistingFile(filePath: string, content: string): Promise<void> {
-  const fd = await open(filePath, constants.O_RDWR | constants.O_NOFOLLOW);
-  try { await fd.truncate(0); await fd.writeFile(content, 'utf-8'); }
-  finally { await fd.close(); }
+  // Preserve existing-only semantics while never exposing a truncated PRD:
+  // write a sibling first, then atomically replace the verified original.
+  const fd = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const original = await fd.stat();
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await writeFile(temporaryPath, content, { encoding: 'utf-8', flag: 'wx' });
+    await chmod(temporaryPath, original.mode);
+    const current = await lstat(filePath);
+    if (current.dev !== original.dev || current.ino !== original.ino) throw new Error(`PRD file '${filePath}' changed while updating frontmatter`);
+    await rename(temporaryPath, filePath);
+  } finally {
+    await fd.close();
+    await unlink(temporaryPath).catch(() => undefined);
+  }
 }
 
 async function setQueuedPrdFrontmatterString(

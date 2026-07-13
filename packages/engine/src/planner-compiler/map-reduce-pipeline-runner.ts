@@ -12,11 +12,12 @@ import { buildMapReduceAtomsEvent, buildMapReduceAtomStatusEvent, buildMapReduce
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { validateSharedPlanningBrief, type PlanningSharedFinding, type SharedPlanningBrief } from './shared-brief-contracts.js';
 import { validatePlanningSourceEvidenceBundle, type PlanningSourceEvidenceBundle } from './source-evidence-contracts.js';
+import type { SourceLocalizationBundle } from './source-localization-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 import type { PlanningAspectCoverageSummary, PlanningCriterionAspect } from './coverage-accounting.js';
 import { composeAbortSignal, isAbortError } from './abort-utils.js';
 
-export interface RunPlanningMapReducePipelineInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; reduceDigestPromptBudgetBytes?: number; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; reduceLimits?: Partial<PlanningReduceLimits>; onEvent?: PlannerCompilerEventSink }
+export interface RunPlanningMapReducePipelineInput { graph: PlanningAtomGraph; inventory?: SourceInventory; sourceContent: string; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; aspects?: PlanningCriterionAspect[]; reduceDigestPromptBudgetBytes?: number; parallelism?: number; abortSignal?: AbortSignal; sharedBrief?: SharedPlanningBrief; sourceLocalizationBundle?: SourceLocalizationBundle; sourceEvidenceBundle?: PlanningSourceEvidenceBundle; reduceLimits?: Partial<PlanningReduceLimits>; onEvent?: PlannerCompilerEventSink }
 export interface PlanningMapReducePipelineResult { map: PlanningAtomMapResultLike; reduce: PlanningReduceResultLike; events: EforgeEvent[] }
 interface PlanningAtomMapResultLike { graphId: string; outputs: PlanningAtomOutput[]; coverage: PlanningAspectCoverageSummary; completedAtomIds: string[]; failedAtomIds: string[]; skippedAtomIds: string[]; blockedAtoms: BlockedPlanningAtom[]; readyAtomIds: string[]; mapComplete: boolean; validationErrors: string[]; events: EforgeEvent[]; iterations: number; sharedFindings: PlanningSharedFinding[] }
 interface PlanningReduceResultLike { graphId: string; rootNodeId?: string; tree: PlanningReduceTree; outputs: PlanningReduceOutput[]; finalOutput?: PlanningReduceOutput; conflicts: PlanningReduceConflict[]; gaps: PlanningReduceGap[]; validationErrors: string[]; reduceComplete: boolean; events: EforgeEvent[]; iterations: number }
@@ -30,7 +31,7 @@ export async function runPlanningMapReducePipeline(input: RunPlanningMapReducePi
   const sourceEvidenceValidation = input.sharedBrief && input.sourceEvidenceBundle ? validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle: input.sourceEvidenceBundle }) : { ok: true as const, errors: [] };
   const initialTasks = buildPlanningAtomTasks(input);
   const reduceLimits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.reduceLimits ?? {}) };
-  const plannedTree = planPromptSafeReduceTreeFromTasks({ graph: input.graph, tasks: initialTasks, limits: reduceLimits });
+  const plannedTree = planPromptSafeReduceTreeFromTasks({ graph: input.graph, tasks: initialTasks, limits: reduceLimits, sourceLocalizationBundle: input.sourceLocalizationBundle });
   if (!plannedTree.ok) throw new Error(`reduce prompt budget planning failed:${plannedTree.validationErrors.join('; ')}`);
   const schedulerInput = { ...input, reduceDigestPromptBudgetBytes: plannedTree.maxReduceDigestPromptBytes };
   const tasks = new Map(buildPlanningAtomTasks(schedulerInput).map((task) => [task.atomId, task]));
@@ -126,7 +127,7 @@ function startReadyReducers(input: RunPlanningMapReducePipelineInput, runInput: 
     const passthrough = soleAtomOutput ? singleAtomPassthroughOutput(input.graph, tree, node, soleAtomOutput) : undefined;
     emitReduceEvent(input, state, buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
     if (passthrough) {
-      applyReduceResult(input, state, { output: passthrough, events: [], validationErrors: [] });
+      applyReduceResult(input, state, { output: passthrough, events: [], validationErrors: [], warnings: [] });
       started += 1;
       continue;
     }

@@ -9,6 +9,7 @@ import {
   classifyRescopeRisk,
   criticalUnresolvedNeedIds,
   derivePlanningAtomGraph,
+  deriveAuthoritativeOwnerNeedIds,
   deriveExplorationMaxTurns,
   deriveExplorationToolBudget,
   deriveRescopeDirectives,
@@ -115,6 +116,18 @@ describe('rescope risk classification and directives', () => {
     const risk = classifyRescopeRisk({ bundle, inventory, graph, limits });
     expect(risk.risky).toBe(true);
     expect(risk.reasons.join(' ')).toContain('subsystem-diverse-root');
+  });
+
+  it('derives authority from required implementation aspects, not localized record kinds', () => {
+    const content = prd(['Session consumer must implement the SessionContract interface in `packages/session/src/owner.ts`.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const catalog = deriveAuthoritativeOwnerNeedIds(inventory, graph);
+
+    expect(catalog).toEqual(expect.arrayContaining([
+      'criterion-ac-001-interface-schema-contract',
+      'criterion-ac-001-path-packages-session-src-owner-ts',
+    ]));
   });
 
   it('marks only source-derived entrypoint needs as critical; agent-minted project-hint needs never block', () => {
@@ -311,6 +324,20 @@ describe('adaptive rescope loop', () => {
     expect(harness.calls).toHaveLength(1);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Repository exploration starting'))).toBe(true);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(false);
+  });
+
+  it('runs exploration when a required non-entrypoint owner remains unresolved despite confident literal paths', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-required-interface-'));
+    await mkdir(path.join(cwd, 'packages/engine/src'), { recursive: true });
+    await writeFile(path.join(cwd, 'packages/engine/src/owner.ts'), 'export const owner = true;\n', 'utf8');
+    const content = prd(['engine updates `packages/engine/src/owner.ts` and implements the RecoveryClassifier interface.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const harness = new StubHarness([submit('submit-required-interface', outcome('completed'))]);
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
+
+    expect(harness.calls).toHaveLength(1);
+    expect(result.diagnostics.status).toBe('warning-only');
   });
 
   it('proceeds with a warning instead of rescoping when the degraded source has no split signal', async () => {

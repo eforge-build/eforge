@@ -37,16 +37,44 @@ function literal(needId: string, status: SourceLocalizationRecord['status'], con
 }
 
 describe('exploration skip decision', () => {
-  it('skips exploration when the dominant share of literal needs resolve with high confidence', () => {
+  it('requires exploration for an unresolved authoritative owner despite a passing literal share', () => {
     const decision = decideExplorationSkip(bundleWith([
       literal('need-a', 'resolved', 'high'),
       literal('need-b', 'resolved', 'high'),
       { needId: 'need-c', kind: 'directory', status: 'resolved', confidence: 'high' },
       literal('need-d', 'unresolved', 'low'),
-    ]));
+    ]), 1, ['need-a', 'need-d']);
 
-    expect(decision).toMatchObject({ skip: true, literalNeedCount: 4, highConfidenceCount: 3 });
+    expect(decision).toMatchObject({ skip: false, literalNeedCount: 4, highConfidenceCount: 3, authoritativeOwnerCount: 2, unresolvedAuthoritativeOwnerCount: 1 });
     expect(decision.share).toBeGreaterThanOrEqual(EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE);
+    expect(decision.reason).toContain('unresolved authoritative owner');
+  });
+
+  it('does not let an unresolved non-authoritative literal block skipping', () => {
+    const decision = decideExplorationSkip(bundleWith([
+      literal('need-owner', 'resolved', 'high'),
+      literal('need-peer-a', 'resolved', 'high'),
+      literal('need-peer-b', 'resolved', 'high'),
+      literal('need-unrelated', 'unresolved', 'low'),
+    ]), 1, ['need-owner']);
+
+    expect(decision).toMatchObject({ skip: true, authoritativeOwnerCount: 1, unresolvedAuthoritativeOwnerCount: 0 });
+    expect(decision.reason).toContain('exploration skipped');
+  });
+
+  it('requires exploration when a required non-literal owner is unresolved or absent', () => {
+    const resolvedLiterals = [
+      literal('need-owner-a', 'resolved', 'high'),
+      literal('need-owner-b', 'resolved', 'high'),
+    ];
+    const unresolvedInterface = decideExplorationSkip(bundleWith([
+      ...resolvedLiterals,
+      { needId: 'need-contract', kind: 'interface', status: 'partial', confidence: 'medium' },
+    ]), 1, ['need-owner-a', 'need-owner-b', 'need-contract']);
+    const absentConsumer = decideExplorationSkip(bundleWith(resolvedLiterals), 1, ['need-owner-a', 'need-owner-b', 'need-consumer']);
+
+    expect(unresolvedInterface).toMatchObject({ skip: false, unresolvedAuthoritativeOwnerCount: 1 });
+    expect(absentConsumer).toMatchObject({ skip: false, unresolvedAuthoritativeOwnerCount: 1 });
   });
 
   it('explores when the source yields no literal path or directory needs', () => {

@@ -85,6 +85,7 @@ interface RunSourceLocalizationRepairLoopInput {
 
 const SOURCE_GAP_KINDS = new Set<PlanningReduceGapIssueKind>(['missing-owner-path', 'missing-contract-evidence', 'missing-entrypoint-evidence', 'missing-config-evidence', 'missing-consumer-surface-evidence', 'directory-only-evidence', 'missing-materialized-source', 'localization-ambiguity']);
 const MAX_REPAIR_PROJECT_HINTS = 100;
+const MAX_REPAIR_HINTS_PER_GAP = 16;
 const MAX_FALLBACK_SOURCE_NEEDS_PER_GAP = 16;
 const MAX_REPAIR_PRIORITY_PATHS = 32;
 const MAX_SOFT_PRIORITY_PATHS_PER_GAP = 8;
@@ -109,15 +110,19 @@ export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizati
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const affectedAtomIds = resolveAffectedAtomIds({ gaps, graph: input.graph, sourceLocalizationBundle: state.sourceLocalizationBundle, sourceEvidenceBundle: state.sourceEvidenceBundle });
-    const repairHints = mergeRepairHints(input.sourceLocalizationHints, hintsForGaps(gaps, affectedAtomIds, state.sourceLocalizationBundle));
+    const repairHints = mergeRepairHints(input.sourceLocalizationHints, hintsForGaps(gaps, affectedAtomIds, state.sourceLocalizationBundle, input.sourceInventory, input.graph));
     const sourceLocalizationBundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.sourceInventory, graph: input.graph, hints: repairHints, limits: input.sourceLocalizationLimits });
     const priorityPaths = repairPriorityPaths(gaps, sourceLocalizationBundle);
     const sharedBrief = withSyntheticRepairOwnership(deriveSharedPlanningBrief({ graph: input.graph, sourceLocalizationBundle, limits: input.sharedBriefLimits }), gaps, affectedAtomIds, input.graph);
     const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: input.graph, sharedBrief, limits: input.sourceEvidenceLimits, priorityPaths });
     const map = affectedAtomIds.length === 0 ? state.map : await runPlanningAtomMap({ graph: input.graph, inventory: input.sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes: input.reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent, affectedAtomIds, priorOutputs: state.map.outputs });
-    const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
+    const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, sourceLocalizationBundle, abortSignal: input.abortSignal, onEvent: input.onEvent });
     state = { sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce };
-    const unresolved = classifyPlanningReduceGaps(reduce.outputs, sourceLocalizationBundle, sourceEvidenceBundle, input.graph);
+    const reducerGaps = classifyPlanningReduceGaps(reduce.outputs, sourceLocalizationBundle, sourceEvidenceBundle, input.graph);
+    // A reducer completion cannot arbitrarily choose between owners that were
+    // previously ambiguous. Keep that obligation until localization itself
+    // supplies one deterministic owner.
+    const unresolved = retainAmbiguityObligations(gaps, reducerGaps, sourceLocalizationBundle);
     const diagnosticGaps = unresolved.length === 0 ? gaps : unresolved;
     const diagnosticAffectedAtomIds = unresolved.length === 0 ? affectedAtomIds : resolveAffectedAtomIds({ gaps: unresolved, graph: input.graph, sourceLocalizationBundle, sourceEvidenceBundle });
     diagnostics.push(buildRepairDiagnostic({ attempt, maxAttempts, gaps: diagnosticGaps, affectedAtomIds: diagnosticAffectedAtomIds, graph: input.graph, sourceLocalizationBundle, sourceEvidenceBundle, status: unresolved.length === 0 ? 'repaired' : attempt >= maxAttempts ? 'exhausted' : 'unresolved' }));
@@ -141,13 +146,22 @@ export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?:
   const sourceLocalizationSignal = gap.sourceLocalizationSignal === true || SOURCE_GAP_KINDS.has(issueKind);
   if (!sourceLocalizationSignal) return undefined;
   const ownerPaths = uniq([...(gap.ownerPaths ?? []), ...extractPathSignals(`${gap.title} ${gap.description}`)]);
-  const sourceNeedIds = uniq([...(gap.sourceNeedIds ?? []), ...sourceNeedIdsForGap(gap, ownerPaths, localization)]);
+  const validNeedIds = new Set(localization?.records.map((record) => record.needId) ?? []);
+  // Bad reducer ids must not suppress criterion/aspect fallback localization.
+  const explicitNeedIds = (gap.sourceNeedIds ?? []).filter((needId) => validNeedIds.has(needId));
+  const derivedNeedIds = uniq(explicitNeedIds.length > 0 ? explicitNeedIds : sourceNeedIdsForGap({ ...gap, sourceNeedIds: [] }, ownerPaths, localization));
+  // A structured source-localization gap remains traceable even when a broad
+  // source produced no deterministic localization records to link back to.
+  const sourceNeedIds = derivedNeedIds.length > 0 ? derivedNeedIds : [`${issueKind === 'missing-owner-path' ? 'missing-localized-owner-path' : issueKind}-${gap.gapId}`];
   return {
     gap: { ...gap, issueKind, sourceLocalizationSignal: true, sourceNeedIds, ownerPaths },
     issueKind,
     sourceLocalizationSignal: true,
     sourceNeedIds,
-    affectedAtomIds: uniq([...(gap.affectedAtomIds ?? []), ...atomIdsForGap(gap, sourceNeedIds, ownerPaths, localization, evidence, graph)]),
+    affectedAtomIds: (() => {
+      const explicit = (gap.affectedAtomIds ?? []).filter((atomId) => graph?.atoms.some((atom) => atom.atomId === atomId) ?? false);
+      return uniq(explicit.length > 0 ? explicit : atomIdsForGap(gap, sourceNeedIds, ownerPaths, localization, evidence, graph));
+    })(),
     criterionIds: uniq(gap.criterionIds),
     aspectIds: uniq(gap.aspectIds),
     ownerPaths,
@@ -182,10 +196,37 @@ function buildRepairDiagnostic(input: { attempt: number; maxAttempts: number; ga
       const record = evidenceByPath.get(path);
       return { path, status: record?.status ?? 'none' as const, ...(record?.reason ? { reason: record.reason } : {}), ...(record?.budgetAtomIds && record.budgetAtomIds.length > 0 ? { budgetAtomIds: [...record.budgetAtomIds] } : {}), ...(record?.priority ? { priority: true } : {}) };
     }),
-    coverageStatus: { criteria: coverageRecord(criterionIds, input.graph.atoms.flatMap((atom) => atom.criterionIds)), aspects: coverageRecord(aspectIds, input.sourceLocalizationBundle.records.flatMap((record) => record.linkedAspectIds)), sourceNeeds: coverageRecord(sourceNeedIds, input.sourceLocalizationBundle.records.map((record) => record.needId)) },
+    coverageStatus: { criteria: coverageRecord(criterionIds, input.graph.atoms.flatMap((atom) => atom.criterionIds)), aspects: coverageRecord(aspectIds, [...input.sourceLocalizationBundle.records.flatMap((record) => record.linkedAspectIds), ...aspectIds]), sourceNeeds: coverageRecord(sourceNeedIds, [...input.sourceLocalizationBundle.records.map((record) => record.needId), ...sourceNeedIds]) },
     ...(input.status === 'exhausted' || input.status === 'unresolved' ? { unresolvedReason: input.unresolvedReasonOverride ?? unresolvedReason(input.gaps, input.affectedAtomIds, localizedOwnerPaths, input.sourceEvidenceBundle) } : {}),
     residueSynthesisBlocked: true,
   };
+}
+
+function retainAmbiguityObligations(prior: ClassifiedPlanningReduceGap[], current: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): ClassifiedPlanningReduceGap[] {
+  const retained = prior.filter((gap) => gap.issueKind === 'localization-ambiguity'
+    && !ambiguityHasAuthoritativeOwner(gap, localization)
+    && !current.some((candidate) => candidate.issueKind === 'localization-ambiguity' && sameAmbiguityObligation(gap, candidate)));
+  return [...current, ...retained];
+}
+
+function ambiguityHasAuthoritativeOwner(gap: ClassifiedPlanningReduceGap, localization: SourceLocalizationBundle): boolean {
+  const paths = new Set(localization.records
+    .filter((record) => record.status === 'resolved' && record.confidence === 'high'
+      && (gap.sourceNeedIds.includes(record.needId)
+        || overlaps(record.linkedCriterionIds, gap.criterionIds)
+        || overlaps(record.linkedAspectIds, gap.aspectIds)))
+    .flatMap((record) => record.candidateFiles
+      .map((candidate) => candidate.path)
+      .filter((candidatePath) => gap.ownerPaths.length === 0 || gap.ownerPaths.includes(candidatePath))));
+  return paths.size === 1;
+}
+
+function sameAmbiguityObligation(left: ClassifiedPlanningReduceGap, right: ClassifiedPlanningReduceGap): boolean {
+  return overlaps(left.sourceNeedIds, right.sourceNeedIds)
+    || overlaps(left.criterionIds, right.criterionIds)
+    || overlaps(left.aspectIds, right.aspectIds)
+    || overlaps(left.ownerPaths, right.ownerPaths)
+    || overlaps(left.affectedAtomIds, right.affectedAtomIds);
 }
 
 function inferIssueKind(gap: PlanningReduceGap, localization?: SourceLocalizationBundle, evidence?: PlanningSourceEvidenceBundle): PlanningReduceGapIssueKind {
@@ -221,37 +262,61 @@ function sourceNeedIdsForGap(gap: PlanningReduceGap, ownerPaths: string[], local
     .map((record) => record.needId);
 }
 
-function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], localization: SourceLocalizationBundle): SourceLocalizationHint[] {
+function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], localization: SourceLocalizationBundle, inventory: SourceInventory, graph: PlanningAtomGraph): SourceLocalizationHint[] {
   const records = new Map(localization.records.map((record) => [record.needId, record]));
-  return gaps.flatMap((gap) => [
-    ...gap.sourceNeedIds.flatMap((needId) => records.get(needId) ? [{ kind: records.get(needId)!.kind, query: records.get(needId)!.query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds }] : []),
-    ...gap.ownerPaths.map((path) => ({ kind: 'literal-path' as const, query: path, paths: [path], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds })),
-    { kind: hintKindFor(gap.issueKind), query: `${gap.gap.title} ${gap.gap.description}`.slice(0, 1_000), criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds },
-  ]);
+  return gaps.flatMap((gap) => {
+    // Repair queries are evidence-derived only. Reducer prose is untrusted
+    // diagnostic text and must not mint a lexical query that crosses atom
+    // boundaries; criterion/aspect links on existing records remain fallback.
+    const hints = [
+      ...gap.ownerPaths.map((path) => ({ kind: 'literal-path' as const, query: path, paths: [path], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds: gap.affectedAtomIds.length > 0 ? gap.affectedAtomIds : atomIds })),
+      ...gap.sourceNeedIds.flatMap((needId) => {
+        const record = records.get(needId);
+        return record ? [{ kind: record.kind, query: record.query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: record.subsystemHints, interfaceKeys: record.interfaceKeys, atomIds: gap.affectedAtomIds.length > 0 ? gap.affectedAtomIds : atomIds }] : [];
+      }),
+      ...trustedFallbackHints(gap, atomIds, inventory, graph),
+    ];
+    return hints.slice(0, MAX_REPAIR_HINTS_PER_GAP);
+  });
+}
+
+function trustedFallbackHints(gap: ClassifiedPlanningReduceGap, atomIds: string[], inventory: SourceInventory, graph: PlanningAtomGraph): SourceLocalizationHint[] {
+  // No reducer prose: derive only from the source inventory and graph.
+  const criteria = inventory.criteria.filter((criterion) => gap.criterionIds.includes(criterion.id));
+  const scopedAtoms = graph.atoms.filter((atom) => (gap.affectedAtomIds.length > 0 ? gap.affectedAtomIds : atomIds).includes(atom.atomId));
+  const subsystemHints = [...new Set([...criteria.flatMap((criterion) => criterion.subsystemHints), ...scopedAtoms.flatMap((atom) => atom.subsystemHints)])]
+    .filter((hint) => !/^(general|shared|lexical|criterion|test)$/i.test(hint));
+  const interfaceKeys = [...new Set([...criteria.flatMap((criterion) => criterion.interfaceKeys), ...scopedAtoms.flatMap((atom) => atom.interfaceKeys)])];
+  const paths = [...new Set([...criteria.flatMap((criterion) => criterion.evidencePaths), ...scopedAtoms.flatMap((atom) => atom.evidencePaths)])];
+  const scope = gap.affectedAtomIds.length > 0 ? gap.affectedAtomIds : atomIds;
+  return [
+    ...paths.map((query) => ({ kind: 'literal-path' as const, query, paths: [query], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds: scope })),
+    ...interfaceKeys.map((query) => ({ kind: 'interface' as const, query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints, interfaceKeys, atomIds: scope })),
+    ...subsystemHints.map((query) => ({ kind: 'subsystem' as const, query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: [query], interfaceKeys, atomIds: scope })),
+  ];
 }
 
 function mergeRepairHints(existing: SourceLocalizationInputHints | undefined, projectHints: SourceLocalizationHint[]): SourceLocalizationInputHints {
-  const repairHints = dedupeHints(projectHints);
-  const repairKeys = new Set(repairHints.map(hintKey));
-  const existingHints = dedupeHints(existing?.projectHints ?? []).filter((hint) => !repairKeys.has(hintKey(hint)));
-  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: [...repairHints, ...existingHints].slice(0, MAX_REPAIR_PROJECT_HINTS) };
-}
-
-function hintKindFor(kind: PlanningReduceGapIssueKind): SourceLocalizationHint['kind'] {
-  if (kind === 'missing-entrypoint-evidence') return 'entrypoint';
-  if (kind === 'missing-config-evidence') return 'config';
-  if (kind === 'missing-consumer-surface-evidence') return 'consumer-surface';
-  if (kind === 'missing-contract-evidence') return 'interface';
-  return 'keyword';
+  // Reserve the bounded front of the catalog for evidence-derived repair
+  // hints. Merge matching caller hints into them so needId/newFile metadata
+  // survives without allowing an already-full caller catalog to displace a
+  // gap's exact or criterion-linked relocalization query.
+  const prioritized = dedupeHints(projectHints);
+  const byKey = new Map(prioritized.map((hint) => [hintKey(hint), hint]));
+  for (const hint of existing?.projectHints ?? []) {
+    const key = hintKey(hint);
+    const repair = byKey.get(key);
+    byKey.set(key, repair ? mergeHint(repair, hint) : hint);
+  }
+  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: [...byKey.values()].slice(0, MAX_REPAIR_PROJECT_HINTS) };
 }
 
 /**
  * Two-tier repair priority for evidence materialization. Hard tier: explicit
- * gap owner paths - never truncated, so the exact evidence a
- * representation-required gap demanded always ranks first. Soft tier: the
- * remaining localized candidates for the gaps (the same set unresolvedReason
- * later checks), capped per gap and in total so a broad localization fan-out
- * cannot turn "priority" into "everything".
+ * gap owner paths, which rank first within the total bounded repair budget.
+ * Soft tier: the remaining localized candidates for the gaps (the same set
+ * unresolvedReason later checks), capped per gap and in total so a broad
+ * localization fan-out cannot turn "priority" into "everything".
  */
 function repairPriorityPaths(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
   const hard = uniq(gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue)));
@@ -260,7 +325,10 @@ function repairPriorityPaths(gaps: ClassifiedPlanningReduceGap[], localization: 
     .map(normalizeEvidenceValue)
     .filter((path) => !hardSet.has(path))
     .slice(0, MAX_SOFT_PRIORITY_PATHS_PER_GAP)));
-  return [...hard, ...soft].slice(0, Math.max(hard.length, MAX_REPAIR_PRIORITY_PATHS));
+  // A reducer can submit many owner paths; priority is not an exemption from
+  // the materializer's bounded work contract. Exact owners retain the first
+  // tier, then deterministic ordering limits the total repair fan-out.
+  return [...hard, ...soft].slice(0, MAX_REPAIR_PRIORITY_PATHS);
 }
 
 /**
@@ -287,7 +355,10 @@ function atomIdsForSyntheticPath(path: string, gaps: ClassifiedPlanningReduceGap
 
 function localizedPathsFor(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
   const needIds = new Set(gaps.flatMap((gap) => gap.sourceNeedIds));
-  const explicit = gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue));
+  const explicit = uniq(gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue)));
+  // A reducer-supplied owner is the authoritative repair target. Do not let
+  // a criterion fallback widen its diagnostic to unrelated localized files.
+  if (explicit.length > 0) return explicit;
   const localized = localization.records
     .filter((record) => needIds.has(record.needId) || explicit.includes(normalizeEvidenceValue(record.query)) || record.candidateFiles.some((candidate) => explicit.includes(normalizeEvidenceValue(candidate.path))))
     .flatMap((record) => record.candidateFiles.map((candidate) => normalizeEvidenceValue(candidate.path)));
@@ -369,6 +440,8 @@ function mergeHint(a: SourceLocalizationHint, b: SourceLocalizationHint): Source
     criterionIds: uniq([...(a.criterionIds ?? []), ...(b.criterionIds ?? [])]),
     aspectIds: uniq([...(a.aspectIds ?? []), ...(b.aspectIds ?? [])]),
     atomIds: uniq([...(a.atomIds ?? []), ...(b.atomIds ?? [])]),
+    ...(a.needId ?? b.needId ? { needId: a.needId ?? b.needId } : {}),
+    ...(a.newFile || b.newFile ? { newFile: true } : {}),
   };
 }
 
