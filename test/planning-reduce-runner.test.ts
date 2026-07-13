@@ -3,6 +3,7 @@ import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
 import { buildPlanningAtomTasks, buildPlanningReduceTask, buildPlanningReduceTree, buildPlanningReduceTreeFromAtomTasks, deriveInitialReduceDigestPromptBudget, derivePlanningAtomGraph, deriveReduceDigestTotalByteLimit, deriveSourceInventory, formatPlanningReducerPrompt, minimumReduceDigestPromptByteLength, planPromptSafeReduceTree, planPromptSafeReduceTreeFromTasks, runPlanningReduce, runPlanningReducer, validatePromptSafeTree, type PlanningAtomMapResult, type PlanningAtomOutput, type PlanningAtomTask, type PlanningReduceLimits, type PlanningReduceNode, type PlanningReduceOutput } from '@eforge-build/engine/planner-compiler';
 import { StubHarness } from './stub-harness.js';
+import type { SourceLocalizationBundle } from '@eforge-build/engine/planner-compiler';
 
 const atomLimits: PlanningDecompositionLimits = { parallelism: 2, maxDepth: 3, maxPromptSourceBytes: 1_000, maxPromptBytes: 20_000, maxObservedInputTokens: 50_000, maxObservedTurns: 10, maxCompactHandoffBytes: 8_000, maxLocalExplorationToolUses: 8, maxCriteriaPerUnit: 1, maxSubsystemsPerUnit: 2, maxSplitAttemptsPerUnit: 2 };
 const reduceLimits: PlanningReduceLimits = { maxInputsPerReduce: 2, maxReduceDepth: 4, maxReducePromptBytes: 50_000, maxReduceSummaryBytes: 8_000 };
@@ -420,6 +421,43 @@ describe('planning reduce runner', () => {
     expect(result.reduceComplete).toBe(false);
     expect(result.validationErrors).toEqual(['map result incomplete']);
     expect(result.gaps.map((gap) => gap.gapId)).toEqual([`gap-${node.nodeId}`]);
+  });
+
+  it('quarantines reducer ids outside the node-scoped source-need and atom catalogs', async () => {
+    const data = fixture([
+      'engine updates `packages/engine/src/a.ts`.',
+      'client updates `packages/client/src/b.ts`.',
+      'docs update `docs/c.md`.',
+    ], true, { ...atomLimits, parallelism: 1 });
+    const tree = buildPlanningReduceTree({ graph: data.graph, mapResult: data.mapResult, limits: reduceLimits });
+    const firstNode = tree.nodes.find((node) => node.nodeId === 'reduce-000-001')!;
+    const siblingAtomId = data.graph.atoms.find((atom) => !firstNode.inputAtomIds.includes(atom.atomId))!.atomId;
+    const validNeedId = 'need-first';
+    const siblingNeedId = 'need-sibling';
+    const sourceLocalizationBundle = {
+      records: [
+        { needId: validNeedId, assignedAtomIds: [firstNode.inputAtomIds[0]], linkedCriterionIds: [], linkedAspectIds: [], status: 'unresolved', confidence: 'low', kind: 'literal-path' },
+        { needId: siblingNeedId, assignedAtomIds: [siblingAtomId], linkedCriterionIds: firstNode.criterionIds, linkedAspectIds: [], status: 'unresolved', confidence: 'low', kind: 'literal-path' },
+      ],
+    } as unknown as SourceLocalizationBundle;
+    const firstOutput = validReduceOutput(firstNode, { status: 'incomplete' });
+    firstOutput.gaps = [{
+      gapId: 'gap-quarantine', title: 'Catalog quarantine', criterionIds: firstNode.criterionIds, aspectIds: firstNode.aspectIds,
+      description: 'Reducer supplied malformed catalog ids.', representationRequired: true,
+      sourceNeedIds: [validNeedId, firstNode.inputAtomIds[0], 'unknown-source-need', siblingNeedId],
+      affectedAtomIds: [firstNode.inputAtomIds[0], siblingAtomId, 'unknown-affected-atom'],
+    }];
+    const submissions = [...tree.nodes]
+      .sort((a, b) => a.depth - b.depth || a.nodeId.localeCompare(b.nodeId))
+      .map((node) => reduceSubmission(node.nodeId === firstNode.nodeId ? firstOutput : validReduceOutput(node)));
+    const result = await runPlanningReduce({ graph: data.graph, mapResult: data.mapResult, cwd: process.cwd(), harness: new StubHarness(submissions), limits: reduceLimits, sourceLocalizationBundle });
+
+    const gap = result.gaps.find((candidate) => candidate.gapId === 'gap-quarantine')!;
+    expect(gap.sourceNeedIds).toEqual([validNeedId]);
+    expect(gap.affectedAtomIds).toEqual([firstNode.inputAtomIds[0]]);
+    const warnings = result.events.filter((event) => event.type === 'planning:warning' && event.source === 'reduce-catalog-quarantine');
+    expect(warnings).toHaveLength(5);
+    expect(warnings.every((event) => event.message.startsWith('dropped unknown '))).toBe(true);
   });
 
   it('propagates abort errors from reducer agents', async () => {

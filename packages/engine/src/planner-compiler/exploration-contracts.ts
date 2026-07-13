@@ -137,22 +137,42 @@ function unresolvedNeedIds(bundle: SourceLocalizationBundle): string[] {
 /** Minimum share of literal-path/directory needs that must already be resolved with high confidence for exploration to be skipped. */
 export const EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE = 0.6;
 
-export interface ExplorationSkipDecision { skip: boolean; literalNeedCount: number; highConfidenceCount: number; share: number; reason: string }
+export interface ExplorationSkipDecision { skip: boolean; literalNeedCount: number; highConfidenceCount: number; share: number; reason: string; authoritativeOwnerCount: number; unresolvedAuthoritativeOwnerCount: number }
 
 /** Skip heuristic for the repository exploration agent. */
-export function decideExplorationSkip(bundle: SourceLocalizationBundle, criterionCount?: number): ExplorationSkipDecision {
-  if (criterionCount === 0) {
-    return { skip: true, literalNeedCount: 0, highConfidenceCount: 0, share: 0, reason: 'source has no acceptance criteria to key exploration hints to' };
-  }
+export function decideExplorationSkip(bundle: SourceLocalizationBundle, criterionCount?: number, authoritativeOwnerNeedIds?: string[]): ExplorationSkipDecision {
   const literalRecords = bundle.records.filter((record) => record.kind === 'literal-path' || record.kind === 'directory');
-  if (literalRecords.length === 0) {
-    return { skip: false, literalNeedCount: 0, highConfidenceCount: 0, share: 0, reason: 'source yields no literal path or directory needs; exploration required' };
-  }
   const highConfidenceCount = literalRecords.filter((record) => record.status === 'resolved' && record.confidence === 'high').length;
-  const share = highConfidenceCount / literalRecords.length;
-  const skip = share >= EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE;
+  const share = literalRecords.length === 0 ? 0 : highConfidenceCount / literalRecords.length;
+  // Aggregate confidence is not authority: a single unresolved explicit owner
+  // can make a representation-required implementation unbuildable.
+  // Preserve the legacy literal-owner guard when callers have not supplied an
+  // authority universe; catalog-aware callers pass the critical/representation
+  // set so unrelated literal records do not control this decision.
+  const hasAuthorityCatalog = authoritativeOwnerNeedIds !== undefined;
+  const ownerIds = new Set(authoritativeOwnerNeedIds ?? bundle.records.filter((record) => record.kind === 'literal-path' || record.kind === 'directory' || record.kind === 'entrypoint').map((record) => record.needId));
+  const recordsByNeedId = new Map(bundle.records.map((record) => [record.needId, record]));
+  // The catalog comes from compiler ownership requirements, not from the
+  // localization result. A required owner absent from that result is itself
+  // unresolved and must not be hidden by otherwise confident literals.
+  const unresolvedOwners = [...ownerIds].filter((needId) => {
+    const record = recordsByNeedId.get(needId);
+    return !record || record.status !== 'resolved' || record.confidence !== 'high';
+  });
+  // The catalog size is meaningful even when an authoritative record is absent.
+  const authoritativeOwners = [...ownerIds];
+  // A supplied catalog is authoritative, including a known-empty one. A
+  // criterion-free source can skip only after its authoritative owners have
+  // been checked; global entrypoints and explicit paths have no criterion.
+  if (criterionCount === 0 && (!hasAuthorityCatalog || ownerIds.size === 0 || unresolvedOwners.length === 0)) {
+    return { skip: true, literalNeedCount: literalRecords.length, highConfidenceCount, share, authoritativeOwnerCount: authoritativeOwners.length, unresolvedAuthoritativeOwnerCount: unresolvedOwners.length, reason: 'source has no acceptance criteria and no unresolved authoritative owner' };
+  }
+  if (literalRecords.length === 0 && criterionCount !== 0) {
+    return { skip: false, literalNeedCount: 0, highConfidenceCount: 0, share: 0, authoritativeOwnerCount: authoritativeOwners.length, unresolvedAuthoritativeOwnerCount: unresolvedOwners.length, reason: 'source yields no literal path or directory needs; exploration required' };
+  }
+  const skip = hasAuthorityCatalog ? unresolvedOwners.length === 0 : unresolvedOwners.length === 0 && share >= EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE;
   const summary = `${highConfidenceCount}/${literalRecords.length} literal source needs resolved with high confidence`;
-  return { skip, literalNeedCount: literalRecords.length, highConfidenceCount, share, reason: skip ? `${summary}; exploration skipped` : `${summary}; exploration required` };
+  return { skip, literalNeedCount: literalRecords.length, highConfidenceCount, share, authoritativeOwnerCount: authoritativeOwners.length, unresolvedAuthoritativeOwnerCount: unresolvedOwners.length, reason: skip ? `${summary}; exploration skipped` : `${summary}; exploration required${unresolvedOwners.length > 0 ? `; ${unresolvedOwners.length} unresolved authoritative owner(s)` : ''}` };
 }
 
 export type ExplorationDiagnosticReason = LocalizationIssueKind;

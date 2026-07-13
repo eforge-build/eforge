@@ -127,6 +127,81 @@ describe('planning source localization foundation', () => {
     expect(candidates).not.toContain('packages/eforge/src/unrelated.ts');
   });
 
+  it('keeps an explicit new-file proposal within the per-need candidate cap', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
+    const content = prd(['Create `packages/widget/src/new-contract.ts` for the widget contract.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph, limits: { maxCandidateFilesPerNeed: 1 } });
+    const record = bundle.records.find((item) => item.query === 'packages/widget/src/new-contract.ts')!;
+
+    expect(record).toMatchObject({ status: 'resolved', confidence: 'high' });
+    expect(record.candidateFiles).toEqual([expect.objectContaining({ path: 'packages/widget/src/new-contract.ts', signals: expect.arrayContaining(['proposed-new-file']) })]);
+  });
+
+  it('recognizes a path-scoped new classifier phrase without a project hint', async () => {
+    const temp = await workspace({ 'packages/engine/src/recovery/index.ts': 'export const recovery = true;' });
+    const classifierPath = 'packages/engine/src/recovery/upstream-plan-root-cause-classifier.ts';
+    const content = prd([`Add upstream plan root-cause reporting with a new classifier at \`${classifierPath}\`.`]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+
+    expect(bundle.records.find((record) => record.query === classifierPath)).toMatchObject({
+      status: 'resolved', confidence: 'high', candidateFiles: [expect.objectContaining({ path: classifierPath, signals: expect.arrayContaining(['proposed-new-file']) })],
+    });
+  });
+
+  it('does not propose an existing or traversal path as a new file', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
+    const content = prd(['Create `packages/widget/src/existing.ts` and `packages/widget/src/../escape.ts`.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+
+    expect(bundle.records.flatMap((record) => record.candidateFiles).some((candidate) => candidate.signals.includes('proposed-new-file'))).toBe(false);
+  });
+
+  it('does not allow a criterion new-file proposal through an out-of-worktree symlink', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
+    const outsideDir = await mkdtemp(path.join(os.tmpdir(), 'eforge-planning-outside-'));
+    try {
+      await symlink(outsideDir, path.join(temp.cwd, 'packages/widget/linked'));
+      const content = prd(['Create `packages/widget/linked/new-contract.ts`.']);
+      const inventory = deriveSourceInventory({ content, hash: hash(content) });
+      const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+      const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+
+      expect(bundle.records.flatMap((record) => record.candidateFiles).some((candidate) => candidate.signals.includes('proposed-new-file'))).toBe(false);
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('requires project new-file hints to match a validated atom path scope', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;', 'packages/other/src/existing.ts': 'export const other = true;' });
+    const content = prd(['Widget contract work is tracked.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const baseGraph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const graph = { ...baseGraph, atoms: baseGraph.atoms.map((atom) => ({ ...atom, subsystemHints: ['widget'], evidencePaths: ['packages/widget/src/existing.ts'] })) };
+    const atomId = graph.atoms[0]!.atomId;
+    const bundle = await deriveSourceLocalization({
+      cwd: temp.cwd,
+      graph,
+      hints: { projectHints: [
+        { kind: 'interface', query: 'widget contract', paths: ['packages/widget/src/new-contract.ts'], subsystemHints: ['widget'], atomIds: [atomId], newFile: true },
+        { kind: 'interface', query: 'forged contract', paths: ['packages/widget/src/forged-contract.ts'], subsystemHints: ['forged'], atomIds: ['atom-forged'], newFile: true },
+        { kind: 'interface', query: 'unrelated contract', paths: ['packages/other/src/new-contract.ts'], subsystemHints: ['widget'], atomIds: [atomId], newFile: true },
+      ] },
+    });
+
+    const proposedPaths = bundle.records.flatMap((record) => record.candidateFiles.filter((candidate) => candidate.signals.includes('proposed-new-file')).map((candidate) => candidate.path));
+    expect(proposedPaths).toEqual(['packages/widget/src/new-contract.ts']);
+    expect(bundle.diagnostics.some((diagnostic) => diagnostic.code === 'unknown-atom-id')).toBe(true);
+  });
+
   it('expands directory evidence with candidate reasons and budget diagnostics', async () => {
     const temp = await workspace({
       'workspace/tools/src/a.ts': 'export const command = true;',

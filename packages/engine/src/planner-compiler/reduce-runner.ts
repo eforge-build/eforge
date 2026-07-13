@@ -9,15 +9,16 @@ import type { PlannerCompilerEventSink } from './event-sink.js';
 import { buildMapReduceReduceTreeEvent, buildMapReduceReduceStatusEvent } from './orchestration-events.js';
 import { composeAbortSignal, isAbortError } from './abort-utils.js';
 import { executePlanningReduceNode, failedReduceOutput, failedReduceRun, incompleteReduceOutput, type ReduceRunResult } from './reduce-execution.js';
+import type { SourceLocalizationBundle } from './source-localization-contracts.js';
 
-export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
+export interface RunPlanningReduceInput { graph: PlanningAtomGraph; mapResult: PlanningAtomMapResult; cwd: string; harness: AgentHarness; agentOptions?: SdkPassthroughConfig & { maxTurns?: number }; limits?: Partial<PlanningReduceLimits>; sourceLocalizationBundle?: SourceLocalizationBundle; abortSignal?: AbortSignal; onEvent?: PlannerCompilerEventSink }
 export interface PlanningReduceResult { graphId: string; rootNodeId?: string; tree: PlanningReduceTree; outputs: PlanningReduceOutput[]; finalOutput?: PlanningReduceOutput; conflicts: PlanningReduceConflict[]; gaps: PlanningReduceGap[]; validationErrors: string[]; reduceComplete: boolean; events: EforgeEvent[]; iterations: number }
 
 interface ReduceSettled { nodeId: string; result?: ReduceRunResult; error?: unknown }
 
 export async function runPlanningReduce(input: RunPlanningReduceInput): Promise<PlanningReduceResult> {
   const limits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.limits ?? {}) };
-  const plannedTree = planPromptSafeReduceTree({ graph: input.graph, mapResult: input.mapResult, limits });
+  const plannedTree = planPromptSafeReduceTree({ graph: input.graph, mapResult: input.mapResult, limits, sourceLocalizationBundle: input.sourceLocalizationBundle });
   if (!plannedTree.ok) throw new Error(`reduce prompt budget planning failed:${plannedTree.validationErrors.join('; ')}`);
   const tree = plannedTree.tree;
   const outputs: PlanningReduceOutput[] = [];

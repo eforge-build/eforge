@@ -3,6 +3,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { resolveAdaptiveRescopeLimits, type AdaptiveRescopeLimits } from '../compile-resilience/planning-decomposition-limits.js';
 import { emitPlanningDecision } from '../decisions.js';
 import { derivePlanningAtomGraph, type PlanningAtomGraph, type PlanningRescopeDirective } from './atom-graph.js';
+import { derivePlanningCriterionAspects } from './coverage-accounting.js';
 import { classifyCollapsedRootDiversity, GENERIC_SCOPE_LABELS } from './decomposition-judgment-contracts.js';
 import { runDecompositionJudgment } from './decomposition-judgment-agent.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
@@ -11,7 +12,7 @@ import { DEFAULT_EXPLORATION_MAX_TURNS, runRepositoryExplorationAgent } from './
 import { decideExplorationSkip, EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE, type RepositoryExplorationOutcome } from './exploration-contracts.js';
 import { deriveRepositoryIndex } from './repository-index.js';
 import { stableSlug } from './source-analysis.js';
-import { deriveSourceLocalization } from './source-localization.js';
+import { deriveSourceLocalization, deriveSourceLocalizationNeeds } from './source-localization.js';
 import type { SourceLocalizationBundle, SourceLocalizationHint, SourceLocalizationInputHints, SourceLocalizationRecord } from './source-localization-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
 
@@ -68,6 +69,8 @@ export interface RunAdaptiveExplorationRescopeInput {
   rescopeLimits?: Partial<AdaptiveRescopeLimits>;
   abortSignal?: AbortSignal;
   onEvent?: PlannerCompilerEventSink;
+  /** Complete compiler-owned critical/required-representation owner catalog. */
+  authoritativeOwnerNeedIds?: string[];
 }
 
 // --- eforge:endregion adaptive-rescope-contracts ---
@@ -89,7 +92,45 @@ function isUnresolved(record: SourceLocalizationRecord): boolean {
 }
 
 /** Unresolved needs that are critical enough to justify fail-closed compile behavior. */
-export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inventory: SourceInventory): string[] {
+/**
+ * Build the authority universe before localization from compiler requirements.
+ * Required criterion aspects identify implementation ownership; critical needs
+ * are retained even if they have no aspect link. This deliberately works from
+ * the compiler's derived needs rather than localization record kinds/sources.
+ */
+export function deriveAuthoritativeOwnerNeedIds(inventory: SourceInventory, graph: PlanningAtomGraph): string[] {
+  const aspects = derivePlanningCriterionAspects(graph, inventory);
+  const requiredAspectIds = new Set(aspects.filter((aspect) => aspect.required).map((aspect) => aspect.aspectId));
+  return [...new Set(deriveSourceLocalizationNeeds({ inventory, graph, aspects })
+    .filter((need) => CRITICAL_NEED_KINDS.has(need.kind) || need.aspectIds.some((aspectId) => requiredAspectIds.has(aspectId)))
+    .map((need) => need.id))].sort();
+}
+
+function hasConcreteRepresentationEvidence(need: ReturnType<typeof deriveSourceLocalizationNeeds>[number], criteriaWithExplicitPaths: Set<string>): boolean {
+  if (need.kind === 'subsystem' || ['docs', 'test', 'manifest', 'command', 'ui', 'extension'].includes(need.kind)) return false;
+  return need.kind === 'interface'
+    ? isConcreteScopedLabel(need.query)
+    : need.interfaceKeys.some(isConcreteScopedLabel)
+      || need.subsystemHints.some(isConcreteScopedLabel)
+      || need.criterionIds.some((criterionId) => criteriaWithExplicitPaths.has(criterionId));
+}
+
+function isConcreteScopedLabel(value: string): boolean {
+  const tokens = stableSlug(value).split('-');
+  return tokens.length > 0 && tokens.every((token) => !GENERIC_SCOPE_LABELS.has(token) && !GENERIC_SCOPE_LABELS.has(token.endsWith('s') ? token.slice(0, -1) : token));
+}
+
+export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inventory: SourceInventory, authoritativeOwnerNeedIds?: string[]): string[] {
+  const byNeedId = new Map(bundle.records.map((record) => [record.needId, record]));
+  // Compiler-owned representation requirements are authoritative even if a
+  // localization pass omitted their record. Never substitute aggregate path
+  // confidence or a same-domain-looking reducer id for this catalog.
+  if (authoritativeOwnerNeedIds !== undefined) return [...new Set(authoritativeOwnerNeedIds)]
+    .filter((needId) => {
+      const record = byNeedId.get(needId);
+      return !record || isUnresolved(record);
+    })
+    .sort();
   return bundle.records
     .filter(isUnresolved)
     .filter(isCompileBlockingNeed)
@@ -118,8 +159,8 @@ export interface CriticalNeedPartition { rescopable: string[]; unrescopable: str
  * be re-explored - counting it toward fail-closed would abort compiles the
  * loop structurally cannot save.
  */
-export function partitionCriticalUnresolvedNeeds(bundle: SourceLocalizationBundle, inventory: SourceInventory): CriticalNeedPartition {
-  const critical = new Set(criticalUnresolvedNeedIds(bundle, inventory));
+export function partitionCriticalUnresolvedNeeds(bundle: SourceLocalizationBundle, inventory: SourceInventory, authoritativeOwnerNeedIds?: string[]): CriticalNeedPartition {
+  const critical = new Set(criticalUnresolvedNeedIds(bundle, inventory, authoritativeOwnerNeedIds));
   const linked = new Set(bundle.records.filter((record) => record.linkedCriterionIds.length > 0).map((record) => record.needId));
   return {
     rescopable: [...critical].filter((needId) => linked.has(needId)).sort(),
@@ -138,10 +179,10 @@ export interface RescopeRiskClassification { risky: boolean; reasons: string[] }
  * only remedies the collapsed-root pathology, so an already-decomposed graph is never risky
  * here - it keeps today's warning-only degradation.
  */
-export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; inventory: SourceInventory; graph: PlanningAtomGraph; limits: PlanningDecompositionLimits }): RescopeRiskClassification {
+export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; inventory: SourceInventory; graph: PlanningAtomGraph; limits: PlanningDecompositionLimits; authoritativeOwnerNeedIds?: string[] }): RescopeRiskClassification {
   if (input.graph.atoms.length > 1) return { risky: false, reasons: [`already-decomposed (${input.graph.atoms.length} atoms)`] };
   const reasons: string[] = [];
-  const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount);
+  const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount, input.authoritativeOwnerNeedIds);
   // A source with no literal path/directory needs requires bounded repository
   // inspection, but 0/0 is not evidence that the root scope is unsafe. Treating
   // it as a zero-percent share pre-splits small lexical categories (for example
@@ -296,6 +337,24 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     else input.onEvent?.({ timestamp: new Date().toISOString(), type: 'planning:progress', message });
   };
   const graph = derivePlanningAtomGraph({ content: input.sourceContent, hash: input.inventory.sourceHash, limits: input.limits, inventory: input.inventory });
+  // The stage supplies this catalog unchanged. The fallback keeps direct API
+  // callers safe by deriving the same compiler-owned requirements, never from
+  // localization record kind/source.
+  const authoritativeOwnerNeedIds = input.authoritativeOwnerNeedIds ?? deriveAuthoritativeOwnerNeedIds(input.inventory, graph);
+  // The complete catalog gates exploration. The rescope terminal gate remains
+  // narrower: only entrypoint representations can fail compilation closed.
+  const sourceNeeds = deriveSourceLocalizationNeeds({ inventory: input.inventory, graph });
+  const needsById = new Map(sourceNeeds.map((need) => [need.id, need]));
+  const needKinds = new Map(sourceNeeds.map((need) => [need.id, need.kind]));
+  const criteriaWithExplicitPaths = new Set(input.inventory.criteria.filter((criterion) => criterion.evidencePaths.length > 0).map((criterion) => criterion.id));
+  // Generic representation labels remain compiler-owned for repair, but do
+  // not force a paid exploration pass when concrete paths are already grounded.
+  const explorationAuthorityCatalog = authoritativeOwnerNeedIds.filter((needId) => {
+    const need = needsById.get(needId);
+    return need !== undefined && (needKinds.get(needId) === 'entrypoint' || hasConcreteRepresentationEvidence(need, criteriaWithExplicitPaths));
+  });
+  const rescopeAuthoritativeOwnerNeedIds = explorationAuthorityCatalog.filter((needId) => needKinds.get(needId) === 'entrypoint');
+  const rescopeAuthorityCatalog = rescopeAuthoritativeOwnerNeedIds.length > 0 ? rescopeAuthoritativeOwnerNeedIds : undefined;
   // Project hints never carry ignore prefixes/globs (the only hint inputs that
   // shape the index), so one repository index serves every localization pass.
   const index = await deriveRepositoryIndex({ cwd: input.cwd });
@@ -306,7 +365,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     ledger: { totalToolUseBudget: 0, usedToolUses: 0 },
     riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: [],
   };
-  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount);
+  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, explorationAuthorityCatalog);
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
   if (skip.skip) {
     const rescopeDirectives = await judgeCollapsedRootDecomposition(input, baseline, graph, diagnostics, emit);
@@ -330,7 +389,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     return result;
   };
 
-  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits });
+  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits, authoritativeOwnerNeedIds });
   diagnostics.riskReasons = risk.reasons;
   let bundle = baseline;
   let hints: SourceLocalizationInputHints | undefined;
@@ -436,7 +495,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     // budget-exhausted or ambiguous sibling in diagnostics.
     if (attemptOutcomes.length > 0) outcome = attemptOutcomes.reduce(mergeOutcomes);
     bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints, index });
-    const critical = partitionCriticalUnresolvedNeeds(bundle, input.inventory);
+    const critical = partitionCriticalUnresolvedNeeds(bundle, input.inventory, rescopeAuthorityCatalog);
     diagnostics.unresolvedCriticalNeedIds = critical.rescopable;
     if (critical.unrescopable.length > 0) {
       emit(`Adaptive rescope: ${critical.unrescopable.length} critical need(s) have no linked criteria and cannot be re-explored (${critical.unrescopable.slice(0, 5).join(', ')}); excluded from the fail-closed gate.`, 'warning');

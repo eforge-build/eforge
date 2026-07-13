@@ -58,13 +58,21 @@ function addOwnershipPath(byPath: Map<string, OwnershipAccumulator>, rawPath: st
     existing.localizationConfidence = bestConfidence(existing.localizationConfidence, metadata.candidate.confidence);
     existing.localizationStatus = bestStatus(existing.localizationStatus, metadata.record.status);
     existing.candidateRank = Math.min(existing.candidateRank ?? metadata.candidateRank, metadata.candidateRank);
-    if (metadata.record.linkedCriterionIds.length > 0) existing.criterionLinked = true;
+    if (metadata.record.linkedCriterionIds.length > 0 && !path.split('/').some((segment) => segment.startsWith('.')) && hasSpecificCriterionEvidence(metadata.record)) existing.criterionLinked = true;
   } else {
     existing.reasons.add(metadata.reason);
     // Exact evidence paths come straight from criterion text.
     existing.criterionLinked = true;
   }
   byPath.set(path, existing);
+}
+
+function hasSpecificCriterionEvidence(record: SourceLocalizationRecord): boolean {
+  if (record.kind !== 'interface' && record.kind !== 'subsystem') return true;
+  const generic = new Set(['manifest', 'entrypoint', 'schema', 'contract', 'route', 'command', 'ui', 'docs', 'test', 'plugin', 'extension', 'config', 'configuration', 'api']);
+  const tokens = [record.query, ...(record.interfaceKeys ?? []), ...(record.subsystemHints ?? [])]
+    .flatMap((value) => stableSlug(value).split('-').filter(Boolean));
+  return tokens.some((token) => !generic.has(token));
 }
 
 function localizationAtomIds(record: SourceLocalizationRecord, graph: PlanningAtomGraph): string[] {
