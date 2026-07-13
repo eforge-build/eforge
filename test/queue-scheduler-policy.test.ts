@@ -221,11 +221,10 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     );
 
     await scheduler.start();
-    await vi.waitFor(() => {
-      expect(existsSync(join(cwd, 'eforge', 'queue', 'failed', 'blocked-prd.md'))).toBe(true);
-    });
-
-    const events = eventQueue.drainAvailable();
+    const events = await waitForSchedulerEvents(eventQueue, (seen) =>
+      existsSync(join(cwd, 'eforge', 'queue', 'failed', 'blocked-prd.md')) &&
+      seen.some((event) => event.type === 'queue:prd:complete' && event.prdId === 'blocked-prd'),
+    );
     const completion = events.find((event) => event.type === 'queue:prd:complete' && event.prdId === 'blocked-prd') as SchedulerInputEvent | undefined;
     expect(spawnPrdChild).not.toHaveBeenCalled();
     expect(completion).toEqual(expect.objectContaining({ type: 'queue:prd:complete', prdId: 'blocked-prd', status: 'failed' }));

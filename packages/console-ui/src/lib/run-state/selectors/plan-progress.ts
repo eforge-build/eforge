@@ -6,6 +6,7 @@
  */
 import type { RunState, PipelineStage, BuildStageSpec } from '../types';
 import { isFeatureBranchLane, isRegisteredPhaseLane, laneLabel, laneOrder } from '../lane-registry';
+import { planPresentation } from '../plan-presentation';
 
 // --- eforge:region plan-status-and-gantt ---
 
@@ -145,8 +146,14 @@ export interface PlanLaneAgent {
 
 /** A per-plan lane for the mini swimlane: stage track + the agents that ran on it. */
 export interface PlanLane {
+  /** Canonical ID used for selection, dependencies, and requests. */
   planId: string;
+  /** Readable plan name, without presentation numbering. */
   planName: string;
+  /** Display-only numbered label for declared plans. */
+  presentationLabel?: string;
+  /** Display-only tooltip lines; canonical ID is always included. */
+  presentationTooltip?: readonly string[];
   /** Current pipeline stage for the plan, or undefined when not yet started. */
   stage: PipelineStage | undefined;
   /** Build-stage sequence from earlyOrchestration (empty when not compiled). */
@@ -331,11 +338,14 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     return threads.every((t) => t.endedAt !== null) && spans.every((s) => s.endedAt !== null);
   };
 
-  const makeLane = (planId: string, planName: string): PlanLane => {
+  const makeLane = (planId: string, planName: string, declarationIndex?: number): PlanLane => {
     const stage = state.planStatuses[planId];
+    const presentation = declarationIndex === undefined ? undefined : planPresentation(declarationIndex, planName, planId);
     return {
       planId,
       planName,
+      presentationLabel: presentation?.label,
+      presentationTooltip: presentation?.tooltip,
       stage,
       buildStages: buildByPlan.get(planId) ?? [],
       isComplete: stage === 'complete' || derivedLaneComplete(planId, stage),
@@ -348,7 +358,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     return Array.from(selectAllPlanIds(state)).sort().map((id) => makeLane(id, id));
   }
 
-  const lanes = sourcePlans.map((plan) => makeLane(plan.id, plan.name));
+  const lanes = sourcePlans.map((plan, index) => makeLane(plan.id, plan.name, index));
 
   // Append dynamically-added lanes (e.g. gap-close, validation, final-validation)
   // that have a status or live agents but were never part of the compiled

@@ -56,8 +56,8 @@ describe('ThreadPipeline resume artifact rendering', () => {
       ],
     });
 
-    expect(screen.getByText('Plan 01')).toBeTruthy();
-    expect(screen.getByText('Plan 02')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 02 — Plan 02')).toBeTruthy();
     expect(screen.queryByText('Waiting for agent activity...')).toBeNull();
   });
 
@@ -69,6 +69,6 @@ describe('ThreadPipeline resume artifact rendering', () => {
     });
 
     expect(screen.getByText('PRD')).toBeTruthy();
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
   });
 });

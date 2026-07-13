@@ -36,26 +36,33 @@ export const handlePlanningComplete: EventHandler<'planning:complete'> = (event,
 
   // Synthesize an early orchestration so the UI can render dependency bars,
   // tooltips, and graph edges immediately — before the SWR fetch returns.
+  // A REST orchestration snapshot can arrive before the live completion
+  // event. Keep its richer pipeline/build configuration, while the event is
+  // authoritative for the newly available declaration order and plan metadata.
+  const priorPlansById = new Map((state.earlyOrchestration?.plans ?? []).map((plan) => [plan.id, plan]));
   const earlyOrchestration = {
-    name: '',
-    description: '',
-    created: '',
-    baseBranch: '',
-    pipeline: {
+    ...(state.earlyOrchestration ?? {}),
+    name: state.earlyOrchestration?.name ?? '',
+    description: state.earlyOrchestration?.description ?? '',
+    created: state.earlyOrchestration?.created ?? '',
+    baseBranch: state.earlyOrchestration?.baseBranch ?? '',
+    pipeline: state.earlyOrchestration?.pipeline ?? {
       compile: [] as string[],
       defaultBuild: [] as BuildStageSpec[],
       defaultReview,
       rationale: '',
     },
     plans: event.plans.map((plan) => {
+      const prior = priorPlansById.get(plan.id);
       const config = planConfigsById[plan.id];
       return {
+        ...prior,
         id: plan.id,
-        name: plan.name,
+        name: plan.name?.trim() || prior?.name || plan.id,
         dependsOn: plan.dependsOn,
         branch: plan.branch,
-        build: config?.build ?? ([] as BuildStageSpec[]),
-        review: config?.review ?? defaultReview,
+        build: config?.build ?? prior?.build ?? ([] as BuildStageSpec[]),
+        review: config?.review ?? prior?.review ?? defaultReview,
       };
     }),
   } as unknown as OrchestrationConfig;

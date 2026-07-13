@@ -26,7 +26,7 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [message, setMessage] = React.useState('');
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     setSelectedIds((current) => syncSelectedAnnotationIds(current, annotations));
   }, [annotations.map((annotation) => annotation.annotationId).join('\n')]);
 

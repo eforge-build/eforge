@@ -6,6 +6,7 @@ import type { RunState } from '@/lib/run-state';
 import { buildMapReduceSummary, buildMapReduceTimeline } from '@/lib/run-state';
 import type { CompileScopeContextFailure, PlanInfo } from '@eforge-build/client/browser';
 import { compileFailureBannerModel } from '@/lib/compile-resilience-format';
+import { buildPlanPresentation } from '@/lib/run-state/plan-presentation';
 
 // PlansResponse is PlanInfo[]
 type PlansResponse = PlanInfo[];
@@ -16,17 +17,15 @@ interface PipelineSectionProps {
 }
 
 export function PipelineSection({ runState, plans }: PipelineSectionProps) {
-  const planArtifacts = useMemo(() => {
-    if (plans && plans.length > 0) {
-      return plans
-        .filter((p) => p.type === 'plan')
-        .map((p) => ({ id: p.id, name: p.name, body: p.body }));
-    }
-    if (runState.resumeArtifacts.length > 0) {
-      return runState.resumeArtifacts.map((p) => ({ id: p.id, name: p.name, body: p.body }));
-    }
-    return undefined;
-  }, [plans, runState.resumeArtifacts]);
+  const planPresentation = useMemo(
+    () => buildPlanPresentation({
+      orchestration: runState.earlyOrchestration,
+      restPlans: plans,
+      resumeArtifacts: runState.resumeArtifacts,
+      events: runState.events,
+    }),
+    [plans, runState.earlyOrchestration, runState.events, runState.resumeArtifacts],
+  );
 
   const prdSource = useMemo(() => {
     for (const { event } of runState.events) {
@@ -92,7 +91,7 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         events={runState.events}
         orchestration={runState.earlyOrchestration}
         prdSource={prdSource}
-        planArtifacts={planArtifacts}
+        planPresentation={planPresentation}
         validationCommands={runState.validationCommands}
         perspectiveErrors={runState.perspectiveErrors}
         reviewIssuesByPerspective={runState.reviewIssuesByPerspective}

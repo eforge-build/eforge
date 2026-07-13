@@ -3,6 +3,7 @@ import { ThreadPipeline } from './thread-pipeline';
 import { PlanPreviewProvider } from '@/components/preview';
 import { validationSwimlaneBugRunState } from '@/test-support/factories';
 import { buildMapReduceTimeline } from '@/lib/run-state';
+import { buildPlanPresentation } from '@/lib/run-state/plan-presentation';
 import type { AgentThread, MapReduceOrchestration } from '@/lib/run-state';
 
 const runState = validationSwimlaneBugRunState();
@@ -39,17 +40,29 @@ export const ValidationCommandsInValidationLane: Story = {
     events: runState.events,
     orchestration: runState.earlyOrchestration,
     prdSource: { label: 'Validation swimlane bug PRD', content: '# Validation swimlane bug repro' },
-    planArtifacts: [
-      {
-        id: 'plan-01',
-        name: 'Acceptance Recovery Evidence',
-        body: 'Implement acceptance evidence',
-      },
-    ],
+    planPresentation: buildPlanPresentation({
+      orchestration: runState.earlyOrchestration,
+      restPlans: [{ id: 'plan-01', name: 'Acceptance Recovery Evidence', body: 'Implement acceptance evidence', dependsOn: [], type: 'plan' }],
+      events: runState.events,
+    }),
     validationCommands: runState.validationCommands,
     perspectiveErrors: runState.perspectiveErrors,
     reviewIssuesByPerspective: runState.reviewIssuesByPerspective,
     decisions: runState.decisions,
+  },
+};
+
+/** Long semantic IDs/names shrink inside the label column without covering stages. */
+export const LongPlanPresentation: Story = {
+  args: {
+    agentThreads: [], startTime: Date.parse('2024-01-15T10:00:00.000Z'), endTime: Date.parse('2024-01-15T10:01:00.000Z'),
+    planStatuses: { 'semantic-plan-with-an-intentionally-very-long-canonical-identifier': 'implement' },
+    reviewIssues: {}, events: [], orchestration: null,
+    planPresentation: buildPlanPresentation({ restPlans: [{
+      id: 'semantic-plan-with-an-intentionally-very-long-canonical-identifier',
+      name: 'A deliberately long readable plan name that demonstrates label truncation while stages remain visible',
+      body: '# Long semantic plan', dependsOn: [], type: 'plan',
+    }] }),
   },
 };
 
@@ -104,23 +117,16 @@ const mapReduceThreads: AgentThread[] = [
 
 /**
  * A live map/reduce compile: satisfaction gate and repository exploration run
- * first, then the atom planners collapse into a single `Map atoms` lane
- * (concurrent atoms fan out into packed sub-rows), followed by one lane per
- * reduce level. Bars are labeled by member id; the skipped atom appears only
- * in the lane tooltip counts.
+ * first, then atom planners collapse into grouped lanes.
  */
 export const MapReduceGroupedLanes: Story = {
   args: {
     agentThreads: mapReduceThreads,
     startTime: Date.parse('2024-01-15T10:00:00.000Z'),
     endTime: Date.parse('2024-01-15T10:06:30.000Z'),
-    planStatuses: {},
-    reviewIssues: {},
-    events: [],
-    orchestration: null,
+    planStatuses: {}, reviewIssues: {}, events: [], orchestration: null,
     prdSource: { label: 'Map/reduce PRD', content: '# Map/reduce PRD' },
-    planArtifacts: [],
-    decisions: {},
+    planPresentation: [], decisions: {},
     mapReduce: buildMapReduceTimeline(mapReduceFixture, mapReduceThreads),
   },
 };
