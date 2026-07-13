@@ -174,6 +174,21 @@ const PERSPECTIVE_SCHEMA_YAML: Record<ReviewPerspective, () => string> = {
  * Always yields `plan:build:review:start` and `plan:build:review:complete` with issues.
  * When parallelized, also yields parallel lifecycle events in between.
  */
+
+/**
+ * Emits a perspective failure as the wire error event plus a build decision,
+ * so degraded review rounds are visible in the monitor's decision trail.
+ */
+function* perspectiveErrorEvents(planId: string, perspective: string, error: string, roundMetadata: { round?: number }): Generator<EforgeEvent> {
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:error', planId, perspective, error, ...roundMetadata } as EforgeEvent;
+  yield emitBuildDecisionForPlan(planId, {
+    kind: 'review-perspective-degraded',
+    rationale: `Review perspective '${perspective}' failed and the round continues without it: ${error}`,
+    perspective,
+    round: roundMetadata.round ?? 0,
+  });
+}
+
 export async function* runParallelReview(
   options: ParallelReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
@@ -325,14 +340,7 @@ export async function* runParallelReview(
         // Extension perspective dispatch: use generic reviewer prompt with fragment appended
         const registration = extensionPerspectiveByKey.get(perspective);
         if (!registration) {
-          yield {
-            timestamp: new Date().toISOString(),
-            type: 'plan:build:review:parallel:perspective:error',
-            planId,
-            perspective,
-            error: `Extension perspective '${perspective}' is not registered by any loaded extension`,
-            ...roundMetadata,
-          };
+          yield* perspectiveErrorEvents(planId, perspective, `Extension perspective '${perspective}' is not registered by any loaded extension`, roundMetadata);
           return;
         }
 
@@ -407,26 +415,12 @@ export async function* runParallelReview(
               return;
             }
             allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
-            yield {
-              timestamp: new Date().toISOString(),
-              type: 'plan:build:review:parallel:perspective:error',
-              planId,
-              perspective,
-              error: err instanceof Error ? err.message : String(err),
-              ...roundMetadata,
-            };
+            yield* perspectiveErrorEvents(planId, perspective, err instanceof Error ? err.message : String(err), roundMetadata);
           }
           return;
         } catch (err) {
           allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
-          yield {
-            timestamp: new Date().toISOString(),
-            type: 'plan:build:review:parallel:perspective:error',
-            planId,
-            perspective,
-            error: err instanceof Error ? err.message : String(err),
-            ...roundMetadata,
-          };
+          yield* perspectiveErrorEvents(planId, perspective, err instanceof Error ? err.message : String(err), roundMetadata);
         }
         return;
       }
@@ -492,14 +486,7 @@ export async function* runParallelReview(
           return;
         }
         allIssues.push({ perspective, issues: assignPerspectiveReviewIssueIds([syntheticPerspectiveErrorIssue(perspective, err)], perspective, round) });
-        yield {
-          timestamp: new Date().toISOString(),
-          type: 'plan:build:review:parallel:perspective:error',
-          planId,
-          perspective,
-          error: err instanceof Error ? err.message : String(err),
-          ...roundMetadata,
-        };
+        yield* perspectiveErrorEvents(planId, perspective, err instanceof Error ? err.message : String(err), roundMetadata);
       }
     },
   }));

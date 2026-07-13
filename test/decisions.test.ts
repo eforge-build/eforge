@@ -136,6 +136,17 @@ describe('BuildDecisionSchema — valid kinds', () => {
     expect(result.source).toBe('default');
   });
 
+  it('parses review-perspective-degraded', () => {
+    const result = parseWithSchema(BuildDecisionSchema,{
+      kind: 'review-perspective-degraded',
+      rationale: "Review perspective 'test' failed and the round continues without it: Backend error: overloaded",
+      perspective: 'test',
+      round: 1,
+    });
+    expect(result.kind).toBe('review-perspective-degraded');
+    expect(result.perspective).toBe('test');
+  });
+
   it('parses recovery-budget-extended', () => {
     const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'recovery-budget-extended',

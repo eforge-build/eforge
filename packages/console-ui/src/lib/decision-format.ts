@@ -37,6 +37,8 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
       return { bg: 'bg-red-500', border: 'border-red-400' };
     case 'recovery-budget-extended':
       return { bg: 'bg-orange-500', border: 'border-orange-400' };
+    case 'review-perspective-degraded':
+      return { bg: 'bg-rose-500', border: 'border-rose-400' };
     case 'merge-conflict-resolution':
       return { bg: 'bg-purple-500', border: 'border-purple-400' };
     default:
@@ -87,6 +89,8 @@ export function decisionSummary(decision: Decision): string {
       return decision.verdict;
     case 'recovery-budget-extended':
       return `blocking ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes} — ${decision.maxAttempts} attempt(s) granted`;
+    case 'review-perspective-degraded':
+      return `round ${decision.round + 1} — '${decision.perspective}' failed; continuing without it`;
     case 'merge-conflict-resolution':
       return `${decision.strategy} — ${decision.files.length} file(s)`;
     default:
@@ -159,6 +163,10 @@ export function decisionDetail(decision: Decision): string {
     case 'recovery-budget-extended':
       lines.push(`Blocking issue outcomes: ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes}`);
       lines.push(`Recovery attempts granted: ${decision.maxAttempts}`);
+      break;
+    case 'review-perspective-degraded':
+      lines.push(`Perspective: ${decision.perspective}`);
+      lines.push(`Round: ${decision.round + 1}`);
       break;
     case 'merge-conflict-resolution':
       lines.push(`Strategy: ${decision.strategy}`);

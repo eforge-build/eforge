@@ -16418,6 +16418,31 @@
                   "required": [
                     "kind",
                     "rationale",
+                    "perspective",
+                    "round"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "review-perspective-degraded",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "perspective": {
+                      "type": "string"
+                    },
+                    "round": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
                     "previousBlockingIssueOutcomes",
                     "lastBlockingIssueOutcomes",
                     "maxAttempts"
@@ -35101,6 +35126,31 @@
                                         "type": "string"
                                       }
                                     ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
+                                  "perspective",
+                                  "round"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "review-perspective-degraded",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "perspective": {
+                                    "type": "string"
+                                  },
+                                  "round": {
+                                    "minimum": 0,
+                                    "type": "integer"
                                   }
                                 }
                               },

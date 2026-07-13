@@ -449,6 +449,9 @@ describe('runParallelReview — strict contract on parallel perspectives', () =>
     );
 
     expect(filterEvents(events, 'plan:build:review:parallel:perspective:error')).toHaveLength(1);
+    const degraded = events.filter((event) => event.type === 'plan:build:decision' && (event as { decision: { kind: string } }).decision.kind === 'review-perspective-degraded');
+    expect(degraded).toHaveLength(1);
+    expect(degraded[0]).toMatchObject({ decision: { perspective: 'docs' } });
     const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete!.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ category: 'bug', file: 'src/parallel.ts' }),

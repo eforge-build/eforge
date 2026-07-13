@@ -97,6 +97,13 @@ export const BuildDecisionSchema = Type.Union([
     ]),
     source: Type.Union([Type.Literal('config'), Type.Literal('default')]),
   }),
+  // Review perspective errored; the round continues without it
+  Type.Object({
+    kind: Type.Literal('review-perspective-degraded'),
+    rationale: Type.String(),
+    perspective: Type.String(),
+    round: Type.Integer({ minimum: 0 }),
+  }),
   // Same-plan recovery budget extended after review-round convergence
   Type.Object({
     kind: Type.Literal('recovery-budget-extended'),
