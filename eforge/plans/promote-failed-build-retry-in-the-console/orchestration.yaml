@@ -1,0 +1,57 @@
+name: promote-failed-build-retry-in-the-console
+description: Bounded planner compiler artifacts for
+  promote-failed-build-retry-in-the-console
+base_branch: main
+validate: []
+plans:
+  - id: console-failed-build-retry
+    name: Console failed-build retry flow
+    depends_on: []
+    branch: promote-failed-build-retry-in-the-console/console-failed-build-retry
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    test_ownership: builder
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings normalize typed model intent against
+    deterministic compiler safety signals.
+
+    Set-level review follows the deepest normalized review; build defaults
+    follow the broadest normalized plan pipeline (highest risk score 1).
+
+    - console-failed-build-retry: risk score 1 (low-confidence-localization);
+    declared docs work none, test work author-new, test owner builder; model
+    review intent standard (The flow is UI-local but controls a
+    destructive/requeuing mutation. Review must verify state transitions, exact
+    operation forwarding, route/client reuse, duplicate prevention, and that
+    simple-case promotion does not flatten complex repair analyses.); derived
+    build implement -> test-cycle -> review-cycle and auto review with
+    perspectives code, test, 1 round(s), standard evaluation
+diff_base_ref: d41221ba12c210b777a81c32eb1f9659227d691b
