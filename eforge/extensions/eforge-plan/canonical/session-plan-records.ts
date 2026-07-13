@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { EforgePlanStore, JsonObject, JsonValue, SessionPlanRow, SessionPlanUpsert } from '../sqlite/index.js';
+import type { EforgePlanStore, JsonObject, JsonValue, SearchDocumentType, SessionPlanRow, SessionPlanUpsert } from '../sqlite/index.js';
 import { getBacklogItem, getEpic, getSessionPlan, recordLifecycleEvidence, replaceAllSessionPlanEpics, replaceAllSessionPlanItems, upsertQueuePrd, upsertSessionPlan } from '../sqlite/index.js';
 import { getDatabase } from '../sqlite/store-internal.js';
 import { isTerminalSessionPlanStatus } from '../planning-state-policy.js';
@@ -39,6 +39,7 @@ export function syncSessionPlanArtifact(cwd: string, input: CanonicalSessionPlan
 
 export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: string, input: CanonicalSessionPlanSyncInput): SessionPlanRow {
   const existing = getSessionPlan(store, input.session);
+  const beforeSearchState = sessionPlanSearchDirtyState(store, input.session, existing);
   const content = input.content ?? readContentIfAvailable(input.path);
   const parsed = content ? parseSessionPlanFrontmatter(content) : { frontmatter: existing?.frontmatter ?? input.frontmatter ?? {}, body: '' };
   const fm = mergeSessionPlanFrontmatter(existing?.frontmatter ?? {}, parsed.frontmatter, input.frontmatter ?? {}) as JsonObject;
@@ -72,11 +73,7 @@ export function syncSessionPlanArtifactRecord(store: EforgePlanStore, cwd: strin
       recordLifecycleEvidence(store, { evidenceKey: `planned:${input.session}:${itemId}`, itemRef: itemId, itemId: getBacklogItem(store, itemId)?.id, session: input.session, lifecycleState: 'planned', reasonCode: 'planned-session-plan', evidenceKind: 'session-plan', status: row.status, isCurrent: true, isTerminal: false, occurredAt: input.updatedAt ?? now, links: jsonValue({ session: input.session, path: row.path, status: row.status }) });
     }
   }
-  markCanonicalSearchDirty(store, [
-    { documentType: 'session_plan', documentId: input.session, reason: 'canonical-session-plan-sync' },
-    ...source.itemIds.map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'canonical-session-plan-sync' })),
-    ...source.epicIds.map((documentId) => ({ documentType: 'epic' as const, documentId, reason: 'canonical-session-plan-sync' })),
-  ]);
+  markSessionPlanSearchDirtyAfterSync(store, beforeSearchState, sessionPlanSearchDirtyState(store, input.session, row)!);
   return row;
 }
 
@@ -120,6 +117,80 @@ export function recordSessionPlanSubmitted(store: EforgePlanStore, input: { sess
     { documentType: 'session_plan', documentId: input.session, reason: 'session-plan-submitted' },
     ...itemIds.map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'session-plan-submitted' })),
   ]);
+}
+
+interface SessionPlanSearchDirtyState {
+  session: string;
+  fingerprint: string;
+  itemIds: string[];
+  epicIds: string[];
+  recommendationRefs: string[];
+}
+
+function sessionPlanSearchDirtyState(store: EforgePlanStore, session: string, row: SessionPlanRow | undefined): SessionPlanSearchDirtyState | undefined {
+  if (!row) return undefined;
+  const itemIds = normalizedSessionPlanLinkedIds(store, 'session_plan_items', 'item_id', 'item_ref', session);
+  const epicIds = normalizedSessionPlanLinkedIds(store, 'session_plan_epics', 'epic_id', 'epic_ref', session);
+  const recommendationRefs = normalizedSessionPlanRecommendationRefs(store, session);
+  return {
+    session,
+    itemIds,
+    epicIds,
+    recommendationRefs,
+    fingerprint: canonicalSha256(JSON.stringify({
+      session: row.session,
+      path: row.path,
+      topic: row.topic,
+      status: row.status,
+      planningType: row.planningType,
+      planningDepth: row.planningDepth,
+      profile: row.profile,
+      summaryText: row.summaryText,
+      readinessSummary: row.readinessSummary,
+      itemIds,
+      epicIds,
+      recommendationRefs,
+    })),
+  };
+}
+
+function markSessionPlanSearchDirtyAfterSync(store: EforgePlanStore, before: SessionPlanSearchDirtyState | undefined, after: SessionPlanSearchDirtyState): void {
+  const relationshipChanged = before === undefined || !sameStringSet(before.itemIds, after.itemIds) || !sameStringSet(before.epicIds, after.epicIds) || !sameStringSet(before.recommendationRefs, after.recommendationRefs);
+  if (before !== undefined && before.fingerprint === after.fingerprint && !relationshipChanged) return;
+  const refs: Array<{ documentType: SearchDocumentType; documentId: string; reason: string }> = [
+    { documentType: 'session_plan', documentId: after.session, reason: 'canonical-session-plan-sync' },
+  ];
+  if (relationshipChanged) {
+    refs.push(
+      ...changedStringSetMembers(before?.itemIds ?? [], after.itemIds).map((documentId) => ({ documentType: 'backlog_item' as const, documentId, reason: 'canonical-session-plan-sync' })),
+      ...changedStringSetMembers(before?.epicIds ?? [], after.epicIds).map((documentId) => ({ documentType: 'epic' as const, documentId, reason: 'canonical-session-plan-sync' })),
+    );
+  }
+  markCanonicalSearchDirty(store, refs);
+}
+
+function normalizedSessionPlanLinkedIds(store: EforgePlanStore, table: 'session_plan_items' | 'session_plan_epics', idColumn: 'item_id' | 'epic_id', refColumn: 'item_ref' | 'epic_ref', session: string): string[] {
+  const rows = getDatabase(store).prepare(`SELECT COALESCE(${idColumn}, ${refColumn}) AS id FROM ${table} WHERE session = ?`).all(session) as Array<{ id?: string | null }>;
+  return normalizedStringSet(rows.map((row) => row.id));
+}
+
+function normalizedSessionPlanRecommendationRefs(store: EforgePlanStore, session: string): string[] {
+  const rows = getDatabase(store).prepare('SELECT source_recommendation_ref AS ref FROM session_plan_items WHERE session = ? AND source_recommendation_ref IS NOT NULL UNION SELECT source_recommendation_ref AS ref FROM session_plan_epics WHERE session = ? AND source_recommendation_ref IS NOT NULL').all(session, session) as Array<{ ref?: string | null }>;
+  return normalizedStringSet(rows.map((row) => row.ref));
+}
+
+function normalizedStringSet(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))].sort();
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function changedStringSetMembers(before: readonly string[], after: readonly string[]): string[] {
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  return [...new Set([...before.filter((value) => !afterSet.has(value)), ...after.filter((value) => !beforeSet.has(value))])].sort();
 }
 
 function submittedItemIds(store: EforgePlanStore, session: string, inputItemIds: string[] | undefined): string[] {
