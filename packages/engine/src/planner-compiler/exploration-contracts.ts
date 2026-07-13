@@ -155,10 +155,20 @@ export function decideExplorationSkip(bundle: SourceLocalizationBundle, criterio
   // Preserve the legacy literal-owner guard when callers have not supplied an
   // authority universe; catalog-aware callers pass the critical/representation
   // set so unrelated literal records do not control this decision.
+  const hasAuthorityCatalog = authoritativeOwnerNeedIds !== undefined;
   const ownerIds = new Set(authoritativeOwnerNeedIds ?? bundle.records.filter((record) => record.kind === 'literal-path' || record.kind === 'directory' || record.kind === 'entrypoint').map((record) => record.needId));
-  const authoritativeOwners = bundle.records.filter((record) => ownerIds.has(record.needId));
-  const unresolvedOwners = authoritativeOwners.filter((record) => record.status !== 'resolved' || record.confidence !== 'high');
-  const skip = unresolvedOwners.length === 0 && share >= EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE;
+  const recordsByNeedId = new Map(bundle.records.map((record) => [record.needId, record]));
+  // The catalog comes from compiler ownership requirements, not from the
+  // localization result. A required owner absent from that result is itself
+  // unresolved and must not be hidden by otherwise confident literals.
+  const unresolvedOwners = [...ownerIds].filter((needId) => {
+    const record = recordsByNeedId.get(needId);
+    return !record || record.status !== 'resolved' || record.confidence !== 'high';
+  });
+  const authoritativeOwners = [...ownerIds].filter((needId) => recordsByNeedId.has(needId));
+  // A supplied catalog is authoritative, including a known-empty one. The
+  // aggregate heuristic is only compatibility behavior for legacy callers.
+  const skip = hasAuthorityCatalog ? unresolvedOwners.length === 0 : unresolvedOwners.length === 0 && share >= EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE;
   const summary = `${highConfidenceCount}/${literalRecords.length} literal source needs resolved with high confidence`;
   return { skip, literalNeedCount: literalRecords.length, highConfidenceCount, share, authoritativeOwnerCount: authoritativeOwners.length, unresolvedAuthoritativeOwnerCount: unresolvedOwners.length, reason: skip ? `${summary}; exploration skipped` : `${summary}; exploration required${unresolvedOwners.length > 0 ? `; ${unresolvedOwners.length} unresolved authoritative owner(s)` : ''}` };
 }

@@ -127,6 +127,29 @@ describe('planning source localization foundation', () => {
     expect(candidates).not.toContain('packages/eforge/src/unrelated.ts');
   });
 
+  it('keeps an explicit new-file proposal within the per-need candidate cap', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
+    const content = prd(['Create `packages/widget/src/new-contract.ts` for the widget contract.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph, limits: { maxCandidateFilesPerNeed: 1 } });
+    const record = bundle.records.find((item) => item.query === 'packages/widget/src/new-contract.ts')!;
+
+    expect(record).toMatchObject({ status: 'resolved', confidence: 'high' });
+    expect(record.candidateFiles).toEqual([expect.objectContaining({ path: 'packages/widget/src/new-contract.ts', signals: expect.arrayContaining(['proposed-new-file']) })]);
+  });
+
+  it('does not propose an existing or traversal path as a new file', async () => {
+    const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
+    const content = prd(['Create `packages/widget/src/existing.ts` and `packages/widget/src/../escape.ts`.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+
+    expect(bundle.records.flatMap((record) => record.candidateFiles).some((candidate) => candidate.signals.includes('proposed-new-file'))).toBe(false);
+  });
+
   it('expands directory evidence with candidate reasons and budget diagnostics', async () => {
     const temp = await workspace({
       'workspace/tools/src/a.ts': 'export const command = true;',

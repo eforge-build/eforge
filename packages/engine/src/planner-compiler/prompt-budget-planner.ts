@@ -136,12 +136,24 @@ function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode
   return best;
 }
 
-function sourceNeedIdsForNode(tree: PlanningReduceTree, node: PlanningReduceNode, bundle?: SourceLocalizationBundle): string[] | undefined {
-  if (!bundle) return undefined;
+function sourceNeedIdsForNode(tree: PlanningReduceTree, node: PlanningReduceNode, bundle?: SourceLocalizationBundle): string[] {
+  if (!bundle) return [];
   const nodes = new Map(tree.nodes.map((item) => [item.nodeId, item]));
   const visit = (item: PlanningReduceNode): string[] => [...item.inputAtomIds, ...item.inputNodeIds.flatMap((id) => nodes.has(id) ? visit(nodes.get(id)!) : [])];
   const atomIds = new Set(visit(node));
-  return bundle.records.filter((record) => record.assignedAtomIds.some((id) => atomIds.has(id))).map((record) => record.needId);
+  // Keep budget planning's catalog identical to execution. Otherwise the
+  // planner can approve a prompt that is too small for the authoritative
+  // criterion/aspect-scoped catalog actually shown to a reducer.
+  return bundle.records
+    .filter((record) => record.assignedAtomIds.some((id) => atomIds.has(id))
+      || record.linkedCriterionIds.some((id) => node.criterionIds.includes(id))
+      || record.linkedAspectIds.some((id) => node.aspectIds.includes(id)))
+    .sort((a, b) => sourceNeedPriority(a) - sourceNeedPriority(b) || a.needId.localeCompare(b.needId))
+    .map((record) => record.needId);
+}
+
+function sourceNeedPriority(record: SourceLocalizationBundle['records'][number]): number {
+  return (record.status !== 'resolved' ? 0 : 8) + (record.confidence !== 'high' ? 0 : 4) + (record.kind === 'literal-path' ? 0 : 2) + (record.linkedCriterionIds.length > 0 ? 0 : 1);
 }
 
 function syntheticReduceOutput(node: PlanningReduceNode, digestBytes: number): PlanningReduceOutput {

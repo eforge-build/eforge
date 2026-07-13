@@ -9,6 +9,7 @@ import {
   classifyRescopeRisk,
   criticalUnresolvedNeedIds,
   derivePlanningAtomGraph,
+  deriveAuthoritativeOwnerNeedIds,
   deriveExplorationMaxTurns,
   deriveExplorationToolBudget,
   deriveRescopeDirectives,
@@ -115,6 +116,18 @@ describe('rescope risk classification and directives', () => {
     const risk = classifyRescopeRisk({ bundle, inventory, graph, limits });
     expect(risk.risky).toBe(true);
     expect(risk.reasons.join(' ')).toContain('subsystem-diverse-root');
+  });
+
+  it('derives authority from required implementation aspects, not localized record kinds', () => {
+    const content = prd(['Session consumer must implement the SessionContract interface in `packages/session/src/owner.ts`.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+    const catalog = deriveAuthoritativeOwnerNeedIds(inventory, graph);
+
+    expect(catalog).toEqual(expect.arrayContaining([
+      'criterion-ac-001-interface-schema-contract',
+      'criterion-ac-001-path-packages-session-src-owner-ts',
+    ]));
   });
 
   it('marks only source-derived entrypoint needs as critical; agent-minted project-hint needs never block', () => {

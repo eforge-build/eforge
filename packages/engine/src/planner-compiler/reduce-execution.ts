@@ -8,30 +8,39 @@ import type { SourceLocalizationBundle } from './source-localization-contracts.j
 import { utf8ByteLength } from './source-analysis.js';
 import { isAbortError } from './abort-utils.js';
 
-export interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeEvent[]; validationErrors: string[] }
+export interface ReduceRunResult { output: PlanningReduceOutput; events: EforgeEvent[]; validationErrors: string[]; warnings: string[] }
 
 export async function executePlanningReduceNode(input: Pick<RunPlanningReduceInput, 'graph' | 'cwd' | 'harness' | 'agentOptions' | 'abortSignal' | 'onEvent' | 'sourceLocalizationBundle'>, tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[]): Promise<ReduceRunResult> {
   const node = requireReduceNode(tree, nodeId);
   const task = buildTaskForReduceNode(input.graph, tree, nodeId, atomOutputs, reduceOutputs, input.sourceLocalizationBundle);
   const promptErrors = validateReduceTaskPromptBudget(task);
-  if (promptErrors.length > 0) return { output: failedReduceOutput(node.nodeId, `invalid reduce prompt:${promptErrors.join('; ')}`), events: [], validationErrors: promptErrors };
+  if (promptErrors.length > 0) return { output: failedReduceOutput(node.nodeId, `invalid reduce prompt:${promptErrors.join('; ')}`), events: [], validationErrors: promptErrors, warnings: [] };
   try {
     const result = await runPlanningReducer({ task, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, abortSignal: input.abortSignal, onEvent: input.onEvent });
     const normalized = normalizePlanningReduceOutput(result.output);
     const { output, diagnostics } = quarantineGapCatalogIds(normalized, task);
     const validation = validatePlanningReduceOutput({ graph: input.graph as PlanningAtomGraph, tree, task, output });
-    if (!validation.ok) return { output: failedReduceOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: result.events, validationErrors: validation.errors };
-    return { output, events: result.events, validationErrors: diagnostics };
+    if (!validation.ok) return { output: failedReduceOutput(node.nodeId, `invalid reduce output:${validation.errors.join('; ')}`), events: result.events, validationErrors: validation.errors, warnings: diagnostics };
+    return { output, events: [...result.events, ...diagnostics.map((message) => ({ timestamp: new Date().toISOString(), type: 'planning:warning' as const, message, source: 'reduce-catalog-quarantine' }))], validationErrors: [], warnings: diagnostics };
   } catch (err) {
     if (isAbortError(err)) throw err;
-    return { output: failedReduceOutput(node.nodeId, err instanceof Error ? err.message : String(err)), events: [], validationErrors: [`reduce failed:${node.nodeId}:${err instanceof Error ? err.message : String(err)}`] };
+    return { output: failedReduceOutput(node.nodeId, err instanceof Error ? err.message : String(err)), events: [], validationErrors: [`reduce failed:${node.nodeId}:${err instanceof Error ? err.message : String(err)}`], warnings: [] };
   }
 }
 
 function buildTaskForReduceNode(graph: PlanningAtomGraph, tree: PlanningReduceTree, nodeId: string, atomOutputs: PlanningAtomOutput[], reduceOutputs: PlanningReduceOutput[], bundle?: SourceLocalizationBundle): PlanningReduceTask {
   const node = requireReduceNode(tree, nodeId);
   const descendantAtomIds = nodeAtomIds(tree, node);
-  const validSourceNeedIds = bundle && bundle.records.filter((record) => record.assignedAtomIds.some((atomId) => descendantAtomIds.includes(atomId))).map((record) => record.needId);
+  // Assignment is normally present, but criterion/aspect linkage is the
+  // authoritative fallback for global and repair-created needs. Without it a
+  // reducer can never name an unresolved need that belongs to its node.
+  const descendantAtomSet = new Set(descendantAtomIds);
+  const validSourceNeedIds = (bundle?.records ?? [])
+    .filter((record) => record.assignedAtomIds.some((atomId) => descendantAtomSet.has(atomId))
+      || record.linkedCriterionIds.some((id) => node.criterionIds.includes(id))
+      || record.linkedAspectIds.some((id) => node.aspectIds.includes(id)))
+    .sort((a, b) => sourceNeedPriority(a) - sourceNeedPriority(b) || a.needId.localeCompare(b.needId))
+    .map((record) => record.needId);
   return buildPlanningReduceTask(
     tree,
     node,
@@ -40,6 +49,10 @@ function buildTaskForReduceNode(graph: PlanningAtomGraph, tree: PlanningReduceTr
     graph,
     validSourceNeedIds,
   );
+}
+
+function sourceNeedPriority(record: NonNullable<SourceLocalizationBundle>['records'][number]): number {
+  return (record.status !== 'resolved' ? 0 : 8) + (record.confidence !== 'high' ? 0 : 4) + (record.kind === 'literal-path' ? 0 : 2) + (record.linkedCriterionIds.length > 0 ? 0 : 1);
 }
 
 function nodeAtomIds(tree: PlanningReduceTree, node: PlanningReduceTree['nodes'][number]): string[] {
@@ -55,7 +68,7 @@ function quarantineGapCatalogIds(output: PlanningReduceOutput, task: PlanningRed
   const diagnostics: string[] = [];
   const gaps = output.gaps?.map((gap) => {
     const sourceNeedIds = gap.sourceNeedIds?.filter((id) => {
-      const valid = !task.sourceNeedCatalogAvailable || task.validSourceNeedIds.includes(id);
+      const valid = task.validSourceNeedIds.includes(id);
       if (!valid) diagnostics.push(`dropped unknown source need for reduce gap:${gap.gapId}:${id}`);
       return valid;
     });
@@ -75,7 +88,7 @@ export function validateReduceTaskPromptBudget(task: PlanningReduceTask): string
 
 export function failedReduceRun(nodeId: string, err: unknown): ReduceRunResult {
   const message = err instanceof Error ? err.message : String(err);
-  return { output: failedReduceOutput(nodeId, message), events: [], validationErrors: [`reduce failed:${nodeId}:${message}`] };
+  return { output: failedReduceOutput(nodeId, message), events: [], validationErrors: [`reduce failed:${nodeId}:${message}`], warnings: [] };
 }
 
 export function failedReduceOutput(nodeId: string, error: string): PlanningReduceOutput {

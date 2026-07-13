@@ -31,7 +31,7 @@ export async function runPlanningMapReducePipeline(input: RunPlanningMapReducePi
   const sourceEvidenceValidation = input.sharedBrief && input.sourceEvidenceBundle ? validatePlanningSourceEvidenceBundle({ graph: input.graph, sharedBrief: input.sharedBrief, bundle: input.sourceEvidenceBundle }) : { ok: true as const, errors: [] };
   const initialTasks = buildPlanningAtomTasks(input);
   const reduceLimits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.reduceLimits ?? {}) };
-  const plannedTree = planPromptSafeReduceTreeFromTasks({ graph: input.graph, tasks: initialTasks, limits: reduceLimits });
+  const plannedTree = planPromptSafeReduceTreeFromTasks({ graph: input.graph, tasks: initialTasks, limits: reduceLimits, sourceLocalizationBundle: input.sourceLocalizationBundle });
   if (!plannedTree.ok) throw new Error(`reduce prompt budget planning failed:${plannedTree.validationErrors.join('; ')}`);
   const schedulerInput = { ...input, reduceDigestPromptBudgetBytes: plannedTree.maxReduceDigestPromptBytes };
   const tasks = new Map(buildPlanningAtomTasks(schedulerInput).map((task) => [task.atomId, task]));
@@ -127,7 +127,7 @@ function startReadyReducers(input: RunPlanningMapReducePipelineInput, runInput: 
     const passthrough = soleAtomOutput ? singleAtomPassthroughOutput(input.graph, tree, node, soleAtomOutput) : undefined;
     emitReduceEvent(input, state, buildMapReduceReduceStatusEvent(node.nodeId, 'running'));
     if (passthrough) {
-      applyReduceResult(input, state, { output: passthrough, events: [], validationErrors: [] });
+      applyReduceResult(input, state, { output: passthrough, events: [], validationErrors: [], warnings: [] });
       started += 1;
       continue;
     }

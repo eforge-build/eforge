@@ -5,7 +5,7 @@ import { validateCompileArtifacts } from '../compile-resilience/artifact-validat
 import { resolvePlanningDecompositionLimits, resolveSharedPlanningBriefLimits } from '../config.js';
 import type { PipelineContext } from '../pipeline/types.js';
 import { resolveAgentRuntimeForInvocationWithExtensions } from '../pipeline/agent-runtime.js';
-import { AdaptiveRescopeFailClosedError, runAdaptiveExplorationRescope, type AdaptiveExplorationRescopeResult } from './adaptive-rescope.js';
+import { AdaptiveRescopeFailClosedError, deriveAuthoritativeOwnerNeedIds, runAdaptiveExplorationRescope, type AdaptiveExplorationRescopeResult } from './adaptive-rescope.js';
 import { buildCompilerDiagnostics, writeCompilerDiagnosticsArtifact, writeRescopeFailClosedArtifact } from './compiler-diagnostics.js';
 import type { CompilerDiagnostics } from './compiler-diagnostics-contracts.js';
 import { runBoundedPlannerCompiler, type BoundedPlannerCompilerResult } from './compiler-runner.js';
@@ -14,6 +14,7 @@ import { writePlanningCompilerArtifacts } from './plan-artifact-writer.js';
 import { runPlanningSatisfactionGate } from './satisfaction-gate-agent.js';
 import type { PlanningSatisfactionSkipDecision } from './satisfaction-gate-contracts.js';
 import { deriveSourceInventory } from './source-inventory.js';
+import { derivePlanningAtomGraph } from './atom-graph.js';
 
 function runtimeChoiceRouterOptions(ctx: PipelineContext) { const routers = ctx.extensionRuntimeChoiceRouters ?? []; return routers.length === 0 ? undefined : { routers, profileName: ctx.configProfileName ?? 'default', cwd: ctx.cwd, configDir: ctx.extensionConfigDir, timeoutMs: ctx.config.extensions.eventHookTimeoutMs }; }
 
@@ -173,6 +174,11 @@ async function* resolveSatisfactionSkip(ctx: PipelineContext, input: Exploration
 async function* resolveExplorationHints(ctx: PipelineContext, input: ExplorationStageInput): AsyncGenerator<EforgeEvent, AdaptiveExplorationRescopeResult | undefined> {
   try {
     const inventory = deriveSourceInventory({ content: input.sourceContent, hash: ctx.compilePromptSourceBundle?.sourceHash });
+    // Ownership authority is derived before localization from the same compiler
+    // inputs as the adaptive loop; it includes required interface/contract/
+    // config/consumer aspects even when no literal owner is unresolved.
+    const graph = derivePlanningAtomGraph({ content: input.sourceContent, hash: inventory.sourceHash, limits: input.limits, inventory });
+    const authoritativeOwnerNeedIds = deriveAuthoritativeOwnerNeedIds(inventory, graph);
     return yield* streamEvents((emit) => runAdaptiveExplorationRescope({
       cwd: ctx.cwd,
       harness: input.harness,
@@ -180,6 +186,7 @@ async function* resolveExplorationHints(ctx: PipelineContext, input: Exploration
       sourceContent: input.sourceContent,
       inventory,
       limits: input.limits,
+      authoritativeOwnerNeedIds,
       abortSignal: ctx.abortController?.signal,
       onEvent: emit,
     }));

@@ -50,7 +50,7 @@ export function buildPlanningReduceTreeFromAtomTasks(input: BuildPlanningReduceT
   return buildReduceTreeFromAtomIds({ graphId: input.graph.graphId, atomIds: tasks.map((task) => task.atomId), limits, nodeForAtomInputs: (nodeId, depth, atomIds, inputNodeIds, priorNodes) => nodeForTaskInputs(nodeId, depth, atomIds, inputNodeIds, taskById, priorNodes) });
 }
 
-export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[], graph: PlanningAtomGraph, validSourceNeedIds?: string[]): PlanningReduceTask {
+export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[], graph: PlanningAtomGraph, validSourceNeedIds: string[] = []): PlanningReduceTask {
   return {
     graphId: tree.graphId,
     node: cloneNode(node),
@@ -61,8 +61,9 @@ export function buildPlanningReduceTask(tree: PlanningReduceTree, node: Planning
     // Reducers may only name atoms represented by this node and descendants,
     // never criterion peers elsewhere in the graph.
     validAffectedAtomIds: boundReduceCatalogIds(nodeAtomIds(tree, node).filter((id) => graph.atoms.some((atom) => atom.atomId === id))),
-    validSourceNeedIds: boundReduceCatalogIds(validSourceNeedIds ?? []),
-    sourceNeedCatalogAvailable: validSourceNeedIds !== undefined,
+    validSourceNeedIds: boundReduceCatalogIds(validSourceNeedIds),
+    // Empty is a known authoritative catalog; reducers never fail open.
+    sourceNeedCatalogAvailable: true,
   };
 }
 
@@ -128,7 +129,10 @@ function nodeForTaskInputs(nodeId: string, depth: number, inputAtomIds: string[]
 
 export function boundReduceCatalogIds(ids: string[]): string[] {
   const result: string[] = [];
-  for (const id of [...new Set(ids)].sort()) {
+  // Callers rank source needs before bounding; retain that deterministic order
+  // so unresolved owner needs cannot be displaced by lexical ordering.
+  for (const id of ids) {
+    if (result.includes(id)) continue;
     if (result.length >= REDUCE_CATALOG_MAX_ITEMS || JSON.stringify([...result, id]).length > REDUCE_CATALOG_MAX_BYTES) break;
     result.push(id);
   }
@@ -216,9 +220,9 @@ function validateIssue(task: PlanningReduceTask, kind: string, id: string, crite
 }
 
 function validateGapCatalogIds(task: PlanningReduceTask, gap: PlanningReduceGap, errors: string[]): void {
-  // Execution quarantines untrusted IDs before validation. Legacy callers
-  // without a catalog retain their gaps for deterministic fallback repair.
-  for (const needId of gap.sourceNeedIds ?? []) if (task.sourceNeedCatalogAvailable && !task.validSourceNeedIds.includes(needId)) errors.push(`unknown source need for reduce gap:${gap.gapId}:${needId}`);
+  // Execution quarantines untrusted IDs before validation against the
+  // authoritative (possibly empty) node catalog.
+  for (const needId of gap.sourceNeedIds ?? []) if (!task.validSourceNeedIds.includes(needId)) errors.push(`unknown source need for reduce gap:${gap.gapId}:${needId}`);
   for (const atomId of gap.affectedAtomIds ?? []) if (!task.validAffectedAtomIds.includes(atomId)) errors.push(`unknown affected atom for reduce gap:${gap.gapId}:${atomId}`);
 }
 

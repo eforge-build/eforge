@@ -232,15 +232,26 @@ function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], lo
   return gaps.flatMap((gap) => [
     ...gap.sourceNeedIds.flatMap((needId) => records.get(needId) ? [{ kind: records.get(needId)!.kind, query: records.get(needId)!.query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: records.get(needId)!.subsystemHints, interfaceKeys: records.get(needId)!.interfaceKeys, atomIds: gap.affectedAtomIds }] : []),
     ...gap.ownerPaths.map((path) => ({ kind: 'literal-path' as const, query: path, paths: [path], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds: gap.affectedAtomIds })),
-    { kind: hintKindFor(gap.issueKind), query: `${gap.gap.title} ${gap.gap.description}`.slice(0, 1_000), criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: concreteHints(gap.gap.title, gap.gap.description), interfaceKeys: concreteHints(...gap.gap.aspectIds), atomIds: gap.affectedAtomIds },
+    ...fallbackHintsForGap(gap, records),
   ]);
 }
 
+function fallbackHintsForGap(gap: ClassifiedPlanningReduceGap, records: Map<string, SourceLocalizationBundle['records'][number]>): SourceLocalizationHint[] {
+  // Source records and explicit paths are scoped evidence. Only if neither is
+  // available may bounded prose help exploration, after diagnostic vocabulary
+  // has been removed.
+  if (gap.sourceNeedIds.some((id) => records.has(id)) || gap.ownerPaths.length > 0) return [];
+  const query = concreteHints(gap.gap.title, gap.gap.description)
+    .filter((token) => !new Set(['missing', 'owner', 'path', 'implementation', 'localized', 'source', 'evidence', 'reduce', 'planning']).has(token))
+    .slice(0, 8)
+    .join(' ');
+  return query ? [{ kind: hintKindFor(gap.issueKind), query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds: gap.affectedAtomIds }] : [];
+}
+
 function mergeRepairHints(existing: SourceLocalizationInputHints | undefined, projectHints: SourceLocalizationHint[]): SourceLocalizationInputHints {
-  const repairHints = dedupeHints(projectHints);
-  const repairKeys = new Set(repairHints.map(hintKey));
-  const existingHints = dedupeHints(existing?.projectHints ?? []).filter((hint) => !repairKeys.has(hintKey(hint)));
-  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: [...repairHints, ...existingHints].slice(0, MAX_REPAIR_PROJECT_HINTS) };
+  // Repair hints refine, rather than replace, an explicit hint: new-file
+  // intent and the caller's stable need identity must survive a repair pass.
+  return { ignorePrefixes: existing?.ignorePrefixes, ignoreGlobs: existing?.ignoreGlobs, projectHints: dedupeHints([...(existing?.projectHints ?? []), ...projectHints]).slice(0, MAX_REPAIR_PROJECT_HINTS) };
 }
 
 function hintKindFor(kind: PlanningReduceGapIssueKind): SourceLocalizationHint['kind'] {
@@ -378,6 +389,8 @@ function mergeHint(a: SourceLocalizationHint, b: SourceLocalizationHint): Source
     criterionIds: uniq([...(a.criterionIds ?? []), ...(b.criterionIds ?? [])]),
     aspectIds: uniq([...(a.aspectIds ?? []), ...(b.aspectIds ?? [])]),
     atomIds: uniq([...(a.atomIds ?? []), ...(b.atomIds ?? [])]),
+    ...(a.needId ?? b.needId ? { needId: a.needId ?? b.needId } : {}),
+    ...(a.newFile || b.newFile ? { newFile: true } : {}),
   };
 }
 

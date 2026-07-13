@@ -34,6 +34,11 @@ describe('planning compiler source-localization repair loop', () => {
     expect(firstAtomPrompt).not.toContain(ownerPath);
     expect(firstAtomPrompt).not.toContain('userRoute');
     expect(result.status).toBe('complete');
+    // Root-cause fixture: a broad initial plan repaired with the upstream
+    // owner must still synthesize buildable artifacts, not owner failures.
+    expect(result.map.outputs[0]?.moduleCandidates?.length).toBeGreaterThan(0);
+    expect(result.validationErrors.join('\n')).not.toContain('classifier-owner-path-unlocalized');
+    expect(result.validationErrors.join('\n')).not.toContain('no localized owner paths resolved');
     expect(result.sourceLocalizationBundle.records.flatMap((record) => record.candidateFiles.map((candidate) => candidate.path))).toContain(ownerPath);
     expect(result.sourceEvidenceBundle.records).toEqual(expect.arrayContaining([expect.objectContaining({ path: ownerPath, status: 'materialized', contentExcerpt: expect.stringContaining('userRoute') })]));
     expect(result.repairDiagnostics).toEqual([expect.objectContaining({ status: 'repaired', gapIds: ['gap-owner'], affectedAtomIds: [task.atomId], localizedOwnerPaths: [ownerPath], evidenceMaterializationStatus: [expect.objectContaining({ path: ownerPath, status: 'materialized' })], residueSynthesisBlocked: true })]);
