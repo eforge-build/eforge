@@ -3679,6 +3679,10 @@ eforge extension reload
 
 Extensions run as trusted, unsandboxed code in the daemon process. A project-local install does not require a team trust record. Each user must trust a committed project/team installation, and package changes invalidate the stored trust hash until it is reviewed and trusted again.
 
+![The eforge-plan planning workstation showing an epic-grouped backlog, planning search, fresh recommendations, and parallel planning lanes.](/screenshots/eforge-plan-workstation.png)
+
+*The sandboxed eforge-plan workstation brings backlog organization, cross-artifact search, recommendations, and planning handoff into Console.*
+
 ## What it adds
 
 Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:

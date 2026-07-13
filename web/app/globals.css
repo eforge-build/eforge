@@ -100,6 +100,14 @@ a:hover {
   margin: 0.75rem 0;
 }
 
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+}
+
 .prose ul,
 .prose ol {
   padding-left: 1.5rem;
