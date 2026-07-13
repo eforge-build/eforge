@@ -203,6 +203,10 @@ function analysisFixture(overrides: Partial<QueueRecoveryAnalyzeResponse> = {}):
   };
 }
 
+function simpleRetryAnalysisFixture(overrides: Partial<QueueRecoveryAnalyzeResponse> = {}): QueueRecoveryAnalyzeResponse {
+  return analysisFixture({ nodes: [], ...overrides });
+}
+
 function repairAnalysisFixture(overrides: Partial<QueueRecoveryAnalyzeResponse> = {}): QueueRecoveryAnalyzeResponse {
   return analysisFixture({
     eligible: false,
@@ -664,10 +668,28 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
     expect(retryForNewPrd.disabled).toBe(false);
   });
 
-  it('warns when the sidecar verdict is manual', async () => {
-    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('manual', 'high'));
+  it('shows primary-level blockers before detailed controls when no descendants were skipped', async () => {
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(analysisFixture({
+      eligible: false,
+      nodes: [],
+      blockers: [{ code: 'failed-prd-blocked', prdId: 'failed-prd', message: 'The failed PRD still has an active dependency.', severity: 'blocker' }],
+    }));
     renderDialog();
+
+    expect(await screen.findByText('Retry build unavailable.')).toBeDefined();
+    expect(screen.getByText(/The failed PRD still has an active dependency/)).toBeDefined();
+    expect(screen.queryByText('Skipped descendants')).toBeNull();
+  });
+
+  it('warns when the sidecar verdict is manual while allowing an explicit simple-retry override', async () => {
+    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('manual', 'high'));
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(simpleRetryAnalysisFixture());
+    renderDialog();
+
     expect(await screen.findByText(/can contradict manual guidance/)).toBeDefined();
+    const retryButtons = screen.getAllByRole('button', { name: 'Retry build' }) as HTMLButtonElement[];
+    expect(retryButtons).toHaveLength(1);
+    expect(retryButtons[0].disabled).toBe(false);
   });
 
   it('renders dependency classifications, dispatch preflight warnings, and repair result metadata', async () => {
@@ -739,9 +761,14 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
     expect(applyQueueRecovery).not.toHaveBeenCalled();
   });
 
-  it('warns when the recovery verdict has low confidence', async () => {
+  it('warns when the recovery verdict has low confidence while allowing an explicit simple-retry override', async () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('retry', 'low'));
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(simpleRetryAnalysisFixture());
     renderDialog();
+
     expect(await screen.findByText(/low confidence/)).toBeDefined();
+    const retryButtons = screen.getAllByRole('button', { name: 'Retry build' }) as HTMLButtonElement[];
+    expect(retryButtons).toHaveLength(1);
+    expect(retryButtons[0].disabled).toBe(false);
   });
 });

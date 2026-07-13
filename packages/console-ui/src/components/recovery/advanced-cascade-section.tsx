@@ -15,6 +15,7 @@ import { ConfirmAction } from './confirm-action';
 import { QueueCascadeRepairPanel } from './queue-cascade-repair-panel';
 import { deriveCascadeRepairState, isSimpleQueueRetry, type RemovalSelection, type StackParentSelection } from './queue-cascade-repair-state';
 
+// --- eforge:region cascade-recovery-contracts-and-labels ---
 interface AdvancedCascadeSectionProps {
   prdId: string;
   /** Sidecar verdict, used to warn when queue-cascade may contradict guidance. */
@@ -55,6 +56,7 @@ function NoticeList({ notices, empty }: { notices: QueueRecoveryNotice[]; empty?
     </ul>
   );
 }
+// --- eforge:endregion cascade-recovery-contracts-and-labels ---
 
 /**
  * Advanced queue-cascade recovery. This is the lower-level repair operation that
@@ -62,6 +64,7 @@ function NoticeList({ notices, empty }: { notices: QueueRecoveryNotice[]; empty?
  * descendants. Simple retries are promoted to the dialog's primary action.
  */
 export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueue, active }: AdvancedCascadeSectionProps) {
+  // --- eforge:region cascade-recovery-analysis-lifecycle ---
   const [open, setOpen] = React.useState(false);
   const [analysis, setAnalysis] = React.useState<QueueRecoveryAnalyzeResponse | null>(null);
   const [analyzedPrdId, setAnalyzedPrdId] = React.useState<string | null>(null);
@@ -137,7 +140,9 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
     // whose cleanup cancels the in-flight fetch. The guard above reads their
     // latest values from the closure and refetches when `prdId` changes.
   }, [active, prdId]);
+  // --- eforge:endregion cascade-recovery-analysis-lifecycle ---
 
+  // --- eforge:region cascade-recovery-application ---
   const blockers = analysis?.blockers ?? [];
   const warnings = analysis?.warnings ?? [];
   const applyBlockers = applyResult?.blockers ?? [];
@@ -191,7 +196,9 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
       if (isCurrentApply()) setApplying(false);
     }
   };
+  // --- eforge:endregion cascade-recovery-application ---
 
+  // --- eforge:region cascade-recovery-rendering ---
   return (
     <section className="space-y-2 rounded-md border border-dashed p-3">
       <div className="flex items-center justify-between gap-2">
@@ -352,4 +359,5 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
       )}
     </section>
   );
+  // --- eforge:endregion cascade-recovery-rendering ---
 }
