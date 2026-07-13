@@ -69,4 +69,32 @@ describe('PipelineSection', () => {
       { id: 'plan-01-config', name: 'Plan 01 Config', body: '# Plan 01' },
     ]);
   });
+
+  it('merges live, resumed, and REST artifacts by canonical plan ID', () => {
+    const runState = createInitialRunState();
+    runState.resumeArtifacts = [
+      { id: 'plan-live', name: 'Resumed name', body: '# Resumed', dependsOn: [] },
+      { id: 'plan-resume-only', name: 'Resumed only', body: '# Resume only', dependsOn: [] },
+    ];
+    runState.events.push({
+      eventId: 'live',
+      event: {
+        type: 'planning:complete',
+        timestamp: '2026-01-01T00:00:00Z',
+        plans: [
+          { id: 'plan-live', name: 'Live name', body: '# Live', dependsOn: [], branch: '', filePath: '' },
+          { id: 'plan-live-only', name: 'Live only', body: '# Live only', dependsOn: [], branch: '', filePath: '' },
+        ],
+      } as unknown as EforgeEvent,
+    });
+
+    render(<PipelineSection runState={runState} plans={[makePlan({ id: 'plan-live', name: 'REST name', body: '# REST' })]} />);
+
+    const props = threadPipelineMock.mock.calls.at(-1)?.[0] as ComponentProps<typeof ThreadPipeline>;
+    expect(props.planArtifacts).toEqual([
+      { id: 'plan-live', name: 'Live name', body: '# REST' },
+      { id: 'plan-live-only', name: 'Live only', body: '# Live only' },
+      { id: 'plan-resume-only', name: 'Resumed only', body: '# Resume only' },
+    ]);
+  });
 });

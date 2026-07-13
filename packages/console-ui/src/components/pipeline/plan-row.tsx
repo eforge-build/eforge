@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/run-state/format';
 import type { AgentThread, StoredEvent, DecisionPoint, Decision, MapReduceTimelineLane, MapReduceThreadDisplay } from '@/lib/run-state';
+import type { PlanPresentation } from '@/lib/run-state/plan-presentation';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { DecisionTimeline } from './decision-timeline';
 import {
@@ -41,6 +42,8 @@ interface PlanRowProps {
   currentStage?: PipelineStage;
   prdSource?: { label: string; content: string } | null;
   planArtifact?: { name: string; body: string };
+  /** Display-only metadata; all interactions continue to receive planId. */
+  presentation?: PlanPresentation;
   dependsOn?: string[];
   depth?: number;
   compileStages?: string[];
@@ -91,7 +94,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, laneDisplay, threadDisplay, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, presentation, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, laneDisplay, threadDisplay, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   // Pack agent threads into the minimum number of lanes so sequential agents
@@ -119,14 +122,17 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
 
   // Build tooltip text for plan pills
   const planTooltipText = useMemo(() => {
-    if (!planArtifact) return [planId];
-    const parts = [planArtifact.name || planId];
+    const parts = presentation
+      ? [...presentation.tooltip]
+      : planArtifact
+        ? [planArtifact.name || planId, `ID: ${planId}`]
+        : [planId];
     if (dependsOn && dependsOn.length > 0) {
       const depLabels = dependsOn.map((d) => abbreviatePlanId(d)).join(', ');
       parts.push(`Depends on: ${depLabels}`);
     }
     return parts;
-  }, [planId, planArtifact, dependsOn]);
+  }, [planId, planArtifact, presentation, dependsOn]);
 
   // Render left column label
   const leftLabel = (() => {
@@ -164,10 +170,10 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className={`${planPillClassFor(depth ?? 0)} max-w-full justify-start`}
+                  className={`${planPillClassFor(depth ?? 0)} min-w-0 max-w-full justify-start`}
                   onClick={() => openPreview(planId, { name: planArtifact.name || planId, body: planArtifact.body })}
                 >
-                  <span className="truncate min-w-0">{abbreviatePlanId(planId)}</span>
+                  <span className="truncate min-w-0">{presentation?.label ?? abbreviatePlanId(planId)}</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -212,13 +218,15 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={planPillClassFor(depth ?? 0)}
+                className={`${planPillClassFor(depth ?? 0)} min-w-0 max-w-full justify-start`}
                 onClick={disablePreview ? undefined : () => openPreview(planId)}
               >
-                <span className="truncate min-w-0">{abbreviatePlanId(planId)}</span>
+                <span className="truncate min-w-0">{presentation?.label ?? abbreviatePlanId(planId)}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">{planId}</TooltipContent>
+            <TooltipContent side="left">
+              {planTooltipText.map((line, i) => <div key={i}>{line}</div>)}
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>

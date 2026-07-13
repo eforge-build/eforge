@@ -6,6 +6,7 @@ import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildS
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { isFeatureBranchLane, isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
+import { planPresentation } from '@/lib/run-state/plan-presentation';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -118,6 +119,11 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     }
     return map;
   }, [orchestration]);
+
+  const presentationByPlan = useMemo(
+    () => new Map((orchestration?.plans ?? []).map((plan, index) => [plan.id, planPresentation(index, plan.name, plan.id)])),
+    [orchestration],
+  );
 
   const depthMap = useMemo(() => {
     if (!orchestration || orchestration.plans.length === 0) {
@@ -322,7 +328,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
         {!hasThreadContent ? (
           <div className="text-11px text-text-dim italic">Waiting for agent activity...</div>
         ) : (
-          <div className="grid grid-cols-[fit-content(180px)_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-start">
+          <div className="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-start">
             {hasGlobalThreads && (
               <PlanRow
                 key="__compile__"
@@ -372,6 +378,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 buildStages={buildStagesByPlan.get(planId)}
                 currentStage={planStatuses[planId]}
                 planArtifact={planArtifactMap.get(planId)}
+                presentation={presentationByPlan.get(planId)}
                 dependsOn={dependsByPlan.get(planId)}
                 depth={depthMap.get(planId) ?? 0}
                 perspectiveErrors={perspectiveErrors?.[planId]}

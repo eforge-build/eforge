@@ -40,7 +40,7 @@ describe('MiniPlanSwimlane', () => {
       <MiniPlanSwimlane lanes={[makeLane()]} planning={emptyPlanning} hasPlanningRow={false} />,
     );
     expect(screen.getByTestId('mini-plan-swimlane')).toBeDefined();
-    expect(screen.getByText('Plan 01 · Plan One')).toBeDefined();
+    expect(screen.getByText('Plan One')).toBeDefined();
     // build-stage chips
     expect(screen.getByText('implement')).toBeDefined();
     expect(screen.getByText('test-cycle')).toBeDefined();
@@ -240,7 +240,7 @@ describe('MiniPlanSwimlane', () => {
     // Completed lane is collapsed: its agent is hidden until expanded.
     expect(screen.queryByText('reviewer')).toBeNull();
 
-    fireEvent.click(screen.getByText('Plan 02 · Done'));
+    fireEvent.click(screen.getByText('Done'));
     expect(screen.getByText('reviewer')).toBeDefined();
   });
 });

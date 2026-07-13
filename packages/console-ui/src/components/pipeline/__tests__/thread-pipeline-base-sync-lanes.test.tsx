@@ -80,7 +80,7 @@ describe('ThreadPipeline direct base-sync lane labels', () => {
       ],
     });
 
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Feature implementation')).toBeTruthy();
     expect(screen.getByText('Feature branch: eforge/direct-pr-feature')).toBeTruthy();
     expect(screen.getByText(/merge-conflict-resolver/)).toBeTruthy();
   });
@@ -108,7 +108,7 @@ describe('ThreadPipeline direct base-sync lane labels', () => {
       ],
     });
 
-    const featurePlan = screen.getByText('Plan 01');
+    const featurePlan = screen.getByText('Plan 01 — Feature implementation');
     const featureBranch = screen.getByText('Feature branch: eforge/direct-pr-feature');
     const baseSync = screen.getByText('Direct Base Sync');
     const validation = screen.getByText('Validation');

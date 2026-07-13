@@ -42,9 +42,7 @@ const FALLBACK_STAGE_LABELS: Partial<Record<PipelineStage, string>> = {
 };
 
 function shortPlanLabel(lane: PlanLane): string {
-  const planMatch = lane.planId.match(/^plan-(\d+)/i);
-  if (!planMatch) return lane.planName;
-  return `Plan ${planMatch[1].padStart(2, '0')} · ${lane.planName}`;
+  return lane.presentationLabel ?? lane.planName;
 }
 
 function isLaneActive(lane: PlanLane): boolean {
@@ -258,7 +256,10 @@ function PlanLaneRow({ lane, maxTokens }: { lane: PlanLane; maxTokens: number })
         <>
           <span className="flex min-w-0 items-center gap-1.5">
             <DisclosureCaret open={open} />
-            <span className="truncate text-xs font-medium text-foreground" title={lane.planName}>
+            <span
+              className="truncate text-xs font-medium text-foreground"
+              title={lane.presentationTooltip?.join('\n') ?? `${lane.planName}\nID: ${lane.planId}`}
+            >
               {shortPlanLabel(lane)}
             </span>
           </span>

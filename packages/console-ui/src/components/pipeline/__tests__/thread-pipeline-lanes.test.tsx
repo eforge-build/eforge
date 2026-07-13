@@ -116,7 +116,7 @@ describe('ThreadPipeline map/reduce lane grouping', () => {
     });
     expect(screen.getByText('Map atoms (2)')).toBeTruthy();
     expect(screen.getByText('Reduce (1)')).toBeTruthy();
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
   });
 });
 
@@ -136,8 +136,8 @@ describe('ThreadPipeline lane ordering', () => {
     });
 
     // The validation lane should render with the agent name visible in the pipeline.
-    // Plan 01 should also be present.
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    // The numbered presentation label should also be present.
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
     // Validation lane renders with laneLabel('validation') = 'Validation'
     expect(screen.getByText('Validation')).toBeTruthy();
   });
@@ -174,7 +174,7 @@ describe('ThreadPipeline lane ordering', () => {
       planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
     });
 
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
     expect(screen.queryByText('acceptance-validation')).toBeNull();
   });
 
@@ -189,7 +189,7 @@ describe('ThreadPipeline lane ordering', () => {
       ],
     });
 
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
     expect(screen.getByText('Validation')).toBeTruthy();
     expect(screen.queryByText('acceptance-validation')).toBeNull();
   });
@@ -215,7 +215,7 @@ describe('ThreadPipeline lane ordering', () => {
       planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
     });
 
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
     expect(screen.queryByText('Validation')).toBeNull();
     expect(screen.queryByText('Gap Close')).toBeNull();
     expect(screen.queryByText('Final Validation')).toBeNull();
@@ -244,7 +244,7 @@ describe('ThreadPipeline lane ordering', () => {
       ],
     });
 
-    const plan = screen.getByText('Plan 01');
+    const plan = screen.getByText('Plan 01 — Plan 01');
     const baseSync = screen.getByText('Direct Base Sync');
     const validation = screen.getByText('Validation');
     expect(plan.compareDocumentPosition(baseSync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
