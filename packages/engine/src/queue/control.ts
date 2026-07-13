@@ -88,6 +88,8 @@ export interface OverrideQueuedPrdDependencyResult {
   movedToQueueRoot: boolean;
 }
 
+interface DependencyOverrideMutation extends OverrideQueuedPrdDependencyResult { clearStackParent: boolean; }
+
 const RUNNING_CANCEL_GUIDANCE =
   'running builds must be cancelled by session id through the cancel route, not through queue-control routes';
 
@@ -192,9 +194,9 @@ async function setPriorityExistingOnly(prd: QueuedPrd, priority: number): Promis
   }
 }
 
-async function setDependsOnExistingOnly(prd: QueuedPrd, dependsOn: string[]): Promise<void> {
+async function setDependencyOverrideExistingOnly(prd: QueuedPrd, dependsOn: string[], clearStackParent: boolean): Promise<void> {
   try {
-    await setQueuedPrdFrontmatterFieldsExistingOnly(prd, { depends_on: dependsOn });
+    await setQueuedPrdFrontmatterFieldsExistingOnly(prd, { depends_on: dependsOn, ...(clearStackParent && { stack_parent: undefined }) });
   } catch (err) {
     if (isErrno(err, 'ENOENT')) {
       throw new QueueControlError(
@@ -206,13 +208,15 @@ async function setDependsOnExistingOnly(prd: QueuedPrd, dependsOn: string[]): Pr
   }
 }
 
-function replaceDependsOnInContent(content: string, dependsOn: string[]): string {
+function replaceDependencyOverrideInContent(content: string, dependsOn: string[], clearStackParent: boolean): string {
   const line = `depends_on: [${dependsOn.map((id) => JSON.stringify(id)).join(', ')}]`;
-  if (/^depends_on:.*$/m.test(content)) return content.replace(/^depends_on:.*$/m, line);
-  return content.replace(/^(---\n[\s\S]*?)(\n---)/, `$1\n${line}$2`);
+  const withDependsOn = /^depends_on:.*$/m.test(content)
+    ? content.replace(/^depends_on:.*$/m, line)
+    : content.replace(/^(---\n[\s\S]*?)(\n---)/, `$1\n${line}$2`);
+  return clearStackParent ? withDependsOn.replace(/^stack_parent:.*\n?/m, '') : withDependsOn;
 }
 
-async function moveWaitingPrdToQueueRoot(prd: QueuedPrd, absQueueDir: string, currentDependsOn: string[]): Promise<void> {
+async function moveWaitingPrdToQueueRoot(prd: QueuedPrd, absQueueDir: string, currentDependsOn: string[], clearStackParent: boolean): Promise<void> {
   const destPath = resolve(absQueueDir, basename(prd.filePath));
   if (await fileExists(destPath)) {
     throw new QueueControlError(
@@ -220,7 +224,7 @@ async function moveWaitingPrdToQueueRoot(prd: QueuedPrd, absQueueDir: string, cu
       `Cannot move waiting queue item '${prd.id}' to queue root: destination already exists at '${destPath}'.`,
     );
   }
-  const newContent = replaceDependsOnInContent(prd.content, currentDependsOn);
+  const newContent = replaceDependencyOverrideInContent(prd.content, currentDependsOn, clearStackParent);
   try {
     await writeFile(destPath, newContent, { encoding: 'utf-8', flag: 'wx' });
   } catch (err) {
@@ -398,18 +402,19 @@ export async function overrideQueuedPrdDependency(opts: OverrideQueuedPrdDepende
   const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
   const mutation = dependencyOverrideMutation(opts, located, fresh);
   if (mutation.movedToQueueRoot) {
-    await moveWaitingPrdToQueueRoot(fresh, absQueueDir, mutation.currentDependsOn);
+    await moveWaitingPrdToQueueRoot(fresh, absQueueDir, mutation.currentDependsOn, mutation.clearStackParent);
   } else {
-    await setDependsOnExistingOnly(fresh, mutation.currentDependsOn);
+    await setDependencyOverrideExistingOnly(fresh, mutation.currentDependsOn, mutation.clearStackParent);
   }
-  return mutation;
+  const { clearStackParent: _clearStackParent, ...result } = mutation;
+  return result;
 }
 
 function dependencyOverrideMutation(
   opts: OverrideQueuedPrdDependencyOptions,
   located: LocatedPrd,
   fresh: QueuedPrd,
-): OverrideQueuedPrdDependencyResult {
+): DependencyOverrideMutation {
   const previousDependsOn = [...(fresh.frontmatter.depends_on ?? [])];
   if (!previousDependsOn.includes(opts.dependencyId)) {
     throw new QueueControlError(
@@ -418,6 +423,7 @@ function dependencyOverrideMutation(
     );
   }
   const currentDependsOn = previousDependsOn.filter((id) => id !== opts.dependencyId);
+  const clearStackParent = fresh.frontmatter.stack_parent === opts.dependencyId;
   const previousStatus = located.status as 'pending' | 'waiting';
   const movedToQueueRoot = previousStatus === 'waiting' && currentDependsOn.length === 0;
   return {
@@ -429,6 +435,7 @@ function dependencyOverrideMutation(
     previousDependsOn,
     currentDependsOn,
     movedToQueueRoot,
+    clearStackParent,
   };
 }
 
@@ -448,8 +455,9 @@ async function overridePendingRootDependency(
     await runQueueControlRaceHook(opts, 'afterRootClaim');
     const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
     const mutation = dependencyOverrideMutation(opts, located, fresh);
-    await setDependsOnExistingOnly(fresh, mutation.currentDependsOn);
-    return mutation;
+    await setDependencyOverrideExistingOnly(fresh, mutation.currentDependsOn, mutation.clearStackParent);
+    const { clearStackParent: _clearStackParent, ...result } = mutation;
+    return result;
   } finally {
     await releasePrd(opts.prdId, opts.cwd);
   }

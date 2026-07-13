@@ -665,7 +665,7 @@ export async function deleteQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPr
 
 export async function setQueuedPrdFrontmatterFields(
   prd: QueuedPrd,
-  fields: Record<string, QueuedPrdFrontmatterFieldValue>,
+  fields: Record<string, QueuedPrdFrontmatterFieldValue | undefined>,
   options: { existingOnly?: boolean } = {},
 ): Promise<QueuedPrd> {
   const content = prd.content;
@@ -676,18 +676,18 @@ export async function setQueuedPrdFrontmatterFields(
 
   const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
   const remaining = new Map(Object.entries(fields));
-  const updatedLines = fmBody.split('\n').map((line) => {
+  const updatedLines = fmBody.split('\n').flatMap((line) => {
     const kvMatch = line.match(/^(\w[\w_]*)\s*:/);
-    if (!kvMatch) return line;
+    if (!kvMatch) return [line];
     const key = kvMatch[1];
-    if (!remaining.has(key)) return line;
-    const value = remaining.get(key)!;
+    if (!remaining.has(key)) return [line];
+    const value = remaining.get(key);
     remaining.delete(key);
-    return `${key}: ${serializeFrontmatterFieldValue(value)}`;
+    return value === undefined ? [] : [`${key}: ${serializeFrontmatterFieldValue(value)}`];
   });
 
   for (const [key, value] of remaining) {
-    updatedLines.push(`${key}: ${serializeFrontmatterFieldValue(value)}`);
+    if (value !== undefined) updatedLines.push(`${key}: ${serializeFrontmatterFieldValue(value)}`);
   }
 
   const newFmBody = updatedLines.join('\n').trimEnd();
@@ -702,7 +702,7 @@ export async function setQueuedPrdFrontmatterFields(
   return { ...prd, content: newContent, frontmatter: parseResult.data };
 }
 
-export function setQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fields: Record<string, QueuedPrdFrontmatterFieldValue>): Promise<QueuedPrd> {
+export function setQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fields: Record<string, QueuedPrdFrontmatterFieldValue | undefined>): Promise<QueuedPrd> {
   return setQueuedPrdFrontmatterFields(prd, fields, { existingOnly: true });
 }
 
