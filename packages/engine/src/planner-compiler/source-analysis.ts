@@ -51,6 +51,7 @@ export function inferSubsystemHints(value: string): string[] {
 
 export function inferInterfaceKeys(value: string): string[] {
   const keys = new Set(INTERFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([key]) => key));
+  for (const match of value.matchAll(/\b([A-Z][A-Za-z0-9_]*)\s+interface\b/g)) keys.add(stableSlug(match[1]));
   for (const surface of GENERIC_SURFACE_TERMS) if (new RegExp(`\\b${surface}s?\\b`, 'i').test(value)) keys.add(surface);
   return [...keys].sort();
 }

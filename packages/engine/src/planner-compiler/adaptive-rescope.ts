@@ -102,6 +102,20 @@ export function deriveAuthoritativeOwnerNeedIds(inventory: SourceInventory, grap
     .map((need) => need.id))].sort();
 }
 
+function hasConcreteRepresentationEvidence(need: ReturnType<typeof deriveSourceLocalizationNeeds>[number], criteriaWithExplicitPaths: Set<string>): boolean {
+  if (need.kind === 'subsystem' || ['docs', 'test', 'manifest', 'command', 'ui', 'extension'].includes(need.kind)) return false;
+  return need.kind === 'interface'
+    ? isConcreteScopedLabel(need.query)
+    : need.interfaceKeys.some(isConcreteScopedLabel)
+      || need.subsystemHints.some(isConcreteScopedLabel)
+      || need.criterionIds.some((criterionId) => criteriaWithExplicitPaths.has(criterionId));
+}
+
+function isConcreteScopedLabel(value: string): boolean {
+  const tokens = stableSlug(value).split('-');
+  return tokens.length > 0 && tokens.every((token) => !GENERIC_SCOPE_LABELS.has(token) && !GENERIC_SCOPE_LABELS.has(token.endsWith('s') ? token.slice(0, -1) : token));
+}
+
 export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inventory: SourceInventory, authoritativeOwnerNeedIds?: string[]): string[] {
   const byNeedId = new Map(bundle.records.map((record) => [record.needId, record]));
   // Compiler-owned representation requirements are authoritative even if a
@@ -283,8 +297,17 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   const authoritativeOwnerNeedIds = input.authoritativeOwnerNeedIds ?? deriveAuthoritativeOwnerNeedIds(input.inventory, graph);
   // The complete catalog gates exploration. The rescope terminal gate remains
   // narrower: only entrypoint representations can fail compilation closed.
-  const needKinds = new Map(deriveSourceLocalizationNeeds({ inventory: input.inventory, graph }).map((need) => [need.id, need.kind]));
-  const rescopeAuthoritativeOwnerNeedIds = authoritativeOwnerNeedIds.filter((needId) => needKinds.get(needId) === 'entrypoint');
+  const sourceNeeds = deriveSourceLocalizationNeeds({ inventory: input.inventory, graph });
+  const needsById = new Map(sourceNeeds.map((need) => [need.id, need]));
+  const needKinds = new Map(sourceNeeds.map((need) => [need.id, need.kind]));
+  const criteriaWithExplicitPaths = new Set(input.inventory.criteria.filter((criterion) => criterion.evidencePaths.length > 0).map((criterion) => criterion.id));
+  // Generic representation labels remain compiler-owned for repair, but do
+  // not force a paid exploration pass when concrete paths are already grounded.
+  const explorationAuthorityCatalog = authoritativeOwnerNeedIds.filter((needId) => {
+    const need = needsById.get(needId);
+    return need !== undefined && (needKinds.get(needId) === 'entrypoint' || hasConcreteRepresentationEvidence(need, criteriaWithExplicitPaths));
+  });
+  const rescopeAuthoritativeOwnerNeedIds = explorationAuthorityCatalog.filter((needId) => needKinds.get(needId) === 'entrypoint');
   const rescopeAuthorityCatalog = rescopeAuthoritativeOwnerNeedIds.length > 0 ? rescopeAuthoritativeOwnerNeedIds : undefined;
   // Project hints never carry ignore prefixes/globs (the only hint inputs that
   // shape the index), so one repository index serves every localization pass.
@@ -296,7 +319,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     ledger: { totalToolUseBudget: 0, usedToolUses: 0 },
     riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: [],
   };
-  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, authoritativeOwnerNeedIds);
+  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, explorationAuthorityCatalog);
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
   if (skip.skip) return { diagnostics };
 
