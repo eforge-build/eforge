@@ -12,6 +12,9 @@ export default defineConfig({
   test: {
     setupFiles: ['./test/setup-test-env.ts'],
     fileParallelism: true,
+    // The extension integration tests perform concurrent filesystem and SQLite work.
+    // Cap workers so their per-test timeouts remain reliable on high-core hosts.
+    maxWorkers: 8,
     // Fixture repositories under test/fixtures/ may contain their own *.test.ts
     // files as indexing/localization inputs; they are not workspace tests.
     exclude: ['**/node_modules/**', 'test/fixtures/**'],
