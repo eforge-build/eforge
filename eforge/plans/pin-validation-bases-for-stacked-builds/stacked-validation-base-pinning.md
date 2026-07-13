@@ -38,3 +38,21 @@ Tests prove dispatch-time immutability with trunk sync both disabled and enabled
 Test ownership: builder
 Review depth: heavy
 Review rationale: risk score 1 (low-confidence-localization); declared docs work none, test work author-new, test owner builder; model review intent heavy (The change crosses persisted orchestration state and destructive Git topology transitions. Incorrect fallback can silently validate an empty or wrong diff, while over-eager repair can alter landing topology; review must trace every lifecycle consumer and failure branch.); derived build implement -> test-cycle -> review-cycle and parallel review with perspectives code, security, test, verify, 2 round(s), strict evaluation
+
+## Recovery Guidance
+
+- Failed PRD: "pin-validation-bases-for-stacked-builds"
+- Root failed plan: "stacked-validation-base-pinning"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for pin-validation-bases-for-stacked-builds. artifact source: merge-worktree; 12 landed commit(s); failing plan: stacked-validation-base-pinning; feature branch: eforge/pin-validation-bases-for-stacked-builds. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "18 blocking issue outcome(s) remain after 2 review round(s) (18 unresolved, 0 need human review; 17 rejected, 0 under review)."
+- Failure detail: "18 blocking issue outcome(s) remain after 2 review round(s) (18 unresolved, 0 need human review; 17 rejected, 0 under review)."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair pin-validation-bases-for-stacked-builds`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "Repair validation-base handling for non-stacked trunk-sync pins where fetched remote trunk is ahead of the local logical base."
+  - "Make final policy diff and gap-closer recheck failures produce actionable typed unavailable evidence and fail closed without policy, merge, or agent invocation."
+  - "Add focused dispatch/orchestration/resume tests for stacked pins under both trunk-sync modes and unresolved-parent pre-compile failure."
+  - "Add wiring and lifecycle regressions for unavailable evidence suppression, acceptance/post-gap/final validation, final-policy forwarding, and landing-repair metadata preservation."
+- Retry/resume guidance: Continue stacked-validation-base-pinning for failed PRD pin-validation-bases-for-stacked-builds from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-07-13T03:57:43.505Z
+- Source sidecar: .eforge/queue/failed/pin-validation-bases-for-stacked-builds.recovery.json
+- Source identity: prdId=pin-validation-bases-for-stacked-builds; setName=pin-validation-bases-for-stacked-builds; featureBranch=eforge/pin-validation-bases-for-stacked-builds; baseBranch=main
