@@ -35,6 +35,8 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
       return { bg: 'bg-amber-500', border: 'border-amber-400' };
     case 'recovery-verdict':
       return { bg: 'bg-red-500', border: 'border-red-400' };
+    case 'recovery-budget-extended':
+      return { bg: 'bg-orange-500', border: 'border-orange-400' };
     case 'merge-conflict-resolution':
       return { bg: 'bg-purple-500', border: 'border-purple-400' };
     default:
@@ -83,6 +85,8 @@ export function decisionSummary(decision: Decision): string {
       return `${decision.strictness} (${decision.source})`;
     case 'recovery-verdict':
       return decision.verdict;
+    case 'recovery-budget-extended':
+      return `blocking ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes} — ${decision.maxAttempts} attempt(s) granted`;
     case 'merge-conflict-resolution':
       return `${decision.strategy} — ${decision.files.length} file(s)`;
     default:
@@ -151,6 +155,10 @@ export function decisionDetail(decision: Decision): string {
       break;
     case 'recovery-verdict':
       lines.push(`Verdict: ${decision.verdict}`);
+      break;
+    case 'recovery-budget-extended':
+      lines.push(`Blocking issue outcomes: ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes}`);
+      lines.push(`Recovery attempts granted: ${decision.maxAttempts}`);
       break;
     case 'merge-conflict-resolution':
       lines.push(`Strategy: ${decision.strategy}`);

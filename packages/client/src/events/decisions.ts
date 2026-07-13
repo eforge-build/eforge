@@ -97,6 +97,14 @@ export const BuildDecisionSchema = Type.Union([
     ]),
     source: Type.Union([Type.Literal('config'), Type.Literal('default')]),
   }),
+  // Same-plan recovery budget extended after review-round convergence
+  Type.Object({
+    kind: Type.Literal('recovery-budget-extended'),
+    rationale: Type.String(),
+    previousBlockingIssueOutcomes: Type.Integer({ minimum: 1 }),
+    lastBlockingIssueOutcomes: Type.Integer({ minimum: 1 }),
+    maxAttempts: Type.Integer({ minimum: 2 }),
+  }),
   // Recovery verdict applied
   Type.Object({
     kind: Type.Literal('recovery-verdict'),

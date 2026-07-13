@@ -61,6 +61,8 @@ export interface SamePlanRecoveryRunOptions {
   diffContext?: string;
   priorRepairAttempts?: string[];
   maxAttempts: number;
+  /** Pre-built budget-extension decision, recorded only if recovery actually starts. */
+  budgetDecision?: EforgeEvent;
   activePlanId: string;
   confidence: number;
   complete: boolean;
@@ -134,6 +136,7 @@ export async function* runSamePlanRecovery(options: SamePlanRecoveryRunOptions):
     return false;
   }
 
+  if (options.budgetDecision) yield options.budgetDecision;
   yield { timestamp: ts(), type: 'plan:build:recovery:start', planId: ctx.planId, blockerKind, issueCount: issues.length, maxAttempts, attemptsRemaining: maxAttempts } as EforgeEvent;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

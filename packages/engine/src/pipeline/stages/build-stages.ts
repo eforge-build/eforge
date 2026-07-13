@@ -54,7 +54,8 @@ import { createToolTracker } from '../span-wiring.js';
 import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
 import { enforceShardScope, shardClaimsFile } from './shard-scope.js';
-import { selectActiveRecoveryIssues } from './recovery-issue-selection.js';
+import { makeActiveRecoveryIssueSelector, selectActiveRecoveryIssues } from './recovery-issue-selection.js';
+import { buildConvergenceBudgetDecision, composeReviewCycleTerminalError, convergenceExtension } from '../review-convergence.js';
 import { captureTestOwnershipSnapshot, enforceTestOwnershipGuard, hasTestStages } from '../test-ownership.js';
 export { enforceShardScope };
 const exec = promisify(execFile); // ---------------------------------------------------------------------------
@@ -1121,6 +1122,7 @@ registerBuildStage({
   let lastReviewIssueCount = 0;
   let lastBlockingIssues: ReviewIssue[] = [];
   const priorRepairAttempts: string[] = [];
+  const blockingHistory: Array<number | undefined> = [];
 
   for (let round = 0; round < maxRounds; round++) {
     // Emit perspectives-respawned at the start of each review round
@@ -1171,7 +1173,9 @@ registerBuildStage({
     yield* reviewFixStageInner(ctx, { round });
     yield* evaluateStageInner(ctx, { strictness, round });
     if (ctx.buildFailed) return;
-    priorRepairAttempts.push(summarizeRepairAttempt(round, getLastBuildEvaluation(ctx), lastBlockingIssues.length));
+    const roundEvaluation = getLastBuildEvaluation(ctx);
+    priorRepairAttempts.push(summarizeRepairAttempt(round, roundEvaluation, lastBlockingIssues.length));
+    blockingHistory.push(roundEvaluation?.ran ? roundEvaluation.blockingIssueOutcomes : undefined);
 
     if (round < maxRounds - 1) {
       const previousActiveForSelection = reviewMetadata.activePerspectives.length > 0
@@ -1260,30 +1264,26 @@ registerBuildStage({
         finalEvaluationBlocking: finalEvaluation.blockingIssueOutcomes,
       }),
     } as unknown as Parameters<typeof emitBuildDecision>[1]);
-    const evalHasBlockingIssues = !finalEvaluation?.ran || finalEvaluation.blockingIssueOutcomes > 0;
-    if (lastReviewIssueCount > 0 && evalHasBlockingIssues) {
+    if (lastReviewIssueCount > 0 && (!finalEvaluation?.ran || finalEvaluation.blockingIssueOutcomes > 0)) {
       const recoveryFeedback = getReviewCycleFeedback(ctx);
       const recoverySelection = selectActiveRecoveryIssues(lastBlockingIssues, recoveryFeedback);
       const recoveryIssues = recoverySelection.complete ? recoverySelection.issues : lastBlockingIssues;
+      const activeRecoveryIssues = makeActiveRecoveryIssueSelector(recoveryIssues, () => getReviewCycleFeedback(ctx));
       const allowCleanNoVerdictRecovery = recoveryIssues.length > 0 && priorRepairAttempts.length > 0 && finalEvaluation !== undefined && !finalEvaluation.ran;
       ctx.reviewIssues = recoveryIssues;
       const recoveryGate = await samePlanRecoveryGate(ctx, 'review', finalEvaluation, { allowCleanNoVerdictRecovery });
-      let recoveryBlockingCheckRan = false;
-      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...(await getSamePlanRecoveryReviewContext(ctx)), maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
-        runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
+      const recoveryBudget = convergenceExtension(blockingHistory, 1);
+      let recoveryBlockingCheckRan = false, lastRecoveryScopeCount = recoveryIssues.length;
+      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...(await getSamePlanRecoveryReviewContext(ctx)), maxAttempts: recoveryBudget.maxAttempts, budgetDecision: buildConvergenceBudgetDecision(ctx, recoveryBudget), ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
+        currentIssues: activeRecoveryIssues,
+        currentFeedback: () => getReviewCycleFeedback(ctx) ?? recoveryFeedback,
+        runFix: (_attempt, samePlanRecoveryContext) => { const scoped = activeRecoveryIssues(); lastRecoveryScopeCount = scoped.length; ctx.reviewIssues = scoped; return reviewFixStageInner(ctx, { samePlanRecoveryContext }); },
         runBlockingCheck: (_attempt) => { recoveryBlockingCheckRan = true; return evaluateStageInner(ctx, { strictness }); },
         hasBlockers: () => { const latest = getLastBuildEvaluation(ctx); return !latest?.ran || latest.blockingIssueOutcomes > 0; },
       } });
       if (recovered) return;
       if (ctx.buildFailed) return;
-      // A no-change recovery fix records a not-run evaluation; pre-recovery counts then still stand.
-      const latestEvaluation = getLastBuildEvaluation(ctx), recoveryEvaluationRan = recoveryBlockingCheckRan && latestEvaluation?.ran === true;
-      const terminalEvaluation = recoveryEvaluationRan ? latestEvaluation : finalEvaluation;
-      const scopeNote = recoveryEvaluationRan && recoveryIssues.length < lastBlockingIssues.length ? ` Recovery re-evaluated ${recoveryIssues.length} of ${lastBlockingIssues.length} blocking issue(s); counts reflect that subset.` : '';
-      const errorMsg = !terminalEvaluation?.ran
-        ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
-        : `${terminalEvaluation.blockingIssueOutcomes} blocking issue outcome(s) remain after ${maxRounds} review round(s) (${terminalEvaluation.unresolvedIssueOutcomes} unresolved, ${terminalEvaluation.needsHumanReviewIssueOutcomes} need human review; ${terminalEvaluation.rejected} rejected, ${terminalEvaluation.review} under review).${scopeNote}`;
-      yield failPlan(ctx, errorMsg);
+      yield failPlan(ctx, composeReviewCycleTerminalError({ maxRounds, finalEvaluation, latestEvaluation: getLastBuildEvaluation(ctx), recoveryBlockingCheckRan, recoveryScopeCount: lastRecoveryScopeCount, blockingSnapshotCount: lastBlockingIssues.length }));
     }
   }
 });

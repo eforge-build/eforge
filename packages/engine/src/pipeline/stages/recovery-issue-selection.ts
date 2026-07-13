@@ -1,6 +1,19 @@
 import type { ReviewIssue } from '../../events.js';
 import type { ReviewCycleFeedback } from '../review-cycle-feedback.js';
 
+/**
+ * Selector for the still-active recovery scope. Evaluate passes clear
+ * ctx.reviewIssues and refresh evaluator feedback, so each recovery attempt
+ * re-derives its scope from the latest verdicts via the feedback getter,
+ * falling back to the full base set when guidance is incomplete.
+ */
+export function makeActiveRecoveryIssueSelector(baseIssues: ReviewIssue[], getFeedback: () => ReviewCycleFeedback | undefined): () => ReviewIssue[] {
+  return () => {
+    const selection = selectActiveRecoveryIssues(baseIssues, getFeedback());
+    return selection.complete ? selection.issues : baseIssues;
+  };
+}
+
 export function selectActiveRecoveryIssues(suppliedIssues: ReviewIssue[], feedback?: ReviewCycleFeedback) {
   const guidance = feedback?.blockingRetryGuidance ?? [];
   if (guidance.length === 0) return { complete: false, issues: [] as ReviewIssue[] };

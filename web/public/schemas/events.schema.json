@@ -16418,6 +16418,37 @@
                   "required": [
                     "kind",
                     "rationale",
+                    "previousBlockingIssueOutcomes",
+                    "lastBlockingIssueOutcomes",
+                    "maxAttempts"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "recovery-budget-extended",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "previousBlockingIssueOutcomes": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "lastBlockingIssueOutcomes": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "maxAttempts": {
+                      "minimum": 2,
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
                     "verdict"
                   ],
                   "properties": {
@@ -35070,6 +35101,37 @@
                                         "type": "string"
                                       }
                                     ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
+                                  "previousBlockingIssueOutcomes",
+                                  "lastBlockingIssueOutcomes",
+                                  "maxAttempts"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "recovery-budget-extended",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "previousBlockingIssueOutcomes": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "lastBlockingIssueOutcomes": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "maxAttempts": {
+                                    "minimum": 2,
+                                    "type": "integer"
                                   }
                                 }
                               },
