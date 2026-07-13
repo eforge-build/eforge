@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { QueueRecoveryAnalyzeResponse } from '@eforge-build/client/browser';
-import { deriveCascadeRepairState, deriveDependencyGroups, deriveSelectedRepairActions, removalKey } from '../queue-cascade-repair-state';
+import { deriveCascadeRepairState, deriveDependencyGroups, deriveSelectedRepairActions, isSimpleQueueRetry, removalKey } from '../queue-cascade-repair-state';
 
 function analysis(): QueueRecoveryAnalyzeResponse {
   return {
@@ -32,6 +32,21 @@ function analysis(): QueueRecoveryAnalyzeResponse {
 }
 
 describe('queue cascade repair state', () => {
+  it('promotes only an eligible retry with no descendants or metadata repair', () => {
+    const simple = {
+      ...analysis(),
+      eligible: true,
+      nodes: [{ id: 'a', title: 'Failed', location: 'failed', status: 'failed', dependsOn: [], role: 'selected-failed-upstream' as const }],
+      operations: [{ id: 'retry', kind: 'move-prd' as const, prdId: 'a', expectedSourceLocation: 'failed' as const, targetLocation: 'queue' as const, reason: 'retry' }],
+      blockers: [],
+      availableRepairActions: [],
+      dispatchPreflight: undefined,
+    } satisfies QueueRecoveryAnalyzeResponse;
+    expect(isSimpleQueueRetry(simple)).toBe(true);
+    expect(isSimpleQueueRetry({ ...simple, nodes: [...simple.nodes, { ...simple.nodes[0], id: 'child', role: 'skipped-descendant' }] })).toBe(false);
+    expect(isSimpleQueueRetry({ ...simple, availableRepairActions: [{ kind: 'remove-depends-on', targetPrdId: 'a', dependencyIds: ['done-1'] }] })).toBe(false);
+  });
+
   it('groups selected removals and emits selected repair actions', () => {
     const selected = deriveSelectedRepairActions(analysis(), { [removalKey('a', 'done-1')]: true }, { a: 'done-2' });
     expect(selected).toEqual([

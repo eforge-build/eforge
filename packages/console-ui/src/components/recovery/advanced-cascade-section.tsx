@@ -13,8 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmAction } from './confirm-action';
 import { QueueCascadeRepairPanel } from './queue-cascade-repair-panel';
-import { deriveCascadeRepairState, type RemovalSelection, type StackParentSelection } from './queue-cascade-repair-state';
+import { deriveCascadeRepairState, isSimpleQueueRetry, type RemovalSelection, type StackParentSelection } from './queue-cascade-repair-state';
 
+// --- eforge:region cascade-recovery-contracts-and-labels ---
 interface AdvancedCascadeSectionProps {
   prdId: string;
   /** Sidecar verdict, used to warn when queue-cascade may contradict guidance. */
@@ -22,6 +23,8 @@ interface AdvancedCascadeSectionProps {
   /** Sidecar confidence, used to warn on low-confidence verdicts. */
   confidence?: string;
   refreshQueue: () => Promise<void> | void;
+  /** Starts analysis only while the containing recovery dialog is open. */
+  active: boolean;
 }
 
 function operationLabel(operation: QueueRecoveryOperation): string {
@@ -53,13 +56,15 @@ function NoticeList({ notices, empty }: { notices: QueueRecoveryNotice[]; empty?
     </ul>
   );
 }
+// --- eforge:endregion cascade-recovery-contracts-and-labels ---
 
 /**
  * Advanced queue-cascade recovery. This is the lower-level repair operation that
  * moves the failed upstream back to the queue and may reactivate skipped
- * descendants. Analysis is fetched lazily only after the section is opened.
+ * descendants. Simple retries are promoted to the dialog's primary action.
  */
-export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueue }: AdvancedCascadeSectionProps) {
+export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueue, active }: AdvancedCascadeSectionProps) {
+  // --- eforge:region cascade-recovery-analysis-lifecycle ---
   const [open, setOpen] = React.useState(false);
   const [analysis, setAnalysis] = React.useState<QueueRecoveryAnalyzeResponse | null>(null);
   const [analyzedPrdId, setAnalyzedPrdId] = React.useState<string | null>(null);
@@ -69,9 +74,25 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
   const [error, setError] = React.useState<string | null>(null);
   const [selectedRemovals, setSelectedRemovals] = React.useState<RemovalSelection>({});
   const [selectedStackParents, setSelectedStackParents] = React.useState<StackParentSelection>({});
+  const generationRef = React.useRef(0);
+  const currentPrdIdRef = React.useRef(prdId);
+  const activeRef = React.useRef(active);
+  currentPrdIdRef.current = prdId;
+  activeRef.current = active;
 
   React.useEffect(() => {
-    if (!open) return;
+    ++generationRef.current;
+    if (!active) {
+      setApplying(false);
+      setAnalysis(null);
+      setAnalyzedPrdId(null);
+      setApplyResult(null);
+      setError(null);
+      setSelectedRemovals({});
+      setSelectedStackParents({});
+      setOpen(false);
+      return;
+    }
     // Already have analysis for the current PRD — nothing to refetch.
     if (analysis && analyzedPrdId === prdId) return;
     // Capture this request's PRD so a stale completion (from a previous prdId
@@ -82,12 +103,17 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
     // start the new request and reset stale state.
     const requestPrdId = prdId;
     let cancelled = false;
+    setApplying(false);
     setLoading(true);
     setError(null);
-    // Discard any stale analysis/apply result carried over from a previous PRD
-    // so the UI never displays or applies operations for the wrong PRD.
+    // Discard every PRD-specific state value before requesting the replacement
+    // analysis, so neither stale selections nor a stale confirmation can leak.
     setAnalysis(null);
+    setAnalyzedPrdId(null);
     setApplyResult(null);
+    setSelectedRemovals({});
+    setSelectedStackParents({});
+    setOpen(false);
     fetchQueueRecoveryAnalysis({
       selectedPrdId: requestPrdId,
       strategy: QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
@@ -113,15 +139,19 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
     // including them re-runs this effect on `setLoading(true)`/`setAnalysis(null)`,
     // whose cleanup cancels the in-flight fetch. The guard above reads their
     // latest values from the closure and refetches when `prdId` changes.
-  }, [open, prdId]);
+  }, [active, prdId]);
+  // --- eforge:endregion cascade-recovery-analysis-lifecycle ---
 
+  // --- eforge:region cascade-recovery-application ---
   const blockers = analysis?.blockers ?? [];
   const warnings = analysis?.warnings ?? [];
   const applyBlockers = applyResult?.blockers ?? [];
   const repairState = analysis ? deriveCascadeRepairState(analysis, selectedRemovals, selectedStackParents, applyResult) : null;
   const skippedDescendants = analysis?.nodes.filter((node) => node.role === 'skipped-descendant') ?? [];
+  const simpleRetry = analysis ? isSimpleQueueRetry(analysis) : false;
   const canApply = Boolean(
     analysis
+      && analyzedPrdId === prdId
       && !loading
       && !applying
       && applyBlockers.length === 0
@@ -131,46 +161,67 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
   );
 
   const handleApply = async () => {
-    if (!analysis || !canApply) return;
+    if (!analysis || analyzedPrdId !== prdId || !canApply) return;
+    const applyingPrdId = analyzedPrdId;
+    const applyingGeneration = generationRef.current;
+    const isCurrentApply = () => (
+      generationRef.current === applyingGeneration
+      && currentPrdIdRef.current === applyingPrdId
+      && activeRef.current
+    );
     setApplying(true);
     setError(null);
     setApplyResult(null);
     try {
-      const response = await applyQueueRecovery({
-        selectedPrdId: prdId,
-        strategy: analysis.strategy,
-        expectedOperations: analysis.operations,
-        repairActions: repairState?.selectedRepairActions,
-        confirmDependencyRemoval: repairState?.requiresDependencyRemovalConfirmation === true,
-      });
-      setApplyResult(response);
+      const response = await applyQueueRecovery(simpleRetry
+        ? {
+          selectedPrdId: applyingPrdId,
+          strategy: analysis.strategy,
+          expectedOperations: analysis.operations,
+        }
+        : {
+          selectedPrdId: applyingPrdId,
+          strategy: analysis.strategy,
+          expectedOperations: analysis.operations,
+          repairActions: repairState?.selectedRepairActions,
+          confirmDependencyRemoval: repairState?.requiresDependencyRemovalConfirmation === true,
+        });
+      if (isCurrentApply()) setApplyResult(response);
       if (response.applied) {
         await refreshQueue();
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (isCurrentApply()) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setApplying(false);
+      if (isCurrentApply()) setApplying(false);
     }
   };
+  // --- eforge:endregion cascade-recovery-application ---
 
+  // --- eforge:region cascade-recovery-rendering ---
   return (
     <section className="space-y-2 rounded-md border border-dashed p-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-foreground">Advanced: queue-cascade retry/reactivation</h3>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-auto px-0 py-0 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => setOpen((prev) => !prev)}
-        >
-          {open ? 'Hide' : 'Show'}
-        </Button>
+        <h3 className="text-sm font-medium text-foreground">
+          {simpleRetry ? 'Retry failed build' : 'Advanced: queue-cascade retry/reactivation'}
+        </h3>
+        {!simpleRetry && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-0 py-0 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setOpen((prev) => !prev)}
+          >
+            {open ? 'Hide' : 'Show'}
+          </Button>
+        )}
       </div>
 
       <p className="text-xs text-muted-foreground">
-        This advanced repair moves the failed upstream back to the queue and may reactivate skipped descendants.
+        {simpleRetry
+          ? 'The failed PRD will return to the queue and stale recovery sidecars will be removed.'
+          : 'This advanced repair moves the failed upstream back to the queue and may reactivate skipped descendants.'}
       </p>
 
       {verdict === 'manual' && (
@@ -184,10 +235,45 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
         </p>
       )}
 
-      {open && (
+      {loading && <p className="text-xs text-muted-foreground">Loading queue recovery analysis…</p>}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+
+      {analysis && simpleRetry && (
+        <div className="space-y-2">
+          {warnings.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">Warnings</p>
+              <NoticeList notices={warnings} />
+            </div>
+          )}
+          <ConfirmAction
+            triggerLabel={applying ? 'Retrying…' : 'Retry build'}
+            title="Retry build?"
+            description="This returns the failed PRD to the queue and removes stale recovery sidecars."
+            confirmLabel="Retry build"
+            onConfirm={handleApply}
+            disabled={!canApply}
+          />
+          {applyResult && (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className={applyResult.applied ? 'text-sm text-foreground' : 'text-sm text-destructive'}>
+                {applyResult.applied ? 'Build retry applied.' : 'Build retry was not applied.'}
+              </p>
+              <NoticeList notices={[...applyResult.blockers, ...applyResult.warnings]} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {analysis && !simpleRetry && blockers.length > 0 && (
+        <div role="alert" className="space-y-1 rounded-md border border-destructive/30 p-2">
+          <p className="text-xs font-medium text-destructive">Retry build unavailable.</p>
+          <NoticeList notices={blockers} />
+        </div>
+      )}
+
+      {open && !simpleRetry && (
         <div className="space-y-3">
-          {loading && <p className="text-xs text-muted-foreground">Loading queue recovery analysis…</p>}
-          {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
 
           {analysis && (
             <>
@@ -273,4 +359,5 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
       )}
     </section>
   );
+  // --- eforge:endregion cascade-recovery-rendering ---
 }
