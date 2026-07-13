@@ -326,6 +326,20 @@ describe('adaptive rescope loop', () => {
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(false);
   });
 
+  it('runs exploration when a required non-entrypoint owner remains unresolved despite confident literal paths', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-required-interface-'));
+    await mkdir(path.join(cwd, 'packages/engine/src'), { recursive: true });
+    await writeFile(path.join(cwd, 'packages/engine/src/owner.ts'), 'export const owner = true;\n', 'utf8');
+    const content = prd(['engine updates `packages/engine/src/owner.ts` and implements the RecoveryClassifier interface.']);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const harness = new StubHarness([submit('submit-required-interface', outcome('completed'))]);
+
+    const result = await runAdaptiveExplorationRescope({ cwd, harness, sourceContent: content, inventory, limits });
+
+    expect(harness.calls).toHaveLength(1);
+    expect(result.diagnostics.status).toBe('warning-only');
+  });
+
   it('proceeds with a warning instead of rescoping when the degraded source has no split signal', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-nosplit-'));
     const content = prd(['engine updates `packages/engine/src/solo-owner.ts` for grounded flag handling.']);

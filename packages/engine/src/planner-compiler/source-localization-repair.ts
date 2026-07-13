@@ -118,7 +118,11 @@ export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizati
     const map = affectedAtomIds.length === 0 ? state.map : await runPlanningAtomMap({ graph: input.graph, inventory: input.sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes: input.reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent, affectedAtomIds, priorOutputs: state.map.outputs });
     const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, sourceLocalizationBundle, abortSignal: input.abortSignal, onEvent: input.onEvent });
     state = { sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce };
-    const unresolved = classifyPlanningReduceGaps(reduce.outputs, sourceLocalizationBundle, sourceEvidenceBundle, input.graph);
+    const reducerGaps = classifyPlanningReduceGaps(reduce.outputs, sourceLocalizationBundle, sourceEvidenceBundle, input.graph);
+    // A reducer completion cannot arbitrarily choose between owners that were
+    // previously ambiguous. Keep that obligation until localization itself
+    // supplies one deterministic owner.
+    const unresolved = retainAmbiguityObligations(gaps, reducerGaps, sourceLocalizationBundle);
     const diagnosticGaps = unresolved.length === 0 ? gaps : unresolved;
     const diagnosticAffectedAtomIds = unresolved.length === 0 ? affectedAtomIds : resolveAffectedAtomIds({ gaps: unresolved, graph: input.graph, sourceLocalizationBundle, sourceEvidenceBundle });
     diagnostics.push(buildRepairDiagnostic({ attempt, maxAttempts, gaps: diagnosticGaps, affectedAtomIds: diagnosticAffectedAtomIds, graph: input.graph, sourceLocalizationBundle, sourceEvidenceBundle, status: unresolved.length === 0 ? 'repaired' : attempt >= maxAttempts ? 'exhausted' : 'unresolved' }));
@@ -196,6 +200,33 @@ function buildRepairDiagnostic(input: { attempt: number; maxAttempts: number; ga
     ...(input.status === 'exhausted' || input.status === 'unresolved' ? { unresolvedReason: input.unresolvedReasonOverride ?? unresolvedReason(input.gaps, input.affectedAtomIds, localizedOwnerPaths, input.sourceEvidenceBundle) } : {}),
     residueSynthesisBlocked: true,
   };
+}
+
+function retainAmbiguityObligations(prior: ClassifiedPlanningReduceGap[], current: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): ClassifiedPlanningReduceGap[] {
+  const retained = prior.filter((gap) => gap.issueKind === 'localization-ambiguity'
+    && !ambiguityHasAuthoritativeOwner(gap, localization)
+    && !current.some((candidate) => candidate.issueKind === 'localization-ambiguity' && sameAmbiguityObligation(gap, candidate)));
+  return [...current, ...retained];
+}
+
+function ambiguityHasAuthoritativeOwner(gap: ClassifiedPlanningReduceGap, localization: SourceLocalizationBundle): boolean {
+  const paths = new Set(localization.records
+    .filter((record) => record.status === 'resolved' && record.confidence === 'high'
+      && (gap.sourceNeedIds.includes(record.needId)
+        || overlaps(record.linkedCriterionIds, gap.criterionIds)
+        || overlaps(record.linkedAspectIds, gap.aspectIds)))
+    .flatMap((record) => record.candidateFiles
+      .map((candidate) => candidate.path)
+      .filter((candidatePath) => gap.ownerPaths.length === 0 || gap.ownerPaths.includes(candidatePath))));
+  return paths.size === 1;
+}
+
+function sameAmbiguityObligation(left: ClassifiedPlanningReduceGap, right: ClassifiedPlanningReduceGap): boolean {
+  return overlaps(left.sourceNeedIds, right.sourceNeedIds)
+    || overlaps(left.criterionIds, right.criterionIds)
+    || overlaps(left.aspectIds, right.aspectIds)
+    || overlaps(left.ownerPaths, right.ownerPaths)
+    || overlaps(left.affectedAtomIds, right.affectedAtomIds);
 }
 
 function inferIssueKind(gap: PlanningReduceGap, localization?: SourceLocalizationBundle, evidence?: PlanningSourceEvidenceBundle): PlanningReduceGapIssueKind {

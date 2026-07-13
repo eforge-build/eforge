@@ -6,6 +6,7 @@ import { reduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, REDUCE_DIGEST_PROMP
 import { formatPlanningReducerPrompt } from './reducer-agent.js';
 import { utf8ByteLength } from './source-analysis.js';
 import type { SourceLocalizationBundle } from './source-localization-contracts.js';
+import { sourceNeedIdsForReduceNode } from './source-need-catalog.js';
 
 const MIN_REDUCE_FAN_IN = REDUCE_DIGEST_PROMPT_BUDGETING.minReduceFanIn;
 const SYNTHETIC_DIGEST_MAX_FRAGMENTS = 16;
@@ -141,19 +142,7 @@ function sourceNeedIdsForNode(tree: PlanningReduceTree, node: PlanningReduceNode
   const nodes = new Map(tree.nodes.map((item) => [item.nodeId, item]));
   const visit = (item: PlanningReduceNode): string[] => [...item.inputAtomIds, ...item.inputNodeIds.flatMap((id) => nodes.has(id) ? visit(nodes.get(id)!) : [])];
   const atomIds = new Set(visit(node));
-  // Keep budget planning's catalog identical to execution. Otherwise the
-  // planner can approve a prompt that is too small for the authoritative
-  // criterion/aspect-scoped catalog actually shown to a reducer.
-  return bundle.records
-    .filter((record) => record.assignedAtomIds.some((id) => atomIds.has(id))
-      || record.linkedCriterionIds.some((id) => node.criterionIds.includes(id))
-      || record.linkedAspectIds.some((id) => node.aspectIds.includes(id)))
-    .sort((a, b) => sourceNeedPriority(a) - sourceNeedPriority(b) || a.needId.localeCompare(b.needId))
-    .map((record) => record.needId);
-}
-
-function sourceNeedPriority(record: SourceLocalizationBundle['records'][number]): number {
-  return (record.status !== 'resolved' ? 0 : 8) + (record.confidence !== 'high' ? 0 : 4) + (record.kind === 'literal-path' ? 0 : 2) + (record.linkedCriterionIds.length > 0 ? 0 : 1);
+  return sourceNeedIdsForReduceNode(bundle.records, atomIds, node.criterionIds, node.aspectIds);
 }
 
 function syntheticReduceOutput(node: PlanningReduceNode, digestBytes: number): PlanningReduceOutput {

@@ -252,6 +252,73 @@ describe('planning compiler source-localization repair loop', () => {
     expect(result.residue.candidates.some((candidate) => candidate.reason === 'reduce-gap')).toBe(false);
   });
 
+  it('fails closed when multiple existing recovery owners remain ambiguous after repair', async () => {
+    const owners = ['packages/engine/src/recovery/first.ts', 'packages/engine/src/recovery/second.ts'];
+    const cwd = await workspace(Object.fromEntries(owners.map((owner, index) => [owner, `export const recovery${index} = true;\n`])));
+    const content = prd(['Recovery reporting remains source-grounded with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const ambiguousGap = (gapId: string): PlanningReduceOutput => ({
+      ...sourceGapOutput(task, gapId, { ownerPaths: owners, affectedAtomIds: [] }),
+      gaps: [{ ...sourceGapOutput(task, gapId, { ownerPaths: owners, affectedAtomIds: [] }).gaps![0]!, title: 'Ambiguous recovery owner', description: 'Multiple existing recovery owners remain ambiguous.', issueKind: 'localization-ambiguity' }],
+    });
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(task, 'initial')),
+      reduceSubmission(ambiguousGap('gap-ambiguous-initial')),
+      atomSubmission(completedOutput(task, 'repaired')),
+      reduceSubmission(ambiguousGap('gap-ambiguous-final')),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1 });
+
+    expect(result.status).toBe('incomplete');
+    expect(result.repairDiagnostics[0]).toMatchObject({ status: 'exhausted', gapIds: ['gap-ambiguous-final'], gapClassifications: [{ gapId: 'gap-ambiguous-final', issueKind: 'localization-ambiguity' }], residueSynthesisBlocked: true });
+    expect(result.residue.candidates.some((candidate) => candidate.candidateId.includes('candidate-reduce-gap'))).toBe(false);
+  });
+
+  it('remains incomplete when a rerun drops an unchanged ambiguity gap', async () => {
+    const owners = ['packages/engine/src/recovery/first.ts', 'packages/engine/src/recovery/second.ts'];
+    const cwd = await workspace(Object.fromEntries(owners.map((owner, index) => [owner, `export const recovery${index} = true;\n`])));
+    const content = prd(['Recovery reporting remains source-grounded with localized repository evidence.']);
+    const [task] = expectedTasks(content);
+    const initial = sourceGapOutput(task, 'gap-ambiguous-initial', { ownerPaths: owners, affectedAtomIds: [] });
+    initial.gaps![0] = { ...initial.gaps![0]!, title: 'Ambiguous recovery owner', description: 'Multiple existing recovery owners remain ambiguous.', issueKind: 'localization-ambiguity' };
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(task, 'initial')),
+      reduceSubmission(initial),
+      atomSubmission(completedOutput(task, 'repaired')),
+      reduceSubmission(completedReduceOutput(completedOutput(task, 'repaired'))),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({ sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1 });
+
+    expect(result.status).toBe('incomplete');
+    expect(result.repairDiagnostics[0]).toMatchObject({ status: 'exhausted', gapIds: ['gap-ambiguous-initial'] });
+  });
+
+  it('repairs a malformed reducer reference through the criterion-linked proposed recovery classifier file', async () => {
+    const classifierPath = 'packages/engine/src/recovery/upstream-plan-root-cause-classifier.ts';
+    const cwd = await workspace({ 'packages/engine/src/recovery/index.ts': 'export const recovery = true;\n' });
+    const content = prd([`Add upstream plan root-cause reporting with a new classifier at \`${classifierPath}\`.`]);
+    const [task] = expectedTasks(content);
+    const malformedGap = sourceGapOutput(task, 'gap-classifier', { ownerPaths: [classifierPath], affectedAtomIds: [task.atomId] });
+    malformedGap.gaps![0] = { ...malformedGap.gaps![0]!, sourceNeedIds: [task.atomId] };
+    const harness = new StubHarness([
+      atomSubmission(completedOutput(task, 'initial')),
+      reduceSubmission(malformedGap),
+      atomSubmission(completedOutput(task, 'repaired')),
+      reduceSubmission(completedReduceOutput(completedOutput(task, 'repaired'))),
+    ]);
+
+    const result = await runBoundedPlannerCompiler({
+      sourceContent: content, sourcePath: 'repair.md', sourceHash: hash(content), cwd, harness, limits, maxRepairAttempts: 1,
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.map.outputs[0]?.moduleCandidates?.length).toBeGreaterThan(0);
+    expect(result.validationErrors.join('\n')).not.toContain('classifier-owner-path-unlocalized');
+    expect(result.validationErrors.join('\n')).not.toContain('no localized owner paths resolved');
+  });
+
   it('ignores informational source-localization gaps for repair exhaustion', async () => {
     const cwd = await workspace({});
     const content = prd(['Event contract diagnostics remain informational when no representation is required.']);

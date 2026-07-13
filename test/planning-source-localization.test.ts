@@ -140,6 +140,20 @@ describe('planning source localization foundation', () => {
     expect(record.candidateFiles).toEqual([expect.objectContaining({ path: 'packages/widget/src/new-contract.ts', signals: expect.arrayContaining(['proposed-new-file']) })]);
   });
 
+  it('recognizes a path-scoped new classifier phrase without a project hint', async () => {
+    const temp = await workspace({ 'packages/engine/src/recovery/index.ts': 'export const recovery = true;' });
+    const classifierPath = 'packages/engine/src/recovery/upstream-plan-root-cause-classifier.ts';
+    const content = prd([`Add upstream plan root-cause reporting with a new classifier at \`${classifierPath}\`.`]);
+    const inventory = deriveSourceInventory({ content, hash: hash(content) });
+    const graph = derivePlanningAtomGraph({ content, hash: hash(content), limits, inventory });
+
+    const bundle = await deriveSourceLocalization({ cwd: temp.cwd, inventory, graph });
+
+    expect(bundle.records.find((record) => record.query === classifierPath)).toMatchObject({
+      status: 'resolved', confidence: 'high', candidateFiles: [expect.objectContaining({ path: classifierPath, signals: expect.arrayContaining(['proposed-new-file']) })],
+    });
+  });
+
   it('does not propose an existing or traversal path as a new file', async () => {
     const temp = await workspace({ 'packages/widget/src/existing.ts': 'export const existing = true;' });
     const content = prd(['Create `packages/widget/src/existing.ts` and `packages/widget/src/../escape.ts`.']);

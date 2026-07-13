@@ -5,6 +5,7 @@ import { formatPlanningReducerPrompt, runPlanningReducer } from './reducer-agent
 import { buildPlanningReduceTask, normalizePlanningReduceOutput, validatePlanningReduceOutput, type PlanningReduceOutput, type PlanningReduceTask, type PlanningReduceTree } from './reduce-contracts.js';
 import type { RunPlanningReduceInput } from './reduce-runner.js';
 import type { SourceLocalizationBundle } from './source-localization-contracts.js';
+import { sourceNeedIdsForReduceNode } from './source-need-catalog.js';
 import { utf8ByteLength } from './source-analysis.js';
 import { isAbortError } from './abort-utils.js';
 
@@ -39,12 +40,7 @@ function buildTaskForReduceNode(graph: PlanningAtomGraph, tree: PlanningReduceTr
   // authoritative fallback for global and repair-created needs. Without it a
   // reducer can never name an unresolved need that belongs to its node.
   const descendantAtomSet = new Set(descendantAtomIds);
-  const validSourceNeedIds = (bundle?.records ?? [])
-    .filter((record) => record.assignedAtomIds.some((atomId) => descendantAtomSet.has(atomId))
-      || record.linkedCriterionIds.some((id) => node.criterionIds.includes(id))
-      || record.linkedAspectIds.some((id) => node.aspectIds.includes(id)))
-    .sort((a, b) => sourceNeedPriority(a) - sourceNeedPriority(b) || a.needId.localeCompare(b.needId))
-    .map((record) => record.needId);
+  const validSourceNeedIds = sourceNeedIdsForReduceNode(bundle?.records, descendantAtomSet, node.criterionIds, node.aspectIds);
   return buildPlanningReduceTask(
     tree,
     node,
@@ -53,10 +49,6 @@ function buildTaskForReduceNode(graph: PlanningAtomGraph, tree: PlanningReduceTr
     graph,
     validSourceNeedIds,
   );
-}
-
-function sourceNeedPriority(record: NonNullable<SourceLocalizationBundle>['records'][number]): number {
-  return (record.status !== 'resolved' ? 0 : 8) + (record.confidence !== 'high' ? 0 : 4) + (record.kind === 'literal-path' ? 0 : 2) + (record.linkedCriterionIds.length > 0 ? 0 : 1);
 }
 
 function nodeAtomIds(tree: PlanningReduceTree, node: PlanningReduceTree['nodes'][number]): string[] {

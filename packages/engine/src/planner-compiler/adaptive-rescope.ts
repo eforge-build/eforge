@@ -281,8 +281,8 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   // callers safe by deriving the same compiler-owned requirements, never from
   // localization record kind/source.
   const authoritativeOwnerNeedIds = input.authoritativeOwnerNeedIds ?? deriveAuthoritativeOwnerNeedIds(input.inventory, graph);
-  // The complete catalog drives compiler repair. Rescoping has a narrower
-  // fail-closed contract: only entrypoint representations are critical here.
+  // The complete catalog gates exploration. The rescope terminal gate remains
+  // narrower: only entrypoint representations can fail compilation closed.
   const needKinds = new Map(deriveSourceLocalizationNeeds({ inventory: input.inventory, graph }).map((need) => [need.id, need.kind]));
   const rescopeAuthoritativeOwnerNeedIds = authoritativeOwnerNeedIds.filter((needId) => needKinds.get(needId) === 'entrypoint');
   const rescopeAuthorityCatalog = rescopeAuthoritativeOwnerNeedIds.length > 0 ? rescopeAuthoritativeOwnerNeedIds : undefined;
@@ -296,7 +296,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     ledger: { totalToolUseBudget: 0, usedToolUses: 0 },
     riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: [],
   };
-  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, rescopeAuthorityCatalog);
+  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, authoritativeOwnerNeedIds);
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
   if (skip.skip) return { diagnostics };
 
@@ -317,7 +317,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     return result;
   };
 
-  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits, authoritativeOwnerNeedIds: rescopeAuthorityCatalog });
+  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits, authoritativeOwnerNeedIds });
   diagnostics.riskReasons = risk.reasons;
   let bundle = baseline;
   let hints: SourceLocalizationInputHints | undefined;

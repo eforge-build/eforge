@@ -342,7 +342,7 @@ function explicitlyCreatesFile(text: string, evidencePath: string): boolean {
   // Creation must name this exact path, not merely mention a creation-shaped
   // change elsewhere in the criterion (for example, adding tests for it).
   const escapedPath = evidencePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pathScopedCreation = new RegExp(`\\b(?:create|introduce|add)\\s+(?:a\\s+)?(?:new\\s+)?(?:file\\s+)?[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?\\b|[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?\\s+(?:should\\s+be\\s+)?(?:created|introduced)\\b`, 'i');
+  const pathScopedCreation = new RegExp(`\\b(?:create|introduce|add)\\s+(?:a\\s+)?(?:new\\s+)?(?:file\\s+)?[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?\\b|\\b(?:create|introduce|add)\\b[^.\\n]{0,160}?\\bnew\\s+(?:[\\w-]+\\s+){0,4}?(?:at|in)\\s+[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?\\b|[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?\\s+(?:should\\s+be\\s+)?(?:created|introduced)\\b`, 'i');
   return pathScopedCreation.test(text) && !new RegExp(`\\b(?:existing|update|modify|change|validation\\s+to)\\b[^.\\n]{0,80}[\\\`'\\\"]?${escapedPath}[\\\`'\\\"]?`, 'i').test(text);
 }
 
