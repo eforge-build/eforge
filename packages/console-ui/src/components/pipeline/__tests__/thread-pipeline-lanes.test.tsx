@@ -8,7 +8,7 @@
  */
 import type { ComponentProps } from 'react';
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PlanPreviewProvider } from '@/components/preview';
 import { ThreadPipeline } from '../thread-pipeline';
 import type { AgentThread, StoredEvent, ValidationCommandSpan } from '@/lib/run-state';
@@ -318,6 +318,76 @@ describe('ThreadPipeline lane ordering', () => {
     // Planning and Validation lanes render as their own rows
     expect(screen.getByText('Planning')).toBeTruthy();
     expect(screen.getByText('Validation')).toBeTruthy();
+  });
+});
+
+describe('ThreadPipeline plan presentation', () => {
+  const opaquePlanId = 'plan-7f3a9c';
+
+  it.each([
+    ['short', 'Ship it'],
+    ['spaced-long', 'Ship the console presentation with a readable label that has many words'],
+    ['unbroken-long', 'x'.repeat(240)],
+  ])('keeps the %s plan label constrained without hiding its stage sibling', (_kind, name) => {
+    const declaredPlan = { ...orchestration.plans[0], id: opaquePlanId, name };
+    renderPipeline({
+      orchestration: { ...orchestration, plans: [declaredPlan] },
+      planStatuses: { [opaquePlanId]: 'implement' },
+      planArtifacts: [{ id: opaquePlanId, name: 'Stale REST title', body: '# Current plan' }],
+    });
+
+    const label = `Plan 01 — ${name}`;
+    const labelNode = screen.getByText(label);
+    const pill = labelNode.closest('button');
+    expect(pill).toBeTruthy();
+    expect(pill?.className).toContain('min-w-0');
+    expect(pill?.className).toContain('max-w-full');
+    expect(labelNode.className).toContain('truncate');
+    expect(labelNode.className).toContain('min-w-0');
+    // The two minmax columns let the label shrink rather than consuming the
+    // timeline/status cell, which remains observable for every label shape.
+    expect(pill?.parentElement?.parentElement?.parentElement?.className).toContain('grid-cols-[minmax(0,180px)_minmax(0,1fr)]');
+    expect(screen.getByText('implement')).toBeTruthy();
+  });
+
+  it('uses live declaration metadata for presentation while retaining the semantic ID', async () => {
+    const declaredPlan = { ...orchestration.plans[0], id: opaquePlanId, name: 'Live event name' };
+    renderPipeline({
+      orchestration: { ...orchestration, plans: [declaredPlan] },
+      planStatuses: { [opaquePlanId]: 'implement' },
+      // The artifact is intentionally stale: it must not replace declaration
+      // metadata, and it supplies the preview content independently.
+      planArtifacts: [{ id: opaquePlanId, name: 'Stale REST title', body: '# Current plan' }],
+    });
+
+    const label = screen.getByText('Plan 01 — Live event name');
+    expect(screen.queryByText(/Stale REST title/)).toBeNull();
+    const button = label.closest('button')!;
+    fireEvent.pointerMove(button, { pointerType: 'mouse' });
+    fireEvent.mouseEnter(button);
+    await waitFor(() => expect(screen.getAllByText('ID: plan-7f3a9c').length).toBeGreaterThan(0));
+  });
+
+  it('numbers declared plans deterministically and leaves synthetic lanes on their registered labels', () => {
+    const plans = [
+      { ...orchestration.plans[0], id: 'semantic-first', name: 'First plan' },
+      { ...orchestration.plans[0], id: 'semantic-second', name: 'Second plan', dependsOn: ['semantic-first'] },
+    ];
+    renderPipeline({
+      orchestration: { ...orchestration, plans },
+      planStatuses: { 'semantic-first': 'complete', 'semantic-second': 'implement', validation: 'implement' },
+      planArtifacts: [
+        { id: 'semantic-first', name: 'Old first title', body: '# First' },
+        { id: 'semantic-second', name: 'Old second title', body: '# Second' },
+      ],
+      agentThreads: [makeThread({ planId: 'validation', agent: 'validation-fixer', startedAt: '2025-01-01T00:05:00.000Z' })],
+    });
+
+    const first = screen.getByText('Plan 01 — First plan');
+    const second = screen.getByText('Plan 02 — Second plan');
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Validation')).toBeTruthy();
+    expect(screen.queryByText(/Plan 03/)).toBeNull();
   });
 });
 
