@@ -289,6 +289,7 @@ function rescopeSection(rescope: NonNullable<BoundedPlannerCompilerResult['resco
     rerunScopeKeys: boundedIds(rescope.rerunScopeKeys, 160, 64),
     preservedScopeKeys: boundedIds(rescope.preservedScopeKeys, 160, 64),
     unresolvedCriticalNeedIds: boundedIds(rescope.unresolvedCriticalNeedIds, 160, 100),
+    ...(rescope.decomposition ? { decomposition: { verdict: rescope.decomposition.verdict, ...(rescope.decomposition.source ? { source: rescope.decomposition.source } : {}), concreteSubsystemCount: Math.min(rescope.decomposition.concreteSubsystemCount, 1_000), ...(rescope.decomposition.groupCount !== undefined ? { groupCount: Math.min(rescope.decomposition.groupCount, 100) } : {}), ...(rescope.decomposition.overriddenByLocalizationRescope ? { overriddenByLocalizationRescope: true } : {}) } } : {}),
   };
 }
 

@@ -9250,6 +9250,10 @@
                       {
                         "const": "rescope-split",
                         "type": "string"
+                      },
+                      {
+                        "const": "risk-split",
+                        "type": "string"
                       }
                     ]
                   },
@@ -16418,6 +16422,62 @@
                   "required": [
                     "kind",
                     "rationale",
+                    "perspective",
+                    "round"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "review-perspective-degraded",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "perspective": {
+                      "type": "string"
+                    },
+                    "round": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "previousBlockingIssueOutcomes",
+                    "lastBlockingIssueOutcomes",
+                    "maxAttempts"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "recovery-budget-extended",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "previousBlockingIssueOutcomes": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "lastBlockingIssueOutcomes": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "maxAttempts": {
+                      "minimum": 2,
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
                     "verdict"
                   ],
                   "properties": {
@@ -16622,6 +16682,57 @@
                       "items": {
                         "type": "string"
                       }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "verdict",
+                    "source",
+                    "concreteSubsystemCount"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "root-decomposition",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "anyOf": [
+                        {
+                          "const": "cohesive",
+                          "type": "string"
+                        },
+                        {
+                          "const": "split",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "agent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deterministic-fallback",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "concreteSubsystemCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "groupCount": {
+                      "minimum": 2,
+                      "type": "integer"
                     }
                   }
                 }
@@ -27910,6 +28021,10 @@
                                     {
                                       "const": "rescope-split",
                                       "type": "string"
+                                    },
+                                    {
+                                      "const": "risk-split",
+                                      "type": "string"
                                     }
                                   ]
                                 },
@@ -35078,6 +35193,62 @@
                                 "required": [
                                   "kind",
                                   "rationale",
+                                  "perspective",
+                                  "round"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "review-perspective-degraded",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "perspective": {
+                                    "type": "string"
+                                  },
+                                  "round": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
+                                  "previousBlockingIssueOutcomes",
+                                  "lastBlockingIssueOutcomes",
+                                  "maxAttempts"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "recovery-budget-extended",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "previousBlockingIssueOutcomes": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "lastBlockingIssueOutcomes": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "maxAttempts": {
+                                    "minimum": 2,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
                                   "verdict"
                                 ],
                                 "properties": {
@@ -35282,6 +35453,57 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
+                                  "verdict",
+                                  "source",
+                                  "concreteSubsystemCount"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "root-decomposition",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "verdict": {
+                                    "anyOf": [
+                                      {
+                                        "const": "cohesive",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "split",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "source": {
+                                    "anyOf": [
+                                      {
+                                        "const": "agent",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "deterministic-fallback",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "concreteSubsystemCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "groupCount": {
+                                    "minimum": 2,
+                                    "type": "integer"
                                   }
                                 }
                               }

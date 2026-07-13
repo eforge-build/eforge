@@ -32,6 +32,15 @@ export const PlanningDecisionSchema = Type.Union([
     planCount: Type.Integer({ minimum: 1 }),
     planIds: Type.Array(Type.String(), { minItems: 1 }),
   }),
+  // Collapsed-root decomposition judgment for a subsystem-diverse PRD
+  Type.Object({
+    kind: Type.Literal('root-decomposition'),
+    rationale: Type.String(),
+    verdict: Type.Union([Type.Literal('cohesive'), Type.Literal('split')]),
+    source: Type.Union([Type.Literal('agent'), Type.Literal('deterministic-fallback')]),
+    concreteSubsystemCount: Type.Integer({ minimum: 0 }),
+    groupCount: Type.Optional(Type.Integer({ minimum: 2 })),
+  }),
 ]);
 
 export type PlanningDecision = Static<typeof PlanningDecisionSchema>;
@@ -96,6 +105,21 @@ export const BuildDecisionSchema = Type.Union([
       Type.Literal('lenient'),
     ]),
     source: Type.Union([Type.Literal('config'), Type.Literal('default')]),
+  }),
+  // Review perspective errored; the round continues without it
+  Type.Object({
+    kind: Type.Literal('review-perspective-degraded'),
+    rationale: Type.String(),
+    perspective: Type.String(),
+    round: Type.Integer({ minimum: 0 }),
+  }),
+  // Same-plan recovery budget extended after review-round convergence
+  Type.Object({
+    kind: Type.Literal('recovery-budget-extended'),
+    rationale: Type.String(),
+    previousBlockingIssueOutcomes: Type.Integer({ minimum: 1 }),
+    lastBlockingIssueOutcomes: Type.Integer({ minimum: 1 }),
+    maxAttempts: Type.Integer({ minimum: 2 }),
   }),
   // Recovery verdict applied
   Type.Object({

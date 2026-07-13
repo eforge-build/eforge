@@ -154,6 +154,13 @@ const CompilerDiagnosticsRescopeSchema = Type.Object({
   rerunScopeKeys: boundedIds(160, 64),
   preservedScopeKeys: boundedIds(160, 64),
   unresolvedCriticalNeedIds: boundedIds(160, 100),
+  decomposition: Type.Optional(Type.Object({
+    verdict: Type.Union([Type.Literal('cohesive'), Type.Literal('split'), Type.Literal('split-ungroupable'), Type.Literal('unavailable')]),
+    source: Type.Optional(Type.Union([Type.Literal('agent'), Type.Literal('deterministic-fallback')])),
+    concreteSubsystemCount: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    groupCount: Type.Optional(Type.Integer({ minimum: 2, maximum: 100 })),
+    overriddenByLocalizationRescope: Type.Optional(Type.Boolean()),
+  }, { additionalProperties: false })),
 }, { additionalProperties: false });
 
 const BuildStageSpecSchema = Type.Union([boundedString(80), Type.Array(boundedString(80), { minItems: 1, maxItems: 8 })]);

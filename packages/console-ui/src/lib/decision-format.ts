@@ -25,6 +25,8 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
       return { bg: 'bg-emerald-500', border: 'border-emerald-400' };
     case 'plan-set-shape':
       return { bg: 'bg-cyan-500', border: 'border-cyan-400' };
+    case 'root-decomposition':
+      return { bg: 'bg-teal-500', border: 'border-teal-400' };
     // Build-phase kinds — blue/amber/red/purple family
     case 'review-strategy':
     case 'perspectives-inferred':
@@ -35,6 +37,10 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
       return { bg: 'bg-amber-500', border: 'border-amber-400' };
     case 'recovery-verdict':
       return { bg: 'bg-red-500', border: 'border-red-400' };
+    case 'recovery-budget-extended':
+      return { bg: 'bg-orange-500', border: 'border-orange-400' };
+    case 'review-perspective-degraded':
+      return { bg: 'bg-rose-500', border: 'border-rose-400' };
     case 'merge-conflict-resolution':
       return { bg: 'bg-purple-500', border: 'border-purple-400' };
     default:
@@ -55,6 +61,10 @@ export function decisionSummary(decision: Decision): string {
       return `${decision.strategy} — ${decision.perspectives.join(', ')} — ${decision.maxRounds} round(s)`;
     case 'plan-set-shape':
       return `${decision.planCount} plan(s): ${decision.planIds.join(', ')}`;
+    case 'root-decomposition':
+      return decision.verdict === 'split'
+        ? `split into ${decision.groupCount ?? '?'} unit(s) (${decision.source}) — ${decision.concreteSubsystemCount} subsystems`
+        : `cohesive — kept single unit despite ${decision.concreteSubsystemCount} subsystems`;
     // Build-phase summaries
     case 'review-strategy':
       return decision.auto
@@ -83,6 +93,10 @@ export function decisionSummary(decision: Decision): string {
       return `${decision.strictness} (${decision.source})`;
     case 'recovery-verdict':
       return decision.verdict;
+    case 'recovery-budget-extended':
+      return `blocking ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes} — ${decision.maxAttempts} attempt(s) granted`;
+    case 'review-perspective-degraded':
+      return `round ${decision.round + 1} — '${decision.perspective}' failed; continuing without it`;
     case 'merge-conflict-resolution':
       return `${decision.strategy} — ${decision.files.length} file(s)`;
     default:
@@ -112,6 +126,12 @@ export function decisionDetail(decision: Decision): string {
     case 'plan-set-shape':
       lines.push(`Plan count: ${decision.planCount}`);
       lines.push(`Plan IDs: ${decision.planIds.join(', ')}`);
+      break;
+    case 'root-decomposition':
+      lines.push(`Verdict: ${decision.verdict}`);
+      lines.push(`Source: ${decision.source}`);
+      lines.push(`Concrete subsystems: ${decision.concreteSubsystemCount}`);
+      if (decision.groupCount !== undefined) lines.push(`Groups: ${decision.groupCount}`);
       break;
     case 'review-strategy':
       lines.push(`Strategy: ${decision.strategy}`);
@@ -151,6 +171,14 @@ export function decisionDetail(decision: Decision): string {
       break;
     case 'recovery-verdict':
       lines.push(`Verdict: ${decision.verdict}`);
+      break;
+    case 'recovery-budget-extended':
+      lines.push(`Blocking issue outcomes: ${decision.previousBlockingIssueOutcomes} → ${decision.lastBlockingIssueOutcomes}`);
+      lines.push(`Recovery attempts granted: ${decision.maxAttempts}`);
+      break;
+    case 'review-perspective-degraded':
+      lines.push(`Perspective: ${decision.perspective}`);
+      lines.push(`Round: ${decision.round + 1}`);
       break;
     case 'merge-conflict-resolution':
       lines.push(`Strategy: ${decision.strategy}`);

@@ -178,7 +178,9 @@ describe('bounded planner compiler stage integration', () => {
       'client updates the `packages/client/src/rescope-api-consumer.ts` route schema contract.',
     ]);
     const exhausted = { toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId: 'submit-exhausted', input: { status: 'budget-exhausted', reasons: ['tool-budget'] }, output: 'ok' }] };
-    const harness = new StubHarness([unsatisfiedGateSubmission(), exhausted, exhausted, exhausted]);
+    // The diverse collapsed root consults the decomposition judgment first; a
+    // non-submission falls open to the historical deterministic pre-split.
+    const harness = new StubHarness([unsatisfiedGateSubmission(), { text: 'no decomposition judgment offered' }, exhausted, exhausted, exhausted]);
     const ctx = makePipelineCtx({
       cwd,
       sourceContent,
