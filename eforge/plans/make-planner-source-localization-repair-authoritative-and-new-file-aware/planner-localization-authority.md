@@ -39,19 +39,18 @@ Review rationale: risk score 1 (low-confidence-localization); declared docs work
 
 - Failed PRD: "make-planner-source-localization-repair-authoritative-and-new-file-aware"
 - Root failed plan: "planner-localization-authority"
-- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for make-planner-source-localization-repair-authoritative-and-new-file-aware. artifact source: feature-branch; 3 landed commit(s); failing plan: planner-localization-authority; feature branch: eforge/make-planner-source-localization-repair-authoritative-and-new-file-aware. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
-- Failure detail: "20 blocking issue outcome(s) remain after 2 review round(s) (20 unresolved, 0 need human review; 14 rejected, 0 under review)."
-- Failure detail: "20 blocking issue outcome(s) remain after 2 review round(s) (20 unresolved, 0 need human review; 14 rejected, 0 under review)."
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for make-planner-source-localization-repair-authoritative-and-new-file-aware. artifact source: feature-branch; 5 landed commit(s); failing plan: planner-localization-authority; feature branch: eforge/make-planner-source-localization-repair-authoritative-and-new-file-aware. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "8 blocking issue outcome(s) remain after 2 review round(s) (8 unresolved, 0 need human review; 7 rejected, 0 under review)."
+- Failure detail: "8 blocking issue outcome(s) remain after 2 review round(s) (8 unresolved, 0 need human review; 7 rejected, 0 under review)."
 - Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair make-planner-source-localization-repair-authoritative-and-new-file-aware`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
 - Remaining work:
-  - "Repair planner-localization-authority source-need catalog propagation so node-scoped unresolved needs reach initial and repair reductions."
-  - "Quarantine invalid reducer source-need and affected-atom IDs per gap with diagnostics, preserving fallback localization."
-  - "Require explicit, criterion/aspect- or atom-scoped new-file intent; retain ENOENT, canonical containment, cap, and symlink protections."
-  - "Pass complete critical and representation-required owner sets through adaptive rescope."
-  - "Prevent generic and composite generic labels from interface/subsystem ownership broadcast."
-  - "Add focused validation, repair, filesystem safety, authority propagation, contention, and required StubHarness integration-fixture coverage."
-  - "Re-run required type-check, test, and maintainability validation."
+  - "Repair generic-label filtering and disable unsafe generic query fallback in source localization."
+  - "Make new-file intent path-scoped, preserve fail-closed existing-behavior ownership, and enforce candidate caps."
+  - "Preserve newFile metadata when merging repair hints and bound targeted repair-hint token generation."
+  - "Separate quarantined reducer-ID diagnostics from semantic validation errors."
+  - "Add required reducer catalog, ID validation, new-file safety, repair-bound/selective-rerun, evidence-contention, subsystem-isolation, and modeled integration-fixture coverage."
+  - "Re-run review and required validation after repairs."
 - Retry/resume guidance: Continue planner-localization-authority for failed PRD make-planner-source-localization-repair-authoritative-and-new-file-aware from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
-- Sidecar generated at: 2026-07-13T14:33:35.707Z
+- Sidecar generated at: 2026-07-13T15:26:17.399Z
 - Source sidecar: .eforge/queue/failed/make-planner-source-localization-repair-authoritative-and-new-file-aware.recovery.json
 - Source identity: prdId=make-planner-source-localization-repair-authoritative-and-new-file-aware; setName=make-planner-source-localization-repair-authoritative-and-new-file-aware; featureBranch=eforge/make-planner-source-localization-repair-authoritative-and-new-file-aware; baseBranch=main
