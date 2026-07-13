@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
@@ -59,6 +59,7 @@ async function seedLinkedPlanningData(cwd: string): Promise<void> {
   captureCanonicalBacklogItem(cwd, { id: 'item-b', title: 'Item B' });
   upsertCanonicalEpic(cwd, { id: 'epic-a', title: 'Epic A' });
   upsertCanonicalEpic(cwd, { id: 'epic-b', title: 'Epic B' });
+  await mkdir(join(cwd, '.eforge/session-plans'), { recursive: true });
   await writeFile(sessionPath(cwd), sessionContent());
   syncSessionPlanArtifact(cwd, { session: 'session-alpha', path: sessionPath(cwd), content: sessionContent(), summaryText: 'Initial summary', readinessSummary: { ready: true } });
 }
