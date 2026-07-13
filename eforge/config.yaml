@@ -5,6 +5,7 @@ build:
     - pnpm type-check
     - pnpm test
     - node packages/docs-gen/dist/cli.js check
+    - pnpm maintainability:check
 compile:
   planningUnitParallelism: 4
 recovery:
