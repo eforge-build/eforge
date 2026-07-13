@@ -251,15 +251,43 @@ describe('ThreadPipeline lane ordering', () => {
     expect(baseSync.compareDocumentPosition(validation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('renders the Gap Close lane when backed by gap-close agent threads', () => {
+  it('renders a non-interactive Gap Close lane while its plan is still being generated', () => {
     renderPipeline({
       orchestration,
       planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement' },
       planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
-      agentThreads: [makeThread({ planId: 'gap-close', agent: 'builder', startedAt: '2025-01-01T00:06:00.000Z' })],
+      agentThreads: [makeThread({ planId: 'gap-close', agent: 'gap-closer', startedAt: '2025-01-01T00:06:00.000Z' })],
     });
 
-    expect(screen.getByText('Gap Close')).toBeTruthy();
+    const laneLabel = screen.getByText('Gap Close');
+    expect(laneLabel.closest('button')).toBeNull();
+    const disabledPill = laneLabel.closest('[aria-disabled="true"]');
+    expect(disabledPill?.getAttribute('tabindex')).toBe('0');
+    expect(disabledPill?.getAttribute('aria-label')).toContain('plan is being generated');
+  });
+
+  it('makes the Gap Close plan preview available after plan_ready arrives', () => {
+    const events: StoredEvent[] = [
+      {
+        eventId: 'gap-close-plan',
+        event: {
+          type: 'gap_close:plan_ready',
+          timestamp: '2025-01-01T00:06:30.000Z',
+          planBody: '# Close the remaining gap',
+          gaps: [{ requirement: 'Requirement A', explanation: 'Still missing' }],
+        } as StoredEvent['event'],
+      },
+    ];
+
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      agentThreads: [makeThread({ planId: 'gap-close', agent: 'builder', startedAt: '2025-01-01T00:07:00.000Z' })],
+      events,
+    });
+
+    expect(screen.getByText('Gap Close').closest('button')).toBeTruthy();
   });
 
   it('renders the Final Validation lane when validation commands run after gap close completes', () => {

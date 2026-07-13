@@ -5,7 +5,7 @@ import type { AgentThread, StoredEvent, DecisionPoint, Decision, MapReduceTimeli
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
-import { isFeatureBranchLane, isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
+import { isFeatureBranchLane, isRegisteredPhaseLane, laneLabel, laneOrder } from '@/lib/run-state/lane-registry';
 import { buildPlanPresentation, type PlanPresentation } from '@/lib/run-state/plan-presentation';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
@@ -43,6 +43,15 @@ function validationCommandLaneIds(validationCommands: ValidationCommandSpan[] | 
 }
 
 const BASE_SYNC_LANE_ID = 'base-sync';
+
+function gapClosePreviewFromEvents(events: StoredEvent[]): { name: string; body: string } | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index].event;
+    if (event.type !== 'gap_close:plan_ready' || event.planBody.trim().length === 0) continue;
+    return { name: 'PRD Gap Close', body: event.planBody };
+  }
+  return undefined;
+}
 
 function baseSyncCommandsFromEvents(events: StoredEvent[]): ValidationCommandSpan[] | undefined {
   let startedAt: string | null = null;
@@ -153,6 +162,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
   );
 
   const baseSyncCommands = useMemo(() => baseSyncCommandsFromEvents(events), [events]);
+  const gapClosePreview = useMemo(() => gapClosePreviewFromEvents(events), [events]);
 
   const orderedPlanIds = useMemo(() => {
     const ids: string[] = [];
@@ -338,35 +348,49 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 onAgentSelect={handleAgentSelect}
               />
             )}
-            {orderedPlanIds.map((planId) => (
-              <PlanRow
-                key={planId}
-                planId={planId}
-                threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
-                sessionStart={sessionStart}
-                totalSpan={totalSpan}
-                endTime={endTime}
-                issues={reviewIssues?.[planId]}
-                hoveredStage={hoveredStage}
-                onStageHover={setHoveredStage}
-                eventsByAgent={eventsByAgent}
-                buildStages={buildStagesByPlan.get(planId)}
-                currentStage={planStatuses[planId]}
-                presentation={presentationByPlan.get(planId)}
-                depth={depthMap.get(planId) ?? 0}
-                perspectiveErrors={perspectiveErrors?.[planId]}
-                issuesByPerspective={reviewIssuesByPerspective?.[planId]}
-                decisions={decisions?.[planId]}
-                validationCommands={planId === BASE_SYNC_LANE_ID ? baseSyncCommands : validationCommandsForLane(planId, validationCommands, events)}
-                prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
-                laneDisplay={mapReduceLaneById.get(planId)}
-                threadDisplay={mapReduce?.displayByAgentId}
-                disablePreview={planId === 'planning'}
-                onDecisionSelect={handleDecisionSelect}
-                onAgentSelect={handleAgentSelect}
-                onStageSelect={(stage) => handleStageSelect(planId, stage)}
-              />
-            ))}
+            {orderedPlanIds.map((planId) => {
+              const phasePreview = planId === 'gap-close' ? gapClosePreview : undefined;
+              const previewDisabled = isRegisteredPhaseLane(planId) && phasePreview === undefined;
+              const previewDisabledReason = !previewDisabled
+                ? undefined
+                : planId === 'gap-close'
+                  ? threadsByPlan.get(planId)?.some((thread) => thread.agent === 'gap-closer' && thread.endedAt === null)
+                    ? 'Gap-close plan is being generated. It will be available when planning finishes.'
+                    : 'No gap-close plan artifact is available.'
+                  : `${laneLabel(planId)} is a phase and has no plan artifact.`;
+              return (
+                <PlanRow
+                  key={planId}
+                  planId={planId}
+                  threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
+                  sessionStart={sessionStart}
+                  totalSpan={totalSpan}
+                  endTime={endTime}
+                  issues={reviewIssues?.[planId]}
+                  hoveredStage={hoveredStage}
+                  onStageHover={setHoveredStage}
+                  eventsByAgent={eventsByAgent}
+                  buildStages={buildStagesByPlan.get(planId)}
+                  currentStage={planStatuses[planId]}
+                  presentation={presentationByPlan.get(planId)}
+                  depth={depthMap.get(planId) ?? 0}
+                  perspectiveErrors={perspectiveErrors?.[planId]}
+                  issuesByPerspective={reviewIssuesByPerspective?.[planId]}
+                  decisions={decisions?.[planId]}
+                  validationCommands={planId === BASE_SYNC_LANE_ID ? baseSyncCommands : validationCommandsForLane(planId, validationCommands, events)}
+                  prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
+                  laneDisplay={mapReduceLaneById.get(planId)}
+                  threadDisplay={mapReduce?.displayByAgentId}
+                  disablePreview={planId === 'planning'}
+                  previewDisabled={previewDisabled}
+                  previewDisabledReason={previewDisabledReason}
+                  previewFallback={phasePreview}
+                  onDecisionSelect={handleDecisionSelect}
+                  onAgentSelect={handleAgentSelect}
+                  onStageSelect={(stage) => handleStageSelect(planId, stage)}
+                />
+              );
+            })}
           </div>
         )}
 

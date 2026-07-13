@@ -35,6 +35,12 @@ interface PlanRowProps {
   endTime: number | null;
   issues?: ReviewIssue[];
   disablePreview?: boolean;
+  /** Prevent opening a plan preview while retaining the lane's stage progress. */
+  previewDisabled?: boolean;
+  /** Explanation shown when a phase lane has no preview artifact yet. */
+  previewDisabledReason?: string;
+  /** Event-derived preview used before or instead of the REST projection. */
+  previewFallback?: { name: string; body: string };
   hoveredStage: string | null;
   onStageHover: (stage: string | null) => void;
   eventsByAgent: Map<string, StoredEvent[]>;
@@ -92,7 +98,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, presentation, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, laneDisplay, threadDisplay, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, previewDisabled, previewDisabledReason, previewFallback, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, presentation, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, laneDisplay, threadDisplay, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   // Pack agent threads into the minimum number of lanes so sequential agents
@@ -120,8 +126,9 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
 
   // Build tooltip text for plan pills
   const planTooltipText = useMemo(() => {
-    return presentation ? [...presentation.tooltip] : [planId];
-  }, [planId, presentation]);
+    if (presentation) return [...presentation.tooltip];
+    return [previewDisabledReason ?? planId];
+  }, [planId, presentation, previewDisabledReason]);
 
   // Render left column label
   const leftLabel = (() => {
@@ -196,22 +203,36 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
         </div>
       );
     }
-    // Fallback: pill label
+    // Fallback: pill label. Synthetic phase lanes stay non-interactive until
+    // they have a real preview artifact (for example gap_close:plan_ready).
+    const previewUnavailable = disablePreview || previewDisabled;
     return (
       <div className="flex items-stretch gap-1.5 min-w-0">
         <DepthBars depth={depth ?? 0} />
         <div className="flex-1 min-w-0 mt-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={`${planPillClassFor(depth ?? 0)} w-full min-w-0 max-w-full overflow-hidden justify-start`}
-                onClick={disablePreview ? undefined : () => openPreview(planId)}
-              >
-                <span className="min-w-0 max-w-full truncate">{abbreviatePlanId(planId)}</span>
-              </Button>
+              {previewUnavailable ? (
+                <span
+                  className={`${planPillClassFor(depth ?? 0)} w-full min-w-0 max-w-full overflow-hidden cursor-default`}
+                  role="button"
+                  tabIndex={previewDisabledReason ? 0 : undefined}
+                  aria-disabled="true"
+                  aria-label={previewDisabledReason ? `${abbreviatePlanId(planId)}. ${previewDisabledReason}` : undefined}
+                >
+                  <span className="min-w-0 max-w-full truncate">{abbreviatePlanId(planId)}</span>
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={`${planPillClassFor(depth ?? 0)} w-full min-w-0 max-w-full overflow-hidden justify-start`}
+                  onClick={() => openPreview(planId, previewFallback)}
+                >
+                  <span className="min-w-0 max-w-full truncate">{abbreviatePlanId(planId)}</span>
+                </Button>
+              )}
             </TooltipTrigger>
             <TooltipContent side="left">
               {planTooltipText.map((line, i) => <div key={i}>{line}</div>)}

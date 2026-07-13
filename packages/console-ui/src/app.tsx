@@ -6,7 +6,7 @@ import { CommandPalette } from '@/components/command-palette';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { useAutoBuild } from '@/hooks/use-auto-build';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
-import { selectActiveSessionIds } from '@/lib/selectors';
+import { selectActiveSessionIds, selectPrdDisplayLabel } from '@/lib/selectors';
 import { parseConsoleRoute, toConsolePath } from '@/lib/navigation';
 import type { ConsoleRouteId } from '@/lib/navigation';
 const RunDetailView = lazy(() =>
@@ -127,10 +127,20 @@ export function App() {
       const liveRunState = isLive
         ? activeSessionStreams.sessions[detailId]?.runState
         : undefined;
+      const detailRun = projectState.runs.find(
+        (run) => run.sessionId === detailId || run.id === detailId,
+      );
+      const queueItem = detailRun
+        ? projectState.queue.find((item) => item.id === detailRun.planSet)
+        : undefined;
+      const buildTitle = detailRun
+        ? selectPrdDisplayLabel(queueItem?.title, detailRun.planSet)
+        : undefined;
       return (
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
           <RunDetailView
             detailId={detailId}
+            buildTitle={buildTitle}
             isLive={isLive}
             liveRunState={liveRunState}
             onBack={() => handleNavigate('/console/')}
