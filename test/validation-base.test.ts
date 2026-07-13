@@ -88,4 +88,32 @@ describe('resolveValidationBase', () => {
     await expect(resolveValidationBase({ cwd, baseBranch: 'eforge/parent', diffBaseRef: pin, stackedValidationPinRequired: true, config: config('develop') }))
       .resolves.toEqual({ available: true, baseRef: git(cwd, 'rev-parse', 'develop'), repaired: true });
   });
+
+  it('refreshes a stale remote-tracking trunk ref before repairing a deleted parent', async () => {
+    const cwd = repo();
+    const remote = join(cwd, 'remote.git');
+    execFileSync('git', ['init', '--bare', remote]);
+    git(cwd, 'remote', 'add', 'origin', remote);
+    git(cwd, 'switch', '-c', 'develop');
+    git(cwd, 'push', '-u', 'origin', 'develop');
+    git(cwd, 'switch', '-c', 'eforge/parent');
+    const pin = commit(cwd, 'parent.txt', 'parent\n', 'parent');
+    git(cwd, 'push', 'origin', 'eforge/parent');
+    git(cwd, 'switch', '-c', 'eforge/child');
+    commit(cwd, 'child.txt', 'child\n', 'child');
+    git(cwd, 'branch', '-D', 'eforge/parent');
+
+    const external = join(cwd, 'external');
+    execFileSync('git', ['clone', remote, external]);
+    git(external, 'config', 'user.email', 'test@example.com');
+    git(external, 'config', 'user.name', 'Test');
+    git(external, 'switch', 'develop');
+    git(external, 'merge', '--ff-only', 'origin/eforge/parent');
+    commit(external, 'remote-only.txt', 'remote advancement\n', 'advance develop remotely');
+    git(external, 'push', 'origin', 'develop');
+
+    expect(git(cwd, 'rev-parse', 'refs/remotes/origin/develop')).not.toBe(git(external, 'rev-parse', 'develop'));
+    await expect(resolveValidationBase({ cwd, baseBranch: 'eforge/parent', diffBaseRef: pin, stackedValidationPinRequired: true, config: config('develop') }))
+      .resolves.toEqual({ available: true, baseRef: git(external, 'rev-parse', 'develop'), repaired: true });
+  });
 });

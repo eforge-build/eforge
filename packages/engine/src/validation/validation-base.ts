@@ -1,15 +1,38 @@
 import { resolveTrunkBranch } from '../branch-policy.js';
 import type { EforgeConfig } from '../config.js';
 import {
+  fetchRemoteBranchHeadCommit,
   proveAncestor,
   refResolvesToCommit,
   resolveRefCommit,
-  resolveTrunkIntegrationRef,
+  resolveRemoteBranchHeadCommit,
 } from '../stacking/base-repair.js';
+import { isRegisteredRemote, validateRemoteName } from '../trunk-sync.js';
 
 export type ValidationBaseResolution =
   | { available: true; baseRef: string; repaired: boolean }
   | { available: false; reason: string; code: 'missing-pin' | 'invalid-pin' | 'unresolved-pin' | 'unresolved-base' | 'unintegrated-pin' | 'pin-not-ancestor-of-base' | 'pin-not-ancestor-of-head' | 'proof-failed' };
+
+async function resolveFreshTrunkCommit(cwd: string, trunkBranch: string, remote: string): Promise<{ commit?: string; ref: string; error?: string }> {
+  // A tracking ref can survive remote deletion or advancement. When a usable
+  // remote is configured, fetch its trunk into FETCH_HEAD for a fresh proof.
+  if (validateRemoteName(remote) === undefined && await isRegisteredRemote(remote, cwd)) {
+    const remoteHead = await resolveRemoteBranchHeadCommit(cwd, trunkBranch, remote);
+    if (!remoteHead.ok && remoteHead.reason === 'query-failed') {
+      return { ref: `${remote}/${trunkBranch}`, error: `Could not query configured trunk '${remote}/${trunkBranch}'${remoteHead.stderr ? `: ${remoteHead.stderr}` : '.'}` };
+    }
+    if (remoteHead.ok) {
+      const fetched = await fetchRemoteBranchHeadCommit(cwd, trunkBranch, remote);
+      if (!fetched.ok) {
+        return { ref: `${remote}/${trunkBranch}`, error: `Could not refresh configured trunk '${remote}/${trunkBranch}'${fetched.stderr ? `: ${fetched.stderr}` : '.'}` };
+      }
+      return { commit: fetched.commit, ref: `${remote}/${trunkBranch}` };
+    }
+  }
+
+  const ref = `refs/heads/${trunkBranch}`;
+  return { commit: await resolveRefCommit(cwd, ref), ref };
+}
 
 /**
  * Resolve the immutable validation base without changing stack/landing topology.
@@ -75,13 +98,13 @@ export async function resolveValidationBase(options: {
 
     const remote = config.build.trunkSync?.remote ?? 'origin';
     const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, remote);
-    const trunkRef = await resolveTrunkIntegrationRef(cwd, trunkBranch, remote);
-    const trunkCommit = await resolveRefCommit(cwd, trunkRef);
-    if (!trunkCommit) return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and configured trunk '${trunkRef}' does not resolve.` };
-    const trunkProof = await proveAncestor(cwd, diffBaseRef, trunkCommit);
-    if (trunkProof.result === 'failed') return { available: false, code: 'proof-failed', reason: `Could not prove pinned validation base '${diffBaseRef}' integrated into configured trunk '${trunkRef}': ${trunkProof.reason}` };
-    if (trunkProof.result === 'not-ancestor') return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and pinned base '${diffBaseRef}' is not proven integrated into configured trunk '${trunkRef}'.` };
-    return { available: true, baseRef: trunkCommit, repaired: true };
+    const freshTrunk = await resolveFreshTrunkCommit(cwd, trunkBranch, remote);
+    if (freshTrunk.error) return { available: false, code: 'proof-failed', reason: freshTrunk.error };
+    if (!freshTrunk.commit) return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and configured trunk '${freshTrunk.ref}' does not resolve.` };
+    const trunkProof = await proveAncestor(cwd, diffBaseRef, freshTrunk.commit);
+    if (trunkProof.result === 'failed') return { available: false, code: 'proof-failed', reason: `Could not prove pinned validation base '${diffBaseRef}' integrated into configured trunk '${freshTrunk.ref}': ${trunkProof.reason}` };
+    if (trunkProof.result === 'not-ancestor') return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and pinned base '${diffBaseRef}' is not proven integrated into configured trunk '${freshTrunk.ref}'.` };
+    return { available: true, baseRef: freshTrunk.commit, repaired: true };
   } catch (err) {
     return { available: false, code: 'proof-failed', reason: `Could not resolve validation base '${diffBaseRef}' for '${baseBranch}': ${err instanceof Error ? err.message : String(err)}` };
   }

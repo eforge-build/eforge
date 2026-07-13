@@ -173,7 +173,8 @@ describe('resolveStackBaseContext', () => {
     const cwd = await repo();
     await createRemoteMainRef(cwd);
     await exec('git', ['branch', 'eforge/parent-prd'], { cwd });
-    await parentLayer(cwd, 'eforge/parent-prd');
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    await parentLayer(cwd, 'eforge/parent-prd', stdout.trim());
 
     const result = await resolveStackBaseContext({
       cwd,
