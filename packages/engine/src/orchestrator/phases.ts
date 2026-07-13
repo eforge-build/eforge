@@ -38,6 +38,7 @@ import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unkn
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
 import { detectValidationDirtyWorktree } from './validation-dirty-worktree.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
+import { resolveValidationBase } from '../validation/validation-base.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
 import { getRefSha, getWorktreeDirtyFiles } from '../worktree-ops.js';
@@ -834,8 +835,17 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
 
       // If PRD validation fails, check viability gate before attempting gap closing
       if (event.type === 'prd_validation:complete' && !event.passed) {
+        // Unavailable evidence is a terminal safety failure, not a repairable
+        // implementation gap. Never let the mutating gap agent retry Git/base
+        // construction after this verdict.
+        const unavailableEvidence = event.gaps.some((gap) => gap.requirement === 'Implementation diff unavailable');
+        if (unavailableEvidence) {
+          const reason = event.gaps.map((gap) => gap.explanation).join('; ');
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD validation evidence unavailable; skipping gap closing: ${reason}` } as EforgeEvent;
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
         // Viability gate: if completionPercent is defined and below threshold, fail immediately
-        if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
+        } else if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
           yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
@@ -851,7 +861,9 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
             }
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;
-            // Gap closer errors fail the build
+            const reason = err instanceof Error ? err.message : String(err);
+            yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Gap closing failed: ${reason}` } as EforgeEvent;
+            // Gap closer errors fail the build.
             state.status = 'failed';
             state.completedAt = new Date().toISOString();
           }
@@ -1310,7 +1322,36 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // Policy gate applies only to merge; stays here per plan spec.
     if (action === 'merge' && hasPolicyGates(ctx, 'final-merge')) {
-      const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
+      // Policy gates must consume the same proven base as validation. In
+      // particular, a deleted logical parent cannot turn a persisted pin into
+      // an attacker-selected diff range.
+      let policyDiffBase: string | undefined;
+      if (config.diffBaseRef !== undefined) {
+        const validationBase = ctx.engineConfig === undefined
+          ? { available: false as const, reason: 'Final merge policy cannot resolve validation base: engine build configuration is unavailable.' }
+          : await resolveValidationBase({ cwd: ctx.mergeWorktreePath, baseBranch: config.baseBranch, diffBaseRef: config.diffBaseRef, config: ctx.engineConfig });
+        if (!validationBase.available) {
+          const reason = `Final merge policy evidence unavailable: ${validationBase.reason}`;
+          yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          return;
+        }
+        policyDiffBase = validationBase.baseRef;
+      }
+      let diff: Awaited<ReturnType<WorktreeManager['getFinalMergeDiff']>>;
+      try {
+        diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch, policyDiffBase);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const reason = `Final merge policy evidence unavailable: ${detail}`;
+        yield { timestamp: new Date().toISOString(), type: 'landing:skipped', action, featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason } as EforgeEvent;
+        state.status = 'failed';
+        state.completedAt = new Date().toISOString();
+        return;
+      }
       const policyResult = await executePolicyGate({
         registry: ctx.extensionRegistry,
         gateKind: 'final-merge',

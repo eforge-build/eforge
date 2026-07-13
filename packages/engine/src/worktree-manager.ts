@@ -192,10 +192,13 @@ export class WorktreeManager {
   /**
    * Return the path/status diff that would be merged from featureBranch to baseBranch.
    */
-  async getFinalMergeDiff(baseBranch: string): Promise<ExtensionDiff> {
+  async getFinalMergeDiff(baseBranch: string, diffBaseRef?: string): Promise<ExtensionDiff> {
+    // A stacked child may outlive its logical parent branch. Its immutable pin
+    // remains the divergence anchor even after the parent was integrated/deleted.
+    const divergenceBase = diffBaseRef ?? baseBranch;
     const { stdout: mergeBaseOut } = await exec(
       'git',
-      ['merge-base', baseBranch, this.featureBranch],
+      ['merge-base', divergenceBase, this.featureBranch],
       { cwd: this.repoRoot },
     );
     const mergeBase = mergeBaseOut.trim();

@@ -154,6 +154,37 @@ describe('WorktreeManager', () => {
     expect(diff.files).toEqual([{ path: 'feature-only.txt', status: 'added' }]);
   });
 
+  it('keeps final evidence limited to child changes after parent integration, deletion, and trunk advancement', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir, 'child');
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+
+    await exec('git', ['switch', '-c', 'eforge/parent'], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'parent-only.txt'), 'parent\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'parent'], { cwd: repoRoot });
+    const { stdout: pinOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
+    const pin = pinOut.trim();
+
+    await exec('git', ['rebase', 'eforge/parent'], { cwd: mergeWorktreePath });
+    writeFileSync(join(mergeWorktreePath, 'child-only.txt'), 'child\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'child'], { cwd: mergeWorktreePath });
+    expect((await wm.getFinalMergeDiff('eforge/parent', pin)).files).toEqual([{ path: 'child-only.txt', status: 'added' }]);
+
+    await exec('git', ['switch', 'main'], { cwd: repoRoot });
+    await exec('git', ['merge', '--ff-only', 'eforge/parent'], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'trunk-only.txt'), 'trunk\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'unrelated trunk advancement'], { cwd: repoRoot });
+    await exec('git', ['branch', '-D', 'eforge/parent'], { cwd: repoRoot });
+
+    // The immutable pin, not the advanced trunk or deleted logical branch,
+    // remains the divergence base used by final policy evidence.
+    expect((await wm.getFinalMergeDiff('main', pin)).files).toEqual([{ path: 'child-only.txt', status: 'added' }]);
+  });
+
   it('releaseForPlan removes dedicated worktree but not merge worktree', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =

@@ -342,6 +342,15 @@ async function* resolveCompileWorktreeOverride(
   prd: QueuedPrd,
   stackContext: StackBaseContext | undefined,
 ): AsyncGenerator<EforgeEvent, SimpleResult<string | undefined>> {
+  // A stacked child always starts from the immutable parent artifact commit.
+  // This is independent of trunk-sync: the logical base branch remains for
+  // landing, while the commit pin anchors worktree ancestry and validation.
+  if (stackContext?.parentPrdId !== undefined) {
+    if (!stackContext.parentArtifactCommit) {
+      return { ok: false, message: `Cannot compile stacked PRD '${prd.id}': parent artifact commit is unavailable.` };
+    }
+    return { ok: true, value: stackContext.parentArtifactCommit };
+  }
   if (!ctx.config.build.trunkSync.enabled) return { ok: true, value: undefined };
   if (stackContext !== undefined) return yield* resolveStackedTrunkSyncOverride(ctx, prd, stackContext);
   return yield* resolveNonStackedTrunkSyncOverride(ctx, prd);

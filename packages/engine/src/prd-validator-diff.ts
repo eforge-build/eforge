@@ -56,6 +56,12 @@ export interface BuildPrdDiffOptions {
 }
 
 export interface BuildPrdDiffResult {
+  /** True when Git successfully produced diff evidence (including zero files). */
+  available: boolean;
+  /** Actionable reason when `available` is false. */
+  reason?: string;
+  /** Git operation that could not produce evidence. */
+  stage?: 'enumeration' | 'file-diff';
   /** Output of `git diff --name-status` + `git diff --numstat` concatenated. */
   summary: string;
   /** One entry per changed file, in enumeration order. */
@@ -76,6 +82,7 @@ export interface BuildPrdDiffResult {
   /** Files additionally demoted to a summary marker because the total exceeded `globalBudgetBytes`. */
   summarizedByGlobalCap: number;
 }
+
 
 /**
  * Build a per-file-budgeted diff between `baseRef` and `HEAD` inside `cwd`.
@@ -115,25 +122,17 @@ export async function buildPrdValidatorDiff(
     numstatRaw = nm.stdout;
     nameStatusHuman = nsh.stdout;
     numstatHuman = nmh.stdout;
-  } catch {
-    // No changes or git failure — empty result
-    return {
-      summary: '',
-      files: [],
-      renderedText: '',
-      totalBytes: 0,
-      summarizedCount: 0,
-      globalBudgetBytes,
-      summarizedByPerFileBudget: 0,
-      summarizedByGlobalCap: 0,
-    };
+  } catch (err) {
+    return unavailableDiff('enumeration', `Could not enumerate implementation diff: ${err instanceof Error ? err.message : String(err)}`, globalBudgetBytes);
   }
+
 
   const statusByPath = parseNameStatusZ(nameStatusRaw);
   const numstatEntries = parseNumstatZ(numstatRaw);
 
   if (numstatEntries.length === 0) {
     return {
+      available: true,
       summary: '',
       files: [],
       renderedText: '',
@@ -178,8 +177,8 @@ export async function buildPrdValidatorDiff(
     try {
       const { stdout } = await exec('git', ['diff', range, '--', entry.path], { cwd, maxBuffer: GIT_MAX_BUFFER });
       body = stdout;
-    } catch {
-      body = '';
+    } catch (err) {
+      return unavailableDiff('file-diff', `Could not construct implementation diff for '${entry.path}': ${err instanceof Error ? err.message : String(err)}`, globalBudgetBytes);
     }
 
     if (body.length > perFileBudgetBytes) {
@@ -234,6 +233,7 @@ export async function buildPrdValidatorDiff(
   const summarizedCount = summarizedByPerFileBudget + summarizedByGlobalCap;
 
   return {
+    available: true,
     summary,
     files,
     renderedText,
@@ -242,6 +242,22 @@ export async function buildPrdValidatorDiff(
     globalBudgetBytes,
     summarizedByPerFileBudget,
     summarizedByGlobalCap,
+  };
+}
+
+function unavailableDiff(stage: 'enumeration' | 'file-diff', reason: string, globalBudgetBytes: number): BuildPrdDiffResult {
+  return {
+    available: false,
+    reason,
+    stage,
+    summary: '',
+    files: [],
+    renderedText: '',
+    totalBytes: 0,
+    summarizedCount: 0,
+    globalBudgetBytes,
+    summarizedByPerFileBudget: 0,
+    summarizedByGlobalCap: 0,
   };
 }
 
