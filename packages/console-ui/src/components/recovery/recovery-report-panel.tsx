@@ -49,12 +49,12 @@ const SIDECAR_ACTIONS: Record<SidecarActionVerdict, SidecarActionConfig> = {
   },
 };
 
-function isSidecarActionVerdict(verdict: RecoveryVerdictValue | undefined): verdict is SidecarActionVerdict {
-  return verdict === 'retry' || verdict === 'continue-repair' || verdict === 'abandon';
-}
-
 function appliedActionLabel(applied: RecoveryAppliedMetadata): string {
   return applied.action === 'accepted-success' ? 'Accepted success' : SIDECAR_ACTIONS[applied.action].triggerLabel;
+}
+
+function isPrimarySidecarActionVerdict(verdict: RecoveryVerdictValue | undefined): verdict is Exclude<SidecarActionVerdict, 'retry'> {
+  return verdict === 'continue-repair' || verdict === 'abandon';
 }
 
 export interface RecoveryReportPanelProps {
@@ -92,6 +92,7 @@ export interface RecoveryReportPanelProps {
   onRunAnalysis: () => void;
   onContinueRepair: () => void;
   refreshQueue: () => Promise<void> | void;
+  queueRecoveryActive?: boolean;
 }
 
 /**
@@ -126,6 +127,7 @@ export function RecoveryReportPanel({
   onRunAnalysis,
   onContinueRepair,
   refreshQueue,
+  queueRecoveryActive = true,
 }: RecoveryReportPanelProps) {
   const liveContinueRepairRecommended = Boolean(
     eligibility?.eligible && eligibility.partial !== true,
@@ -133,7 +135,10 @@ export function RecoveryReportPanel({
   const recommendedVerdict: RecoveryVerdictValue | undefined = liveContinueRepairRecommended
     ? 'continue-repair'
     : sidecarVerdict;
-  const recommendedActionVerdict = isSidecarActionVerdict(recommendedVerdict) ? recommendedVerdict : undefined;
+  // Queue recovery owns retries: its automatic analysis can safely promote a
+  // simple retry or retain the detailed cascade controls. Never compete with it
+  // using the legacy sidecar retry mutation.
+  const recommendedActionVerdict = isPrimarySidecarActionVerdict(recommendedVerdict) ? recommendedVerdict : undefined;
   const recommendedContinueRepair = recommendedActionVerdict === 'continue-repair';
   const continueRepairActionInRecommendation = Boolean(
     reportStatus === 'loaded' && sidecar && !appliedMetadata && recommendedContinueRepair,
@@ -289,6 +294,7 @@ export function RecoveryReportPanel({
           verdict={effectiveVerdict}
           confidence={effectiveConfidence}
           refreshQueue={refreshQueue}
+          active={queueRecoveryActive && prdId !== null}
         />
       )}
     </div>

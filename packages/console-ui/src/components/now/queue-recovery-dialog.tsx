@@ -320,6 +320,7 @@ export function QueueRecoveryDialog({
           onRunAnalysis={handleRunAnalysis}
           onContinueRepair={handleContinueRepair}
           refreshQueue={refreshQueue}
+          queueRecoveryActive={open}
         />
       )}
     </SheetPanel>

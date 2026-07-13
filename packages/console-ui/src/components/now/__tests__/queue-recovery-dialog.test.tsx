@@ -301,18 +301,24 @@ describe('QueueRecoveryDialog - header and report', () => {
 });
 
 describe('QueueRecoveryDialog - sidecar verdict actions', () => {
-  it('retry calls sidecar apply only after confirmation and not queue-cascade apply', async () => {
-    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('retry', 'high'));
-    vi.mocked(applySidecarRecovery).mockResolvedValue(applyFixture('retry'));
+  it('promotes a simple retry to confirmed queue recovery without sidecar apply', async () => {
+    const analysis = analysisFixture({ nodes: [], operations: [
+      { id: 'op-failed', kind: 'move-prd', prdId: 'failed-prd', expectedSourceLocation: 'failed', targetLocation: 'queue', reason: 'retry failed upstream' },
+      { id: 'op-sidecars', kind: 'remove-recovery-sidecars', prdId: 'failed-prd', expectedSourceLocation: 'failed', reason: 'remove stale sidecars' },
+    ] });
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(analysis);
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry from scratch' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
+    expect(applyQueueRecovery).not.toHaveBeenCalled();
     expect(applySidecarRecovery).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect(applySidecarRecovery).toHaveBeenCalledTimes(1));
-    expect(applyQueueRecovery).not.toHaveBeenCalled();
-    expect(await screen.findByText(/the PRD has been re-queued/)).toBeDefined();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
+    await waitFor(() => expect(applyQueueRecovery).toHaveBeenCalledWith({
+      selectedPrdId: 'failed-prd', strategy: analysis.strategy, expectedOperations: analysis.operations,
+    }));
+    expect(applySidecarRecovery).not.toHaveBeenCalled();
+    expect(await screen.findByText('Build retry applied.')).toBeDefined();
   });
 
   it('continue-repair sidecar queues continue-and-repair and hides retry', async () => {
@@ -360,19 +366,17 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     expect(startContinueRepair).not.toHaveBeenCalled();
   });
 
-  it('keeps a successful sidecar apply visible when the queue refresh fails', async () => {
-    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('retry', 'high'));
-    vi.mocked(applySidecarRecovery).mockResolvedValue(applyFixture('retry'));
+  it('keeps a successful queue retry visible when the queue refresh fails', async () => {
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(analysisFixture({ nodes: [] }));
     const refreshQueue = vi.fn().mockRejectedValue(new Error('refresh boom'));
     render(
       <QueueRecoveryDialog open prdId="failed-prd" onOpenChange={vi.fn()} refreshQueue={refreshQueue} />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry from scratch' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
 
-    // Mutation success stays visible; the refresh failure is secondary follow-up.
-    expect(await screen.findByText(/the PRD has been re-queued/)).toBeDefined();
+    expect(await screen.findByText('Build retry applied.')).toBeDefined();
     expect(screen.getByText(/refresh boom/)).toBeDefined();
   });
 
@@ -610,13 +614,11 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
     expect(screen.getByText(/moves the failed upstream back to the queue and may reactivate skipped descendants/)).toBeDefined();
   });
 
-  it('fetches queue-cascade analysis only after the advanced section is opened', async () => {
+  it('fetches queue-cascade analysis when the recovery dialog opens', async () => {
     renderDialog();
-    await screen.findByText(/Root cause analysis/);
-    expect(fetchQueueRecoveryAnalysis).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
-    await waitFor(() => expect(fetchQueueRecoveryAnalysis).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchQueueRecoveryAnalysis).toHaveBeenCalledWith({
+      selectedPrdId: 'failed-prd', strategy: QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
+    }));
   });
 
   it('applies queue-cascade recovery only after confirmation and not sidecar apply', async () => {
@@ -630,6 +632,36 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(applyQueueRecovery).toHaveBeenCalledTimes(1));
     expect(applySidecarRecovery).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale queue-recovery apply response after switching PRDs', async () => {
+    let resolveApply!: (response: QueueRecoveryApplyResponse) => void;
+    vi.mocked(fetchQueueRecoveryAnalysis).mockImplementation(({ selectedPrdId }) => Promise.resolve(
+      analysisFixture({ selectedPrdId, nodes: [] }),
+    ));
+    vi.mocked(applyQueueRecovery).mockImplementation(() => new Promise<QueueRecoveryApplyResponse>((resolve) => {
+      resolveApply = resolve;
+    }));
+    const refreshQueue = vi.fn();
+    const { rerender } = render(
+      <QueueRecoveryDialog open prdId="failed-prd" onOpenChange={vi.fn()} refreshQueue={refreshQueue} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry build' }));
+    await waitFor(() => expect(applyQueueRecovery).toHaveBeenCalledTimes(1));
+
+    rerender(<QueueRecoveryDialog open prdId="new-failed-prd" onOpenChange={vi.fn()} refreshQueue={refreshQueue} />);
+    await waitFor(() => expect(fetchQueueRecoveryAnalysis).toHaveBeenCalledWith({
+      selectedPrdId: 'new-failed-prd', strategy: QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
+    }));
+    const retryForNewPrd = await screen.findByRole('button', { name: 'Retry build' }) as HTMLButtonElement;
+
+    resolveApply(cascadeApplyFixture({ applied: true }));
+    await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByText('Build retry applied.')).toBeNull();
+    expect(retryForNewPrd.disabled).toBe(false);
   });
 
   it('warns when the sidecar verdict is manual', async () => {

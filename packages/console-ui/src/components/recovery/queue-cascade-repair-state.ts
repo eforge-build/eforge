@@ -37,6 +37,22 @@ export function removalKey(targetPrdId: string, dependencyId: string): string {
   return `${targetPrdId}::${dependencyId}`;
 }
 
+/** A queue retry is safe to promote only when it has no descendant or metadata
+ * repair work hidden behind it. Warnings intentionally remain overridable. */
+export function isSimpleQueueRetry(analysis: QueueRecoveryAnalyzeResponse): boolean {
+  const hasRetryOperation = analysis.operations.some((operation) => (
+    operation.kind === 'move-prd' && operation.targetLocation === 'queue'
+  ));
+  const hasSkippedDescendant = analysis.nodes.some((node) => node.role === 'skipped-descendant');
+  const requiresStackParentChoice = analysis.dispatchPreflight?.items.some((item) => item.requiresStackParentChoice) ?? false;
+  return analysis.eligible
+    && hasRetryOperation
+    && analysis.blockers.length === 0
+    && !hasSkippedDescendant
+    && (analysis.availableRepairActions?.length ?? 0) === 0
+    && !requiresStackParentChoice;
+}
+
 export function deriveDependencyGroups(
   classifications: QueueRecoveryAnalyzeResponse['dependencyClassifications'] = [],
 ): DependencyRowGroup[] {
