@@ -1,10 +1,10 @@
-import type { OrchestrationConfig } from '@/lib/run-state';
+type DependencyPlan = { id: string; dependsOn: readonly string[] };
 
-/** Compute a depth map from the orchestration config's dependency graph.
+/** Compute a depth map from a plan dependency graph.
  *  Depth = longest path from any root (no dependencies) to this node. */
-export function computeDepthMap(plans: OrchestrationConfig['plans']): Map<string, number> {
+export function computeDepthMap(plans: readonly DependencyPlan[]): Map<string, number> {
   const depthMap = new Map<string, number>();
-  const depsById = new Map<string, string[]>();
+  const depsById = new Map<string, readonly string[]>();
   for (const plan of plans) {
     depsById.set(plan.id, plan.dependsOn);
   }

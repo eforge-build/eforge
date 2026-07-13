@@ -6,6 +6,7 @@ import type { RunState } from '@/lib/run-state';
 import { buildMapReduceSummary, buildMapReduceTimeline } from '@/lib/run-state';
 import type { CompileScopeContextFailure, PlanInfo } from '@eforge-build/client/browser';
 import { compileFailureBannerModel } from '@/lib/compile-resilience-format';
+import { buildPlanPresentation } from '@/lib/run-state/plan-presentation';
 
 // PlansResponse is PlanInfo[]
 type PlansResponse = PlanInfo[];
@@ -16,37 +17,15 @@ interface PipelineSectionProps {
 }
 
 export function PipelineSection({ runState, plans }: PipelineSectionProps) {
-  const planArtifacts = useMemo(() => {
-    const livePlans = new Map<string, { name: string; body: string }>();
-    for (const { event } of runState.events) {
-      if (event.type === 'planning:complete') {
-        for (const plan of event.plans) {
-          livePlans.set(plan.id, { name: plan.name, body: plan.body });
-        }
-      }
-    }
-
-    const artifacts = new Map<string, { id: string; name: string; body: string }>();
-    const add = (id: string, name: string, body: string) => {
-      const live = livePlans.get(id);
-      const existing = artifacts.get(id);
-      artifacts.set(id, {
-        id,
-        // A live completion is the current declaration, even when a REST
-        // snapshot or resumed artifact supplies the preview body.
-        name: live?.name || name || existing?.name || id,
-        body: body || existing?.body || live?.body || '',
-      });
-    };
-
-    // Body precedence is REST, then resumed artifacts, then the live event.
-    // Merge per canonical ID so a partial source cannot hide another plan.
-    for (const plan of livePlans) add(plan[0], plan[1].name, plan[1].body);
-    for (const plan of runState.resumeArtifacts) add(plan.id, plan.name, plan.body);
-    for (const plan of plans?.filter((plan) => plan.type === 'plan') ?? []) add(plan.id, plan.name, plan.body);
-
-    return artifacts.size > 0 ? [...artifacts.values()] : undefined;
-  }, [plans, runState.events, runState.resumeArtifacts]);
+  const planPresentation = useMemo(
+    () => buildPlanPresentation({
+      orchestration: runState.earlyOrchestration,
+      restPlans: plans,
+      resumeArtifacts: runState.resumeArtifacts,
+      events: runState.events,
+    }),
+    [plans, runState.earlyOrchestration, runState.events, runState.resumeArtifacts],
+  );
 
   const prdSource = useMemo(() => {
     for (const { event } of runState.events) {
@@ -112,7 +91,7 @@ export function PipelineSection({ runState, plans }: PipelineSectionProps) {
         events={runState.events}
         orchestration={runState.earlyOrchestration}
         prdSource={prdSource}
-        planArtifacts={planArtifacts}
+        planPresentation={planPresentation}
         validationCommands={runState.validationCommands}
         perspectiveErrors={runState.perspectiveErrors}
         reviewIssuesByPerspective={runState.reviewIssuesByPerspective}

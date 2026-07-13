@@ -6,7 +6,7 @@ import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildS
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { isFeatureBranchLane, isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
-import { planPresentation } from '@/lib/run-state/plan-presentation';
+import { buildPlanPresentation, type PlanPresentation } from '@/lib/run-state/plan-presentation';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -79,6 +79,9 @@ interface ThreadPipelineProps {
   events: StoredEvent[];
   orchestration?: OrchestrationConfig | null;
   prdSource?: { label: string; content?: string } | null;
+  /** Centralized compiled-plan display and execution metadata. */
+  planPresentation?: PlanPresentation[];
+  /** @deprecated callers should pass planPresentation. */
   planArtifacts?: Array<{ id: string; name: string; body: string }>;
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
@@ -92,45 +95,28 @@ interface ThreadPipelineProps {
   mapReduce?: MapReduceTimelineModel | null;
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions, mapReduce }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planPresentation: suppliedPlanPresentation, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions, mapReduce }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [selectedReviewCyclePlanId, setSelectedReviewCyclePlanId] = useState<string | null>(null);
 
-  const planArtifactMap = useMemo(() => {
-    const map = new Map<string, { name: string; body: string }>();
-    if (planArtifacts) {
-      for (const p of planArtifacts) {
-        map.set(p.id, { name: p.name, body: p.body });
-      }
-    }
-    return map;
-  }, [planArtifacts]);
-
-  const dependsByPlan = useMemo(() => {
-    const map = new Map<string, string[]>();
-    if (orchestration) {
-      for (const plan of orchestration.plans) {
-        if (plan.dependsOn.length > 0) {
-          map.set(plan.id, plan.dependsOn);
-        }
-      }
-    }
-    return map;
-  }, [orchestration]);
-
-  const presentationByPlan = useMemo(
-    () => new Map((orchestration?.plans ?? []).map((plan, index) => [plan.id, planPresentation(index, plan.name, plan.id)])),
-    [orchestration],
+  // Keep the legacy artifact input only for existing embedders; new callers
+  // receive this fully resolved model from PipelineSection.
+  const planPresentation = useMemo(
+    () => suppliedPlanPresentation ?? buildPlanPresentation({
+      orchestration,
+      restPlans: planArtifacts?.map((plan) => ({ ...plan, dependsOn: [], type: 'plan' as const })),
+      events,
+    }),
+    [suppliedPlanPresentation, orchestration, planArtifacts, events],
   );
+  const presentationByPlan = useMemo(() => new Map(planPresentation.map((plan) => [plan.id, plan])), [planPresentation]);
 
-  const depthMap = useMemo(() => {
-    if (!orchestration || orchestration.plans.length === 0) {
-      return new Map<string, number>();
-    }
-    return computeDepthMap(orchestration.plans);
-  }, [orchestration]);
+  const depthMap = useMemo(
+    () => computeDepthMap(planPresentation),
+    [planPresentation],
+  );
 
   const { sessionStart, totalSpan } = useMemo(() => {
     const fallbackNow = endTime ?? Date.now();
@@ -161,17 +147,10 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     return map;
   }, [agentThreads, mapReduce]);
 
-  const buildStagesByPlan = useMemo(() => {
-    const map = new Map<string, BuildStageSpec[]>();
-    if (orchestration) {
-      for (const plan of orchestration.plans) {
-        if (plan.build && plan.build.length > 0) {
-          map.set(plan.id, plan.build);
-        }
-      }
-    }
-    return map;
-  }, [orchestration]);
+  const buildStagesByPlan = useMemo(
+    () => new Map(planPresentation.filter((plan) => plan.build.length > 0).map((plan) => [plan.id, [...plan.build]])),
+    [planPresentation],
+  );
 
   const baseSyncCommands = useMemo(() => baseSyncCommandsFromEvents(events), [events]);
 
@@ -184,9 +163,8 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
       ids.push(id);
     };
     const realPlanIds = new Set<string>();
-    for (const plan of orchestration?.plans ?? []) realPlanIds.add(plan.id);
-    for (const plan of planArtifacts ?? []) realPlanIds.add(plan.id);
-    const hasArtifactContext = (orchestration !== null && orchestration !== undefined) || (planArtifacts?.length ?? 0) > 0;
+    for (const plan of planPresentation) realPlanIds.add(plan.id);
+    const hasArtifactContext = planPresentation.length > 0 || orchestration !== null && orchestration !== undefined;
     const validationCommandIds = validationCommandLaneIds(validationCommands, events);
     const directBaseSyncLaneIds = baseSyncCommands ? [BASE_SYNC_LANE_ID] : [];
     const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id) || directBaseSyncLaneIds.includes(id);
@@ -198,12 +176,9 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
       }
     };
 
-    // Seed from orchestration (preserves declared plan order), then artifacts,
-    // then planStatuses defensively filtered against recovered artifacts, then
-    // thread-backed lane keys, then validation-command phase lanes (commands are
-    // emitted without planId but belong to validation).
-    for (const plan of orchestration?.plans ?? []) add(plan.id);
-    for (const plan of planArtifacts ?? []) add(plan.id);
+    // Compiled plans retain the declaration order assigned by the shared
+    // presentation model; synthetic lanes join only through the registry.
+    for (const plan of planPresentation) add(plan.id);
     for (const id of Object.keys(planStatuses)) addPlanStatusLane(id);
     for (const id of threadsByPlan.keys()) addPlanStatusLane(id);
     for (const id of validationCommandIds) addPlanStatusLane(id);
@@ -222,7 +197,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events, mapReduce, baseSyncCommands]);
+  }, [planPresentation, planStatuses, threadsByPlan, validationCommands, events, mapReduce, baseSyncCommands]);
 
   const mapReduceLaneById = useMemo(
     () => new Map((mapReduce?.lanes ?? []).map((lane) => [lane.id, lane])),
@@ -377,9 +352,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 eventsByAgent={eventsByAgent}
                 buildStages={buildStagesByPlan.get(planId)}
                 currentStage={planStatuses[planId]}
-                planArtifact={planArtifactMap.get(planId)}
                 presentation={presentationByPlan.get(planId)}
-                dependsOn={dependsByPlan.get(planId)}
                 depth={depthMap.get(planId) ?? 0}
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}

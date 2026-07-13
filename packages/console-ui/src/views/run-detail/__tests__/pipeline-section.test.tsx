@@ -65,8 +65,8 @@ describe('PipelineSection', () => {
     );
 
     const props = threadPipelineMock.mock.calls.at(-1)?.[0] as ComponentProps<typeof ThreadPipeline>;
-    expect(props.planArtifacts).toEqual([
-      { id: 'plan-01-config', name: 'Plan 01 Config', body: '# Plan 01' },
+    expect(props.planPresentation).toMatchObject([
+      { id: 'plan-01-config', name: 'Plan 01 Config', previewBody: '# Plan 01' },
     ]);
   });
 
@@ -91,10 +91,10 @@ describe('PipelineSection', () => {
     render(<PipelineSection runState={runState} plans={[makePlan({ id: 'plan-live', name: 'REST name', body: '# REST' })]} />);
 
     const props = threadPipelineMock.mock.calls.at(-1)?.[0] as ComponentProps<typeof ThreadPipeline>;
-    expect(props.planArtifacts).toEqual([
-      { id: 'plan-live', name: 'Live name', body: '# REST' },
-      { id: 'plan-live-only', name: 'Live only', body: '# Live only' },
-      { id: 'plan-resume-only', name: 'Resumed only', body: '# Resume only' },
+    expect(props.planPresentation).toMatchObject([
+      { id: 'plan-live', name: 'Live name', previewBody: '# REST' },
+      { id: 'plan-live-only', name: 'Live only', previewBody: '# Live only' },
+      { id: 'plan-resume-only', name: 'Resumed only', previewBody: '# Resume only' },
     ]);
   });
 });

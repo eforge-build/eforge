@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initialRunState } from '../reducer';
 import { handlePlanningComplete } from '../handlers/handle-planning';
-import { planPresentation } from '../plan-presentation';
+import { buildPlanPresentation, planPresentation } from '../plan-presentation';
 import { selectPlanLanes } from '../selectors/plan-progress';
 import type { EforgeEvent, RunState } from '../types';
 
@@ -46,6 +46,25 @@ describe('plan presentation', () => {
     expect(lanes[0].presentationLabel).toBe('Plan 01 — Second declared');
     expect(lanes[1].presentationTooltip).toEqual(['Plan 02 — First declared', 'ID: opaque-a']);
     expect(lanes[2].presentationLabel).toBeUndefined();
+  });
+
+  it('prefers REST preview bodies while live declarations retain names, dependencies, and build metadata', () => {
+    const presentation = buildPlanPresentation({
+      orchestration: {
+        name: '', description: '', created: '', baseBranch: '',
+        pipeline: { compile: [], defaultBuild: [], defaultReview: { strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'standard' }, rationale: '' },
+        plans: [{ id: 'semantic-id', name: 'Live declaration', dependsOn: ['foundation'], branch: 'feature/live', build: ['implement'], review: { strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'standard' } }],
+      } as unknown as RunState['earlyOrchestration'],
+      restPlans: [{ id: 'semantic-id', name: 'Stale REST name', body: '# REST body', dependsOn: [], type: 'plan' }],
+      resumeArtifacts: [{ id: 'resume-only', name: 'Recovered', body: '# Resume body', dependsOn: [] }],
+      events: [{ eventId: 'late', event: planningComplete([{ id: 'semantic-id', name: 'Late event name', dependsOn: ['foundation'], branch: 'feature/live' }]) }],
+    });
+
+    expect(presentation).toHaveLength(1);
+    expect(presentation).toMatchObject([
+      { id: 'semantic-id', ordinal: '01', name: 'Live declaration', previewBody: '# REST body', dependsOn: ['foundation'], build: ['implement'] },
+    ]);
+    expect(presentation[0]?.tooltip).toEqual(['Plan 01 — Live declaration', 'ID: semantic-id', 'Depends on: foundation']);
   });
 
   it('uses the canonical ID as the readable-name fallback, including pathological input', () => {

@@ -153,7 +153,7 @@ export interface PlanLane {
   /** Display-only numbered label for declared plans. */
   presentationLabel?: string;
   /** Display-only tooltip lines; canonical ID is always included. */
-  presentationTooltip?: readonly [string, string];
+  presentationTooltip?: readonly string[];
   /** Current pipeline stage for the plan, or undefined when not yet started. */
   stage: PipelineStage | undefined;
   /** Build-stage sequence from earlyOrchestration (empty when not compiled). */
