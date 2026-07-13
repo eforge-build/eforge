@@ -1,3 +1,5 @@
+import { realpath, stat } from 'node:fs/promises';
+import path from 'node:path';
 import type { PlanningAtomGraph, PlanningAtom } from './atom-graph.js';
 import { classifyEvidenceCandidate, evidenceSlug, normalizeEvidenceValue } from './evidence-hygiene.js';
 import type { PlanningCriterionAspect } from './coverage-accounting.js';
@@ -24,6 +26,7 @@ const SURFACE_PATTERNS: Array<[SourceLocalizationNeedKind, RegExp]> = [
   ['consumer-surface', /\bconsumer\b|\buser-facing\b|\bpublic\s+surface\b/i],
 ];
 const BROAD_ROOTS = new Set(['.', '', 'src', 'lib', 'test', 'tests', 'docs', 'packages', 'apps', 'services']);
+const GENERIC_SUBSYSTEM_HINTS = new Set(['general', 'shared', 'lexical', 'criterion', 'test']);
 
 export async function deriveSourceLocalization(input: DeriveSourceLocalizationInput): Promise<SourceLocalizationBundle> {
   const normalized = normalizeSourceLocalizationInputs(input.hints, input.limits);
@@ -31,7 +34,7 @@ export async function deriveSourceLocalization(input: DeriveSourceLocalizationIn
   const normalizedInput = { ...input, hints: normalized.hints, limits };
   const index = input.index ?? await deriveRepositoryIndex({ cwd: input.cwd, hints: normalized.hints, limits });
   const needs = deriveSourceLocalizationNeeds(normalizedInput);
-  const records = needs.map((need) => resolveNeed(need, index, limits));
+  const records = await Promise.all(needs.map(async (need) => addProposedNewFileCandidate(resolveNeed(need, index, limits), need, input.cwd)));
   const bundle: SourceLocalizationBundle = { sourceHash: input.inventory?.sourceHash ?? input.graph?.sourceHash, graphId: input.graph?.graphId, records: records.sort((a, b) => a.needId.localeCompare(b.needId)), byAtomId: byAtom(records), diagnostics: [...normalized.diagnostics, ...records.flatMap((record) => record.diagnostics), ...index.diagnostics], limits, indexDiagnostics: index.diagnostics };
   const validation = validateSourceLocalizationBundle(bundle);
   return validation.ok ? bundle : { ...bundle, diagnostics: [...bundle.diagnostics, ...validation.errors.map((message) => ({ code: 'localization-validation', message, severity: 'error' as const }))] };
@@ -125,14 +128,14 @@ function directoryCandidates(need: SourceLocalizationNeed, query: string, index:
 }
 
 function scoreFileForNeed(file: RepositoryIndexFile, need: SourceLocalizationNeed, manifestEntrypointTargets: Set<string>): SourceLocalizationCandidate[] {
-  const queryTokens = tokenSet(need.query);
+  const queryTokens = need.kind === 'subsystem' ? concreteSubsystemHints([need.query]).flatMap(tokenSet) : tokenSet(need.query);
   const signals: string[] = [];
   let score = 0;
   if (need.kind === 'manifest' && file.surfaces.includes('manifest')) { signals.push('manifest file'); score += 70; }
   if (need.kind === 'entrypoint' && (file.surfaces.includes('entrypoint') || manifestEntrypointTargets.has(file.path))) { signals.push('entrypoint file'); score += 70; }
   if (SURFACE_KINDS.has(need.kind) && file.surfaces.includes(need.kind)) { signals.push(`${need.kind} surface`); score += 62; }
-  if (need.kind === 'interface' && hasAny(file.keywords, [...need.interfaceKeys, need.query].flatMap(tokenSet))) { signals.push('handler/schema/contract naming'); score += 64; }
-  if (need.kind === 'subsystem' && hasAny(file.segments.flatMap(tokenSet), need.subsystemHints.flatMap(tokenSet))) { signals.push('subsystem path segment'); score += 58; }
+  if (need.kind === 'interface' && hasAny(file.keywords, [...concreteInterfaceKeys(need.interfaceKeys), ...concreteInterfaceKeys([need.query])].flatMap(tokenSet))) { signals.push('handler/schema/contract naming'); score += 64; }
+  if (need.kind === 'subsystem' && concreteSubsystemHints(need.subsystemHints).length > 0 && hasAny(file.segments.flatMap(tokenSet), concreteSubsystemHints(need.subsystemHints).flatMap(tokenSet))) { signals.push('subsystem path segment'); score += 58; }
   if ((need.kind === 'symbol' || need.kind === 'keyword') && hasAny(file.keywords, [...queryTokens])) { signals.push('keyword hit'); score += need.kind === 'symbol' ? 60 : 48; }
   const overlaps = contextOverlap(file, need);
   if (overlaps > 0) { signals.push(...matchedSignals(file, need)); score += overlaps * 7; }
@@ -142,22 +145,25 @@ function scoreFileForNeed(file: RepositoryIndexFile, need: SourceLocalizationNee
 }
 
 function contextOverlap(file: RepositoryIndexFile, need: SourceLocalizationNeed): number {
-  return countOverlap(file.keywords, [...need.subsystemHints, ...need.interfaceKeys].flatMap(tokenSet)) + countOverlap(file.surfaces, [...need.interfaceKeys, ...need.subsystemHints].flatMap(tokenSet));
+  const subsystemHints = concreteSubsystemHints(need.subsystemHints);
+  const interfaceKeys = concreteInterfaceKeys(need.interfaceKeys);
+  return countOverlap(file.keywords, [...subsystemHints, ...interfaceKeys].flatMap(tokenSet)) + countOverlap(file.surfaces, [...interfaceKeys, ...subsystemHints].flatMap(tokenSet));
 }
 
 function matchedSignals(file: RepositoryIndexFile, need: SourceLocalizationNeed): string[] {
   const signals: string[] = [];
-  if (countOverlap(file.keywords, need.subsystemHints.flatMap(tokenSet)) > 0) signals.push('subsystem keyword');
-  if (countOverlap(file.keywords, need.interfaceKeys.flatMap(tokenSet)) > 0) signals.push('interface keyword');
-  if (file.surfaces.some((surface) => need.interfaceKeys.includes(surface))) signals.push('surface key');
+  if (countOverlap(file.keywords, concreteSubsystemHints(need.subsystemHints).flatMap(tokenSet)) > 0) signals.push('subsystem keyword');
+  const interfaceKeys = concreteInterfaceKeys(need.interfaceKeys);
+  if (countOverlap(file.keywords, interfaceKeys.flatMap(tokenSet)) > 0) signals.push('interface keyword');
+  if (file.surfaces.some((surface) => interfaceKeys.includes(surface))) signals.push('surface key');
   return signals;
 }
 
 function needMatchesAtom(need: SourceLocalizationNeed, atom: PlanningAtom): boolean {
   if (need.criterionIds.some((id) => atom.criterionIds.includes(id))) return true;
   if (need.assignedAtomIds.includes(atom.atomId)) return true;
-  if (overlap(need.subsystemHints, atom.subsystemHints)) return true;
-  if (overlap(need.interfaceKeys, atom.interfaceKeys)) return true;
+  if (overlap(concreteSubsystemHints(need.subsystemHints), concreteSubsystemHints(atom.subsystemHints))) return true;
+  if (overlap(concreteInterfaceKeys(need.interfaceKeys), concreteInterfaceKeys(atom.interfaceKeys))) return true;
   if (need.kind === 'literal-path' || need.kind === 'directory') return atom.evidencePaths.some((path) => path === need.query || path.startsWith(`${need.query}/`) || need.query.startsWith(`${path}/`));
   return false;
 }
@@ -259,6 +265,30 @@ function aspectIdsForCriterion(criterionId: string, aspects?: PlanningCriterionA
 function surfaceKindsForText(value: string): SourceLocalizationNeedKind[] {
   return SURFACE_PATTERNS.filter(([, pattern]) => pattern.test(value)).map(([kind]) => kind);
 }
+
+async function addProposedNewFileCandidate(record: SourceLocalizationRecord, need: SourceLocalizationNeed, cwd: string): Promise<SourceLocalizationRecord> {
+  // A nonexistent path is ownership only when the PRD/hint explicitly names a
+  // bounded file below a real directory in this checkout. Existing files keep
+  // the normal index-backed, fail-closed ownership path.
+  if (need.kind !== 'literal-path' || !isExplicitNewFileIntent(need)) return record;
+  const candidatePath = normalizeEvidenceValue(need.query);
+  if (!candidatePath || BROAD_ROOTS.has(candidatePath) || candidatePath.includes('..') || path.isAbsolute(candidatePath) || record.candidateFiles.some((candidate) => candidate.path === candidatePath)) return record;
+  const parent = path.dirname(candidatePath);
+  if (parent === '.' || BROAD_ROOTS.has(parent)) return record;
+  try {
+    const root = await realpath(cwd);
+    const resolvedParent = path.resolve(root, parent);
+    if (!resolvedParent.startsWith(`${root}${path.sep}`) || !(await stat(resolvedParent)).isDirectory()) return record;
+    const proposed = candidate(candidatePath, 90, 'explicit in-root proposed new file', ['explicit-path', 'proposed-new-file']);
+    return { ...record, candidateFiles: dedupeCandidates([...record.candidateFiles, proposed]), status: 'resolved', confidence: 'high', reason: proposed.reason };
+  } catch { return record; }
+}
+
+function isExplicitNewFileIntent(need: SourceLocalizationNeed): boolean {
+  return need.source === 'criterion' || (need.source === 'project-hint' && need.assignedAtomIds.length > 0);
+}
+
+function concreteSubsystemHints(hints: string[]): string[] { return hints.filter((hint) => !GENERIC_SUBSYSTEM_HINTS.has(hint.toLowerCase())); }
 
 function tokenSet(value: string): string[] {
   return stableSlug(value).split('-').filter((token) => token.length > 1);

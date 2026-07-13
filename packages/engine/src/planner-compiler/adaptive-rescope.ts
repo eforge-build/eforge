@@ -20,7 +20,7 @@ import type { SourceInventory } from './source-inventory.js';
  * rescope signals, but they are too generic to justify failing compile before
  * the decomposed planner gets a chance to produce scoped work.
  */
-const CRITICAL_NEED_KINDS = new Set(['entrypoint']);
+const CRITICAL_NEED_KINDS = new Set(['entrypoint', 'literal-path', 'directory']);
 
 export type AdaptiveRescopeStatus = 'not-needed' | 'warning-only' | 'rescoped' | 'exhausted-proceeded' | 'fail-closed';
 
@@ -138,7 +138,7 @@ export interface RescopeRiskClassification { risky: boolean; reasons: string[] }
 export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; inventory: SourceInventory; graph: PlanningAtomGraph; limits: PlanningDecompositionLimits }): RescopeRiskClassification {
   if (input.graph.atoms.length > 1) return { risky: false, reasons: [`already-decomposed (${input.graph.atoms.length} atoms)`] };
   const reasons: string[] = [];
-  const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount);
+  const skip = decideExplorationSkip(input.bundle, input.inventory.summary.criterionCount, input.bundle.records.filter(isCompileBlockingNeed).map((record) => record.needId));
   // A source with no literal path/directory needs requires bounded repository
   // inspection, but 0/0 is not evidence that the root scope is unsafe. Treating
   // it as a zero-percent share pre-splits small lexical categories (for example
@@ -260,7 +260,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     ledger: { totalToolUseBudget: 0, usedToolUses: 0 },
     riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: [],
   };
-  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount);
+  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, baseline.records.filter(isCompileBlockingNeed).map((record) => record.needId));
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
   if (skip.skip) return { diagnostics };
 

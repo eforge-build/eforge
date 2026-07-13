@@ -115,7 +115,7 @@ export async function runSourceLocalizationRepairLoop(input: RunSourceLocalizati
     const sharedBrief = withSyntheticRepairOwnership(deriveSharedPlanningBrief({ graph: input.graph, sourceLocalizationBundle, limits: input.sharedBriefLimits }), gaps, affectedAtomIds, input.graph);
     const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: input.graph, sharedBrief, limits: input.sourceEvidenceLimits, priorityPaths });
     const map = affectedAtomIds.length === 0 ? state.map : await runPlanningAtomMap({ graph: input.graph, inventory: input.sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes: input.reduceDigestPromptBudgetBytes, parallelism: input.parallelism, abortSignal: input.abortSignal, onEvent: input.onEvent, affectedAtomIds, priorOutputs: state.map.outputs });
-    const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
+    const reduce = await runPlanningReduce({ graph: input.graph, mapResult: map, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, limits: input.reduceLimits, sourceLocalizationBundle, abortSignal: input.abortSignal, onEvent: input.onEvent });
     state = { sourceLocalizationBundle, sharedBrief, sourceEvidenceBundle, map, reduce };
     const unresolved = classifyPlanningReduceGaps(reduce.outputs, sourceLocalizationBundle, sourceEvidenceBundle, input.graph);
     const diagnosticGaps = unresolved.length === 0 ? gaps : unresolved;
@@ -141,13 +141,19 @@ export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?:
   const sourceLocalizationSignal = gap.sourceLocalizationSignal === true || SOURCE_GAP_KINDS.has(issueKind);
   if (!sourceLocalizationSignal) return undefined;
   const ownerPaths = uniq([...(gap.ownerPaths ?? []), ...extractPathSignals(`${gap.title} ${gap.description}`)]);
-  const sourceNeedIds = uniq([...(gap.sourceNeedIds ?? []), ...sourceNeedIdsForGap(gap, ownerPaths, localization)]);
+  const validNeedIds = new Set(localization?.records.map((record) => record.needId) ?? []);
+  // Bad reducer ids must not suppress criterion/aspect fallback localization.
+  const explicitNeedIds = (gap.sourceNeedIds ?? []).filter((needId) => validNeedIds.has(needId));
+  const sourceNeedIds = uniq(explicitNeedIds.length > 0 ? explicitNeedIds : sourceNeedIdsForGap({ ...gap, sourceNeedIds: [] }, ownerPaths, localization));
   return {
     gap: { ...gap, issueKind, sourceLocalizationSignal: true, sourceNeedIds, ownerPaths },
     issueKind,
     sourceLocalizationSignal: true,
     sourceNeedIds,
-    affectedAtomIds: uniq([...(gap.affectedAtomIds ?? []), ...atomIdsForGap(gap, sourceNeedIds, ownerPaths, localization, evidence, graph)]),
+    affectedAtomIds: (() => {
+      const explicit = (gap.affectedAtomIds ?? []).filter((atomId) => graph?.atoms.some((atom) => atom.atomId === atomId) ?? false);
+      return uniq(explicit.length > 0 ? explicit : atomIdsForGap(gap, sourceNeedIds, ownerPaths, localization, evidence, graph));
+    })(),
     criterionIds: uniq(gap.criterionIds),
     aspectIds: uniq(gap.aspectIds),
     ownerPaths,
@@ -224,9 +230,9 @@ function sourceNeedIdsForGap(gap: PlanningReduceGap, ownerPaths: string[], local
 function hintsForGaps(gaps: ClassifiedPlanningReduceGap[], atomIds: string[], localization: SourceLocalizationBundle): SourceLocalizationHint[] {
   const records = new Map(localization.records.map((record) => [record.needId, record]));
   return gaps.flatMap((gap) => [
-    ...gap.sourceNeedIds.flatMap((needId) => records.get(needId) ? [{ kind: records.get(needId)!.kind, query: records.get(needId)!.query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds }] : []),
-    ...gap.ownerPaths.map((path) => ({ kind: 'literal-path' as const, query: path, paths: [path], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds })),
-    { kind: hintKindFor(gap.issueKind), query: `${gap.gap.title} ${gap.gap.description}`.slice(0, 1_000), criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds },
+    ...gap.sourceNeedIds.flatMap((needId) => records.get(needId) ? [{ kind: records.get(needId)!.kind, query: records.get(needId)!.query, criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: records.get(needId)!.subsystemHints, interfaceKeys: records.get(needId)!.interfaceKeys, atomIds: gap.affectedAtomIds }] : []),
+    ...gap.ownerPaths.map((path) => ({ kind: 'literal-path' as const, query: path, paths: [path], criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, atomIds: gap.affectedAtomIds })),
+    { kind: hintKindFor(gap.issueKind), query: `${gap.gap.title} ${gap.gap.description}`.slice(0, 1_000), criterionIds: gap.criterionIds, aspectIds: gap.aspectIds, subsystemHints: concreteHints(gap.gap.title, gap.gap.description), interfaceKeys: concreteHints(...gap.gap.aspectIds), atomIds: gap.affectedAtomIds },
   ]);
 }
 
@@ -287,7 +293,10 @@ function atomIdsForSyntheticPath(path: string, gaps: ClassifiedPlanningReduceGap
 
 function localizedPathsFor(gaps: ClassifiedPlanningReduceGap[], localization: SourceLocalizationBundle): string[] {
   const needIds = new Set(gaps.flatMap((gap) => gap.sourceNeedIds));
-  const explicit = gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue));
+  const explicit = uniq(gaps.flatMap((gap) => gap.ownerPaths.map(normalizeEvidenceValue)));
+  // A reducer-supplied owner is the authoritative repair target. Do not let
+  // a criterion fallback widen its diagnostic to unrelated localized files.
+  if (explicit.length > 0) return explicit;
   const localized = localization.records
     .filter((record) => needIds.has(record.needId) || explicit.includes(normalizeEvidenceValue(record.query)) || record.candidateFiles.some((candidate) => explicit.includes(normalizeEvidenceValue(candidate.path))))
     .flatMap((record) => record.candidateFiles.map((candidate) => normalizeEvidenceValue(candidate.path)));
@@ -384,6 +393,11 @@ function hintRepairScore(hint: SourceLocalizationHint): number {
   if ((hint.atomIds ?? []).length > 0) score += 2;
   if ((hint.criterionIds ?? []).length > 0) score += 1;
   return score;
+}
+
+function concreteHints(...values: string[]): string[] {
+  const generic = new Set(['general', 'shared', 'lexical', 'criterion', 'test']);
+  return uniq(values.flatMap((value) => value.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 2 && !generic.has(token))));
 }
 
 function overlaps(a: string[], b: string[]): boolean { return a.some((value) => b.includes(value)); }

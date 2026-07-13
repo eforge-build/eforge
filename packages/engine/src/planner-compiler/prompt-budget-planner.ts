@@ -5,16 +5,17 @@ import { buildPlanningReduceTask, buildPlanningReduceTree, buildPlanningReduceTr
 import { reduceDigestPromptByteLength, REDUCE_DIGEST_LIMITS, REDUCE_DIGEST_PROMPT_BUDGETING, type PlanningReduceDigest, type PlanningReduceDigestSourceKind } from './reduce-digest-contracts.js';
 import { formatPlanningReducerPrompt } from './reducer-agent.js';
 import { utf8ByteLength } from './source-analysis.js';
+import type { SourceLocalizationBundle } from './source-localization-contracts.js';
 
 const MIN_REDUCE_FAN_IN = REDUCE_DIGEST_PROMPT_BUDGETING.minReduceFanIn;
 const SYNTHETIC_DIGEST_MAX_FRAGMENTS = 16;
 const SYNTHETIC_DIGEST_FRAGMENT_CRITERION_LIMIT = 32;
 const SYNTHETIC_DIGEST_FRAGMENT_ASPECT_LIMIT = 64;
 
-export interface PlanPromptSafeReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits }
-export interface PlanPromptSafeReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits }
+export interface PlanPromptSafeReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits; sourceLocalizationBundle?: SourceLocalizationBundle }
+export interface PlanPromptSafeReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits; sourceLocalizationBundle?: SourceLocalizationBundle }
 export interface PromptSafeReduceTreePlan { ok: boolean; tree: PlanningReduceTree; validationErrors: string[]; maxReduceDigestPromptBytes: number }
-export interface DeriveInitialReduceDigestPromptBudgetInput { graph: PlanningAtomGraph; limits: PlanningReduceLimits }
+export interface DeriveInitialReduceDigestPromptBudgetInput { graph: PlanningAtomGraph; limits: PlanningReduceLimits; sourceLocalizationBundle?: SourceLocalizationBundle }
 
 export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduceDigestPromptBudgetInput): number {
   const acceptedCount = input.graph.atoms.length;
@@ -29,7 +30,7 @@ export function deriveInitialReduceDigestPromptBudget(input: DeriveInitialReduce
   // instead of re-running the full binary search per node.
   let cap = Math.max(1, tree.limits.maxReducePromptBytes);
   for (const node of levelZeroNodes) {
-    cap = maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }, cap, input.graph);
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: pseudoMap.outputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs: [] }, cap, input.graph, input.sourceLocalizationBundle);
   }
   return Math.max(1, cap);
 }
@@ -41,6 +42,7 @@ export function planPromptSafeReduceTree(input: PlanPromptSafeReduceTreeInput): 
     acceptedCount: input.mapResult.outputs.filter((output) => output.status !== 'failed').length,
     atomOutputs: input.mapResult.outputs,
     buildTree: (limits) => buildPlanningReduceTree({ graph: input.graph, mapResult: input.mapResult, limits }),
+    sourceLocalizationBundle: input.sourceLocalizationBundle,
   });
 }
 
@@ -52,10 +54,11 @@ export function planPromptSafeReduceTreeFromTasks(input: PlanPromptSafeReduceTre
     acceptedCount: input.tasks.length,
     atomOutputs,
     buildTree: (limits) => buildPlanningReduceTreeFromAtomTasks({ graph: input.graph, tasks: input.tasks, limits }),
+    sourceLocalizationBundle: input.sourceLocalizationBundle,
   });
 }
 
-function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits: PlanningReduceLimits; acceptedCount: number; atomOutputs: PlanningAtomOutput[]; buildTree: (limits: PlanningReduceBudget) => PlanningReduceTree }): PromptSafeReduceTreePlan {
+function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits: PlanningReduceLimits; acceptedCount: number; atomOutputs: PlanningAtomOutput[]; buildTree: (limits: PlanningReduceBudget) => PlanningReduceTree; sourceLocalizationBundle?: SourceLocalizationBundle }): PromptSafeReduceTreePlan {
   const baseLimits = normalizePlanningReduceBudget(input.limits);
   const minFanIn = input.acceptedCount > 1 ? MIN_REDUCE_FAN_IN : 1;
   const maxFanIn = Math.max(baseLimits.maxInputsPerReduce, minFanIn);
@@ -66,9 +69,9 @@ function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits:
     const candidateBase = normalizePlanningReduceBudget({ ...baseLimits, maxInputsPerReduce: fanIn });
     const initialTree = input.buildTree(candidateBase);
     fallbackTree = initialTree;
-    const budget = deriveTreeDigestPromptBudget(initialTree, input.atomOutputs, input.graph);
+    const budget = deriveTreeDigestPromptBudget(initialTree, input.atomOutputs, input.graph, input.sourceLocalizationBundle);
     const tree = withReduceBudget(initialTree, { ...candidateBase, maxReduceDigestPromptBytes: budget });
-    const errors = validatePromptSafeTree(tree, input.atomOutputs, input.graph);
+    const errors = validatePromptSafeTree(tree, input.atomOutputs, input.graph, input.sourceLocalizationBundle);
     lastErrors = errors;
     if (errors.length === 0) return { ok: true, tree, validationErrors: [], maxReduceDigestPromptBytes: budget };
   }
@@ -77,7 +80,7 @@ function planPromptSafeReduceTreeCore(input: { graph: PlanningAtomGraph; limits:
   return { ok: false, tree: withReduceBudget(fallbackTree, { ...fallbackTree.limits, maxReduceDigestPromptBytes: budget }), validationErrors: lastErrors.length > 0 ? lastErrors : ['reduce prompt budget planning failed'], maxReduceDigestPromptBytes: budget };
 }
 
-export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph): string[] {
+export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph, sourceLocalizationBundle?: SourceLocalizationBundle): string[] {
   const errors = [...tree.validationErrors];
   const syntheticOutputs = new Map<string, PlanningReduceOutput>();
   for (const depth of reduceDepths(tree)) {
@@ -86,7 +89,7 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
       const atomInputs = atomOutputs
         .filter((output) => node.inputAtomIds.includes(output.atomId))
         .map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', tree.limits.maxReduceDigestPromptBytes, node.criterionIds, node.aspectIds) });
-      const task = buildPlanningReduceTask(tree, node, atomInputs, childOutputs, graph);
+      const task = buildPlanningReduceTask(tree, node, atomInputs, childOutputs, graph, sourceNeedIdsForNode(tree, node, sourceLocalizationBundle));
       const promptBytes = utf8ByteLength(formatPlanningReducerPrompt(task));
       if (promptBytes > task.budget.maxReducePromptBytes) errors.push(`reduce prompt budget exceeded:${node.nodeId}`);
       syntheticOutputs.set(node.nodeId, syntheticReduceOutput(node, task.budget.maxReduceDigestPromptBytes));
@@ -95,7 +98,7 @@ export function validatePromptSafeTree(tree: PlanningReduceTree, atomOutputs: Pl
   return [...new Set(errors)].sort();
 }
 
-function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph): number {
+function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: PlanningAtomOutput[], graph: PlanningAtomGraph, sourceLocalizationBundle?: SourceLocalizationBundle): number {
   if (tree.nodes.length === 0) return tree.limits.maxReduceDigestPromptBytes;
   // Only the minimum slot across nodes matters, so thread it through as the
   // search cap: structurally similar nodes confirm the cap with a single probe
@@ -103,12 +106,12 @@ function deriveTreeDigestPromptBudget(tree: PlanningReduceTree, atomOutputs: Pla
   let cap = Math.max(1, Math.min(tree.limits.maxReducePromptBytes, tree.limits.maxReduceDigestPromptBytes));
   for (const node of tree.nodes) {
     const childOutputs = node.inputNodeIds.map((nodeId) => syntheticReduceOutput(requireNode(tree, nodeId), tree.limits.maxReduceDigestPromptBytes));
-    cap = maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs }, cap, graph);
+    cap = maxDigestSlotForNode(tree, node, { atomOutputs: atomOutputs.filter((output) => node.inputAtomIds.includes(output.atomId)), childOutputs }, cap, graph, sourceLocalizationBundle);
   }
   return Math.max(1, cap);
 }
 
-function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }, maxBudget: number, graph: PlanningAtomGraph): number {
+function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode, inputs: { atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[] }, maxBudget: number, graph: PlanningAtomGraph, sourceLocalizationBundle?: SourceLocalizationBundle): number {
   const fits = (digestBudget: number): boolean => {
     const task = buildPlanningReduceTask(
       withReduceBudget(tree, { ...tree.limits, maxReduceDigestPromptBytes: digestBudget }),
@@ -116,6 +119,7 @@ function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode
       inputs.atomOutputs.map((output) => output.reduceDigest ? output : { ...output, reduceDigest: syntheticDigest(output.atomId, 'atom', digestBudget, node.criterionIds, node.aspectIds) }),
       inputs.childOutputs.map((output) => ({ ...output, reduceDigest: syntheticDigest(output.nodeId, 'reduce', digestBudget, node.criterionIds, node.aspectIds) })),
       graph,
+      sourceNeedIdsForNode(tree, node, sourceLocalizationBundle),
     );
     return utf8ByteLength(formatPlanningReducerPrompt(task)) <= task.budget.maxReducePromptBytes;
   };
@@ -130,6 +134,14 @@ function maxDigestSlotForNode(tree: PlanningReduceTree, node: PlanningReduceNode
     else high = mid - 1;
   }
   return best;
+}
+
+function sourceNeedIdsForNode(tree: PlanningReduceTree, node: PlanningReduceNode, bundle?: SourceLocalizationBundle): string[] | undefined {
+  if (!bundle) return undefined;
+  const nodes = new Map(tree.nodes.map((item) => [item.nodeId, item]));
+  const visit = (item: PlanningReduceNode): string[] => [...item.inputAtomIds, ...item.inputNodeIds.flatMap((id) => nodes.has(id) ? visit(nodes.get(id)!) : [])];
+  const atomIds = new Set(visit(node));
+  return bundle.records.filter((record) => record.assignedAtomIds.some((id) => atomIds.has(id))).map((record) => record.needId);
 }
 
 function syntheticReduceOutput(node: PlanningReduceNode, digestBytes: number): PlanningReduceOutput {

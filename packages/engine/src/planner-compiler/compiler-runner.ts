@@ -72,8 +72,8 @@ export async function runBoundedPlannerCompiler(input: RunBoundedPlannerCompiler
   const sharedBrief = deriveSharedPlanningBrief({ graph: atomGraph, sourceLocalizationBundle, limits: input.sharedBriefLimits });
   const sourceEvidenceBundle = await materializePlanningSourceEvidence({ cwd: input.cwd, graph: atomGraph, sharedBrief, limits: input.sourceEvidenceLimits });
   const reduceLimits = { ...DEFAULT_PLANNING_REDUCE_LIMITS, ...(input.reduceLimits ?? {}) };
-  const reduceDigestPromptBudgetBytes = deriveInitialReduceDigestPromptBudget({ graph: atomGraph, limits: reduceLimits });
-  const firstPass = await runPlanningMapReducePipeline({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes, parallelism: input.parallelism, reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
+  const reduceDigestPromptBudgetBytes = deriveInitialReduceDigestPromptBudget({ graph: atomGraph, limits: reduceLimits, sourceLocalizationBundle });
+  const firstPass = await runPlanningMapReducePipeline({ graph: atomGraph, inventory: sourceInventory, sharedBrief, sourceLocalizationBundle, sourceEvidenceBundle, sourceContent: input.sourceContent, cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, reduceDigestPromptBudgetBytes, parallelism: input.parallelism, reduceLimits, abortSignal: input.abortSignal, onEvent: input.onEvent });
   const map = firstPass.map as PlanningAtomMapResult;
   const reduce = firstPass.reduce as PlanningReduceResult;
   const firstPassReduceDigestPromptBudgetBytes = reduce.tree.limits.maxReduceDigestPromptBytes;

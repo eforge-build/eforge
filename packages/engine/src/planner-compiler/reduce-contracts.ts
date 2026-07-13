@@ -22,7 +22,9 @@ export interface PlanningReduceTree { graphId: string; nodes: PlanningReduceNode
 export interface PlanningReduceConflict { conflictId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; sourceIds?: string[] }
 export type PlanningReduceGapIssueKind = LocalizationIssueKind;
 export interface PlanningReduceGap { gapId: string; title: string; criterionIds: string[]; aspectIds: string[]; description: string; representationRequired: boolean; sourceIds?: string[]; issueKind?: PlanningReduceGapIssueKind; sourceLocalizationSignal?: boolean; sourceNeedIds?: string[]; affectedAtomIds?: string[]; ownerPaths?: string[]; productScopedOutputRefs?: string[]; productScopedValidationRefs?: string[] }
-export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget; moduleBoundaryBudget: PlanningModuleBoundaryBudget }
+export interface PlanningReduceTask { graphId: string; node: PlanningReduceNode; atomOutputs: PlanningAtomOutput[]; childOutputs: PlanningReduceOutput[]; budget: PlanningReduceBudget; moduleBoundaryBudget: PlanningModuleBoundaryBudget; validAffectedAtomIds: string[]; validSourceNeedIds: string[]; sourceNeedCatalogAvailable: boolean }
+export const REDUCE_CATALOG_MAX_ITEMS = 64;
+export const REDUCE_CATALOG_MAX_BYTES = 4_096;
 export interface PlanningReduceOutput { nodeId: string; status: PlanningReduceOutputStatus; compactSummary: string; reduceDigest?: PlanningReduceDigest; planFragments?: PlanningAtomPlanFragment[]; moduleCandidates?: PlanningAtomModuleCandidate[]; conflicts?: PlanningReduceConflict[]; gaps?: PlanningReduceGap[]; validationStrategy?: string; error?: string }
 export interface BuildPlanningReduceTreeInput { graph: PlanningAtomGraph; mapResult: Pick<PlanningAtomMapResult, 'outputs' | 'coverage'>; limits: PlanningReduceLimits }
 export interface BuildPlanningReduceTreeFromTasksInput { graph: PlanningAtomGraph; tasks: PlanningAtomTask[]; limits: PlanningReduceLimits }
@@ -48,7 +50,7 @@ export function buildPlanningReduceTreeFromAtomTasks(input: BuildPlanningReduceT
   return buildReduceTreeFromAtomIds({ graphId: input.graph.graphId, atomIds: tasks.map((task) => task.atomId), limits, nodeForAtomInputs: (nodeId, depth, atomIds, inputNodeIds, priorNodes) => nodeForTaskInputs(nodeId, depth, atomIds, inputNodeIds, taskById, priorNodes) });
 }
 
-export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[], graph: PlanningAtomGraph): PlanningReduceTask {
+export function buildPlanningReduceTask(tree: PlanningReduceTree, node: PlanningReduceNode, atomOutputs: PlanningAtomOutput[], childOutputs: PlanningReduceOutput[], graph: PlanningAtomGraph, validSourceNeedIds?: string[]): PlanningReduceTask {
   return {
     graphId: tree.graphId,
     node: cloneNode(node),
@@ -56,6 +58,11 @@ export function buildPlanningReduceTask(tree: PlanningReduceTree, node: Planning
     childOutputs: childOutputs.map(cloneReduceOutput),
     budget: { ...tree.limits },
     moduleBoundaryBudget: derivePlanningModuleBoundaryBudget(graph, node),
+    // Reducers may only name atoms represented by this node and descendants,
+    // never criterion peers elsewhere in the graph.
+    validAffectedAtomIds: boundReduceCatalogIds(nodeAtomIds(tree, node).filter((id) => graph.atoms.some((atom) => atom.atomId === id))),
+    validSourceNeedIds: boundReduceCatalogIds(validSourceNeedIds ?? []),
+    sourceNeedCatalogAvailable: validSourceNeedIds !== undefined,
   };
 }
 
@@ -119,6 +126,24 @@ function nodeForTaskInputs(nodeId: string, depth: number, inputAtomIds: string[]
   return { nodeId, depth, inputAtomIds: [...inputAtomIds].sort(), inputNodeIds: [...inputNodeIds].sort(), criterionIds: uniq([...atomCriteria, ...childCriteria]), aspectIds: uniq([...atomAspects, ...childAspects]) };
 }
 
+export function boundReduceCatalogIds(ids: string[]): string[] {
+  const result: string[] = [];
+  for (const id of [...new Set(ids)].sort()) {
+    if (result.length >= REDUCE_CATALOG_MAX_ITEMS || JSON.stringify([...result, id]).length > REDUCE_CATALOG_MAX_BYTES) break;
+    result.push(id);
+  }
+  return result;
+}
+
+function nodeAtomIds(tree: PlanningReduceTree, node: PlanningReduceNode): string[] {
+  const byId = new Map(tree.nodes.map((candidate) => [candidate.nodeId, candidate]));
+  const visit = (current: PlanningReduceNode): string[] => [
+    ...current.inputAtomIds,
+    ...current.inputNodeIds.flatMap((id) => byId.get(id) ? visit(byId.get(id)!) : []),
+  ];
+  return uniq(visit(node));
+}
+
 function validateReduceTree(nodes: PlanningReduceNode[], limits: PlanningReduceLimits): string[] {
   const errors: string[] = [];
   const ids = nodes.map((node) => node.nodeId);
@@ -152,7 +177,10 @@ function validateReduceOutput(input: ValidatePlanningReduceOutputInput): string[
   for (const module of output.moduleCandidates ?? []) validateModule(task, module, output.moduleCandidates ?? [], errors);
   errors.push(...validatePlanningReduceModuleBoundaries(task, output));
   for (const conflict of output.conflicts ?? []) validateIssue(task, 'conflict', conflict.conflictId, conflict.criterionIds, conflict.aspectIds, conflict.description, errors);
-  for (const gap of output.gaps ?? []) validateIssue(task, 'gap', gap.gapId, gap.criterionIds, gap.aspectIds, gap.description, errors);
+  for (const gap of output.gaps ?? []) {
+    validateIssue(task, 'gap', gap.gapId, gap.criterionIds, gap.aspectIds, gap.description, errors);
+    validateGapCatalogIds(task, gap, errors);
+  }
   return errors;
 }
 
@@ -185,6 +213,13 @@ function validateIssue(task: PlanningReduceTask, kind: string, id: string, crite
   if (!nonEmpty(id)) errors.push(`reduce ${kind} requires id`);
   if (!nonEmpty(description)) errors.push(`reduce ${kind} requires description:${id}`);
   validateLinkedIds(task, id, criterionIds, aspectIds, errors);
+}
+
+function validateGapCatalogIds(task: PlanningReduceTask, gap: PlanningReduceGap, errors: string[]): void {
+  // Execution quarantines untrusted IDs before validation. Legacy callers
+  // without a catalog retain their gaps for deterministic fallback repair.
+  for (const needId of gap.sourceNeedIds ?? []) if (task.sourceNeedCatalogAvailable && !task.validSourceNeedIds.includes(needId)) errors.push(`unknown source need for reduce gap:${gap.gapId}:${needId}`);
+  for (const atomId of gap.affectedAtomIds ?? []) if (!task.validAffectedAtomIds.includes(atomId)) errors.push(`unknown affected atom for reduce gap:${gap.gapId}:${atomId}`);
 }
 
 function validateLinkedIds(task: PlanningReduceTask, id: string, criterionIds: string[], aspectIds: string[], errors: string[]): void {
