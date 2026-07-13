@@ -11,6 +11,8 @@ import { PlanPreviewProvider, PlanPreviewPanel, usePlanPreview } from '@/compone
 interface RunDetailViewProps {
   /** Session/run ID being viewed. */
   detailId: string;
+  /** Display title derived from the daemon's run and queue projections. */
+  buildTitle?: string;
   /** Whether this session is currently live (active). */
   isLive: boolean;
   /** Pre-reduced live RunState (only provided when isLive is true). */
@@ -19,7 +21,7 @@ interface RunDetailViewProps {
   onBack?: () => void;
 }
 
-export function RunDetailView({ detailId, isLive, liveRunState, onBack }: RunDetailViewProps) {
+export function RunDetailView({ detailId, buildTitle, isLive, liveRunState, onBack }: RunDetailViewProps) {
   const { runState, plans, isLoading, error } = useHybridRunDetail(
     detailId,
     isLive,
@@ -30,6 +32,7 @@ export function RunDetailView({ detailId, isLive, liveRunState, onBack }: RunDet
     <PlanPreviewProvider>
       <RunDetailContent
         detailId={detailId}
+        buildTitle={buildTitle}
         isLive={isLive}
         runState={runState}
         plans={plans}
@@ -43,6 +46,7 @@ export function RunDetailView({ detailId, isLive, liveRunState, onBack }: RunDet
 
 interface RunDetailContentProps {
   detailId: string;
+  buildTitle?: string;
   isLive: boolean;
   runState: RunState | null;
   plans: Parameters<typeof BottomTabPanel>[0]['plans'];
@@ -64,9 +68,9 @@ function getRunTitle(runState: RunState | null): string | null {
   return null;
 }
 
-function RunDetailContent({ detailId, isLive, runState, plans, isLoading, error, onBack }: RunDetailContentProps) {
+function RunDetailContent({ detailId, buildTitle, isLive, runState, plans, isLoading, error, onBack }: RunDetailContentProps) {
   const { setRuntimeData } = usePlanPreview();
-  const runTitle = getRunTitle(runState);
+  const runTitle = getRunTitle(runState) ?? buildTitle ?? null;
 
   useEffect(() => {
     if (!runState) return;

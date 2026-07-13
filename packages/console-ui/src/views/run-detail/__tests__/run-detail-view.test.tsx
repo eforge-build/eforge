@@ -57,6 +57,21 @@ describe('RunDetailView', () => {
     expect(screen.getByText('session-abc-123')).toBeTruthy();
   });
 
+  it('uses the daemon-projected build title when the event stream has no title', () => {
+    render(
+      <RunDetailView
+        detailId="session-abc-123"
+        buildTitle="Console Plan Compilation"
+        isLive={true}
+        liveRunState={makeRunState()}
+        onBack={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Console Plan Compilation')).toBeTruthy();
+    expect(screen.getByText('session-abc-123')).toBeTruthy();
+  });
+
   it('uses the PRD title as the build detail title', async () => {
     const runState = makeRunState({
       events: [
