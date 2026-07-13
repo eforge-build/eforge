@@ -221,6 +221,7 @@ function getLastReviewFixIssueReferences(ctx: BuildStageContext): ReviewFixIssue
 }
 function setLastBuildEvaluation(ctx: BuildStageContext, evaluation: LastBuildEvaluation): void { (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation = evaluation; }
 function getLastBuildEvaluation(ctx: BuildStageContext): LastBuildEvaluation | undefined { return (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation; }
+function failPlan(ctx: BuildStageContext, error: string): EforgeEvent { ctx.buildFailed = true; return { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error } as EforgeEvent; }
 function emptyIssueOutcomeCounts(): EvaluationIssueOutcomeCounts { return { resolvedIssueOutcomes: 0, falsePositiveIssueOutcomes: 0, unresolvedIssueOutcomes: 0, unresolvedNonBlockingIssueOutcomes: 0, needsHumanReviewIssueOutcomes: 0, acceptedRiskIssueOutcomes: 0, splitToFollowupIssueOutcomes: 0, blockingIssueOutcomes: 0 }; }
 function lastBuildEvaluationNotRun(): LastBuildEvaluation { return { ran: false, accepted: 0, rejected: 0, review: 0, files: [], verdicts: [], ...emptyIssueOutcomeCounts() }; }
 function getEmptyReviewCycleFeedback(): ReviewCycleFeedback { return { blockingRetryGuidance: [], falsePositiveIssues: [], nonBlockingIssues: [], acceptedRiskIssues: [], splitToFollowupIssues: [] }; }
@@ -514,8 +515,7 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, err instanceof Error ? err.message : String(err)) } as EforgeEvent;
-    ctx.buildFailed = true;
+    yield failPlan(ctx, formatNoVerdictsFailureMessage(snapshot, err instanceof Error ? err.message : String(err)));
     return;
   }
   if (!result || result.failed || result.verdicts.length === 0) {
@@ -524,8 +524,7 @@ async function* evaluateStageInner(
       yield driftFailure;
       return;
     }
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: formatNoVerdictsFailureMessage(snapshot, suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; review-fixer changes remain uncommitted.') } as EforgeEvent;
-    ctx.buildFailed = true;
+    yield failPlan(ctx, formatNoVerdictsFailureMessage(snapshot, suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; review-fixer changes remain uncommitted.'));
     return;
   }
   try {
@@ -1012,8 +1011,7 @@ registerBuildStage({
             }).join(', ');
             errorMsg = `Shard scope enforcement failed: files claimed by multiple shards: ${fileList}`;
           }
-          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
-          ctx.buildFailed = true;
+          yield failPlan(ctx, errorMsg);
           return;
         }
       }
@@ -1165,8 +1163,7 @@ registerBuildStage({
         lastReviewIssueCount: ctx.reviewIssues.length,
         finalEvaluationRan: false,
       } as unknown as Parameters<typeof emitBuildDecision>[1]);
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: 'Review cycle stopped after reviewer backend failures produced no actionable review issues.' } as EforgeEvent;
-      ctx.buildFailed = true;
+      yield failPlan(ctx, 'Review cycle stopped after reviewer backend failures produced no actionable review issues.');
       return;
     }
 
@@ -1271,19 +1268,22 @@ registerBuildStage({
       const allowCleanNoVerdictRecovery = recoveryIssues.length > 0 && priorRepairAttempts.length > 0 && finalEvaluation !== undefined && !finalEvaluation.ran;
       ctx.reviewIssues = recoveryIssues;
       const recoveryGate = await samePlanRecoveryGate(ctx, 'review', finalEvaluation, { allowCleanNoVerdictRecovery });
-      const recoveryReviewContext = await getSamePlanRecoveryReviewContext(ctx);
-      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...recoveryReviewContext, maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
+      let recoveryBlockingCheckRan = false;
+      const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'review', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...(await getSamePlanRecoveryReviewContext(ctx)), maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
         runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
-        runBlockingCheck: (_attempt) => evaluateStageInner(ctx, { strictness }),
+        runBlockingCheck: (_attempt) => { recoveryBlockingCheckRan = true; return evaluateStageInner(ctx, { strictness }); },
         hasBlockers: () => { const latest = getLastBuildEvaluation(ctx); return !latest?.ran || latest.blockingIssueOutcomes > 0; },
       } });
       if (recovered) return;
       if (ctx.buildFailed) return;
-      const errorMsg = !finalEvaluation?.ran
+      // A no-change recovery fix records a not-run evaluation; pre-recovery counts then still stand.
+      const latestEvaluation = getLastBuildEvaluation(ctx), recoveryEvaluationRan = recoveryBlockingCheckRan && latestEvaluation?.ran === true;
+      const terminalEvaluation = recoveryEvaluationRan ? latestEvaluation : finalEvaluation;
+      const scopeNote = recoveryEvaluationRan && recoveryIssues.length < lastBlockingIssues.length ? ` Recovery re-evaluated ${recoveryIssues.length} of ${lastBlockingIssues.length} blocking issue(s); counts reflect that subset.` : '';
+      const errorMsg = !terminalEvaluation?.ran
         ? `Review cycle exhausted ${maxRounds} round(s) without a final evaluation verdict.`
-        : `${finalEvaluation.blockingIssueOutcomes} blocking issue outcome(s) remain after ${maxRounds} review round(s) (${finalEvaluation.unresolvedIssueOutcomes} unresolved, ${finalEvaluation.needsHumanReviewIssueOutcomes} need human review; ${finalEvaluation.rejected} rejected, ${finalEvaluation.review} under review).`;
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg } as EforgeEvent;
-      ctx.buildFailed = true;
+        : `${terminalEvaluation.blockingIssueOutcomes} blocking issue outcome(s) remain after ${maxRounds} review round(s) (${terminalEvaluation.unresolvedIssueOutcomes} unresolved, ${terminalEvaluation.needsHumanReviewIssueOutcomes} need human review; ${terminalEvaluation.rejected} rejected, ${terminalEvaluation.review} under review).${scopeNote}`;
+      yield failPlan(ctx, errorMsg);
     }
   }
 });
@@ -1513,15 +1513,15 @@ registerBuildStage({
   const allowCleanNoVerdictRecovery = recoveryIssues.length > 0 && priorRepairAttempts.length > 0 && finalEvaluation !== undefined && !finalEvaluation.ran;
   ctx.reviewIssues = recoveryIssues;
   const recoveryGate = await samePlanRecoveryGate(ctx, 'test', finalEvaluation, { allowCleanNoVerdictRecovery });
-  const recoveryReviewContext = await getSamePlanRecoveryReviewContext(ctx);
-  const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'test', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...recoveryReviewContext, maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
+  let recoveryBlockingCheckRan = false;
+  const recovered = yield* runSamePlanRecovery({ ctx, blockerKind: 'test', issues: recoveryIssues, feedback: recoveryFeedback, finalVerdicts: finalEvaluation?.verdicts ?? [], priorRepairAttempts, ...(await getSamePlanRecoveryReviewContext(ctx)), maxAttempts: 1, ...recoveryGate, complete: recoveryGate.complete && (recoverySelection.complete || allowCleanNoVerdictRecovery), callbacks: {
     runFix: (_attempt, samePlanRecoveryContext) => reviewFixStageInner(ctx, { samePlanRecoveryContext }),
-    runBlockingCheck: async function* () { yield* testStageInner(ctx); if (!ctx.buildFailed && ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness }); },
+    runBlockingCheck: async function* () { recoveryBlockingCheckRan = true; yield* testStageInner(ctx); if (!ctx.buildFailed && ctx.reviewIssues.length > 0) yield* evaluateStageInner(ctx, { strictness }); },
     hasBlockers: () => ctx.reviewIssues.length > 0 && ((latest => !latest?.ran || latest.blockingIssueOutcomes > 0)(getLastBuildEvaluation(ctx))),
   } });
   if (ctx.buildFailed) return;
   if (!recovered) {
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: `Test cycle exhausted ${maxRounds} round(s) with ${lastBlockingIssues.length} production issue(s) remaining.` } as EforgeEvent;
-    ctx.buildFailed = true;
+    const remainingIssueCount = recoveryBlockingCheckRan ? ctx.reviewIssues.length : lastBlockingIssues.length;
+    yield failPlan(ctx, `Test cycle exhausted ${maxRounds} round(s) with ${remainingIssueCount} production issue(s) remaining.`);
   }
 });
