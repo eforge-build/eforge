@@ -416,6 +416,7 @@ export class EforgeEngine {
         planCommitCwd: mergeWorktreePath,
         baseBranch,
         ...(diffBaseRef !== undefined && { diffBaseRef }),
+        ...(options.stackedValidationPinRequired === true && { stackedValidationPinRequired: true }),
         planSetName,
         runId,
         sourceContent,

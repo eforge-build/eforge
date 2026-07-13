@@ -55,33 +55,23 @@ export interface BuildPrdDiffOptions {
   globalBudgetBytes?: number;
 }
 
-export interface BuildPrdDiffResult {
-  /** True when Git successfully produced diff evidence (including zero files). */
-  available: boolean;
-  /** Actionable reason when `available` is false. */
-  reason?: string;
-  /** Git operation that could not produce evidence. */
-  stage?: 'enumeration' | 'file-diff';
+interface BuildPrdDiffEvidence {
   /** Output of `git diff --name-status` + `git diff --numstat` concatenated. */
   summary: string;
   /** One entry per changed file, in enumeration order. */
   files: DiffFile[];
-  /**
-   * Concatenation of `summary` followed by every file's `body`, separated by
-   * blank lines. The exact string passed to the PRD validator agent.
-   */
+  /** Concatenation passed to the PRD validator agent. */
   renderedText: string;
-  /** Total byte length of `renderedText`. */
   totalBytes: number;
-  /** Count of files whose bodies were replaced with a summary marker. */
   summarizedCount: number;
-  /** Effective global byte cap applied to `renderedText`. */
   globalBudgetBytes: number;
-  /** Files summarized because their per-file body exceeded the per-file budget (or the changed-line threshold, or binary). */
   summarizedByPerFileBudget: number;
-  /** Files additionally demoted to a summary marker because the total exceeded `globalBudgetBytes`. */
   summarizedByGlobalCap: number;
 }
+
+export type BuildPrdDiffResult =
+  | ({ available: true } & BuildPrdDiffEvidence)
+  | ({ available: false; /** Actionable reason for unavailable evidence. */ reason: string; /** Git operation that failed. */ stage: 'enumeration' | 'file-diff' } & BuildPrdDiffEvidence);
 
 
 /**
@@ -245,7 +235,7 @@ export async function buildPrdValidatorDiff(
   };
 }
 
-function unavailableDiff(stage: 'enumeration' | 'file-diff', reason: string, globalBudgetBytes: number): BuildPrdDiffResult {
+function unavailableDiff(stage: 'enumeration' | 'file-diff', reason: string, globalBudgetBytes: number): Extract<BuildPrdDiffResult, { available: false }> {
   return {
     available: false,
     reason,

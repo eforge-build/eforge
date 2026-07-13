@@ -33,7 +33,7 @@ const config = (trunkBranch = 'main') => ({ build: { ...DEFAULT_CONFIG.build, tr
 describe('resolveValidationBase', () => {
   it('fails closed for missing, malformed, and unresolved pins or bases', async () => {
     const cwd = repo();
-    await expect(resolveValidationBase({ cwd, baseBranch: 'eforge/parent', config: config() }))
+    await expect(resolveValidationBase({ cwd, baseBranch: 'main', stackedValidationPinRequired: true, config: config() }))
       .resolves.toMatchObject({ available: false, code: 'missing-pin' });
     await expect(resolveValidationBase({ cwd, baseBranch: 'main', diffBaseRef: 'main', config: config() }))
       .resolves.toMatchObject({ available: false, code: 'invalid-pin' });
@@ -85,7 +85,7 @@ describe('resolveValidationBase', () => {
     git(cwd, 'branch', '-D', 'eforge/parent');
     git(cwd, 'switch', 'eforge/child');
 
-    await expect(resolveValidationBase({ cwd, baseBranch: 'eforge/parent', diffBaseRef: pin, config: config('develop') }))
-      .resolves.toEqual({ available: true, baseRef: 'refs/heads/develop', repaired: true });
+    await expect(resolveValidationBase({ cwd, baseBranch: 'eforge/parent', diffBaseRef: pin, stackedValidationPinRequired: true, config: config('develop') }))
+      .resolves.toEqual({ available: true, baseRef: git(cwd, 'rev-parse', 'develop'), repaired: true });
   });
 });

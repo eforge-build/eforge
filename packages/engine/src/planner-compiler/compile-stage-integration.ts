@@ -95,6 +95,7 @@ export async function* runBoundedPlannerCompilerCompileStage(ctx: PipelineContex
     planSetName: ctx.planSetName,
     baseBranch: ctx.baseBranch,
     diffBaseRef: ctx.diffBaseRef,
+    stackedValidationPinRequired: ctx.stackedValidationPinRequired,
     pipeline,
     artifacts,
     tiers: ctx.config.agents.tiers,

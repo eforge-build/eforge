@@ -26,6 +26,7 @@ import {
 import type { QueueOptions } from '../eforge.js';
 import { withRunId } from '../session.js';
 import { resolveStackBaseContext, type StackBaseContext } from '../stacking/base-resolver.js';
+import { resolveRefCommit } from '../stacking/base-repair.js';
 import { createProvider, type StackProviderAdapter } from '../stacking/provider.js';
 import { prepareTrunkSyncBase, type TrunkSyncResult } from '../trunk-sync.js';
 import {
@@ -81,6 +82,7 @@ type StalenessOutcome =
 type CompileOverrides = {
   baseBranchOverride?: string;
   worktreeBaseRefOverride?: string;
+  stackedValidationPinRequired?: boolean;
 };
 // --- eforge:endregion queued-prd-types ---
 
@@ -333,6 +335,7 @@ async function* resolveCompileOverrides(
     value: {
       ...(stackContext?.baseBranch !== undefined && { baseBranchOverride: stackContext.baseBranch }),
       ...(worktreeOverrideResult.value !== undefined && { worktreeBaseRefOverride: worktreeOverrideResult.value }),
+      ...(stackContext?.parentPrdId !== undefined && { stackedValidationPinRequired: true }),
     },
   };
 }
@@ -349,7 +352,15 @@ async function* resolveCompileWorktreeOverride(
     if (!stackContext.parentArtifactCommit) {
       return { ok: false, message: `Cannot compile stacked PRD '${prd.id}': parent artifact commit is unavailable.` };
     }
-    return { ok: true, value: stackContext.parentArtifactCommit };
+    // Stack context can arrive from supported compiled-resume state as well as
+    // fresh dispatch. Re-prove that its persisted object is a commit before
+    // compiler worktree creation, rather than letting git worktree fail after
+    // planning has begun. Keep the resolved SHA as the sole child base.
+    const parentCommit = await resolveRefCommit(ctx.cwd, stackContext.parentArtifactCommit);
+    if (!parentCommit) {
+      return { ok: false, message: `Cannot compile stacked PRD '${prd.id}': parent artifact commit '${stackContext.parentArtifactCommit}' cannot be resolved.` };
+    }
+    return { ok: true, value: parentCommit };
   }
   if (!ctx.config.build.trunkSync.enabled) return { ok: true, value: undefined };
   if (stackContext !== undefined) return yield* resolveStackedTrunkSyncOverride(ctx, prd, stackContext);
@@ -431,7 +442,7 @@ async function* prepareCompileAndBuild(
   if (!providerResult.ok) return yield* failPreparedPrd(prd.id, providerResult.message);
 
   const overridesResult = yield* resolveCompileOverrides(ctx, prd, stackResult.value);
-  if (!overridesResult.ok) return { status: 'failed', summary: overridesResult.message };
+  if (!overridesResult.ok) return yield* failPreparedPrd(prd.id, overridesResult.message);
 
   const compileResult = yield* runCompilePhase(ctx, prd, planSetName, options, prdSessionId, overridesResult.value);
   if (compileResult.status !== 'completed') return compileResult;
@@ -489,6 +500,7 @@ async function* runCompilePhase(
     abortController: options.abortController,
     ...(overrides.baseBranchOverride !== undefined && { baseBranchOverride: overrides.baseBranchOverride }),
     ...(overrides.worktreeBaseRefOverride !== undefined && { worktreeBaseRefOverride: overrides.worktreeBaseRefOverride }),
+    ...(overrides.stackedValidationPinRequired !== undefined && { stackedValidationPinRequired: overrides.stackedValidationPinRequired }),
   }))) {
     yield { ...event, sessionId: prdSessionId } as EforgeEvent;
     if (event.type === 'phase:end' && event.result.status === 'failed') compileFailed = true;

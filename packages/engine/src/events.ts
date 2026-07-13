@@ -164,6 +164,8 @@ export interface CompileOptions {
    * trunk branch name in orchestration.yaml.
    */
   worktreeBaseRefOverride?: string;
+  /** A stacked child requires its immutable worktree pin for all validation evidence. */
+  stackedValidationPinRequired?: boolean;
 }
 
 export interface BuildOptions {

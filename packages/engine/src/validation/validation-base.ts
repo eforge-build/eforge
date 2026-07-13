@@ -1,14 +1,15 @@
 import { resolveTrunkBranch } from '../branch-policy.js';
 import type { EforgeConfig } from '../config.js';
 import {
-  isAncestor,
+  proveAncestor,
   refResolvesToCommit,
+  resolveRefCommit,
   resolveTrunkIntegrationRef,
 } from '../stacking/base-repair.js';
 
 export type ValidationBaseResolution =
   | { available: true; baseRef: string; repaired: boolean }
-  | { available: false; reason: string; code: 'missing-pin' | 'invalid-pin' | 'unresolved-pin' | 'unresolved-base' | 'unintegrated-pin' | 'pin-not-ancestor-of-base' | 'pin-not-ancestor-of-head' };
+  | { available: false; reason: string; code: 'missing-pin' | 'invalid-pin' | 'unresolved-pin' | 'unresolved-base' | 'unintegrated-pin' | 'pin-not-ancestor-of-base' | 'pin-not-ancestor-of-head' | 'proof-failed' };
 
 /**
  * Resolve the immutable validation base without changing stack/landing topology.
@@ -19,14 +20,13 @@ export async function resolveValidationBase(options: {
   cwd: string;
   baseBranch: string;
   diffBaseRef?: string;
+  /** Persisted orchestration provenance, never inferred from branch naming. */
+  stackedValidationPinRequired?: boolean;
   config: Pick<EforgeConfig, 'build'>;
 }): Promise<ValidationBaseResolution> {
-  const { cwd, baseBranch, diffBaseRef, config } = options;
+  const { cwd, baseBranch, diffBaseRef, config, stackedValidationPinRequired = false } = options;
   if (!diffBaseRef) {
-    // Engine-owned stacked artifact branches must always carry the dispatch pin.
-    // Treating a missing pin as a normal branch diff would silently fabricate
-    // evidence after the parent branch disappears.
-    if (baseBranch.startsWith('eforge/')) {
+    if (stackedValidationPinRequired) {
       return { available: false, code: 'missing-pin', reason: `Stacked validation base '${baseBranch}' has no immutable diff_base_ref pin.` };
     }
     return (await refResolvesToCommit(cwd, baseBranch))
@@ -38,47 +38,51 @@ export async function resolveValidationBase(options: {
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(diffBaseRef)) {
     return { available: false, code: 'invalid-pin', reason: `Pinned validation base '${diffBaseRef}' is not a canonical full commit object ID.` };
   }
-  if (!(await refResolvesToCommit(cwd, diffBaseRef))) {
+  const resolvedPin = await resolveRefCommit(cwd, diffBaseRef);
+  if (!resolvedPin) {
     return { available: false, code: 'unresolved-pin', reason: `Pinned validation base '${diffBaseRef}' does not resolve.` };
   }
-  // A resolving object name alone is insufficient: the pin must be evidence
-  // for this exact child, not an arbitrary commit reachable elsewhere.
-  if (!(await isAncestor(cwd, diffBaseRef, 'HEAD'))) {
-    return { available: false, code: 'pin-not-ancestor-of-head', reason: `Pinned validation base '${diffBaseRef}' is not proven ancestral to child HEAD.` };
+  if (resolvedPin !== diffBaseRef) {
+    return { available: false, code: 'invalid-pin', reason: `Pinned validation base '${diffBaseRef}' is not its canonical commit object ID.` };
   }
-  if (await refResolvesToCommit(cwd, baseBranch)) {
-    if (await isAncestor(cwd, diffBaseRef, baseBranch)) {
-      return { available: true, baseRef: diffBaseRef, repaired: false };
-    }
-    // Non-stacked trunk sync pins the fetched remote commit while the local
-    // trunk branch can legitimately still point behind it. Keep that legacy
-    // flow distinct from a stacked parent: only the configured logical trunk
-    // may be behind a pin that is otherwise proven ancestral to this child.
-    const remote = config.build.trunkSync?.remote ?? 'origin';
-    const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, remote);
-    if (baseBranch === trunkBranch && await isAncestor(cwd, baseBranch, diffBaseRef)) {
-      return { available: true, baseRef: diffBaseRef, repaired: false };
-    }
-    return { available: false, code: 'pin-not-ancestor-of-base', reason: `Pinned validation base '${diffBaseRef}' is not proven ancestral to logical base '${baseBranch}'.` };
-  }
-
   try {
+    // A resolving object name alone is insufficient: the pin must be evidence
+    // for this exact child, not an arbitrary commit reachable elsewhere.
+    const headProof = await proveAncestor(cwd, diffBaseRef, 'HEAD');
+    if (headProof.result === 'failed') {
+      return { available: false, code: 'proof-failed', reason: `Could not prove pinned validation base '${diffBaseRef}' ancestral to child HEAD: ${headProof.reason}` };
+    }
+    if (headProof.result === 'not-ancestor') {
+      return { available: false, code: 'pin-not-ancestor-of-head', reason: `Pinned validation base '${diffBaseRef}' is not proven ancestral to child HEAD.` };
+    }
+    if (await refResolvesToCommit(cwd, baseBranch)) {
+      const baseProof = await proveAncestor(cwd, diffBaseRef, baseBranch);
+      if (baseProof.result === 'ancestor') return { available: true, baseRef: diffBaseRef, repaired: false };
+      if (baseProof.result === 'failed') {
+        return { available: false, code: 'proof-failed', reason: `Could not prove pinned validation base '${diffBaseRef}' ancestral to logical base '${baseBranch}': ${baseProof.reason}` };
+      }
+      // Non-stacked trunk sync pins the fetched remote commit while the local
+      // trunk branch can legitimately still point behind it.
+      const remote = config.build.trunkSync?.remote ?? 'origin';
+      const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, remote);
+      const localProof = await proveAncestor(cwd, baseBranch, diffBaseRef);
+      if (localProof.result === 'failed') {
+        return { available: false, code: 'proof-failed', reason: `Could not prove logical base '${baseBranch}' behind pinned validation base '${diffBaseRef}': ${localProof.reason}` };
+      }
+      if (baseBranch === trunkBranch && localProof.result === 'ancestor') return { available: true, baseRef: diffBaseRef, repaired: false };
+      return { available: false, code: 'pin-not-ancestor-of-base', reason: `Pinned validation base '${diffBaseRef}' is not proven ancestral to logical base '${baseBranch}'.` };
+    }
+
     const remote = config.build.trunkSync?.remote ?? 'origin';
     const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, remote);
     const trunkRef = await resolveTrunkIntegrationRef(cwd, trunkBranch, remote);
-    if (!(await refResolvesToCommit(cwd, trunkRef)) || !(await isAncestor(cwd, diffBaseRef, trunkRef))) {
-      return {
-        available: false,
-        code: 'unintegrated-pin',
-        reason: `Logical validation base '${baseBranch}' is unavailable and pinned base '${diffBaseRef}' is not proven integrated into configured trunk '${trunkRef}'.`,
-      };
-    }
-    return { available: true, baseRef: trunkRef, repaired: true };
+    const trunkCommit = await resolveRefCommit(cwd, trunkRef);
+    if (!trunkCommit) return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and configured trunk '${trunkRef}' does not resolve.` };
+    const trunkProof = await proveAncestor(cwd, diffBaseRef, trunkCommit);
+    if (trunkProof.result === 'failed') return { available: false, code: 'proof-failed', reason: `Could not prove pinned validation base '${diffBaseRef}' integrated into configured trunk '${trunkRef}': ${trunkProof.reason}` };
+    if (trunkProof.result === 'not-ancestor') return { available: false, code: 'unintegrated-pin', reason: `Logical validation base '${baseBranch}' is unavailable and pinned base '${diffBaseRef}' is not proven integrated into configured trunk '${trunkRef}'.` };
+    return { available: true, baseRef: trunkCommit, repaired: true };
   } catch (err) {
-    return {
-      available: false,
-      code: 'unintegrated-pin',
-      reason: `Could not prove pinned validation base '${diffBaseRef}' integrated: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    return { available: false, code: 'proof-failed', reason: `Could not resolve validation base '${diffBaseRef}' for '${baseBranch}': ${err instanceof Error ? err.message : String(err)}` };
   }
 }

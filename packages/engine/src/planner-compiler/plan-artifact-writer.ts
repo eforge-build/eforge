@@ -16,6 +16,7 @@ export interface WritePlanningCompilerArtifactsInput {
   planSetName: string;
   baseBranch?: string;
   diffBaseRef?: string;
+  stackedValidationPinRequired?: boolean;
   pipeline: PipelineComposition;
   artifacts: PlanningArtifactSynthesisResult;
   tiers?: Record<string, unknown>;
@@ -43,7 +44,7 @@ export async function writePlanningCompilerArtifacts(input: WritePlanningCompile
   if (input.diagnostics) await writeCompilerDiagnosticsArtifact({ cwd: input.cwd, outputDir: input.outputDir, planSetName: input.planSetName, diagnostics: input.diagnostics });
 
   const orchPath = resolve(planDir, 'orchestration.yaml');
-  await injectPipelineIntoOrchestrationYaml(orchPath, input.pipeline, input.baseBranch, input.diffBaseRef);
+  await injectPipelineIntoOrchestrationYaml(orchPath, input.pipeline, input.baseBranch, input.diffBaseRef, input.stackedValidationPinRequired);
   const orchestration = await parseOrchestrationConfig(orchPath);
   const plans = await Promise.all(orchestration.plans.map(plan => parsePlanFile(resolve(planDir, `${plan.id}.md`), input.tiers)));
   return {

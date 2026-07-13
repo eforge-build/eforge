@@ -160,12 +160,12 @@ function createPrdValidator(
 ): PrdValidator {
   const { config, tracing, verbose, abortController, agentRuntimes, orchConfig } = options;
   return async function* (validatorCwd, validatorContext, lane) {
-    const base = await resolveValidationBase({ cwd: validatorCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, config });
+    const base = await resolveValidationBase({ cwd: validatorCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, stackedValidationPinRequired: orchConfig.stackedValidationPinRequired, config });
     const built = base.available
       ? await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: base.baseRef })
       : undefined;
     if (!base.available || built === undefined || !built.available) {
-      const reason = !base.available ? base.reason : built?.reason ?? 'Failed to build implementation diff.';
+      const reason = !base.available ? base.reason : built !== undefined && !built.available ? built.reason : 'Failed to build implementation diff.';
       yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
       yield { timestamp: new Date().toISOString(), type: 'prd_validation:complete', passed: false, gaps: [{ requirement: 'Implementation diff unavailable', explanation: reason }] } as EforgeEvent;
       yield { timestamp: new Date().toISOString(), type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: reason }], source: 'prd' } as EforgeEvent;
@@ -237,12 +237,12 @@ function createPrdValidator(
 function createAcceptanceUnknownResolver(options: CreatePrdValidationWiringOptions): AcceptanceUnknownResolver {
   const { config, tracing, verbose, abortController, agentRuntimes, orchConfig } = options;
   return async function* (resolverCwd, request) {
-    const base = await resolveValidationBase({ cwd: resolverCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, config });
+    const base = await resolveValidationBase({ cwd: resolverCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, stackedValidationPinRequired: orchConfig.stackedValidationPinRequired, config });
     const built = base.available
       ? await buildPrdValidatorDiff({ cwd: resolverCwd, baseRef: base.baseRef })
       : undefined;
     if (!base.available || built === undefined || !built.available) {
-      const reason = !base.available ? base.reason : built?.reason ?? 'Failed to build implementation diff.';
+      const reason = !base.available ? base.reason : built !== undefined && !built.available ? built.reason : 'Failed to build implementation diff.';
       throw new Error(`Acceptance unknown resolver could not build implementation diff context: ${reason}`);
     }
     const resolverSpan = tracing.createSpan('prd-validator', { unknownCount: request.unknownCriteria.length, diffLength: built.renderedText.length });
@@ -274,7 +274,7 @@ function createGapCloser(options: CreatePrdValidationWiringOptions, prdContent: 
   return async function* (gapCloserCwd, gaps, completionPercent) {
     // Never invoke a mutating gap agent when validation evidence cannot be
     // proven. An unavailable diff is not an empty diff.
-    const base = await resolveValidationBase({ cwd: gapCloserCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, config });
+    const base = await resolveValidationBase({ cwd: gapCloserCwd, baseBranch: orchConfig.baseBranch, diffBaseRef: orchConfig.diffBaseRef, stackedValidationPinRequired: orchConfig.stackedValidationPinRequired, config });
     if (!base.available) throw new Error(`Gap closer evidence unavailable: ${base.reason}`);
     const built = await buildPrdValidatorDiff({ cwd: gapCloserCwd, baseRef: base.baseRef });
     if (!built.available) throw new Error(`Gap closer evidence unavailable: ${built.reason}`);

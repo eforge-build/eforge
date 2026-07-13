@@ -364,6 +364,7 @@ export const OrchestrationConfigSchema = Type.Object({
   created: Type.String(),
   baseBranch: Type.String(),
   diffBaseRef: Type.Optional(Type.String()),
+  stackedValidationPinRequired: Type.Optional(Type.Boolean()),
   pipeline: PipelineCompositionSchema,
   plans: Type.Array(OrchestrationPlanConfigSchema),
   validate: Type.Optional(Type.Array(Type.String())),

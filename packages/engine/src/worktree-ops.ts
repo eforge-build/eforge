@@ -296,6 +296,17 @@ export async function createMergeWorktree(
     }
   }
 
+  // A SHA base is an immutable dispatch pin. Resuming an existing feature
+  // branch/worktree must not silently discard that ancestry constraint.
+  if (/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(baseBranch)) {
+    try {
+      await exec('git', ['merge-base', '--is-ancestor', baseBranch, featureBranch], { cwd: repoRoot });
+    } catch (err) {
+      const detail = (err as { stderr?: string }).stderr?.trim() || (err instanceof Error ? err.message : String(err));
+      throw new Error(`Cannot reuse merge worktree for '${featureBranch}': immutable base pin '${baseBranch}' is not proven ancestral to the feature branch (${detail}).`);
+    }
+  }
+
   return mergeWorktreePath;
 }
 
