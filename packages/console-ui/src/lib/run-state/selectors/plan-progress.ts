@@ -406,6 +406,7 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
 export const PRE_PLANNING_AGENT_LABELS: Record<string, string> = {
   'satisfaction-gate': 'satisfaction-gate',
   'repository-exploration': 'repo-exploration',
+  'decomposition-judgment': 'decomposition-judgment',
 };
 
 /**

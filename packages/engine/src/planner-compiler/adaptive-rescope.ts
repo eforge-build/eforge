@@ -1,13 +1,16 @@
 import type { PlanningDecompositionLimits } from '@eforge-build/client';
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { resolveAdaptiveRescopeLimits, type AdaptiveRescopeLimits } from '../compile-resilience/planning-decomposition-limits.js';
+import { emitPlanningDecision } from '../decisions.js';
 import { derivePlanningAtomGraph, type PlanningAtomGraph, type PlanningRescopeDirective } from './atom-graph.js';
+import { classifyCollapsedRootDiversity, GENERIC_SCOPE_LABELS } from './decomposition-judgment-contracts.js';
+import { runDecompositionJudgment } from './decomposition-judgment-agent.js';
 import type { PlannerCompilerEventSink } from './event-sink.js';
 import { evidenceSlug } from './evidence-hygiene.js';
 import { DEFAULT_EXPLORATION_MAX_TURNS, runRepositoryExplorationAgent } from './exploration-agent.js';
 import { decideExplorationSkip, EXPLORATION_SKIP_HIGH_CONFIDENCE_SHARE, type RepositoryExplorationOutcome } from './exploration-contracts.js';
 import { deriveRepositoryIndex } from './repository-index.js';
-import { GENERIC_SURFACE_TERMS, stableSlug } from './source-analysis.js';
+import { stableSlug } from './source-analysis.js';
 import { deriveSourceLocalization } from './source-localization.js';
 import type { SourceLocalizationBundle, SourceLocalizationHint, SourceLocalizationInputHints, SourceLocalizationRecord } from './source-localization-contracts.js';
 import type { SourceInventory } from './source-inventory.js';
@@ -36,6 +39,7 @@ export interface AdaptiveRescopeDiagnostics {
   rerunScopeKeys: string[];
   preservedScopeKeys: string[];
   unresolvedCriticalNeedIds: string[];
+  decomposition?: { verdict: 'cohesive' | 'split' | 'split-ungroupable' | 'unavailable'; source?: 'agent' | 'deterministic-fallback'; concreteSubsystemCount: number; groupCount?: number; overriddenByLocalizationRescope?: boolean };
 }
 
 export interface AdaptiveExplorationRescopeResult {
@@ -104,7 +108,6 @@ function isCompileBlockingNeed(record: SourceLocalizationRecord): boolean {
 
 // Derived from the shared generic-surface vocabulary so the two lists cannot
 // diverge; 'general' is the inventory fallback hint, not a surface term.
-const GENERIC_SCOPE_LABELS = new Set([...GENERIC_SURFACE_TERMS, 'general']);
 
 export interface CriticalNeedPartition { rescopable: string[]; unrescopable: string[] }
 
@@ -157,7 +160,7 @@ export function classifyRescopeRisk(input: { bundle: SourceLocalizationBundle; i
  * each criterion is keyed by its first non-common hint. Returns [] when fewer
  * than two distinct groups exist - a single group cannot narrow anything.
  */
-export function deriveRescopeDirectives(inventory: SourceInventory, bundle: SourceLocalizationBundle): PlanningRescopeDirective[] {
+export function deriveRescopeDirectives(inventory: SourceInventory, bundle: SourceLocalizationBundle, label = 'degraded exploration'): PlanningRescopeDirective[] {
   const unresolvedByCriterion = unresolvedCountsByCriterion(bundle.records.filter(isUnresolved));
   const commonHints = commonToAllCriteria(inventory, (criterion) => [...criterion.subsystemHints, ...criterion.interfaceKeys]);
   const groups = new Map<string, string[]>();
@@ -182,7 +185,7 @@ export function deriveRescopeDirectives(inventory: SourceInventory, bundle: Sour
         directiveId: collisions === 0 ? `rescope-${slug}` : `rescope-${slug}-${collisions + 1}`,
         groupKey,
         criterionIds,
-        rationale: `degraded exploration: split by ${groupKey} (${criterionIds.length} criteria, ${criterionIds.reduce((sum, id) => sum + (unresolvedByCriterion.get(id) ?? 0), 0)} unresolved need links)`,
+        rationale: `${label}: split by ${groupKey} (${criterionIds.length} criteria, ${criterionIds.reduce((sum, id) => sum + (unresolvedByCriterion.get(id) ?? 0), 0)} unresolved need links)`,
       };
     });
 }
@@ -243,6 +246,49 @@ const MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT = 64;
  * throw AdaptiveRescopeFailClosedError; everything else proceeds with the best
  * merged hints. Repository access stays confined to the exploration agent.
  */
+/**
+ * Decomposition judgment for a collapsed root that never enters the degraded
+ * rescope flow (exploration skipped or completed cleanly). The deterministic
+ * diversity screen gates a single judgment-agent call; a split verdict yields
+ * risk-split directives (agent grouping, or deterministic grouping when the
+ * agent's groups fail validation), a cohesive verdict keeps today's collapse,
+ * and an unavailable agent fails open to the collapse with a warning.
+ */
+async function judgeCollapsedRootDecomposition(input: RunAdaptiveExplorationRescopeInput, baseline: SourceLocalizationBundle, graph: PlanningAtomGraph, diagnostics: AdaptiveRescopeDiagnostics, emit: (message: string, level?: 'progress' | 'warning') => void): Promise<PlanningRescopeDirective[] | undefined> {
+  // One judgment per compile: a verdict recorded earlier (e.g. cohesive at the
+  // degraded pre-split) stands for the rest of the run.
+  if (diagnostics.decomposition) return undefined;
+  const diversity = classifyCollapsedRootDiversity(input.inventory, input.limits, graph.atoms.length);
+  if (!diversity.diverse) return undefined;
+  emit(`Collapsed root spans ${diversity.concreteSubsystemCount} concrete subsystems; running decomposition judgment.`);
+  const judgment = await runDecompositionJudgment({ cwd: input.cwd, harness: input.harness, agentOptions: input.agentOptions, inventory: input.inventory, concreteSubsystemCount: diversity.concreteSubsystemCount, abortSignal: input.abortSignal, onEvent: input.onEvent });
+  if (judgment.verdict === 'unavailable') {
+    emit(`Decomposition judgment unavailable (${judgment.rationale}); keeping the single planning unit.`, 'warning');
+    diagnostics.decomposition = { verdict: 'unavailable', concreteSubsystemCount: diversity.concreteSubsystemCount };
+    return undefined;
+  }
+  if (judgment.verdict === 'cohesive') {
+    diagnostics.decomposition = { verdict: 'cohesive', source: 'agent', concreteSubsystemCount: diversity.concreteSubsystemCount };
+    input.onEvent?.(emitPlanningDecision({ kind: 'root-decomposition', rationale: judgment.rationale, verdict: 'cohesive', source: 'agent', concreteSubsystemCount: diversity.concreteSubsystemCount }));
+    emit(`Decomposition judgment: cohesive — ${judgment.rationale}`);
+    return undefined;
+  }
+  const usedFallback = judgment.directives === undefined;
+  if (usedFallback) emit(`Decomposition judgment groups were invalid (${judgment.problems.join('; ')}); using deterministic grouping.`, 'warning');
+  let directives = judgment.directives ?? deriveRescopeDirectives(input.inventory, baseline, 'risk split (deterministic)').map((directive) => ({ ...directive, origin: 'risk-split' as const }));
+  if (directives.length > MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT) directives = directives.slice(0, MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT);
+  if (directives.length < 2) {
+    emit('Decomposition judgment proposed a split but no valid grouping exists; keeping the single planning unit.', 'warning');
+    diagnostics.decomposition = { verdict: 'split-ungroupable', concreteSubsystemCount: diversity.concreteSubsystemCount };
+    return undefined;
+  }
+  const source = usedFallback ? 'deterministic-fallback' as const : 'agent' as const;
+  diagnostics.decomposition = { verdict: 'split', source, concreteSubsystemCount: diversity.concreteSubsystemCount, groupCount: directives.length };
+  input.onEvent?.(emitPlanningDecision({ kind: 'root-decomposition', rationale: judgment.rationale, verdict: 'split', source, concreteSubsystemCount: diversity.concreteSubsystemCount, groupCount: directives.length }));
+  emit(`Decomposition judgment: split into ${directives.length} planning unit(s) (${source === 'agent' ? 'agent grouping' : 'deterministic grouping'}).`);
+  return directives;
+}
+
 export async function runAdaptiveExplorationRescope(input: RunAdaptiveExplorationRescopeInput): Promise<AdaptiveExplorationRescopeResult> {
   const rescopeLimits = resolveAdaptiveRescopeLimits(input.rescopeLimits);
   const emit = (message: string, level: 'progress' | 'warning' = 'progress'): void => {
@@ -262,7 +308,10 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   };
   const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount);
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
-  if (skip.skip) return { diagnostics };
+  if (skip.skip) {
+    const rescopeDirectives = await judgeCollapsedRootDecomposition(input, baseline, graph, diagnostics, emit);
+    return { diagnostics, ...(rescopeDirectives ? { rescopeDirectives } : {}) };
+  }
 
   const initialBudget = deriveExplorationToolBudget(baseline.records.filter(isUnresolved).length, rescopeLimits, input.limits.maxLocalExplorationToolUses);
   const runExploration = async (bundle: SourceLocalizationBundle, scopedGraph: PlanningAtomGraph, budget: number, scopeNeedIds?: string[]) => {
@@ -287,7 +336,16 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   let hints: SourceLocalizationInputHints | undefined;
   let outcome: RepositoryExplorationOutcome = { status: 'needs-rescope', reasons: ['too-broad'], notes: 'Risky collapsed scope split before broad exploration.' };
   const unknownIdDrops: Array<{ field: string; id: string; index?: number }> = [];
-  let directives = risk.risky ? sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, baseline), baseline, input.inventory) : [];
+  // Risky diverse roots get the judgment agent's grouping for the pre-split;
+  // a cohesive verdict skips the pre-split (broad exploration still runs), and
+  // an unavailable judgment falls open to today's deterministic grouping.
+  let directives: PlanningRescopeDirective[] = [];
+  if (risk.risky) {
+    directives = (await judgeCollapsedRootDecomposition(input, baseline, graph, diagnostics, emit)) ?? [];
+    if (directives.length === 0 && diagnostics.decomposition?.verdict !== 'cohesive') {
+      directives = sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, baseline), baseline, input.inventory);
+    }
+  }
   if (directives.length > MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT) directives = directives.slice(0, MAX_RESCOPE_DIRECTIVES_PER_ATTEMPT);
 
   if (risk.risky && directives.length >= 2 && rescopeLimits.maxRescopeAttempts > 0) {
@@ -301,7 +359,8 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     unknownIdDrops.push(...initial.unknownIdDrops);
     if (outcome.status === 'completed' && hints) {
       emit(`Repository exploration produced ${hints.projectHints?.length ?? 0} localization hints in ${initial.toolUses} tool uses.`);
-      return { hints, outcome, unknownIdDrops, diagnostics };
+      const rescopeDirectives = await judgeCollapsedRootDecomposition(input, baseline, graph, diagnostics, emit);
+      return { hints, outcome, unknownIdDrops, ...(rescopeDirectives ? { rescopeDirectives } : {}), diagnostics };
     }
     if (!risk.risky) {
       diagnostics.status = 'warning-only';
@@ -313,7 +372,14 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
 
   const everScopedRerunNeedIds = new Set<string>();
   for (let attempt = 1; attempt <= rescopeLimits.maxRescopeAttempts; attempt += 1) {
-    let derived = attempt === 1 && directives.length > 0 ? directives : sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, bundle), bundle, input.inventory);
+    const reusingJudgedDirectives = attempt === 1 && directives.length > 0;
+    let derived = reusingJudgedDirectives ? directives : sortedDirectivesByPriority(deriveRescopeDirectives(input.inventory, bundle), bundle, input.inventory);
+    if (!reusingJudgedDirectives && derived.length > 0 && diagnostics.decomposition && !diagnostics.decomposition.overriddenByLocalizationRescope) {
+      // The lexical localization remedy is now re-shaping the plan past the
+      // recorded judgment; flag it so the decision trail stays honest.
+      diagnostics.decomposition.overriddenByLocalizationRescope = true;
+      emit(`Localization rescope overrides the decomposition judgment (${diagnostics.decomposition.verdict}); splitting lexically to resolve degraded localization.`, 'warning');
+    }
     if (derived.length === 0) {
       diagnostics.status = 'warning-only';
       emit(`Adaptive rescope attempt ${attempt}: no split signal (single scope); proceeding degraded with a warning.`, 'warning');

@@ -168,6 +168,9 @@ describe('rescope risk classification and directives', () => {
 describe('adaptive rescope loop', () => {
   const outcome = (status: string, extra: Record<string, unknown> = {}) => ({ status, ...extra });
   const submit = (toolUseId: string, input: unknown) => ({ toolCalls: [{ tool: 'submit_exploration_outcome', toolUseId, input, output: 'ok' }] });
+  // Diverse risky roots now consult the decomposition-judgment agent before
+  // the pre-split; a non-submission keeps the historical deterministic split.
+  const noJudgment = { text: 'no decomposition judgment offered' };
 
   it('reruns only unresolved scopes, preserves resolved scopes, and merges scoped hints', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'eforge-rescope-loop-'));
@@ -181,6 +184,7 @@ describe('adaptive rescope loop', () => {
     ]);
     const inventory = deriveSourceInventory({ content, hash: hash(content) });
     const harness = new StubHarness([
+      noJudgment,
       submit('submit-engine', outcome('completed', { projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/client/src/rescope-consumer.ts'], criterionIds: ['ac-001'] }] })),
     ]);
     const events: EforgeEvent[] = [];
@@ -192,12 +196,12 @@ describe('adaptive rescope loop', () => {
     expect(result.rescopeDirectives?.map((directive) => directive.groupKey)).toEqual(['engine', 'client']);
     expect(result.diagnostics.rerunScopeKeys).toEqual(['engine']);
     expect(result.diagnostics.preservedScopeKeys).toEqual(['client']);
-    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls).toHaveLength(2);
     // The scoped rerun prompt lists only the engine scope's unresolved needs
     // (the inventory summary still shows all criteria; the compact needs JSON
-    // is what gets scope-filtered).
-    expect(harness.prompts[0]).toContain('"query":"packages/engine/src/rescope-owner.ts"');
-    expect(harness.prompts[0]).not.toContain('"query":"packages/client/src/rescope-consumer.ts"');
+    // is what gets scope-filtered). Call 0 is the decomposition judgment.
+    expect(harness.prompts[1]).toContain('"query":"packages/engine/src/rescope-owner.ts"');
+    expect(harness.prompts[1]).not.toContain('"query":"packages/client/src/rescope-consumer.ts"');
     expect(result.hints?.projectHints).toHaveLength(1);
     expect(result.diagnostics.revisedAtomCount).toBeGreaterThan(result.diagnostics.originalAtomCount);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope attempt 1/'))).toBe(true);
@@ -338,6 +342,7 @@ describe('adaptive rescope loop', () => {
     // Pre-split budgeting reserves a shallow slot for each scope even when
     // the configured per-need budget is tiny.
     const harness = new StubHarness([
+      noJudgment,
       submit('submit-engine', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
       submit('submit-client', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
     ]);
@@ -353,7 +358,7 @@ describe('adaptive rescope loop', () => {
     expect(result.diagnostics.ledger.usedToolUses).toBe(2);
     expect(result.diagnostics.rerunScopeKeys.sort()).toEqual(['client', 'engine']);
     expect(result.diagnostics.status).toBe('exhausted-proceeded');
-    expect(harness.calls).toHaveLength(2);
+    expect(harness.calls).toHaveLength(3);
     expect(events.some((event) => event.type === 'planning:progress' && event.message.includes('Adaptive rescope pre-split'))).toBe(true);
   });
 
@@ -368,6 +373,7 @@ describe('adaptive rescope loop', () => {
     // scope reruns first (budget-exhausted), then the engine scope (completed
     // with a hint).
     const harness = new StubHarness([
+      noJudgment,
       submit('submit-client', outcome('budget-exhausted', { reasons: ['tool-budget'] })),
       submit('submit-engine', outcome('completed', { projectHints: [{ kind: 'literal-path', query: 'engine owner', paths: ['packages/engine/src/merge-owner.ts'], criterionIds: ['ac-001'] }] })),
     ]);

@@ -9250,6 +9250,10 @@
                       {
                         "const": "rescope-split",
                         "type": "string"
+                      },
+                      {
+                        "const": "risk-split",
+                        "type": "string"
                       }
                     ]
                   },
@@ -16678,6 +16682,57 @@
                       "items": {
                         "type": "string"
                       }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "verdict",
+                    "source",
+                    "concreteSubsystemCount"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "root-decomposition",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "anyOf": [
+                        {
+                          "const": "cohesive",
+                          "type": "string"
+                        },
+                        {
+                          "const": "split",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "agent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deterministic-fallback",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "concreteSubsystemCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "groupCount": {
+                      "minimum": 2,
+                      "type": "integer"
                     }
                   }
                 }
@@ -27966,6 +28021,10 @@
                                     {
                                       "const": "rescope-split",
                                       "type": "string"
+                                    },
+                                    {
+                                      "const": "risk-split",
+                                      "type": "string"
                                     }
                                   ]
                                 },
@@ -35394,6 +35453,57 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "rationale",
+                                  "verdict",
+                                  "source",
+                                  "concreteSubsystemCount"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "const": "root-decomposition",
+                                    "type": "string"
+                                  },
+                                  "rationale": {
+                                    "type": "string"
+                                  },
+                                  "verdict": {
+                                    "anyOf": [
+                                      {
+                                        "const": "cohesive",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "split",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "source": {
+                                    "anyOf": [
+                                      {
+                                        "const": "agent",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "deterministic-fallback",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "concreteSubsystemCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "groupCount": {
+                                    "minimum": 2,
+                                    "type": "integer"
                                   }
                                 }
                               }

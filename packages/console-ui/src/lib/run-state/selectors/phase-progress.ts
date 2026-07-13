@@ -84,7 +84,7 @@ function planningStatus(state: RunState): PhaseProgressStatus {
     Object.values(mapReduce.reduceNodes).some((node) => node.status === 'queued' || node.status === 'running')
   );
 
-  const planningThreadRunning = hasRunningThread(state, new Set(['planning', 'satisfaction-gate', 'repository-exploration']));
+  const planningThreadRunning = hasRunningThread(state, new Set(['planning', 'satisfaction-gate', 'repository-exploration', 'decomposition-judgment']));
   const mapReduceThreadRunning = mapReduce !== null && hasRunningThread(
     state,
     new Set([...mapReduce.atomOrder, ...mapReduce.reduceOrder]),

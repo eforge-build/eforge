@@ -32,6 +32,15 @@ export const PlanningDecisionSchema = Type.Union([
     planCount: Type.Integer({ minimum: 1 }),
     planIds: Type.Array(Type.String(), { minItems: 1 }),
   }),
+  // Collapsed-root decomposition judgment for a subsystem-diverse PRD
+  Type.Object({
+    kind: Type.Literal('root-decomposition'),
+    rationale: Type.String(),
+    verdict: Type.Union([Type.Literal('cohesive'), Type.Literal('split')]),
+    source: Type.Union([Type.Literal('agent'), Type.Literal('deterministic-fallback')]),
+    concreteSubsystemCount: Type.Integer({ minimum: 0 }),
+    groupCount: Type.Optional(Type.Integer({ minimum: 2 })),
+  }),
 ]);
 
 export type PlanningDecision = Static<typeof PlanningDecisionSchema>;

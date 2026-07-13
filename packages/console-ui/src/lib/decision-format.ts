@@ -25,6 +25,8 @@ export function decisionKindColor(kind: Decision['kind']): { bg: string; border:
       return { bg: 'bg-emerald-500', border: 'border-emerald-400' };
     case 'plan-set-shape':
       return { bg: 'bg-cyan-500', border: 'border-cyan-400' };
+    case 'root-decomposition':
+      return { bg: 'bg-teal-500', border: 'border-teal-400' };
     // Build-phase kinds — blue/amber/red/purple family
     case 'review-strategy':
     case 'perspectives-inferred':
@@ -59,6 +61,10 @@ export function decisionSummary(decision: Decision): string {
       return `${decision.strategy} — ${decision.perspectives.join(', ')} — ${decision.maxRounds} round(s)`;
     case 'plan-set-shape':
       return `${decision.planCount} plan(s): ${decision.planIds.join(', ')}`;
+    case 'root-decomposition':
+      return decision.verdict === 'split'
+        ? `split into ${decision.groupCount ?? '?'} unit(s) (${decision.source}) — ${decision.concreteSubsystemCount} subsystems`
+        : `cohesive — kept single unit despite ${decision.concreteSubsystemCount} subsystems`;
     // Build-phase summaries
     case 'review-strategy':
       return decision.auto
@@ -120,6 +126,12 @@ export function decisionDetail(decision: Decision): string {
     case 'plan-set-shape':
       lines.push(`Plan count: ${decision.planCount}`);
       lines.push(`Plan IDs: ${decision.planIds.join(', ')}`);
+      break;
+    case 'root-decomposition':
+      lines.push(`Verdict: ${decision.verdict}`);
+      lines.push(`Source: ${decision.source}`);
+      lines.push(`Concrete subsystems: ${decision.concreteSubsystemCount}`);
+      if (decision.groupCount !== undefined) lines.push(`Groups: ${decision.groupCount}`);
       break;
     case 'review-strategy':
       lines.push(`Strategy: ${decision.strategy}`);

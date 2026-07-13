@@ -31,6 +31,7 @@ export const LANE_REGISTRY: readonly LaneEntry[] = [
   { id: 'planning',               label: 'Planning',               order: 0, kind: 'phase' },
   { id: 'satisfaction-gate',      label: 'Satisfaction Gate',      order: 0, kind: 'phase' },
   { id: 'repository-exploration', label: 'Repo Exploration',       order: 0, kind: 'phase' },
+  { id: 'decomposition-judgment', label: 'Decomposition Judgment', order: 0, kind: 'phase' },
   // map/reduce group lanes (map-atoms, reduce-level-N) also sort at order 0,
   // assigned dynamically in thread-pipeline; plan lanes occupy order 1.
   { id: 'base-sync',              label: 'Direct Base Sync',       order: 2, kind: 'phase' },

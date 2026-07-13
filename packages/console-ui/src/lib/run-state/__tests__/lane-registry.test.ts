@@ -102,7 +102,7 @@ describe('isFeatureBranchLane', () => {
 describe('LANE_REGISTRY', () => {
   it('contains all known phase lanes in order', () => {
     const ids = LANE_REGISTRY.map((e) => e.id);
-    expect(ids).toEqual(['planning', 'satisfaction-gate', 'repository-exploration', 'base-sync', 'validation', 'gap-close', 'final-validation']);
+    expect(ids).toEqual(['planning', 'satisfaction-gate', 'repository-exploration', 'decomposition-judgment', 'base-sync', 'validation', 'gap-close', 'final-validation']);
   });
 
   it('all entries have kind "phase"', () => {

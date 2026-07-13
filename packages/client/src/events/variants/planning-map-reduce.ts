@@ -36,6 +36,7 @@ export const PlanningMapReduceAtomReasonSchema = Type.Union([
   Type.Literal('oversized-criterion'),
   Type.Literal('general'),
   Type.Literal('rescope-split'),
+  Type.Literal('risk-split'),
 ]);
 
 export const PlanningMapReduceAtomSchema = Type.Object({

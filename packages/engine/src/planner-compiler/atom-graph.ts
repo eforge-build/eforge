@@ -4,14 +4,14 @@ import { evidenceSlug } from './evidence-hygiene.js';
 import { deriveSourceInventory, type SourceInventory, type SourceInventoryCriterion, type SourceInventoryInput } from './source-inventory.js';
 import { hashText, stableSlug } from './source-analysis.js';
 
-export type PlanningAtomReason = 'foundation-contract' | 'subsystem' | 'oversized-criterion' | 'general' | 'rescope-split';
+export type PlanningAtomReason = 'foundation-contract' | 'subsystem' | 'oversized-criterion' | 'general' | 'rescope-split' | 'risk-split';
 
 /**
  * Deterministic split instruction derived from a degraded exploration outcome.
  * Directives partition the criterion set by group key; the same directives fed
  * to the stage layer and the compiler must produce the identical graph.
  */
-export interface PlanningRescopeDirective { directiveId: string; groupKey: string; criterionIds: string[]; rationale: string }
+export interface PlanningRescopeDirective { directiveId: string; groupKey: string; criterionIds: string[]; rationale: string; origin?: 'rescope-split' | 'risk-split' }
 export interface PlanningAtomBudgetEstimate { sourceBytes: number; criteriaCount: number; subsystemCount: number; evidencePathCount: number; estimatedPromptBytes: number }
 export interface PlanningAtomSourceSlice { sourceHash: string; sourcePath?: string; headingPath: string[]; startLine: number; endLine: number; byteStart: number; byteEnd: number; criteriaIds: string[]; byteLength: number }
 export interface PlanningAtom { atomId: string; title: string; reason: PlanningAtomReason; criterionIds: string[]; facetIds: string[]; subsystemHints: string[]; evidencePaths: string[]; interfaceKeys: string[]; dependencyHints: string[]; sourceSlices: PlanningAtomSourceSlice[]; budget: PlanningUnitBudget; estimate: PlanningAtomBudgetEstimate }
@@ -63,9 +63,9 @@ function rescopeAtoms(inventory: SourceInventory, limits: PlanningDecompositionL
   const sorted = [...directives].sort((a, b) => a.directiveId.localeCompare(b.directiveId));
   const assigned = new Set<string>();
   const atoms: PlanningAtom[] = [];
-  const appendGroup = (idBase: string, title: string, criteria: SourceInventoryCriterion[]): void => {
+  const appendGroup = (idBase: string, title: string, criteria: SourceInventoryCriterion[], reason: PlanningAtomReason): void => {
     for (const [index, group] of chunkCriteria(criteria, limits).entries()) {
-      atoms.push(atomForCriteria(index === 0 ? idBase : `${idBase}-${String(index + 1).padStart(3, '0')}`, title, 'rescope-split', group, inventory, limits));
+      atoms.push(atomForCriteria(index === 0 ? idBase : `${idBase}-${String(index + 1).padStart(3, '0')}`, title, reason, group, inventory, limits));
     }
   };
   for (const directive of sorted) {
@@ -74,10 +74,10 @@ function rescopeAtoms(inventory: SourceInventory, limits: PlanningDecompositionL
     for (const criterion of criteria) assigned.add(criterion.id);
     // Key off the directiveId (unique even when distinct group keys slug
     // identically) so colliding groups cannot produce duplicate atom ids.
-    if (criteria.length > 0) appendGroup(`atom-${directive.directiveId}`, `${directive.groupKey} rescope planning`, criteria);
+    if (criteria.length > 0) appendGroup(`atom-${directive.directiveId}`, `${directive.groupKey} rescope planning`, criteria, directive.origin ?? 'rescope-split');
   }
   const residual = inventory.criteria.filter((criterion) => !assigned.has(criterion.id));
-  if (residual.length > 0) appendGroup('atom-rescope-residual', 'Residual rescope planning', residual);
+  if (residual.length > 0) appendGroup('atom-rescope-residual', 'Residual rescope planning', residual, sorted[0]?.origin ?? 'rescope-split');
   return atoms;
 }
 
