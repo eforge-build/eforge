@@ -60,9 +60,10 @@ describe('plan presentation', () => {
       events: [{ eventId: 'late', event: planningComplete([{ id: 'semantic-id', name: 'Late event name', dependsOn: ['foundation'], branch: 'feature/live' }]) }],
     });
 
-    expect(presentation).toHaveLength(1);
+    expect(presentation).toHaveLength(2);
     expect(presentation).toMatchObject([
       { id: 'semantic-id', ordinal: '01', name: 'Live declaration', previewBody: '# REST body', dependsOn: ['foundation'], build: ['implement'] },
+      { id: 'resume-only', ordinal: '02', name: 'Recovered', previewBody: '# Resume body' },
     ]);
     expect(presentation[0]?.tooltip).toEqual(['Plan 01 — Live declaration', 'ID: semantic-id', 'Depends on: foundation']);
   });

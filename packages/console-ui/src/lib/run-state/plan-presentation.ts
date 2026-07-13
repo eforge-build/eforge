@@ -49,8 +49,8 @@ export function buildPlanPresentation({ orchestration, restPlans, resumeArtifact
   const orchestrationById = new Map(orchestrationPlans.map((plan) => [plan.id, plan]));
   const restById = new Map((restPlans ?? []).filter((plan) => plan.type === 'plan').map((plan) => [plan.id, plan]));
   const resumeById = new Map(resumeArtifacts.map((plan) => [plan.id, plan]));
-  // Select exactly one declaration source. Lower-precedence sources may enrich
-  // a declared plan, but cannot resurrect a removed plan as a display lane.
+  // Prefer the current declaration source, then retain recovered plans that
+  // are absent from it so a resumed run does not lose a recovered lane.
   const declarations = orchestrationPlans.length > 0
     ? orchestrationPlans
     : livePlans.length > 0
@@ -58,7 +58,8 @@ export function buildPlanPresentation({ orchestration, restPlans, resumeArtifact
       : restById.size > 0
         ? [...restById.values()]
         : resumeArtifacts;
-  const ids = declarations.map((plan) => plan.id);
+  const declaredIds = new Set(declarations.map((plan) => plan.id));
+  const ids = [...declaredIds, ...resumeArtifacts.map((plan) => plan.id).filter((id) => !declaredIds.has(id))];
 
   return ids.map((id, index) => {
     const live = liveById.get(id);

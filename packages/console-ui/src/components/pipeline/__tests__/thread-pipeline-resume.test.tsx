@@ -69,6 +69,6 @@ describe('ThreadPipeline resume artifact rendering', () => {
     });
 
     expect(screen.getByText('PRD')).toBeTruthy();
-    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Plan 01 — Plan 01')).toBeTruthy();
   });
 });
