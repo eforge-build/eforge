@@ -5,7 +5,7 @@ import { classifyEvidenceCandidate, evidenceSlug, normalizeEvidenceValue } from 
 import type { PlanningCriterionAspect } from './coverage-accounting.js';
 import type { RepositoryIndex, RepositoryIndexFile } from './repository-index.js';
 import { deriveRepositoryIndex } from './repository-index.js';
-import { inferInterfaceKeys, inferSubsystemHints, stableSlug } from './source-analysis.js';
+import { GENERIC_SURFACE_TERMS, inferInterfaceKeys, inferSubsystemHints, stableSlug } from './source-analysis.js';
 import type { SourceInventory } from './source-inventory.js';
 import { normalizeSourceLocalizationInputs, validateSourceLocalizationBundle, type SourceLocalizationBundle, type SourceLocalizationCandidate, type SourceLocalizationConfidence, type SourceLocalizationDiagnostic, type SourceLocalizationHint, type SourceLocalizationInputHints, type SourceLocalizationLimits, type SourceLocalizationNeed, type SourceLocalizationNeedKind, type SourceLocalizationRecord, type SourceLocalizationStatus } from './source-localization-contracts.js';
 
@@ -113,7 +113,7 @@ function scoreNeed(need: SourceLocalizationNeed, index: RepositoryIndex, limits:
   if (need.kind === 'directory') return [...witnesses, ...directoryCandidates(need, query, index, limits, diagnostics)];
   // Planner category words are not ownership queries. They may be refined by
   // concrete criterion context, but must never broadcast lexical matches.
-  if (isGenericQuery(need.query) && concreteSubsystemHints(need.subsystemHints).length === 0 && concreteInterfaceKeys(need.interfaceKeys).length === 0) return witnesses;
+  if (!SURFACE_KINDS.has(need.kind) && isGenericQuery(need.query) && concreteSubsystemHints(need.subsystemHints).length === 0 && concreteInterfaceKeys(need.interfaceKeys).length === 0) return witnesses;
   const manifestEntrypointTargets = new Set(index.files.flatMap((file) => file.manifestEntrypoints));
   return [...witnesses, ...index.files.flatMap((file) => scoreFileForNeed(file, need, manifestEntrypointTargets))];
 }
@@ -163,10 +163,11 @@ function scoreFileForNeed(file: RepositoryIndexFile, need: SourceLocalizationNee
   let score = 0;
   if (need.kind === 'manifest' && file.surfaces.includes('manifest')) { signals.push('manifest file'); score += 70; }
   if (need.kind === 'entrypoint' && (file.surfaces.includes('entrypoint') || manifestEntrypointTargets.has(file.path))) { signals.push('entrypoint file'); score += 70; }
+  if (need.kind === 'test' && (file.dirname === 'test' || file.dirname.startsWith('test/') || /\.test\.[^.]+$/.test(file.basename))) score += 20;
   // Generic surface labels (especially "test") identify a class of files,
   // not this atom's owner. They need concrete criterion/subsystem affinity.
-  if (SURFACE_KINDS.has(need.kind) && file.surfaces.includes(need.kind) && contextOverlap(file, need) > 0) { signals.push(`${need.kind} surface`); score += 62; }
-  if (need.kind === 'interface' && hasAny(file.keywords, [...concreteInterfaceKeys(need.interfaceKeys), ...concreteInterfaceKeys([need.query])].flatMap(tokenSet))) { signals.push('handler/schema/contract naming'); score += 64; }
+  if (SURFACE_KINDS.has(need.kind) && file.surfaces.includes(need.kind)) { signals.push(`${need.kind} surface`); score += 62; }
+  if (need.kind === 'interface' && hasAny(file.keywords, [...concreteInterfaceKeys(need.interfaceKeys), ...concreteInterfaceKeys([need.query])].flatMap(tokenSet))) { signals.push('handler/schema/contract naming'); score += isGenericSurfaceInterface(need) ? 20 : 64; }
   if (need.kind === 'subsystem' && concreteSubsystemHints(need.subsystemHints).length > 0 && hasAny(file.segments.flatMap(tokenSet), concreteSubsystemHints(need.subsystemHints).flatMap(tokenSet))) { signals.push('subsystem path segment'); score += 58; }
   if ((need.kind === 'symbol' || need.kind === 'keyword') && hasAny(file.keywords, [...queryTokens])) { signals.push('keyword hit'); score += need.kind === 'symbol' ? 60 : 48; }
   const overlaps = contextOverlap(file, need);
@@ -411,6 +412,11 @@ function concreteSubsystemHints(hints: string[]): string[] {
 
 function concreteInterfaceKeys(keys: string[]): string[] {
   return keys.filter((key) => !hasGenericToken(key));
+}
+
+function isGenericSurfaceInterface(need: SourceLocalizationNeed): boolean {
+  const tokens = [...need.interfaceKeys, need.query].flatMap(tokenSet);
+  return tokens.length > 0 && tokens.every((token) => GENERIC_SURFACE_TERMS.includes(token));
 }
 
 function isNotFound(err: unknown): boolean {

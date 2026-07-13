@@ -21,7 +21,7 @@ import type { SourceInventory } from './source-inventory.js';
  * rescope signals, but they are too generic to justify failing compile before
  * the decomposed planner gets a chance to produce scoped work.
  */
-const CRITICAL_NEED_KINDS = new Set(['entrypoint', 'literal-path', 'directory']);
+const CRITICAL_NEED_KINDS = new Set(['entrypoint']);
 
 export type AdaptiveRescopeStatus = 'not-needed' | 'warning-only' | 'rescoped' | 'exhausted-proceeded' | 'fail-closed';
 
@@ -97,30 +97,9 @@ function isUnresolved(record: SourceLocalizationRecord): boolean {
 export function deriveAuthoritativeOwnerNeedIds(inventory: SourceInventory, graph: PlanningAtomGraph): string[] {
   const aspects = derivePlanningCriterionAspects(graph, inventory);
   const requiredAspectIds = new Set(aspects.filter((aspect) => aspect.required).map((aspect) => aspect.aspectId));
-  const criteriaWithExplicitPaths = new Set(inventory.criteria.filter((criterion) => criterion.evidencePaths.length > 0).map((criterion) => criterion.id));
   return [...new Set(deriveSourceLocalizationNeeds({ inventory, graph, aspects })
-    // Required aspects alone do not turn a generic surface label into an
-    // owner. Route/API/config/consumer/interface needs need representation
-    // evidence of their own (path, concrete key, or scoped owner context).
-    .filter((need) => CRITICAL_NEED_KINDS.has(need.kind) || (
-      need.aspectIds.some((aspectId) => requiredAspectIds.has(aspectId)) &&
-      hasConcreteRepresentationEvidence(need, criteriaWithExplicitPaths)
-    ))
+    .filter((need) => CRITICAL_NEED_KINDS.has(need.kind) || need.aspectIds.some((aspectId) => requiredAspectIds.has(aspectId)))
     .map((need) => need.id))].sort();
-}
-
-function hasConcreteRepresentationEvidence(need: ReturnType<typeof deriveSourceLocalizationNeeds>[number], criteriaWithExplicitPaths: Set<string>): boolean {
-  if (need.kind === 'subsystem' || ['docs', 'test', 'manifest', 'command', 'ui', 'extension'].includes(need.kind)) return false;
-  return need.kind === 'interface'
-    ? isConcreteScopedLabel(need.query)
-    : need.interfaceKeys.some(isConcreteScopedLabel)
-      || need.subsystemHints.some(isConcreteScopedLabel)
-      || need.criterionIds.some((criterionId) => criteriaWithExplicitPaths.has(criterionId));
-}
-
-function isConcreteScopedLabel(value: string): boolean {
-  const tokens = stableSlug(value).split('-');
-  return tokens.length > 0 && tokens.every((token) => !GENERIC_SCOPE_LABELS.has(token) && !GENERIC_SCOPE_LABELS.has(token.endsWith('s') ? token.slice(0, -1) : token));
 }
 
 export function criticalUnresolvedNeedIds(bundle: SourceLocalizationBundle, _inventory: SourceInventory, authoritativeOwnerNeedIds?: string[]): string[] {
@@ -302,6 +281,11 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
   // callers safe by deriving the same compiler-owned requirements, never from
   // localization record kind/source.
   const authoritativeOwnerNeedIds = input.authoritativeOwnerNeedIds ?? deriveAuthoritativeOwnerNeedIds(input.inventory, graph);
+  // The complete catalog drives compiler repair. Rescoping has a narrower
+  // fail-closed contract: only entrypoint representations are critical here.
+  const needKinds = new Map(deriveSourceLocalizationNeeds({ inventory: input.inventory, graph }).map((need) => [need.id, need.kind]));
+  const rescopeAuthoritativeOwnerNeedIds = authoritativeOwnerNeedIds.filter((needId) => needKinds.get(needId) === 'entrypoint');
+  const rescopeAuthorityCatalog = rescopeAuthoritativeOwnerNeedIds.length > 0 ? rescopeAuthoritativeOwnerNeedIds : undefined;
   // Project hints never carry ignore prefixes/globs (the only hint inputs that
   // shape the index), so one repository index serves every localization pass.
   const index = await deriveRepositoryIndex({ cwd: input.cwd });
@@ -312,7 +296,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     ledger: { totalToolUseBudget: 0, usedToolUses: 0 },
     riskReasons: [], splitGroups: [], rerunScopeKeys: [], preservedScopeKeys: [], unresolvedCriticalNeedIds: [],
   };
-  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, authoritativeOwnerNeedIds);
+  const skip = decideExplorationSkip(baseline, input.inventory.summary.criterionCount, rescopeAuthorityCatalog);
   emit(`Repository exploration ${skip.skip ? 'skipped' : 'starting'}: ${skip.reason}`);
   if (skip.skip) return { diagnostics };
 
@@ -333,7 +317,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     return result;
   };
 
-  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits, authoritativeOwnerNeedIds });
+  const risk = classifyRescopeRisk({ bundle: baseline, inventory: input.inventory, graph, limits: input.limits, authoritativeOwnerNeedIds: rescopeAuthorityCatalog });
   diagnostics.riskReasons = risk.reasons;
   let bundle = baseline;
   let hints: SourceLocalizationInputHints | undefined;
@@ -422,7 +406,7 @@ export async function runAdaptiveExplorationRescope(input: RunAdaptiveExploratio
     // budget-exhausted or ambiguous sibling in diagnostics.
     if (attemptOutcomes.length > 0) outcome = attemptOutcomes.reduce(mergeOutcomes);
     bundle = await deriveSourceLocalization({ cwd: input.cwd, inventory: input.inventory, graph: rescopedGraph, hints, index });
-    const critical = partitionCriticalUnresolvedNeeds(bundle, input.inventory, authoritativeOwnerNeedIds);
+    const critical = partitionCriticalUnresolvedNeeds(bundle, input.inventory, rescopeAuthorityCatalog);
     diagnostics.unresolvedCriticalNeedIds = critical.rescopable;
     if (critical.unrescopable.length > 0) {
       emit(`Adaptive rescope: ${critical.unrescopable.length} critical need(s) have no linked criteria and cannot be re-explored (${critical.unrescopable.slice(0, 5).join(', ')}); excluded from the fail-closed gate.`, 'warning');

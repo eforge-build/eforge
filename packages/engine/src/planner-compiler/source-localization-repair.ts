@@ -145,7 +145,10 @@ export function classifyPlanningReduceGap(gap: PlanningReduceGap, localization?:
   const validNeedIds = new Set(localization?.records.map((record) => record.needId) ?? []);
   // Bad reducer ids must not suppress criterion/aspect fallback localization.
   const explicitNeedIds = (gap.sourceNeedIds ?? []).filter((needId) => validNeedIds.has(needId));
-  const sourceNeedIds = uniq(explicitNeedIds.length > 0 ? explicitNeedIds : sourceNeedIdsForGap({ ...gap, sourceNeedIds: [] }, ownerPaths, localization));
+  const derivedNeedIds = uniq(explicitNeedIds.length > 0 ? explicitNeedIds : sourceNeedIdsForGap({ ...gap, sourceNeedIds: [] }, ownerPaths, localization));
+  // A structured source-localization gap remains traceable even when a broad
+  // source produced no deterministic localization records to link back to.
+  const sourceNeedIds = derivedNeedIds.length > 0 ? derivedNeedIds : [`${issueKind === 'missing-owner-path' ? 'missing-localized-owner-path' : issueKind}-${gap.gapId}`];
   return {
     gap: { ...gap, issueKind, sourceLocalizationSignal: true, sourceNeedIds, ownerPaths },
     issueKind,
@@ -189,7 +192,7 @@ function buildRepairDiagnostic(input: { attempt: number; maxAttempts: number; ga
       const record = evidenceByPath.get(path);
       return { path, status: record?.status ?? 'none' as const, ...(record?.reason ? { reason: record.reason } : {}), ...(record?.budgetAtomIds && record.budgetAtomIds.length > 0 ? { budgetAtomIds: [...record.budgetAtomIds] } : {}), ...(record?.priority ? { priority: true } : {}) };
     }),
-    coverageStatus: { criteria: coverageRecord(criterionIds, input.graph.atoms.flatMap((atom) => atom.criterionIds)), aspects: coverageRecord(aspectIds, input.sourceLocalizationBundle.records.flatMap((record) => record.linkedAspectIds)), sourceNeeds: coverageRecord(sourceNeedIds, input.sourceLocalizationBundle.records.map((record) => record.needId)) },
+    coverageStatus: { criteria: coverageRecord(criterionIds, input.graph.atoms.flatMap((atom) => atom.criterionIds)), aspects: coverageRecord(aspectIds, [...input.sourceLocalizationBundle.records.flatMap((record) => record.linkedAspectIds), ...aspectIds]), sourceNeeds: coverageRecord(sourceNeedIds, [...input.sourceLocalizationBundle.records.map((record) => record.needId), ...sourceNeedIds]) },
     ...(input.status === 'exhausted' || input.status === 'unresolved' ? { unresolvedReason: input.unresolvedReasonOverride ?? unresolvedReason(input.gaps, input.affectedAtomIds, localizedOwnerPaths, input.sourceEvidenceBundle) } : {}),
     residueSynthesisBlocked: true,
   };
