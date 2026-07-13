@@ -1,0 +1,61 @@
+name: pin-validation-bases-for-stacked-builds
+description: Bounded planner compiler artifacts for pin-validation-bases-for-stacked-builds
+base_branch: main
+validate: []
+plans:
+  - id: stacked-validation-base-pinning
+    name: Pin stacked validation bases and preserve child diffs after parent deletion
+    depends_on: []
+    branch: pin-validation-bases-for-stacked-builds/stacked-validation-base-pinning
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    test_ownership: builder
+pipeline:
+  compile:
+    - planner
+    - planning-quality-review-cycle
+  defaultBuild:
+    - implement
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: >-
+    Bounded planner compiler pipeline
+
+    Bounded planner compiler produced final plan artifacts directly.
+
+    Per-plan pipeline settings normalize typed model intent against
+    deterministic compiler safety signals.
+
+    Set-level review follows the deepest normalized review; build defaults
+    follow the broadest normalized plan pipeline (highest risk score 1).
+
+    - stacked-validation-base-pinning: risk score 1
+    (low-confidence-localization); declared docs work none, test work
+    author-new, test owner builder; model review intent heavy (The change
+    crosses persisted orchestration state and destructive Git topology
+    transitions. Incorrect fallback can silently validate an empty or wrong
+    diff, while over-eager repair can alter landing topology; review must trace
+    every lifecycle consumer and failure branch.); derived build implement ->
+    test-cycle -> review-cycle and parallel review with perspectives code,
+    security, test, verify, 2 round(s), strict evaluation
+diff_base_ref: 8e39415a46b0364460ebd03d5492eb8d5e779ccb
