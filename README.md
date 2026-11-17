@@ -1,9 +1,16 @@
 # eforge
 
-[![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
-[![npm pi package](https://img.shields.io/npm/v/@eforge-build/pi-eforge)](https://www.npmjs.com/package/@eforge-build/pi-eforge)
+> **Status: no longer developed or maintained.** Issues and pull requests will not be looked at. The published npm packages and the Claude Code plugin stay available as they are, with no updates planned.
 
-> **Public docs:** [https://eforge.build/docs](https://eforge.build/docs) - Getting started, concepts, configuration, and the canonical reference docs for users and agents. Agent-readable artifacts at [/llms.txt](https://eforge.build/llms.txt).
+## Why eforge stopped
+
+I built eforge hoping it would become the agentic build system I wanted to work in every day, and I built it the way you build a product for other people: published packages, a docs site, configuration tiers, extension points. I open-sourced it in case it helped others.
+
+That goal has since been met by Grove, a tool I'm building only for my own needs. In under a week of development it reached, then passed, where eforge was going. I no longer think there is much value in building a general product for others in this space: it is now fast and easy to build your own tool fitted to how you work, especially on libraries like [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The source stays here in case any of it is useful to read or fork.
+
+---
+
+*Everything below describes eforge as it was when development stopped.*
 
 eforge is an open source build-engine kernel surrounded by extensible workflow power. Normalized build source goes in; reviewed, validated code comes out. The small kernel consumes normalized build source, orchestrates dependency-aware branch and worktree execution, runs conservative build/review/validation gates, emits typed events, and leaves input authoring surfaces and richer workflow UX to optional extensions, `eforge-playbooks`, session plans, wrapper apps, and host integrations. The build phase runs in the background while you plan the next thing.
 
@@ -14,8 +21,6 @@ Harness engineering - the discipline of designing everything around an LLM that 
 The name: **eforge** means **extensible forge** - a small, durable kernel for shaping code from plans, with extension surfaces around it.
 
 <img src="docs/images/console-recovery-build.png" alt="eforge Console showing a recovery build running, a dependent plan waiting, spend by model, and build health" width="800">
-
-> **Status:** This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
 
 ## What is eforge?
 
